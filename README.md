@@ -154,5 +154,22 @@ Firestoreへの送信、Firestoreからの受信、案件接続などを集約�
 詳細は次のメモを参照してください。
 
 ```text
-docs/現在のフォルダ構成メモ.md
+docs/project-structure.md
 ```
+
+## 本開発用の最小構成
+
+本開発への移行準備として、次のファイルとフォルダを追加しています。
+
+```text
+config/
+css/
+js/auth/
+assets/icons/
+archive/
+app.html
+camera.html
+survey-map.html
+```
+
+現在採用予定の全体構成と移行方針は、[`docs/project-structure.md`](docs/project-structure.md)を参照してください。
