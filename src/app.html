@@ -10,14 +10,17 @@
     ブラウザから直接開く（今後 index.html からの遷移先にもなる）。
 
   何を取得しているか：
-    何も取得しない。案件データ・仕上表データ・建材データは
-    v0.1.0の時点では一切存在しない。
+    Firebase Authenticationのログイン状態と、Microsoft Graph用アクセストークン
+    （src/js/auth/microsoft-auth.js経由）。案件データ・仕上表データ・建材データは
+    このリポジトリ整理の時点でもまだ存在しない。
 
   何を判定しているか：
-    何も判定しない。
+    ヘッダーのMicrosoftログインボタンがログイン中かログアウト中かだけを判定する
+    （src/js/ui/auth-ui.js）。業務データに関する判定はまだ行わない。
 
   どこへ書き込んでいるか：
-    どこにも書き込まない（保存処理を持たない）。
+    Graphアクセストークンをブラウザのsessionストレージへ一時保存する
+    （タブを閉じると消える）。それ以外の保存処理は持たない。
 
   どの処理とは分離しているか：
     ・v0.15.10にあった AppManager / StateManager / StorageManager /
@@ -33,6 +36,10 @@
     3. 各タブの中身は「ここに◯◯を実装します」のプレースホルダーのみ
     4. インラインonclickは使用せず、data属性 + 外部JS（type="module"）で
        開閉のみを制御
+    5.（リポジトリ整理時に追加）ヘッダーへMicrosoftログインボタン・
+       ログインユーザー名表示・Graphトークン取得状態表示を接続
+       （src/js/ui/auth-ui.js）。認証処理自体はsrc/js/auth/microsoft-auth.js
+       を書き直さずそのまま使用。
 
   動作確認手順：
     src/js/app-init.js のコメント内「動作確認手順」を参照。
@@ -58,8 +65,10 @@
   <span class="connection-dot offline" id="onlinePill" title="v0.1.0では通信を行いません"></span>
   <span class="pill header-sync-state" id="firebasePill">未接続（v0.1.0）</span>
   <span class="pill header-device" id="devicePill">端末未設定</span>
+  <button class="btn small header-auth-btn" id="msAuthBtn">Microsoftログイン</button>
   <span class="pill header-account" id="msPill">未ログイン</span>
-  <span class="hint">※ v0.1.0はUI骨格のみのため、ログイン・同期は動作しません</span>
+  <span class="pill header-graph-state" id="graphTokenPill">Graphトークン：未取得</span>
+  <span class="hint">※ v0.1.0はUI骨格＋認証接続のみのため、仕上表等の業務データはまだ動作しません</span>
 </header>
 
 <!-- ============================================================
