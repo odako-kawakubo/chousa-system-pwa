@@ -13,11 +13,6 @@ const accountPill = document.getElementById("msPill");
 const authBanner = document.getElementById("authBanner");
 let currentUser = null;
 
-/**
- * 指定したタブだけを表示する。
- *
- * @param {string} tabName
- */
 function showTab(tabName) {
   sections.forEach(section => {
     section.hidden = section.id !== tabName;
@@ -32,37 +27,24 @@ tabs.forEach(tab => {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
 });
 
-/**
- * ログインユーザーとGraphトークンの取得状態を画面へ反映する。
- *
- * @param {import("https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js").User|null} user
- */
 function setAuthUi(user) {
   currentUser = user;
   const graphTokenExists = Boolean(getGraphAccessToken());
 
   if (user) {
     const displayName = user.displayName || user.email || "Microsoftログイン済み";
-
     accountPill.textContent = displayName;
-    accountPill.className = "pill auth-ok";
+    accountPill.className = "pill auth-ok header-account";
     authButton.textContent = "ログアウト";
-
-    authBanner.textContent =
-      `Microsoftログイン確認済み：${displayName} / ` +
-      `Graphトークン：${graphTokenExists ? "取得済み" : "未取得"}`;
-
-    // Graphトークンがない場合は、ログイン済みでも注意表示にする。
-    authBanner.className = graphTokenExists ? "auth-banner ok" : "auth-banner warn";
+    authBanner.textContent = `Microsoftログイン確認済み：${displayName} / Graphトークン：${graphTokenExists ? "取得済み" : "未取得"}`;
+    authBanner.className = graphTokenExists ? "auth-banner ok" : "auth-banner";
     return;
   }
 
   accountPill.textContent = "未ログイン";
-  accountPill.className = "pill auth-warn";
+  accountPill.className = "pill auth-warn header-account";
   authButton.textContent = "Microsoftログイン";
-  authBanner.textContent =
-    "この確認版では、Microsoftログインとログアウトだけが実際に動作します。" +
-    "その他の画面は構成確認用です。";
+  authBanner.textContent = "Microsoftログイン・ログアウトとGraphトークン取得だけを実装した画面シェルです。業務処理はまだ未接続です。";
   authBanner.className = "auth-banner";
 }
 
@@ -72,11 +54,9 @@ authButton.addEventListener("click", async () => {
   try {
     if (currentUser) {
       await logoutMicrosoft();
-      // onAuthStateChangedを待たず、ログアウト表示を直ちに反映する。
       setAuthUi(null);
     } else {
       const user = await loginWithMicrosoft();
-      // トークン保存後に再描画することで「未取得」の競合表示を防ぐ。
       setAuthUi(user);
     }
   } catch (error) {
@@ -87,24 +67,30 @@ authButton.addEventListener("click", async () => {
   }
 });
 
-const drawer = document.getElementById("drawer");
-const backdrop = document.getElementById("drawerBackdrop");
+function bindPanel(openButtonId, panelId, backdropId, closeButtonId) {
+  const openButton = document.getElementById(openButtonId);
+  const panel = document.getElementById(panelId);
+  const backdrop = document.getElementById(backdropId);
+  const closeButton = document.getElementById(closeButtonId);
 
-document.getElementById("operationBtn").addEventListener("click", () => {
-  drawer.classList.add("open");
-  backdrop.classList.add("open");
-});
+  const open = () => {
+    panel.classList.add("open");
+    backdrop.classList.add("open");
+  };
 
-for (const element of [backdrop, document.getElementById("drawerClose")]) {
-  element.addEventListener("click", () => {
-    drawer.classList.remove("open");
+  const close = () => {
+    panel.classList.remove("open");
     backdrop.classList.remove("open");
-  });
+  };
+
+  openButton.addEventListener("click", open);
+  backdrop.addEventListener("click", close);
+  closeButton.addEventListener("click", close);
 }
 
-document.getElementById("headerVersion").textContent = appConfig.version;
+bindPanel("operationBtn", "drawer", "drawerBackdrop", "drawerClose");
+bindPanel("projectPanelBtn", "projectPanel", "projectBackdrop", "projectPanelClose");
 
-// Firebaseの認証状態を監視する。
-// 初回通知がトークン保存より先に来る場合があるため、ログインボタン処理でも再描画する。
+document.getElementById("headerVersion").textContent = appConfig.version;
 watchAuthState(setAuthUi);
 showTab("finish");

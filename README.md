@@ -1,22 +1,19 @@
-# 調査システムPWA 認証確認版
+# Odako Chousa System PWA
 
-現行 v0.15 系の画面デザインを参考に、画面構成だけを整理して作り直した認証確認用の最小版です。
+アスベスト調査システムPWAの本開発版リポジトリです。
 
-## 今回動作する機能
-- Firebase Authentication を使った Microsoft ログイン
-- Microsoft ログアウト
-- ログインユーザー名の表示
-- Microsoft Graph アクセストークン取得有無の表示
-- タブ切替
-- 操作パネルの開閉
+現在は、v0.15系の画面構成を整理したUIシェルに、Microsoft AuthenticationとGraphアクセストークン取得確認のみを接続しています。
 
-## 今回は未接続
-- Firestore同期
-- SharePointファイル操作
-- 案件管理
-- 仕上表入力
-- 建材リスト編集
-- 写真管理
-- 調査図
+## 現在のバージョン
 
-クライアントシークレットはリポジトリに含めていません。
+`ui-shell-0.2.0`
+
+## 公開
+
+`main`ブランチへのpushで、GitHub ActionsからFirebase Hostingへ自動デプロイします。
+
+## 設計資料
+
+- `docs/project-structure.md`
+- `docs/auth-test-scope.md`
+- `docs/ui-shell-v0.2.0.md`
