@@ -1,26 +1,27 @@
-# 調査システムPWA 認証確認版
+# 調査システムPWA UI骨格 v0.1.0
 
-現行 v0.15 系の画面デザインを参考に、画面構成だけを整理して作り直した認証確認用の最小版です。
+Claude作成のUI骨格8ファイルを、HTMLとJavaScript内の参照パスに合わせて配置し直した版です。
 
-## 今回動作する機能
-- Firebase Authentication を使った Microsoft ログイン
-- Microsoft ログアウト
-- ログインユーザー名の表示
-- Microsoft Graph アクセストークン取得有無の表示
-- タブ切替
-- 操作パネルの開閉
+## 構成
 
-## 今回は未接続
-- Firestore同期
-- SharePointファイル操作
-- 案件管理
-- 仕上表入力
-- 建材リスト編集
-- 写真管理
-- 調査図
+```text
+src/
+├─ app.html
+├─ css/
+│  ├─ common.css
+│  └─ layout.css
+└─ js/
+   ├─ app-init.js
+   └─ ui/
+      ├─ tabs.js
+      ├─ drawer.js
+      ├─ project-panel.js
+      └─ modal.js
+```
 
-クライアントシークレットはリポジトリに含めていません。
+## 注意
 
-## v0.15.10 UI基準版
-
-現在の `app.html` は、v0.15.10の画面を改変せず配置した基準版です。詳細は `docs/v015-baseline.md` を参照してください。
+- 今回はファイル配置だけを修正しています。
+- UIコードの内容は変更していません。
+- Microsoft認証はまだこの8ファイルには接続していません。
+- Firebase Hostingの公開ディレクトリがリポジトリ直下 `.` のままの場合、`src/app.html` は `/src/app.html` で確認できます。

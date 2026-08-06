@@ -1,0 +1,240 @@
+<!--
+  src/app.html
+
+  このファイルの役割：
+    本開発版 v0.1.0（UI骨格のみ）のメイン画面。
+    ヘッダー・案件選択パネル・上部タブ・各タブの枠・ドロワー・モーダルの
+    「見た目」だけを、v0.15.10の配置・寸法・配色に合わせて再現する。
+
+  どこから呼ばれるか：
+    ブラウザから直接開く（今後 index.html からの遷移先にもなる）。
+
+  何を取得しているか：
+    何も取得しない。案件データ・仕上表データ・建材データは
+    v0.1.0の時点では一切存在しない。
+
+  何を判定しているか：
+    何も判定しない。
+
+  どこへ書き込んでいるか：
+    どこにも書き込まない（保存処理を持たない）。
+
+  どの処理とは分離しているか：
+    ・v0.15.10にあった AppManager / StateManager / StorageManager /
+      FirebaseSync / OneDrive連携 / インラインonclick構造 / 自動タイマーは
+      一切持ち込んでいない。
+    ・各タブの中身（仕上表の表・建材リストの行・写真グリッド等）は
+      本開発版の該当バージョン（v0.3.0以降）で実装する。ここでは
+      「タブを開いたときに、その枠とタイトルだけが見える」状態を作る。
+
+  今回の変更：
+    1. v0.1.0（UI骨格のみ）として新規作成
+    2. ヘッダー・案件パネル・タブ7種・ドロワー・モーダル3種の枠を配置
+    3. 各タブの中身は「ここに◯◯を実装します」のプレースホルダーのみ
+    4. インラインonclickは使用せず、data属性 + 外部JS（type="module"）で
+       開閉のみを制御
+
+  動作確認手順：
+    src/js/app-init.js のコメント内「動作確認手順」を参照。
+-->
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>調査システムPWA v0.1.0</title>
+<link rel="stylesheet" href="./css/common.css" />
+<link rel="stylesheet" href="./css/layout.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     ヘッダー
+     ============================================================ -->
+<header class="app-header-compact">
+  <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
+  <h1 id="caseHeaderTitle">案件未選択（v0.1.0 UI骨格）</h1>
+  <span class="pill header-version" id="headerVersion">v0.1.0</span>
+  <span class="connection-dot offline" id="onlinePill" title="v0.1.0では通信を行いません"></span>
+  <span class="pill header-sync-state" id="firebasePill">未接続（v0.1.0）</span>
+  <span class="pill header-device" id="devicePill">端末未設定</span>
+  <span class="pill header-account" id="msPill">未ログイン</span>
+  <span class="hint">※ v0.1.0はUI骨格のみのため、ログイン・同期は動作しません</span>
+</header>
+
+<!-- ============================================================
+     案件選択パネル（左スライドイン）
+     中身の案件一覧はv0.1.0では空。案件管理モジュール実装時に描画する。
+     ============================================================ -->
+<div class="project-side-backdrop" id="projectSideBackdrop" data-project-panel-close></div>
+<aside class="project-side-panel" id="projectSidePanel" aria-hidden="true">
+  <div class="project-side-head">
+    <b>案件選択</b>
+    <button class="btn icon" data-project-panel-close>×</button>
+  </div>
+  <div class="project-side-tools">
+    <input id="projectSearchInput" placeholder="端末内の案件を検索" disabled />
+    <button class="btn primary" disabled>＋ 現場で新規作成</button>
+    <button class="btn" id="restoreProjectButton" data-modal-open data-modal-target="sharedProjectModal">
+      既存案件を開く
+    </button>
+  </div>
+  <div class="project-restore-status" id="projectRestoreStatus"></div>
+  <div class="project-side-list" id="projectList">
+    <div class="hint" style="padding:16px 4px">
+      案件一覧はv0.1.0では未実装です（案件管理モジュール実装時に表示されます）
+    </div>
+  </div>
+</aside>
+
+<!-- ============================================================
+     既存案件を開くモーダル（中身は未実装。開閉のみ確認用）
+     ============================================================ -->
+<div class="shared-project-modal" id="sharedProjectModal" data-modal-close data-modal-target="sharedProjectModal">
+  <div class="shared-project-card" data-modal-stop>
+    <div class="shared-project-head">
+      <b id="sharedProjectTitle">既存案件を開く</b>
+      <button class="btn small" data-modal-close data-modal-target="sharedProjectModal">閉じる</button>
+    </div>
+    <div class="shared-project-search-row">
+      <input class="shared-project-search" placeholder="案件を検索" disabled />
+      <button class="btn small primary" disabled>検索</button>
+    </div>
+    <div class="project-restore-status show warn">
+      OneDrive連携はv0.1.0では未実装です。案件検索はここでは動作しません。
+    </div>
+    <div class="shared-project-list" id="sharedProjectList"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     本体（タブ切り替えエリア）
+     ============================================================ -->
+<div class="app">
+  <main class="main">
+    <div class="toolbar">
+      <div class="case-title">
+        <div></div>
+      </div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="finish">仕上表</button>
+        <button class="tab" data-tab="materials">建材リスト</button>
+        <button class="tab" data-tab="photos">写真</button>
+        <button class="tab" data-tab="survey-map">調査図</button>
+        <button class="tab" data-tab="sync">同期</button>
+        <button class="tab" data-tab="settings">設定</button>
+        <button class="tab" data-tab="records">レコード</button>
+        <button class="btn tab-operation-button" data-drawer-open>操作</button>
+      </nav>
+    </div>
+
+    <!-- 仕上表タブ：v0.3.0以降で実装 -->
+    <section class="content" id="finish">
+      <div class="panel">
+        <div class="panel-head"><h3>仕上表</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに仕上表（内部／外部、簡易リストを含む）を実装します。<br />
+          v0.3.0（仕上表表示）・v0.4.0（仕上表編集）で追加予定。
+        </div>
+      </div>
+    </section>
+
+    <!-- 建材リストタブ：v0.6.0以降で実装 -->
+    <section class="content" id="materials" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>建材リスト</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに建材リスト（No./ID/部位/建材名称/採取情報等）を実装します。<br />
+          v0.5.0（建材レコード）・v0.6.0（建材リスト）で追加予定。
+        </div>
+      </div>
+    </section>
+
+    <!-- 写真タブ：v0.7.0以降で実装 -->
+    <section class="content" id="photos" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>写真</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに目視調査写真・建材採取写真の画面を実装します。<br />
+          v0.7.0で追加予定。
+        </div>
+      </div>
+    </section>
+
+    <!-- 調査図タブ：v0.15.10でも単体HTML版では停止表示のプレースホルダー -->
+    <section class="content" id="survey-map" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>調査図</h3></div>
+        <div class="hint" style="padding:24px">
+          調査図は本開発版でも別途検討予定の機能です（正式仕様書 未確定事項）。
+        </div>
+      </div>
+    </section>
+
+    <!-- 同期タブ：v0.9.0以降で実装 -->
+    <section class="content" id="sync" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>同期</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに未同期件数・同期状態の表示を実装します。<br />
+          v0.9.0（Firestore差分同期）で追加予定。
+        </div>
+      </div>
+    </section>
+
+    <!-- 設定タブ：案件情報や建材候補の管理をv0.5.0以降で実装 -->
+    <section class="content" id="settings" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>設定</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに案件基本情報・建材候補・部位候補・端末設定を実装します。
+        </div>
+      </div>
+    </section>
+
+    <!-- レコードタブ：主レコード3種の一覧をv0.2.0以降の状態管理と合わせて実装 -->
+    <section class="content" id="records" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>レコード</h3></div>
+        <div class="hint" style="padding:24px">
+          ここに仕上表・建材・写真の各レコード一覧を実装します。
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============================================================
+     ドロワー（右スライドイン。中身のボタンはv0.1.0では未実装）
+     ============================================================ -->
+<div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <b>操作パネル</b>
+    <button class="btn small" data-drawer-close>閉じる</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-box">
+      <h4>状態</h4>
+      <div class="hint">v0.1.0（UI骨格）のため、このパネル内のボタンはまだ機能しません。</div>
+    </div>
+    <div class="drawer-version">v0.1.0</div>
+  </div>
+</aside>
+
+<!-- ============================================================
+     写真拡大プレビューモーダル（v0.7.0で実際の写真表示を実装）
+     ============================================================ -->
+<div class="photo-preview-modal" id="photoPreviewModal" data-modal-close data-modal-target="photoPreviewModal">
+  <div class="photo-preview-card" data-modal-stop>
+    <div class="photo-preview-head">
+      <h3 id="photoPreviewTitle">写真プレビュー</h3>
+      <button class="btn small" data-modal-close data-modal-target="photoPreviewModal">閉じる</button>
+    </div>
+    <div class="photo-preview-body" id="photoPreviewBody">v0.1.0では未実装です</div>
+  </div>
+</div>
+
+<script type="module" src="./js/app-init.js"></script>
+</body>
+</html>
