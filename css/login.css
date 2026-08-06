@@ -1,1 +1,1 @@
-/* Microsoftログイン画面専用のスタイルを置くファイル。 */
+.login-page{min-height:100vh;display:grid;place-items:center;padding:20px}.login-card{width:min(430px,100%);background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:0 14px 40px rgba(15,23,42,.1)}.login-card h1{font-size:20px;margin:0 0 8px}.login-actions{display:flex;gap:8px;margin-top:18px}.login-status{margin-top:14px;font-size:12px;color:var(--muted)}

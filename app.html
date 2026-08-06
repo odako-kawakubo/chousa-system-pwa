@@ -1,15 +1,17 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>調査システムPWA</title>
-  <link rel="stylesheet" href="./css/common.css">
-  <link rel="stylesheet" href="./css/app.css">
-</head>
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>調査システムPWA 認証確認版</title><link rel="stylesheet" href="./css/common.css"><link rel="stylesheet" href="./css/app.css"></head>
 <body>
-  <!-- メイン画面は今後ここへ実装します。 -->
-  <main id="app"></main>
-  <script type="module" src="./js/main.js"></script>
-</body>
-</html>
+<header class="app-header"><button class="btn">案件</button><h1>26070101　ODKワールドアスベスト調査</h1><span class="pill" id="headerVersion"></span><span class="connection-dot" title="オンライン"></span><span class="pill">同期構成確認</span><span class="pill">端末未設定</span><span class="pill auth-warn" id="msPill">未ログイン</span><button class="btn small" id="msAuthBtn">Microsoftログイン</button></header>
+<div class="toolbar"><nav class="tabs"><button class="tab active" data-tab="finish">仕上表</button><button class="tab" data-tab="materials">建材リスト</button><button class="tab" data-tab="photos">写真</button><button class="tab" data-tab="survey-map">調査図</button><button class="tab" data-tab="sync">同期</button><button class="tab" data-tab="settings">設定</button><button class="tab" data-tab="records">レコード</button><button class="btn" id="operationBtn">操作</button></nav></div>
+<div id="authBanner" class="auth-banner"></div>
+<main>
+<section class="content" id="finish"><div class="panel"><div class="status-row"><div class="status-left"><span class="pill">自動保存</span><span class="pill">対象建材 4件</span><button class="btn small" disabled>戻る</button><button class="btn small" disabled>進む</button><button class="btn small" disabled>カラー表示 OFF</button></div><div class="status-right"><button class="btn small" disabled>オンライン切替</button><button class="btn small primary" disabled>同期</button></div></div><div class="table-wrap"><table class="finish-table"><thead><tr><th class="fixed">階</th><th>部屋No.</th><th>部屋名</th><th>床 ID</th><th>床 建材名</th><th>巾木 ID</th><th>巾木 建材名</th><th>壁 ID</th><th>壁 建材名</th><th>天井 ID</th><th>天井 建材名</th></tr></thead><tbody><tr><td class="fixed">1F</td><td>101</td><td>事務室</td><td>R001</td><td>ビニル床タイル</td><td>R002</td><td>ソフト巾木</td><td>R003</td><td>石こうボード</td><td>R004</td><td>岩綿吸音板</td></tr><tr><td class="fixed">1F</td><td>102</td><td>廊下</td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td><td><div class="mock-cell"></div></td></tr></tbody></table></div></div></section>
+<section class="content" id="materials" hidden><div class="panel"><div class="panel-head"><h3>建材リスト</h3><span class="hint">構成確認用</span></div><div class="material-grid"><div class="settings-card"><b>No.1　ビニル床タイル</b><p class="hint">部位：床 / 使用箇所：101 事務室</p></div><div class="settings-card"><b>No.2　ソフト巾木</b><p class="hint">部位：巾木 / 使用箇所：101 事務室</p></div><div class="settings-card"><b>No.3　石こうボード</b><p class="hint">部位：壁 / 使用箇所：101 事務室</p></div></div></div></section>
+<section class="content" id="photos" hidden><div class="panel"><div class="panel-head"><h3>写真</h3><div><button class="btn small" disabled>目視調査</button> <button class="btn small" disabled>建材採取</button></div></div><div class="photo-layout"><div class="side-list"><div class="side-item active"><b>101 事務室</b><div class="hint">床・壁・天井</div></div><div class="side-item"><b>102 廊下</b></div></div><div class="photo-board"><b>目視写真</b><div class="photo-grid"><div class="photo-box">代表写真</div><div class="photo-box">＋ 写真</div><div class="photo-box">＋ 写真</div></div></div></div></div></section>
+<section class="content" id="survey-map" hidden><div class="panel"><div class="panel-head"><h3>調査図</h3></div><div style="padding:36px;text-align:center" class="hint">調査図画面の配置予定領域</div></div></section>
+<section class="content" id="sync" hidden><div class="panel"><div class="panel-head"><h3>同期状態</h3></div><div class="status-row"><span>Firebase Authentication</span><b>Microsoftログインで確認</b></div><div class="status-row"><span>Firestore</span><b>未接続</b></div><div class="status-row"><span>SharePoint</span><b>Graphトークン取得まで確認</b></div></div></section>
+<section class="content" id="settings" hidden><div class="panel"><div class="panel-head"><h3>設定</h3><span class="hint">画面構成のみ</span></div><div class="settings-grid"><div class="settings-card"><h4>案件情報</h4><div class="settings-line"><span>案件番号</span><b>26070101</b></div><div class="settings-line"><span>案件名</span><b>ODKワールドアスベスト調査</b></div></div><div class="settings-card"><h4>端末・アカウント</h4><div class="settings-line"><span>Microsoft</span><b>上部ボタンで確認</b></div><div class="settings-line"><span>端末名</span><b>未設定</b></div></div></div></div></section>
+<section class="content" id="records" hidden><div class="panel"><div class="panel-head"><h3>レコード</h3><span class="hint">建材・仕上表・写真レコードの配置予定</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>種別</th><th>状態</th><th>名称</th></tr></thead><tbody><tr><td>R001</td><td>建材</td><td>有効</td><td>ビニル床タイル</td></tr></tbody></table></div></div></section>
+</main>
+<div class="drawer-backdrop" id="drawerBackdrop"></div><aside class="drawer" id="drawer"><div class="drawer-head"><b>操作パネル</b><button class="btn small" id="drawerClose">閉じる</button></div><div class="drawer-body"><div class="drawer-box"><h4>状態</h4><p class="hint">この確認版では操作系機能はまだ接続していません。</p><button class="btn" disabled>同期状態を確認</button></div><div class="drawer-box"><h4>保守</h4><button class="btn" disabled>データ整合性チェック</button></div></div></aside>
+<script type="module" src="./js/main.js"></script></body></html>

@@ -1,4 +1,5 @@
-/**
- * アプリ名、バージョン、同期設定、写真設定など、
- * アプリ全体の共通設定を置くファイル。
- */
+export const appConfig = {
+  appName: "調査システムPWA",
+  version: "auth-shell-0.1.0",
+  mode: "authentication-test"
+};
