@@ -1,4 +1,5 @@
 export const appConfig = {
-  name: "Odako Chousa System PWA",
-  version: "ui-shell-0.2.0"
+  appName: "調査システムPWA",
+  version: "auth-shell-0.1.1",
+  mode: "authentication-test"
 };
