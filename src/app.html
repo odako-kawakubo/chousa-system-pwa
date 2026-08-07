@@ -4,7 +4,7 @@
   このファイルの役割：
     本開発版のメイン画面。ヘッダー・案件選択パネル・上部タブ・各タブの枠・
     ドロワー・モーダルの「見た目」を、v0.15.10の配置・寸法・配色に合わせて
-    再現する（v0.1.0）。v0.1.1では、これに加えて仕上表タブへサンプル案件を
+    再現する（v0.1.0）。v0.1.2では、仕上表タブを横長テーブルUIへ再構成し、サンプル案件を
     使ったUI＋基本挙動を実装している。
 
   どこから呼ばれるか：
@@ -41,7 +41,7 @@
        ログインユーザー名表示・Graphトークン取得状態表示を接続
        （src/js/ui/auth-ui.js）。認証処理自体はsrc/js/auth/microsoft-auth.js
        を書き直さずそのまま使用。
-    6.（v0.1.1で追加）仕上表タブへ、公式サンプル案件（SAMPLE-001）を使った
+    6.（v0.1.2で更新）仕上表タブへ、公式サンプル案件（SAMPLE-001）を使った
        内部／外部の部屋一覧・簡易リスト・建材カラー表示・セル選択などの
        UIと基本挙動を実装（src/js/finish-table/・src/js/materials/・
        src/js/demo/）。保存・同期・Firestore・OneDrive通信は未実装。
@@ -56,7 +56,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>調査システムPWA v0.1.1</title>
+<title>調査システムPWA v0.1.2</title>
 <link rel="stylesheet" href="./css/common.css" />
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
@@ -69,7 +69,7 @@
 <header class="app-header-compact">
   <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
   <h1 id="caseHeaderTitle">案件未選択（v0.1.0 UI骨格）</h1>
-  <span class="pill header-version" id="headerVersion">v0.1.1</span>
+  <span class="pill header-version" id="headerVersion">v0.1.2</span>
   <span class="connection-dot offline" id="onlinePill" title="v0.1.0では通信を行いません"></span>
   <span class="pill header-sync-state" id="firebasePill">未接続（v0.1.0）</span>
   <span class="pill header-device" id="devicePill">端末未設定</span>
@@ -145,7 +145,7 @@
       </nav>
     </div>
 
-    <!-- 仕上表タブ：v0.1.1でサンプル案件を使ったUI＋基本挙動を実装。
+    <!-- 仕上表タブ：v0.1.2で横長テーブルUI＋基本挙動を実装。
          中身はsrc/js/finish-table/finish-table-controller.jsが
          initializeFinishTable()実行時に描画する（このsection自体は空のまま）。 -->
     <section class="content" id="finish"></section>
@@ -229,7 +229,7 @@
       <h4>状態</h4>
       <div class="hint">v0.1.0（UI骨格）のため、このパネル内のボタンはまだ機能しません。</div>
     </div>
-    <div class="drawer-version">v0.1.1</div>
+    <div class="drawer-version">v0.1.2</div>
   </div>
 </aside>
 

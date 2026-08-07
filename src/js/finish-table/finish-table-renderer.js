@@ -1,70 +1,75 @@
 /**
  * src/js/finish-table/finish-table-renderer.js
  *
- * このファイルの役割：
- *   仕上表タブの画面描画だけを行う。状態（finish-table-state.js）を読み取って
- *   DOM要素を組み立てるだけで、状態そのものを変更する判定・保存・外部通信は
- *   一切行わない。
- *
- * どこから呼ばれるか：
- *   src/js/finish-table/finish-table-controller.js から、初期描画・
- *   部屋や階の追加後の再描画・選択状態の見た目更新のために呼ばれる。
- *   src/js/materials/simple-list.js からも、建材選択時のセル反映後に
- *   ハイライト更新（updateHighlights / updateCellBadge）のために呼ばれる。
- *
- * 何を取得しているか：
- *   finish-table-state.js が持つ現在の状態（部屋構成・セルの値・選択状態・
- *   建材カラー表示ON/OFF）。
- *
- * 何を判定しているか：
- *   ・内部／外部のどちらを描画するか
- *   ・各セルが「選択中の建材」と一致しているか（ハイライト表示のため）
- *   ・その他欄に入力済みの建材名があるか（入力IDバッジ表示のため）
- *
- * どこへ描画しているか：
- *   #finish セクション内の #finishRoomsArea・#finishAddButtons・
- *   #finishProjectBanner・.finish-area-btn のみ。他タブのDOM・ヘッダー・
- *   ドロワー・案件パネル・既存モーダルには一切触れない。
- *
- * 保存・外部通信について：
- *   一切行わない。DOM組み立てのみ。
+ * v0.1.2 仕上表のDOM描画専用モジュール。
+ * 状態変更は行わず、stateを読み取ってテーブル・操作列・選択表示を描画する。
  */
 
 import {
   getState,
   getPartsForAreaCode,
-  computeRoomPosition,
   computeFinishId,
   roomKey,
-  getCellValue,
-  getCellActualPart,
+  floorGroupKey,
+  cellGroupKey,
+  inputKey,
+  getCell,
   getSelectedRoomKey,
+  getSelectedGroupKey,
+  getFocusedInputKey,
   getSelectedMaterialInputId,
-  findMaterialByName,
-  findMaterialByInputId
+  getRoomCopyButtonState,
+  orderedInternalGroups
 } from './finish-table-state.js';
 import { formatProjectDisplayName } from '../demo/sample-project.js';
 
-/**
- * 仕上表タブの枠組み（案件バナー・内部外部切替・追加ボタン・部屋一覧・
- * 簡易リストパネルの器）を1度だけ組み立てる。
- *
- * @param {HTMLElement} container #finish セクション要素
- */
+const OTHER_PART_INDEXES = new Set([5, 6]);
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function renderFinishTab(container) {
   container.innerHTML = `
     <div class="finish-tab-root">
       <div class="finish-project-banner" id="finishProjectBanner"></div>
-      <div class="finish-toolbar">
-        <div class="finish-area-toggle" id="finishAreaToggle">
-          <button type="button" class="btn small finish-area-btn active" data-area-mode="internal">内部</button>
+
+      <div class="finish-toolbar" id="finishToolbar">
+        <div class="finish-toolbar-group" id="finishAreaToggle">
+          <button type="button" class="btn small finish-area-btn" data-area-mode="internal">内部</button>
           <button type="button" class="btn small finish-area-btn" data-area-mode="external">外部</button>
         </div>
-        <div class="finish-add-buttons" id="finishAddButtons"></div>
+
+        <div class="finish-toolbar-spacer"></div>
+
+        <div class="finish-toolbar-group">
+          <button type="button" class="btn small finish-mode-btn" id="finishColorToggleBtn"></button>
+          <button type="button" class="btn small finish-mode-btn" id="finishChipInputToggleBtn"></button>
+        </div>
+
+        <div class="finish-toolbar-spacer"></div>
+
+        <div class="finish-toolbar-group">
+          <button type="button" class="btn small finish-mode-btn" id="finishSimpleListToggleBtn"></button>
+        </div>
+
+        <div class="finish-toolbar-fill"></div>
+
+        <!-- 地下階・階段・屋上の追加だけは専用操作として残す。
+             通常の＋行／＋部屋／＋階は表セル内へ配置する。 -->
+        <div class="finish-toolbar-group finish-structure-tools" id="finishStructureTools"></div>
       </div>
-      <div class="finish-workspace">
-        <div class="finish-rooms-area" id="finishRoomsArea"></div>
-        <aside class="finish-simple-list-panel" id="finishSimpleListPanel"></aside>
+
+      <div class="finish-table-scroll" id="finishTableScroll">
+        <div class="finish-table-track">
+          <div class="finish-table-host" id="finishRoomsArea"></div>
+          <section class="finish-simple-list-panel" id="finishSimpleListPanel"></section>
+        </div>
       </div>
     </div>
   `;
@@ -72,293 +77,266 @@ export function renderFinishTab(container) {
   const banner = document.getElementById('finishProjectBanner');
   if (banner) banner.textContent = formatProjectDisplayName(getState().project);
 
-  renderAddButtons();
+  renderToolbarState();
   renderRooms();
 }
 
-/**
- * 内部／外部それぞれで表示すべき追加ボタン（通常階／地下階／階段／屋上／部屋）を描画する。
- */
-export function renderAddButtons() {
-  const container = document.getElementById('finishAddButtons');
-  if (!container) return;
-  container.innerHTML = '';
-
+export function renderToolbarState() {
   const state = getState();
-  if (state.areaMode === 'external') {
-    container.appendChild(makeActionButton('＋部屋追加', 'add-external-room'));
-    return;
+
+  document.querySelectorAll('.finish-area-btn').forEach((button) => {
+    button.classList.toggle('active', button.dataset.areaMode === state.areaMode);
+  });
+
+  const colorBtn = document.getElementById('finishColorToggleBtn');
+  if (colorBtn) {
+    colorBtn.textContent = `カラー表示 ${state.colorMode ? 'ON' : 'OFF'}`;
+    colorBtn.classList.toggle('active', state.colorMode);
   }
 
-  container.appendChild(makeActionButton('＋通常階追加', 'add-normal-floor'));
-  container.appendChild(makeActionButton('＋地下階追加', 'add-basement-floor'));
-  container.appendChild(makeActionButton('＋階段追加', 'add-stairs'));
-  container.appendChild(makeActionButton('＋屋上追加', 'add-roof'));
+  const chipBtn = document.getElementById('finishChipInputToggleBtn');
+  if (chipBtn) {
+    chipBtn.textContent = `チップ入力 ${state.chipInputMode ? 'ON' : 'OFF'}`;
+    chipBtn.classList.toggle('active', state.chipInputMode);
+  }
+
+  const listBtn = document.getElementById('finishSimpleListToggleBtn');
+  if (listBtn) {
+    listBtn.textContent = `簡易リスト ${state.simpleListOpen ? '▼' : '▶'}`;
+  }
+
+  const tools = document.getElementById('finishStructureTools');
+  if (tools) {
+    tools.innerHTML = state.areaMode === 'internal'
+      ? `
+        <button type="button" class="btn small" data-action="add-basement-floor">＋地下階</button>
+        <button type="button" class="btn small" data-action="add-stairs">＋階段</button>
+        <button type="button" class="btn small" data-action="add-roof">＋屋上</button>
+      `
+      : '';
+  }
 }
 
-function makeActionButton(label, action) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'btn small';
-  btn.textContent = label;
-  btn.dataset.action = action;
-  return btn;
-}
-
-/** 内部／外部の切替ボタンのactive表示を、現在の状態に合わせて更新する。 */
-export function updateAreaToggleButtons() {
+function currentRooms() {
   const state = getState();
-  document.querySelectorAll('.finish-area-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.areaMode === state.areaMode);
-  });
+  if (state.areaMode === 'external') return state.externalRooms;
+  return orderedInternalGroups().flatMap((group) => group.rooms);
 }
 
 /**
- * 部屋一覧を現在の状態から丸ごと再描画する。
- * 部屋・階・入力行の追加、内部／外部切替のたびに呼ぶ。
+ * 建材名称・その他部位は列単位で最長文字を見て広げる。
+ * ID列・左固定列は固定幅のまま。
  */
+function computeDynamicWidths(parts) {
+  const rooms = currentRooms();
+  const widths = parts.map((_, index) => ({ name: 120, actualPart: 45, other: OTHER_PART_INDEXES.has(index + 1) }));
+
+  rooms.forEach((room) => {
+    for (let row = 1; row <= room.rowCount; row += 1) {
+      parts.forEach((_, index) => {
+        const cell = getCell(room, index + 1, row);
+        widths[index].name = Math.max(widths[index].name, Math.min(260, 24 + String(cell.materialName || '').length * 11));
+        if (widths[index].other) {
+          widths[index].actualPart = Math.max(widths[index].actualPart, Math.min(150, 20 + String(cell.actualPart || '').length * 10));
+        }
+      });
+    }
+  });
+  return widths;
+}
+
 export function renderRooms() {
-  const container = document.getElementById('finishRoomsArea');
-  if (!container) return;
-  container.innerHTML = '';
+  const host = document.getElementById('finishRoomsArea');
+  if (!host) return;
 
   const state = getState();
-  if (state.areaMode === 'external') {
-    container.appendChild(renderFlatGroupSection('外部', state.externalRooms));
-    return;
-  }
+  const areaCode = state.areaMode === 'external' ? 'E' : 'I';
+  const parts = getPartsForAreaCode(areaCode);
+  const widths = computeDynamicWidths(parts);
 
-  state.floors.forEach((floorGroup) => {
-    container.appendChild(renderFloorGroupSection(floorGroup));
+  host.innerHTML = `
+    <table class="finish-table ${state.colorMode ? 'color-mode' : ''}" id="finishTable">
+      ${renderColGroup(widths)}
+      ${renderHeader(parts)}
+      <tbody>${state.areaMode === 'external' ? renderExternalRows(parts) : renderInternalRows(parts)}</tbody>
+    </table>
+  `;
+
+  applyVisualState();
+}
+
+function renderColGroup(widths) {
+  let html = '<colgroup>';
+  html += '<col class="col-floor"><col class="col-room-no"><col class="col-copy"><col class="col-room-name">';
+  widths.forEach((item) => {
+    html += '<col class="col-id">';
+    if (item.other) html += `<col style="width:${item.actualPart}px;min-width:${item.actualPart}px">`;
+    html += `<col style="width:${item.name}px;min-width:${item.name}px">`;
   });
-  container.appendChild(renderFlatGroupSection('階段', state.stairs));
-  container.appendChild(renderFlatGroupSection('屋上', state.roof));
+  html += '</colgroup>';
+  return html;
 }
 
-function renderFloorGroupSection(floorGroup) {
-  const wrap = document.createElement('div');
-  wrap.className = 'finish-floor-group';
-
-  const head = document.createElement('div');
-  head.className = 'finish-floor-group-head';
-
-  const title = document.createElement('h4');
-  title.textContent = floorGroup.label;
-  head.appendChild(title);
-
-  const addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.className = 'btn small';
-  addBtn.textContent = '＋部屋追加';
-  addBtn.dataset.action = 'add-room';
-  addBtn.dataset.floorKey = `${floorGroup.areaCode}:${floorGroup.floor}`;
-  head.appendChild(addBtn);
-
-  wrap.appendChild(head);
-
-  const list = document.createElement('div');
-  list.className = 'finish-room-list';
-  floorGroup.rooms.forEach((room) => list.appendChild(renderRoomCard(room)));
-  wrap.appendChild(list);
-
-  return wrap;
+function renderHeader(parts) {
+  let parent = '<thead><tr class="finish-head-parent">';
+  parent += '<th rowspan="2">階</th><th rowspan="2">部屋No.</th><th rowspan="2">コピー</th><th rowspan="2">部屋名</th>';
+  parts.forEach((part, index) => {
+    parent += `<th colspan="${OTHER_PART_INDEXES.has(index + 1) ? 3 : 2}">${escapeHtml(part)}</th>`;
+  });
+  parent += '</tr><tr class="finish-head-child">';
+  parts.forEach((_, index) => {
+    parent += '<th>ID</th>';
+    if (OTHER_PART_INDEXES.has(index + 1)) parent += '<th>部位</th>';
+    parent += '<th>建材名称</th>';
+  });
+  parent += '</tr></thead>';
+  return parent;
 }
 
-function renderFlatGroupSection(title, rooms) {
-  const wrap = document.createElement('div');
-  wrap.className = 'finish-floor-group';
-
-  const head = document.createElement('div');
-  head.className = 'finish-floor-group-head';
-  const h = document.createElement('h4');
-  h.textContent = title;
-  head.appendChild(h);
-  wrap.appendChild(head);
-
-  const list = document.createElement('div');
-  list.className = 'finish-room-list';
-  rooms.forEach((room) => list.appendChild(renderRoomCard(room)));
-  wrap.appendChild(list);
-
-  return wrap;
+function renderInternalRows(parts) {
+  const groups = orderedInternalGroups();
+  const normalGroups = groups.filter((group) => group.areaCode === 'I');
+  const lastNormalKey = normalGroups.length ? normalGroups[normalGroups.length - 1].uid : null;
+  return groups.map((group) => renderGroupRows(group, parts, group.uid === lastNormalKey)).join('');
 }
 
-/**
- * 1部屋分のブロック（階／部屋No./コピー欄／部屋名／建材入力欄）を組み立てる。
- * data-area-code・data-room-position・data-floor・data-room-index を
- * 正式仕様のデータ属性として持たせる。
- */
-function renderRoomCard(room) {
-  const isFloorRoom = room.areaCode === 'I' || room.areaCode === 'B';
+function renderExternalRows(parts) {
+  const state = getState();
+  const group = {
+    uid: 'external-group',
+    areaCode: 'E',
+    label: '外部',
+    rooms: state.externalRooms,
+    virtual: true
+  };
+  return renderGroupRows(group, parts, false);
+}
+
+function renderGroupRows(group, parts, isLastNormalFloor) {
+  if (!group.rooms.length) return '';
+  return group.rooms.map((room, roomIndex) => {
+    const roomIsLast = roomIndex === group.rooms.length - 1;
+    return renderRoomRows(room, group, parts, roomIsLast, isLastNormalFloor);
+  }).join('');
+}
+
+function renderRoomRows(room, group, parts, roomIsLast, isLastNormalFloor) {
   const key = roomKey(room);
+  const span = room.rowCount;
+  const floorText = group.areaCode === 'S' ? '階段' : group.areaCode === 'R' ? '屋上' : group.label;
+  let html = '';
 
-  const section = document.createElement('section');
-  section.className = 'finish-room';
-  section.dataset.areaCode = room.areaCode;
-  section.dataset.roomPosition = computeRoomPosition(room);
-  section.dataset.roomKey = key;
-  if (isFloorRoom) {
-    section.dataset.floor = String(room.floor);
-    section.dataset.roomIndex = String(room.roomIndex);
-  } else {
-    section.dataset.roomIndex = String(room.index);
-  }
-  if (getSelectedRoomKey() === key) section.classList.add('selected');
+  for (let row = 1; row <= room.rowCount; row += 1) {
+    html += `<tr class="${row === 1 ? 'room-start' : 'room-sub'}" data-room-key="${escapeHtml(key)}">`;
 
-  const head = document.createElement('div');
-  head.className = 'finish-room-head';
-
-  const floorLabel = document.createElement('span');
-  floorLabel.className = 'finish-room-floor';
-  floorLabel.textContent = isFloorRoom ? `${room.floor}F` : '－';
-  head.appendChild(floorLabel);
-
-  const noLabel = document.createElement('span');
-  noLabel.className = 'finish-room-no';
-  noLabel.textContent = isFloorRoom ? String(room.roomNo) : computeRoomPosition(room);
-  head.appendChild(noLabel);
-
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.className = 'btn small finish-room-copy';
-  copyBtn.textContent = 'コピー';
-  copyBtn.disabled = true;
-  copyBtn.title = '部屋コピーは後続工程で実装します（今回は未実装）';
-  head.appendChild(copyBtn);
-
-  const nameInput = document.createElement('input');
-  nameInput.className = 'finish-room-name';
-  nameInput.value = room.name;
-  nameInput.dataset.roomKey = key;
-  head.appendChild(nameInput);
-
-  const addRowBtn = document.createElement('button');
-  addRowBtn.type = 'button';
-  addRowBtn.className = 'btn small finish-room-add-row';
-  addRowBtn.textContent = '＋入力行';
-  addRowBtn.dataset.action = 'add-row';
-  addRowBtn.dataset.roomKey = key;
-  head.appendChild(addRowBtn);
-
-  section.appendChild(head);
-
-  const partsWrap = document.createElement('div');
-  partsWrap.className = 'finish-room-parts';
-
-  getPartsForAreaCode(room.areaCode).forEach((partLabel, i) => {
-    const partIndex = i + 1;
-    const isOther = partIndex >= 5;
-
-    const partEl = document.createElement('div');
-    partEl.className = isOther ? 'finish-part finish-part-other' : 'finish-part';
-    partEl.dataset.partIndex = String(partIndex);
-
-    const labelEl = document.createElement('div');
-    labelEl.className = 'finish-part-label';
-    labelEl.textContent = partLabel;
-    partEl.appendChild(labelEl);
-
-    for (let row = 1; row <= room.rowCount; row++) {
-      partEl.appendChild(renderCell(room, partIndex, row, isOther));
+    if (row === 1) {
+      html += `
+        <td class="finish-meta floor-cell" rowspan="${span}">
+          <div class="room-control">
+            <strong>${escapeHtml(floorText)}</strong>
+            ${renderFloorAddButton(group, isLastNormalFloor, roomIsLast)}
+          </div>
+        </td>
+        <td class="finish-meta room-no-cell" rowspan="${span}">
+          <div class="room-control">
+            <input class="room-no-input" data-room-key="${escapeHtml(key)}" value="${escapeHtml(room.roomNo)}" aria-label="部屋No.">
+            <div class="room-action-stack">
+              <button type="button" class="room-mini-btn" data-action="add-row" data-room-key="${escapeHtml(key)}">＋行</button>
+              ${roomIsLast ? `<button type="button" class="room-mini-btn" data-action="add-room" data-room-key="${escapeHtml(key)}" data-floor-key="${escapeHtml(floorGroupKey(group))}">＋部屋</button>` : ''}
+              <button type="button" class="room-mini-btn insert" data-action="insert-room" data-room-key="${escapeHtml(key)}">＋挿入</button>
+            </div>
+          </div>
+        </td>
+        <td class="finish-meta copy-cell" rowspan="${span}">${renderCopyButton(key)}</td>
+        <td class="finish-meta room-name-cell" rowspan="${span}">
+          <input class="room-name-input" data-room-key="${escapeHtml(key)}" value="${escapeHtml(room.name)}" placeholder="部屋名">
+        </td>
+      `;
     }
 
-    partsWrap.appendChild(partEl);
-  });
-
-  section.appendChild(partsWrap);
-  return section;
+    parts.forEach((_, partOffset) => {
+      html += renderPartCells(room, partOffset + 1, row);
+    });
+    html += '</tr>';
+  }
+  return html;
 }
 
-/**
- * 1つの入力枠（セル）を組み立てる。仕上表IDは保存せず、その場で計算する。
- * その他欄（部位番号5・6）は入力IDバッジ・実際の部位入力・建材名称入力の
- * 3要素を持つ構造にする。
- */
-function renderCell(room, partIndex, row, isOther) {
+function renderFloorAddButton(group, isLastNormalFloor, roomIsLast) {
+  const state = getState();
+  if (state.areaMode !== 'internal' || !isLastNormalFloor || !roomIsLast || group.areaCode !== 'I') return '';
+  return '<button type="button" class="room-mini-btn floor-add" data-action="add-normal-floor">＋階</button>';
+}
+
+function renderCopyButton(key) {
+  const status = getRoomCopyButtonState(key);
+  const label = status === 'restore' ? '戻す' : status === 'source' ? 'コピー元' : status === 'target' ? 'コピー' : 'コピー';
+  return `
+    <div class="room-control">
+      <button type="button" class="room-copy-btn ${status}" data-action="copy-room" data-room-key="${escapeHtml(key)}">${label}</button>
+    </div>
+  `;
+}
+
+function renderPartCells(room, partIndex, row) {
+  const cell = getCell(room, partIndex, row);
+  const groupKey = cellGroupKey(room, partIndex, row);
   const finishId = computeFinishId(room, partIndex, row);
-  const value = getCellValue(room, partIndex, row);
+  const other = OTHER_PART_INDEXES.has(partIndex);
+  const material = cell.inputId ? getState().materials.find((m) => String(m.inputId) === String(cell.inputId)) : null;
+  const style = getState().colorMode && material ? ` style="--material-bg:${material.color}"` : '';
 
-  const cell = document.createElement('div');
-  cell.className = isOther ? 'finish-cell finish-cell-other' : 'finish-cell';
-  cell.dataset.finishId = finishId;
-  cell.dataset.areaCode = room.areaCode;
-  cell.dataset.roomPosition = computeRoomPosition(room);
-  cell.dataset.position = String(partIndex * 100 + row);
-  cell.dataset.partIndex = String(partIndex);
-  cell.dataset.inputRow = String(row);
-  cell.dataset.roomKey = roomKey(room);
+  let html = `
+    <td class="finish-data-cell group-first" data-group-key="${escapeHtml(groupKey)}" data-room-key="${escapeHtml(roomKey(room))}" data-finish-id="${escapeHtml(finishId)}"${style}>
+      <input class="finish-cell-input finish-id-input" data-input-key="${escapeHtml(inputKey(room, partIndex, row, 'id'))}" data-kind="id" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" value="${escapeHtml(cell.inputId)}" placeholder="ID" inputmode="numeric">
+    </td>
+  `;
 
-  if (isOther) {
-    const actualPart = getCellActualPart(room, partIndex, row);
-    cell.dataset.defaultPart = 'その他';
-    cell.dataset.actualPart = actualPart;
-
-    const badge = document.createElement('span');
-    badge.className = 'finish-cell-id-badge';
-    const matchedForBadge = findMaterialByName(value);
-    badge.textContent = matchedForBadge ? `#${matchedForBadge.inputId}` : '';
-    cell.appendChild(badge);
-
-    const actualPartInput = document.createElement('input');
-    actualPartInput.className = 'finish-actual-part-input';
-    actualPartInput.placeholder = '実際の部位';
-    actualPartInput.value = actualPart;
-    cell.appendChild(actualPartInput);
+  if (other) {
+    html += `
+      <td class="finish-data-cell group-middle" data-group-key="${escapeHtml(groupKey)}" data-room-key="${escapeHtml(roomKey(room))}" data-finish-id="${escapeHtml(finishId)}"${style}>
+        <input class="finish-cell-input finish-part-input" data-input-key="${escapeHtml(inputKey(room, partIndex, row, 'part'))}" data-kind="part" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" value="${escapeHtml(cell.actualPart)}" placeholder="部位">
+      </td>
+    `;
   }
 
-  const valueInput = document.createElement('input');
-  valueInput.className = 'finish-value-input';
-  valueInput.placeholder = '建材名称';
-  valueInput.value = value;
-  cell.appendChild(valueInput);
-
-  const selectedMaterial = getSelectedMaterialInputId() != null
-    ? findMaterialByInputId(getSelectedMaterialInputId())
-    : null;
-  if (selectedMaterial && value && value === selectedMaterial.name) {
-    cell.classList.add('selected-match');
-  }
-
-  return cell;
+  html += `
+    <td class="finish-data-cell group-last" data-group-key="${escapeHtml(groupKey)}" data-room-key="${escapeHtml(roomKey(room))}" data-finish-id="${escapeHtml(finishId)}"${style}>
+      <input class="finish-cell-input finish-name-input" data-input-key="${escapeHtml(inputKey(room, partIndex, row, 'name'))}" data-kind="name" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" value="${escapeHtml(cell.materialName)}" placeholder="建材名称">
+    </td>
+  `;
+  return html;
 }
 
 /**
- * 選択中の建材名と一致するセルへ、選択中ハイライト（青枠）を付け外しする。
- * 建材の選択・セルへの反映・セルの直接編集のたびに呼ぶ。
+ * DOM再構築なしで、部屋選択・入力グループ・簡易リスト一致・フォーカスを再適用する。
  */
-export function updateHighlights() {
-  const selectedMaterial = getSelectedMaterialInputId() != null
-    ? findMaterialByInputId(getSelectedMaterialInputId())
-    : null;
+export function applyVisualState() {
+  const table = document.getElementById('finishTable');
+  if (!table) return;
 
-  document.querySelectorAll('#finishRoomsArea .finish-cell').forEach((cellEl) => {
-    const input = cellEl.querySelector('.finish-value-input');
-    const matches = Boolean(selectedMaterial && input && input.value.trim() === selectedMaterial.name);
-    cellEl.classList.toggle('selected-match', matches);
-  });
-}
-
-/** その他欄の入力IDバッジを、現在の建材名称入力値から更新する。 */
-export function updateCellBadge(cellEl) {
-  const badge = cellEl.querySelector('.finish-cell-id-badge');
-  if (!badge) return;
-  const input = cellEl.querySelector('.finish-value-input');
-  const matched = input ? findMaterialByName(input.value) : undefined;
-  badge.textContent = matched ? `#${matched.inputId}` : '';
-}
-
-/** 部屋選択（部屋全体の薄い青表示＋左端の青線）の見た目を更新する。 */
-export function updateRoomSelectionClasses() {
   const state = getState();
-  document.querySelectorAll('#finishRoomsArea .finish-room').forEach((el) => {
-    el.classList.toggle('selected', el.dataset.roomKey === state.selectedRoomKey);
-  });
-}
+  table.classList.toggle('color-mode', state.colorMode);
 
-/** セル選択（入力中セルの青枠）の見た目を更新する。 */
-export function updateCellActiveClasses() {
-  const state = getState();
-  document.querySelectorAll('#finishRoomsArea .finish-cell').forEach((el) => {
-    el.classList.toggle('editing', el.dataset.finishId === state.activeCellKey);
+  table.querySelectorAll('tr[data-room-key]').forEach((row) => {
+    row.classList.toggle('is-room-selected', row.dataset.roomKey === getSelectedRoomKey());
+  });
+
+  table.querySelectorAll('[data-group-key]').forEach((cell) => {
+    cell.classList.remove('is-group-selected', 'is-material-match');
+    if (cell.dataset.groupKey === getSelectedGroupKey()) cell.classList.add('is-group-selected');
+  });
+
+  const selectedMaterial = getSelectedMaterialInputId();
+  if (selectedMaterial != null) {
+    table.querySelectorAll('[data-group-key]').forEach((td) => {
+      const group = td.dataset.groupKey;
+      const idInput = table.querySelector(`[data-group-key="${CSS.escape(group)}"] .finish-id-input`);
+      if (idInput && String(idInput.value) === String(selectedMaterial)) td.classList.add('is-material-match');
+    });
+  }
+
+  table.querySelectorAll('.finish-cell-input').forEach((input) => {
+    input.classList.toggle('is-focused-input', input.dataset.inputKey === getFocusedInputKey());
   });
 }

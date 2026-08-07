@@ -1,344 +1,356 @@
 /**
  * src/js/finish-table/finish-table-state.js
  *
- * このファイルの役割：
- *   仕上表タブのローカル状態（ブラウザのメモリ上だけに存在する一時状態）を
- *   一元管理する。内部／外部の部屋構成、各セルの入力値、選択中の部屋・セル・
- *   建材、建材カラー表示ON/OFFなどはすべてここに集約する。
- *   画面描画（finish-table-renderer.js）や簡易リスト（simple-list.js）は、
- *   この状態を読み書きするだけで、自分で状態を持たない。
- *
- * どこから呼ばれるか：
- *   src/js/finish-table/finish-table-controller.js から初期化される。
- *   src/js/finish-table/finish-table-renderer.js と
- *   src/js/materials/simple-list.js から、状態の参照・更新のために呼ばれる。
- *
- * 何を取得しているか：
- *   src/js/demo/sample-project.js・sample-materials.js・sample-finish-data.js の
- *   固定サンプルデータのみ。Firestore・OneDrive・Microsoft Graph等の外部データは
- *   一切取得しない。
- *
- * 何を判定しているか：
- *   ・仕上表IDの区分コード・部屋位置・位置番号の組み立て方
- *   ・内部／外部でどちらの部位リスト（INTERNAL_PARTS / EXTERNAL_PARTS）を使うか
- *
- * どこへ書き込んでいるか：
- *   このモジュール内のメモリ上の変数のみ。ブラウザのlocalStorage／
- *   sessionStorage、Firestore等への書き込みは一切行わない。
- *   ページを再読み込みすると、この状態はすべて初期サンプル状態へ戻る。
- *
- * 仕上表IDの再計算について：
- *   このモジュールは部屋・入力行の一覧を「現在の状態」として保持するだけで、
- *   仕上表ID（data-finish-id）は保存せず、描画のたびに現在の部屋位置・部位・
- *   入力行から都度計算し直す（finishId関数）。そのため部屋や入力行を追加した
- *   直後の再描画でも、常に画面上の現在位置と一致したIDになる
- *   （既存部屋の位置がずれるような並び替え・削除は今回実装しないため、
- *   追加済みの部屋のIDが後から変わることはない）。
+ * v0.1.2 仕上表の状態管理。
+ * 保存・Firebase同期はまだ行わず、画面確認に必要な状態と業務ロジックを
+ * このモジュールへ集約する。
  */
 
 import { sampleProject } from '../demo/sample-project.js';
-import { sampleMaterials } from '../demo/sample-materials.js';
-import { createInitialFinishStructure, INTERNAL_PARTS, EXTERNAL_PARTS } from '../demo/sample-finish-data.js';
+import { sampleMaterials, MATERIAL_COLOR_PALETTE } from '../demo/sample-materials.js';
+import {
+  createInitialFinishStructure,
+  INTERNAL_PARTS,
+  EXTERNAL_PARTS,
+  INITIAL_ROW_COUNT
+} from '../demo/sample-finish-data.js';
 
 export { INTERNAL_PARTS, EXTERNAL_PARTS };
 
-/** @type {object} 仕上表タブのローカル状態本体。init()で組み立てる。 */
 let state = null;
-
-/** @type {Array<() => void>} 状態が変わったときに呼ぶ購読者一覧。 */
 const listeners = [];
+let uidSeed = 1000;
 
-/**
- * 状態変更を購読する。finish-table-renderer.js・simple-list.jsが、
- * 「構造が変わったので再描画する」タイミングを知るために使う。
- *
- * @param {() => void} callback
- * @returns {() => void} 購読解除用の関数
- */
-export function subscribe(callback) {
-  listeners.push(callback);
-  return () => {
-    const i = listeners.indexOf(callback);
-    if (i >= 0) listeners.splice(i, 1);
-  };
+function uid(prefix) {
+  uidSeed += 1;
+  return `${prefix}-${uidSeed}`;
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function notify() {
   listeners.forEach((callback) => callback());
 }
 
-/**
- * 仕上表タブの状態を初期サンプル状態へ（再）初期化する。
- * ページ再読込時や、初回起動時に呼ぶ。
- */
+export function subscribe(callback) {
+  listeners.push(callback);
+  return () => {
+    const index = listeners.indexOf(callback);
+    if (index >= 0) listeners.splice(index, 1);
+  };
+}
+
 export function initFinishTableState() {
   const structure = createInitialFinishStructure();
   state = {
     project: sampleProject,
-    materials: sampleMaterials,
-    areaMode: 'internal', // 'internal' | 'external'
+    materials: clone(sampleMaterials),
+    areaMode: 'internal',
     floors: structure.floors,
     stairs: structure.stairs,
     roof: structure.roof,
     externalRooms: structure.externalRooms,
-    colorMode: true, // 建材カラー表示のON/OFF
+
+    // 表示・選択状態
+    colorMode: true,
+    chipInputMode: false,
+    simpleListOpen: true,
     selectedRoomKey: null,
-    activeCellKey: null, // フォーカス中の入力枠のfinishId
-    selectedMaterialInputId: null
+    selectedGroupKey: null,
+    focusedInputKey: null,
+    selectedMaterialInputId: null,
+
+    // 部屋コピー専用状態（一般Undo/Redoではない）
+    roomCopy: {
+      sourceRoomKey: null,
+      backups: {},
+      done: {}
+    }
   };
   notify();
 }
 
-/** @returns {object} 現在の状態（参照）。読み取り専用として扱うこと。 */
 export function getState() {
   return state;
 }
 
 /* ============================================================
-   仕上表ID・部屋位置の計算
+   部屋・フロア識別
    ============================================================ */
 
-/**
- * 区分コードに応じた部位リストを返す。
- * 内部・地下階・階段・屋上は同じ部位構成（INTERNAL_PARTS）を共用し、
- * 外部だけ別の部位構成（EXTERNAL_PARTS）を使う。
- *
- * @param {string} areaCode
- * @returns {string[]}
- */
+export function roomKey(room) {
+  return room?.uid || '';
+}
+
+export function floorGroupKey(floorGroup) {
+  return floorGroup?.uid || '';
+}
+
+export function findRoomByKey(key) {
+  if (!state || !key) return null;
+  for (const floor of state.floors) {
+    const room = floor.rooms.find((item) => item.uid === key);
+    if (room) return room;
+  }
+  for (const list of [state.stairs, state.roof, state.externalRooms]) {
+    const room = list.find((item) => item.uid === key);
+    if (room) return room;
+  }
+  return null;
+}
+
+export function findFloorByKey(key) {
+  return state?.floors.find((floor) => floor.uid === key) || null;
+}
+
 export function getPartsForAreaCode(areaCode) {
   return areaCode === 'E' ? EXTERNAL_PARTS : INTERNAL_PARTS;
 }
 
-function pad(num, length) {
-  return String(num).padStart(length, '0');
+/* ============================================================
+   仕上表ID
+   ============================================================ */
+
+function pad(value, length) {
+  return String(value).padStart(length, '0');
 }
 
 /**
- * 部屋データから「部屋位置」文字列を計算する。
- * 内部・地下階：階＋2桁の部屋番号（例：1階1部屋目 → "101"）
- * 外部・階段・屋上：3桁の連番（例：2件目 → "002"）
- *
- * @param {object} room
- * @returns {string}
+ * 仕上表ID用の「部屋位置」は現在の並びから毎回計算する。
+ * 途中挿入後は位置が変わるため、仕上表IDも現在位置に追従する。
  */
 export function computeRoomPosition(room) {
+  if (!room) return '000';
+
   if (room.areaCode === 'I' || room.areaCode === 'B') {
-    return `${room.floor}${pad(room.roomIndex, 2)}`;
+    const floor = state.floors.find((item) => item.rooms.includes(room));
+    const currentIndex = floor ? floor.rooms.indexOf(room) + 1 : room.roomIndex || 1;
+    return `${room.floor}${pad(currentIndex, 2)}`;
   }
-  return pad(room.index, 3);
+
+  const list = room.areaCode === 'S'
+    ? state.stairs
+    : room.areaCode === 'R'
+      ? state.roof
+      : state.externalRooms;
+  return pad(list.indexOf(room) + 1, 3);
 }
 
-/**
- * 仕上表IDを計算する（区分コード-部屋位置-位置）。
- * 位置＝部位番号（1始まり）×100＋入力行番号。
- * その他1/その他2は部位番号5/6になるため、1行目・2行目がそれぞれ
- * 501/502・601/602に自動的に一致する。
- *
- * @param {object} room
- * @param {number} partIndex 部位番号（1始まり）
- * @param {number} row 入力行番号（1始まり）
- * @returns {string}
- */
 export function computeFinishId(room, partIndex, row) {
   const position = partIndex * 100 + row;
   return `${room.areaCode}-${computeRoomPosition(room)}-${position}`;
 }
 
-/**
- * 部屋を一意に識別するキーを作る（DOM検索・状態更新に使う。仕上表IDとは別物）。
- *
- * @param {object} room
- * @returns {string}
- */
-export function roomKey(room) {
-  if (room.areaCode === 'I' || room.areaCode === 'B') {
-    return `${room.areaCode}:${room.floor}:${room.roomIndex}`;
-  }
-  return `${room.areaCode}:${room.index}`;
+export function cellGroupKey(room, partIndex, row) {
+  return `${roomKey(room)}|${partIndex}|${row}`;
 }
 
-function floorGroupKey(floorGroup) {
-  return `${floorGroup.areaCode}:${floorGroup.floor}`;
-}
-
-/**
- * roomKeyから部屋データ本体を探す（全フロア・階段・屋上・外部を横断検索）。
- *
- * @param {string} key
- * @returns {object|null}
- */
-export function findRoomByKey(key) {
-  if (!key || !state) return null;
-  for (const floorGroup of state.floors) {
-    const found = floorGroup.rooms.find((room) => roomKey(room) === key);
-    if (found) return found;
-  }
-  const lists = [state.stairs, state.roof, state.externalRooms];
-  for (const list of lists) {
-    const found = list.find((room) => roomKey(room) === key);
-    if (found) return found;
-  }
-  return null;
+export function inputKey(room, partIndex, row, kind) {
+  return `${cellGroupKey(room, partIndex, row)}|${kind}`;
 }
 
 /* ============================================================
-   セルの値（建材名称・実際の部位）
+   セルデータ
    ============================================================ */
 
-function cellKeyOf(partIndex, row) {
+function cellKey(partIndex, row) {
   return `${partIndex}-${row}`;
 }
 
-/** @returns {string} 建材名称の入力値（未入力なら空文字） */
+function ensureCell(room, partIndex, row) {
+  const key = cellKey(partIndex, row);
+  if (!room.cells[key]) {
+    room.cells[key] = {
+      inputId: '',
+      materialId: '',
+      materialName: '',
+      actualPart: ''
+    };
+  }
+  return room.cells[key];
+}
+
+export function getCell(room, partIndex, row) {
+  return ensureCell(room, partIndex, row);
+}
+
+export function getCellInputId(room, partIndex, row) {
+  return String(getCell(room, partIndex, row).inputId || '');
+}
+
 export function getCellValue(room, partIndex, row) {
-  const cell = room.cells[cellKeyOf(partIndex, row)];
-  return cell ? cell.value || '' : '';
+  return getCell(room, partIndex, row).materialName || '';
 }
 
-/** @returns {string} その他欄の「実際の部位」入力値（未入力なら空文字） */
 export function getCellActualPart(room, partIndex, row) {
-  const cell = room.cells[cellKeyOf(partIndex, row)];
-  return cell ? cell.actualPart || '' : '';
+  return getCell(room, partIndex, row).actualPart || '';
 }
 
-/**
- * セルの建材名称を更新する（画面の入力欄からの入力を反映するだけ。保存はしない）。
- */
-export function setCellValue(room, partIndex, row, value) {
-  const key = cellKeyOf(partIndex, row);
-  const cell = room.cells[key] || (room.cells[key] = { value: '', actualPart: '' });
-  cell.value = value;
-}
-
-/** その他欄の「実際の部位」を更新する（保存はしない）。 */
 export function setCellActualPart(room, partIndex, row, value) {
-  const key = cellKeyOf(partIndex, row);
-  const cell = room.cells[key] || (room.cells[key] = { value: '', actualPart: '' });
-  cell.actualPart = value;
+  ensureCell(room, partIndex, row).actualPart = String(value ?? '');
+}
+
+export function setCellDraftName(room, partIndex, row, value) {
+  const cell = ensureCell(room, partIndex, row);
+  cell.materialName = String(value ?? '');
+  const material = findMaterialByName(cell.materialName);
+  if (material) {
+    linkCellToMaterial(cell, material);
+  } else {
+    cell.materialId = '';
+    cell.inputId = '';
+  }
+}
+
+export function setCellDraftInputId(room, partIndex, row, value) {
+  const cell = ensureCell(room, partIndex, row);
+  const normalized = String(value ?? '').trim();
+  cell.inputId = normalized;
+  const material = findMaterialByInputId(normalized);
+  if (material) linkCellToMaterial(cell, material);
+  else cell.materialId = '';
+}
+
+function linkCellToMaterial(cell, material) {
+  cell.inputId = String(material.inputId);
+  cell.materialId = material.materialId;
+  cell.materialName = material.name;
+}
+
+export function applyMaterialToCell(room, partIndex, row, material) {
+  if (!room || !material) return;
+  linkCellToMaterial(ensureCell(room, partIndex, row), material);
+}
+
+export function clearCellMaterial(room, partIndex, row) {
+  const cell = ensureCell(room, partIndex, row);
+  cell.inputId = '';
+  cell.materialId = '';
+  cell.materialName = '';
+}
+
+/** 名称入力確定時：既存参照、なければ新規建材登録。 */
+export function commitCellMaterialName(room, partIndex, row) {
+  const cell = ensureCell(room, partIndex, row);
+  const name = String(cell.materialName || '').trim();
+  if (!name) {
+    clearCellMaterial(room, partIndex, row);
+    return null;
+  }
+
+  let material = findMaterialByName(name);
+  if (!material) material = registerMaterial(name);
+  linkCellToMaterial(cell, material);
+  notify();
+  return material;
+}
+
+/** ID入力確定時：既存の入力IDならその建材を参照する。 */
+export function commitCellInputId(room, partIndex, row) {
+  const cell = ensureCell(room, partIndex, row);
+  const material = findMaterialByInputId(cell.inputId);
+  if (!material) {
+    cell.materialId = '';
+    cell.materialName = '';
+    return null;
+  }
+  linkCellToMaterial(cell, material);
+  notify();
+  return material;
 }
 
 /* ============================================================
-   内部／外部切替
+   建材
+   ============================================================ */
+
+function normalizeName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+export function findMaterialByName(name) {
+  const normalized = normalizeName(name);
+  if (!normalized) return undefined;
+  return state.materials.find((material) => normalizeName(material.name) === normalized);
+}
+
+export function findMaterialByInputId(inputId) {
+  const normalized = String(inputId ?? '').trim();
+  if (!normalized) return undefined;
+  return state.materials.find((material) => String(material.inputId) === normalized);
+}
+
+export function registerMaterial(name) {
+  const normalized = normalizeName(name);
+  if (!normalized) return null;
+  const existing = findMaterialByName(normalized);
+  if (existing) return existing;
+
+  const nextInputId = state.materials.length
+    ? Math.max(...state.materials.map((m) => Number(m.inputId) || 0)) + 1
+    : 1;
+  const nextMaterialNo = state.materials.length + 1;
+  const nextMaterialId = `R${String(nextInputId).padStart(3, '0')}`;
+
+  const material = {
+    materialId: nextMaterialId,
+    inputId: nextInputId,
+    no: nextMaterialNo,
+    name: normalized,
+    color: MATERIAL_COLOR_PALETTE[(nextInputId - 1) % MATERIAL_COLOR_PALETTE.length],
+    note: '',
+    photoCount: 0
+  };
+  state.materials.push(material);
+  return material;
+}
+
+export function getMaterialUsageRoomNos(inputId) {
+  const target = String(inputId ?? '');
+  const roomNos = [];
+  allRooms().forEach((room) => {
+    const used = Object.values(room.cells || {}).some((cell) => String(cell.inputId || '') === target);
+    if (used && room.roomNo && !roomNos.includes(room.roomNo)) roomNos.push(room.roomNo);
+  });
+  return roomNos;
+}
+
+/* ============================================================
+   表示モード・選択状態
    ============================================================ */
 
 export function setAreaMode(mode) {
   state.areaMode = mode === 'external' ? 'external' : 'internal';
+  state.selectedRoomKey = null;
+  state.selectedGroupKey = null;
+  state.focusedInputKey = null;
   notify();
 }
-
-/* ============================================================
-   階・部屋・入力行の追加（今回実装する基本挙動）
-   ============================================================ */
-
-/** 通常階を追加する。 */
-export function addNormalFloor() {
-  const normalFloors = state.floors.filter((f) => f.areaCode === 'I');
-  const nextFloor = normalFloors.length
-    ? Math.max(...normalFloors.map((f) => f.floor)) + 1
-    : 1;
-  state.floors.push({
-    areaCode: 'I',
-    floor: nextFloor,
-    label: `${nextFloor}階`,
-    rooms: [createFloorRoom('I', nextFloor, 1)]
-  });
-  notify();
-}
-
-/** 地下階を追加する。 */
-export function addBasementFloor() {
-  const basementFloors = state.floors.filter((f) => f.areaCode === 'B');
-  const nextFloor = basementFloors.length
-    ? Math.max(...basementFloors.map((f) => f.floor)) + 1
-    : 1;
-  state.floors.push({
-    areaCode: 'B',
-    floor: nextFloor,
-    label: `地下${nextFloor}階`,
-    rooms: [createFloorRoom('B', nextFloor, 1)]
-  });
-  notify();
-}
-
-/** 階段を追加する。 */
-export function addStairs() {
-  const nextIndex = state.stairs.length + 1;
-  state.stairs.push(createFlatRoom('S', nextIndex, `階段${nextIndex}`));
-  notify();
-}
-
-/** 屋上を追加する。 */
-export function addRoof() {
-  const nextIndex = state.roof.length + 1;
-  const label = nextIndex === 1 ? '屋上' : `屋上${nextIndex}`;
-  state.roof.push(createFlatRoom('R', nextIndex, label));
-  notify();
-}
-
-/**
- * 指定した通常階／地下階フロアへ部屋を1つ追加する。
- *
- * @param {string} floorKey `${areaCode}:${floor}` 形式のフロア識別キー
- */
-export function addRoomToFloor(floorKey) {
-  const floorGroup = state.floors.find((f) => floorGroupKey(f) === floorKey);
-  if (!floorGroup) return;
-  const nextIndex = floorGroup.rooms.length + 1;
-  floorGroup.rooms.push(createFloorRoom(floorGroup.areaCode, floorGroup.floor, nextIndex));
-  notify();
-}
-
-/** 外部の面（部屋相当）を1つ追加する。 */
-export function addExternalRoom() {
-  const nextIndex = state.externalRooms.length + 1;
-  state.externalRooms.push(createFlatRoom('E', nextIndex, `面${nextIndex}`));
-  notify();
-}
-
-/**
- * 指定した部屋の入力行を1行追加する（全部位に共通で1行増える）。
- *
- * @param {string} key roomKey()で得られる部屋識別キー
- */
-export function addInputRow(key) {
-  const room = findRoomByKey(key);
-  if (!room) return;
-  room.rowCount += 1;
-  notify();
-}
-
-// createInitialFinishStructure内のヘルパーと同じ形を、追加操作用にもここへ持つ。
-// サンプル初期データ生成（sample-finish-data.js）とは責務を分け、
-// 「追加操作でどんな部屋を作るか」は本処理側のこのファイルが決める。
-function createFloorRoom(areaCode, floor, roomIndex) {
-  const roomNo = floor * 100 + roomIndex;
-  return { areaCode, floor, roomIndex, roomNo, name: `${roomNo}号室`, rowCount: 2, cells: {} };
-}
-function createFlatRoom(areaCode, index, label) {
-  return { areaCode, index, name: label, rowCount: 2, cells: {} };
-}
-
-/* ============================================================
-   部屋選択・セル選択・建材選択・カラーON/OFF
-   ============================================================ */
 
 export function setSelectedRoomKey(key) {
-  state.selectedRoomKey = key;
+  state.selectedRoomKey = key || null;
 }
 export function getSelectedRoomKey() {
   return state.selectedRoomKey;
 }
 
-export function setActiveCellKey(finishId) {
-  state.activeCellKey = finishId;
+export function setSelectedGroupKey(key) {
+  state.selectedGroupKey = key || null;
 }
-export function getActiveCellKey() {
-  return state.activeCellKey;
+export function getSelectedGroupKey() {
+  return state.selectedGroupKey;
+}
+
+export function setFocusedInputKey(key) {
+  state.focusedInputKey = key || null;
+}
+export function getFocusedInputKey() {
+  return state.focusedInputKey;
 }
 
 export function setSelectedMaterialInputId(inputId) {
-  state.selectedMaterialInputId = inputId;
+  state.selectedMaterialInputId = inputId == null ? null : Number(inputId);
 }
 export function getSelectedMaterialInputId() {
   return state.selectedMaterialInputId;
@@ -349,17 +361,245 @@ export function toggleColorMode() {
   notify();
 }
 export function getColorMode() {
-  return state.colorMode;
+  return !!state.colorMode;
 }
 
-/** @returns {object|undefined} 名称が一致するサンプル建材（前後空白を無視した完全一致）。 */
-export function findMaterialByName(name) {
-  const normalized = String(name || '').trim();
-  if (!normalized) return undefined;
-  return state.materials.find((m) => m.name === normalized);
+export function toggleChipInputMode() {
+  state.chipInputMode = !state.chipInputMode;
+  notify();
+}
+export function getChipInputMode() {
+  return !!state.chipInputMode;
 }
 
-/** @returns {object|undefined} 入力IDが一致するサンプル建材。 */
-export function findMaterialByInputId(inputId) {
-  return state.materials.find((m) => m.inputId === inputId);
+export function toggleSimpleListOpen() {
+  state.simpleListOpen = !state.simpleListOpen;
+  notify();
+}
+export function getSimpleListOpen() {
+  return !!state.simpleListOpen;
+}
+
+/* ============================================================
+   追加・挿入・部屋No.
+   ============================================================ */
+
+function createFloorRoom(areaCode, floor, roomIndex) {
+  const prefix = areaCode === 'B' ? `B${floor}` : String(floor);
+  return {
+    uid: uid('room'), areaCode, floor, roomIndex,
+    roomNo: `${prefix}-${roomIndex}`,
+    name: `${prefix}-${roomIndex}`,
+    rowCount: INITIAL_ROW_COUNT,
+    cells: {}
+  };
+}
+
+function createFlatRoom(areaCode, index, roomNo, name) {
+  return {
+    uid: uid('room'), areaCode, index, roomNo, name,
+    rowCount: INITIAL_ROW_COUNT,
+    cells: {}
+  };
+}
+
+function renumberFloorRoomIndexes(floor) {
+  floor.rooms.forEach((room, index) => {
+    room.roomIndex = index + 1;
+  });
+}
+
+function renumberFlat(list) {
+  list.forEach((room, index) => {
+    room.index = index + 1;
+  });
+}
+
+export function addNormalFloor() {
+  const list = state.floors.filter((floor) => floor.areaCode === 'I');
+  const next = list.length ? Math.max(...list.map((floor) => floor.floor)) + 1 : 1;
+  state.floors.push({
+    uid: uid('floor'), areaCode: 'I', floor: next, label: `${next}階`,
+    rooms: [createFloorRoom('I', next, 1)]
+  });
+  notify();
+}
+
+export function addBasementFloor() {
+  const list = state.floors.filter((floor) => floor.areaCode === 'B');
+  const next = list.length ? Math.max(...list.map((floor) => floor.floor)) + 1 : 1;
+  state.floors.push({
+    uid: uid('floor'), areaCode: 'B', floor: next, label: `地下${next}階`,
+    rooms: [createFloorRoom('B', next, 1)]
+  });
+  notify();
+}
+
+export function addStairs() {
+  const next = state.stairs.length + 1;
+  state.stairs.push(createFlatRoom('S', next, `S-${next}`, `階段${next}`));
+  notify();
+}
+
+export function addRoof() {
+  const next = state.roof.length + 1;
+  state.roof.push(createFlatRoom('R', next, `R-${next}`, next === 1 ? '屋上' : `屋上${next}`));
+  notify();
+}
+
+export function addExternalRoom() {
+  const next = state.externalRooms.length + 1;
+  state.externalRooms.push(createFlatRoom('E', next, `面${next}`, `面${next}`));
+  notify();
+}
+
+export function addRoomToFloor(floorKey) {
+  const floor = findFloorByKey(floorKey);
+  if (!floor) return;
+  floor.rooms.push(createFloorRoom(floor.areaCode, floor.floor, floor.rooms.length + 1));
+  renumberFloorRoomIndexes(floor);
+  notify();
+}
+
+export function addRoomAfter(roomKeyValue) {
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return;
+
+  const floor = state.floors.find((item) => item.rooms.includes(room));
+  if (floor) {
+    const index = floor.rooms.indexOf(room);
+    floor.rooms.splice(index + 1, 0, createFloorRoom(floor.areaCode, floor.floor, index + 2));
+    renumberFloorRoomIndexes(floor);
+    notify();
+    return;
+  }
+
+  const list = room.areaCode === 'S' ? state.stairs : room.areaCode === 'R' ? state.roof : state.externalRooms;
+  const index = list.indexOf(room);
+  const next = index + 2;
+  if (room.areaCode === 'S') list.splice(index + 1, 0, createFlatRoom('S', next, `S-${next}`, `階段${next}`));
+  else if (room.areaCode === 'R') list.splice(index + 1, 0, createFlatRoom('R', next, `R-${next}`, `屋上${next}`));
+  else list.splice(index + 1, 0, createFlatRoom('E', next, `面${next}`, `面${next}`));
+  renumberFlat(list);
+  notify();
+}
+
+export function addInputRow(roomKeyValue) {
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return;
+  room.rowCount += 1;
+  notify();
+}
+
+export function updateRoomNo(roomKeyValue, value) {
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return;
+  room.roomNo = String(value ?? '').trim();
+}
+
+export function updateRoomName(roomKeyValue, value) {
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return;
+  room.name = String(value ?? '');
+}
+
+/* ============================================================
+   部屋コピー / コピー前へ戻す
+   ============================================================ */
+
+function sameAreaFamily(source, target) {
+  if (!source || !target) return false;
+  const sourceFamily = source.areaCode === 'E' ? 'external' : 'internal';
+  const targetFamily = target.areaCode === 'E' ? 'external' : 'internal';
+  return sourceFamily === targetFamily;
+}
+
+export function getRoomCopyButtonState(roomKeyValue) {
+  const copy = state.roomCopy;
+  if (copy.done[roomKeyValue]) return 'restore';
+  if (copy.sourceRoomKey === roomKeyValue) return 'source';
+  if (copy.sourceRoomKey) return 'target';
+  return 'idle';
+}
+
+export function handleRoomCopy(roomKeyValue) {
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return { ok: false };
+
+  const copy = state.roomCopy;
+
+  if (copy.done[roomKeyValue] && copy.backups[roomKeyValue]) {
+    const backup = clone(copy.backups[roomKeyValue]);
+    room.rowCount = backup.rowCount;
+    room.cells = backup.cells;
+    delete copy.done[roomKeyValue];
+    delete copy.backups[roomKeyValue];
+    notify();
+    return { ok: true, action: 'restore' };
+  }
+
+  if (!copy.sourceRoomKey) {
+    copy.sourceRoomKey = roomKeyValue;
+    notify();
+    return { ok: true, action: 'source' };
+  }
+
+  if (copy.sourceRoomKey === roomKeyValue) {
+    copy.sourceRoomKey = null;
+    notify();
+    return { ok: true, action: 'cancel' };
+  }
+
+  const source = findRoomByKey(copy.sourceRoomKey);
+  if (!sameAreaFamily(source, room)) {
+    return { ok: false, reason: 'area-mismatch' };
+  }
+
+  copy.backups[roomKeyValue] = clone({ rowCount: room.rowCount, cells: room.cells });
+  room.rowCount = Math.max(room.rowCount, source.rowCount);
+  room.cells = clone(source.cells);
+  copy.done[roomKeyValue] = true;
+  notify();
+  return { ok: true, action: 'copied' };
+}
+
+/* ============================================================
+   一覧ヘルパー
+   ============================================================ */
+
+export function allRooms() {
+  return [
+    ...state.floors.flatMap((floor) => floor.rooms),
+    ...state.stairs,
+    ...state.roof,
+    ...state.externalRooms
+  ];
+}
+
+export function orderedInternalGroups() {
+  const basements = state.floors
+    .filter((floor) => floor.areaCode === 'B')
+    .sort((a, b) => b.floor - a.floor);
+  const normals = state.floors
+    .filter((floor) => floor.areaCode === 'I')
+    .sort((a, b) => a.floor - b.floor);
+
+  const result = [...basements];
+  normals.forEach((floor, index) => {
+    result.push(floor);
+    // 仕様：1階と2階の間へ階段ブロックを配置。
+    if (floor.floor === 1 && state.stairs.length) {
+      result.push({ uid: 'stairs-group', areaCode: 'S', floor: 'stairs', label: '階段', rooms: state.stairs, virtual: true });
+    }
+    if (index === normals.length - 1 && floor.floor !== 1 && !normals.some((f) => f.floor === 1) && state.stairs.length) {
+      result.push({ uid: 'stairs-group', areaCode: 'S', floor: 'stairs', label: '階段', rooms: state.stairs, virtual: true });
+    }
+  });
+  if (!normals.length && state.stairs.length) {
+    result.push({ uid: 'stairs-group', areaCode: 'S', floor: 'stairs', label: '階段', rooms: state.stairs, virtual: true });
+  }
+  if (state.roof.length) {
+    result.push({ uid: 'roof-group', areaCode: 'R', floor: 'roof', label: '屋上', rooms: state.roof, virtual: true });
+  }
+  return result;
 }

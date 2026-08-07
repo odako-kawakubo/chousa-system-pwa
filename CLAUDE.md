@@ -18,8 +18,9 @@ architecture and is updated as the plan changes, but the concrete state right no
 
 - **`src/app.html`** is the canonical, in-progress rebuild. It currently has the full UI shell
   (header, tabs, drawer, project panel, modals) plus a working Microsoft-login connection, but
-  the feature tabs (仕上表/建材リスト/写真/調査図/同期/設定/レコード) are still placeholders —
-  no finish-table, material-list, photo, or sync business logic has been ported in yet. Treat
+  the 仕上表 tab now has the v0.1.2 development implementation under `src/js/finish-table/` and
+  `src/js/materials/simple-list.js`. Other feature tabs remain placeholders; Firestore/local persistence
+  is intentionally not connected yet. Treat
   `src/app.html` as the file to extend for all new feature work.
 - **`app.html`** (repo root) is the legacy v0.15.x monolith (see `docs/v015-baseline.md`) — a
   single ~400KB self-contained HTML file with all CSS and business logic inline, its own inline
@@ -43,8 +44,9 @@ architecture and is updated as the plan changes, but the concrete state right no
 - Migration direction (per `docs/project-structure.md`): business logic is ported from the root
   `app.html`'s inline scripts into `src/js/<feature>/` modules one feature at a time, without
   changing on-screen behavior mid-move. Don't do a big-bang rewrite; migrate one module at a
-  time and keep the visible UI identical unless asked otherwise. The 仕上表 (finish table) tab is
-  the next planned feature to port into `src/app.html` and has not started as of this writing.
+  time and keep the visible UI identical unless asked otherwise. The 仕上表 (finish table) tab is the first feature being ported and is now implemented through the
+  v0.1.2 UI/basic-operation stage. Continue extending that modular implementation rather than reintroducing
+  legacy inline code.
 
 When asked to change "the app," default to `src/app.html` unless the request is explicitly about
 comparing against, or reading, the legacy behavior — in which case use the root `app.html` or
@@ -85,7 +87,7 @@ There is no build/lint/test tooling in this repo (no `package.json`). Developmen
   restricted to a single Entra tenant (see `provider.setCustomParameters({ tenant: ... })` in
   `src/js/auth/microsoft-auth.js`).
 - `src/config/app-config.js` — app name/version/mode (not yet wired to any displayed version
-  string — `src/app.html`'s header version pill is still a static "v0.1.0" in the markup).
+  string; `src/app.html` currently displays v0.1.2 in the header pill).
 - `src/js/auth/microsoft-auth.js` — the actual login/logout/token logic: modular Firebase Auth
   v12.1.0, `OAuthProvider("microsoft.com")` (not MSAL — that's only in the legacy `app.html`).
   Exports `loginWithMicrosoft`, `logoutMicrosoft`, `watchAuthState`, `getGraphAccessToken`. A
@@ -132,9 +134,10 @@ inline `onclick`. `src/js/app-init.js` is the single entry point loaded from `sr
 calls `bindTabEvents`/`bindDrawerEvents`/`bindProjectPanelEvents`/`bindModalEvents`/
 `bindAuthUiEvents` (one `ui/*.js` module each) and then shows the default tab. Each `ui/*.js`
 module owns exactly one piece of chrome (tabs, drawer, project panel, modals, auth) and doesn't
-reach into the others. Feature tabs (仕上表 etc.) have no dedicated modules yet — that's the next
-work, to be added under `src/js/<feature>/` following the same one-module-one-responsibility
-pattern, per `docs/project-structure.md`.
+reach into the others. The 仕上表 feature is split across `src/js/finish-table/finish-table-state.js`,
+`finish-table-renderer.js`, `finish-table-controller.js`, `src/js/materials/simple-list.js`, and
+`src/css/finish-table.css`. Keep these responsibilities separated. Other feature tabs should follow
+the same one-module-one-responsibility pattern when they are implemented.
 
 ## Language
 

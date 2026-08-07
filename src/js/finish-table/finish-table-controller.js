@@ -1,30 +1,8 @@
 /**
  * src/js/finish-table/finish-table-controller.js
  *
- * このファイルの役割：
- *   仕上表タブの初期化と、画面上の操作（クリック・入力・フォーカス）を
- *   状態の更新・再描画へつなぐ配線だけを行う。業務データの計算式は
- *   finish-table-state.js、DOM組み立てはfinish-table-renderer.jsに
- *   任せ、このファイルはそれらを呼び出すだけにする。
- *
- * どこから呼ばれるか：
- *   src/js/app-init.js から initializeFinishTable() が1度だけ呼ばれる。
- *
- * 何を取得しているか：
- *   #finish セクション要素（既存のタブ枠。src/app.html側で用意済み）。
- *   それ以外のDOM（他タブ・ヘッダー・ドロワー・案件パネル・既存モーダル）は
- *   一切取得・操作しない。
- *
- * 何を判定しているか：
- *   クリックされた要素が「どの操作ボタンか」「どのセルか」「どの部屋か」
- *   だけをdata属性から判定する。
- *
- * どこへ描画しているか：
- *   finish-table-renderer.js・simple-list.js経由で#finish内のみ。
- *
- * 保存・外部通信について：
- *   一切行わない（addEventListenerでのイベント配線のみ。インラインonclickは
- *   使用しない）。Firestore・OneDrive・Microsoft Graph等への通信も行わない。
+ * v0.1.2 仕上表のイベント配線。
+ * DOM描画はrenderer、状態更新はstate、簡易リスト描画はsimple-listへ委譲する。
  */
 
 import {
@@ -35,163 +13,228 @@ import {
   addBasementFloor,
   addStairs,
   addRoof,
-  addRoomToFloor,
   addExternalRoom,
+  addRoomToFloor,
+  addRoomAfter,
   addInputRow,
-  setSelectedRoomKey,
-  setActiveCellKey,
+  updateRoomNo,
+  updateRoomName,
   findRoomByKey,
-  setCellValue,
-  setCellActualPart
+  getCell,
+  setCellDraftInputId,
+  setCellDraftName,
+  setCellActualPart,
+  commitCellInputId,
+  commitCellMaterialName,
+  setSelectedRoomKey,
+  setSelectedGroupKey,
+  setFocusedInputKey,
+  getSelectedMaterialInputId,
+  findMaterialByInputId,
+  applyMaterialToCell,
+  toggleColorMode,
+  toggleChipInputMode,
+  getChipInputMode,
+  toggleSimpleListOpen,
+  handleRoomCopy
 } from './finish-table-state.js';
 import {
   renderFinishTab,
+  renderToolbarState,
   renderRooms,
-  renderAddButtons,
-  updateAreaToggleButtons,
-  updateRoomSelectionClasses,
-  updateCellActiveClasses,
-  updateHighlights,
-  updateCellBadge
+  applyVisualState
 } from './finish-table-renderer.js';
-import { initSimpleList, syncSelectionFromCellValue } from '../materials/simple-list.js';
+import { initSimpleList, renderSimpleList } from '../materials/simple-list.js';
 
-/**
- * 仕上表タブを初期化する。src/js/app-init.jsから1度だけ呼ぶ。
- *
- * 手順：
- * 1. サンプル案件・サンプル建材・初期部屋構成で状態を初期化する
- * 2. #finish セクションへ枠組みを描画する
- * 3. 簡易リストパネルを初期化する
- * 4. #finishセクション内のクリック・入力・フォーカスを配線する
- * 5. 状態変化（階・部屋・入力行の追加、内部/外部切替）を購読し、再描画する
- */
 export function initializeFinishTable() {
   const finishSection = document.getElementById('finish');
   if (!finishSection) return;
 
   initFinishTableState();
   renderFinishTab(finishSection);
+  initSimpleList(document.getElementById('finishSimpleListPanel'));
+  bindEvents(finishSection);
 
-  const simpleListPanel = document.getElementById('finishSimpleListPanel');
-  initSimpleList(simpleListPanel);
-
-  bindFinishTabEvents(finishSection);
-
-  // 構造が変わる操作（階・部屋・入力行の追加、内部/外部切替）のたびに
-  // 部屋一覧・追加ボタンを再描画し、選択中の見た目を再適用する。
+  // state側でnotifyされた変更は、構造・操作列・簡易リストを一貫して再描画する。
   subscribe(() => {
-    renderAddButtons();
-    updateAreaToggleButtons();
+    renderToolbarState();
     renderRooms();
-    updateRoomSelectionClasses();
-    updateCellActiveClasses();
-    updateHighlights();
+    renderSimpleList();
+    applyVisualState();
   });
 }
 
-/**
- * #finish セクション内のイベントをまとめて配線する（addEventListenerのみ、
- * インラインonclickは使わない）。部屋一覧は再描画されても要素自体
- * （#finishRoomsArea等）は差し替わらないため、ここでの配線は1度だけでよい。
- *
- * @param {HTMLElement} finishSection
- */
-function bindFinishTabEvents(finishSection) {
-  // 内部／外部切替ボタン
-  document.getElementById('finishAreaToggle').addEventListener('click', (event) => {
-    const btn = event.target.closest('.finish-area-btn');
-    if (!btn) return;
-    setAreaMode(btn.dataset.areaMode);
-  });
+function bindEvents(root) {
+  if (root.dataset.finishEventsBound === '1') return;
+  root.dataset.finishEventsBound = '1';
 
-  // 通常階／地下階／階段／屋上／外部の部屋追加ボタン（内部・外部で表示切替）
-  document.getElementById('finishAddButtons').addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-action]');
-    if (!btn) return;
-    switch (btn.dataset.action) {
-      case 'add-normal-floor':
-        addNormalFloor();
-        break;
-      case 'add-basement-floor':
-        addBasementFloor();
-        break;
-      case 'add-stairs':
-        addStairs();
-        break;
-      case 'add-roof':
-        addRoof();
-        break;
-      case 'add-external-room':
-        addExternalRoom();
-        break;
-      default:
-        break;
-    }
-  });
-
-  const roomsArea = document.getElementById('finishRoomsArea');
-
-  // 部屋ブロック内の「＋部屋追加」「＋入力行」ボタン、および部屋選択
-  roomsArea.addEventListener('click', (event) => {
-    const addRoomBtn = event.target.closest('[data-action="add-room"]');
-    if (addRoomBtn) {
-      addRoomToFloor(addRoomBtn.dataset.floorKey);
+  root.addEventListener('click', (event) => {
+    const areaButton = event.target.closest('.finish-area-btn');
+    if (areaButton) {
+      setAreaMode(areaButton.dataset.areaMode);
       return;
     }
 
-    const addRowBtn = event.target.closest('[data-action="add-row"]');
-    if (addRowBtn) {
-      addInputRow(addRowBtn.dataset.roomKey);
+    if (event.target.closest('#finishColorToggleBtn')) {
+      toggleColorMode();
       return;
     }
 
-    // 判定：部屋ブロックの中がクリックされたら、その部屋を選択状態にする（部屋選択）。
-    const roomEl = event.target.closest('.finish-room');
-    if (roomEl) {
-      setSelectedRoomKey(roomEl.dataset.roomKey);
-      updateRoomSelectionClasses();
-    }
-  });
-
-  // セル選択（フォーカス）：入力中セルへ青枠を付け、簡易リストの選択状態も合わせる。
-  roomsArea.addEventListener('focusin', (event) => {
-    const cellEl = event.target.closest('.finish-cell');
-    if (!cellEl) return;
-
-    setActiveCellKey(cellEl.dataset.finishId);
-    updateCellActiveClasses();
-
-    if (event.target.classList.contains('finish-value-input')) {
-      syncSelectionFromCellValue(event.target.value);
-    }
-  });
-
-  // 建材名称の直接入力：状態を更新し、その他欄バッジと選択ハイライトを更新する。
-  roomsArea.addEventListener('input', (event) => {
-    if (event.target.classList.contains('finish-room-name')) {
-      // 部屋名の入力欄。仕上表IDの計算には使わない表示用の名称のみ更新する。
-      const room = findRoomByKey(event.target.dataset.roomKey);
-      if (room) room.name = event.target.value;
+    if (event.target.closest('#finishChipInputToggleBtn')) {
+      toggleChipInputMode();
       return;
     }
 
-    const cellEl = event.target.closest('.finish-cell');
-    if (!cellEl) return;
+    if (event.target.closest('#finishSimpleListToggleBtn')) {
+      toggleSimpleListOpen();
+      return;
+    }
 
-    const room = findRoomByKey(cellEl.dataset.roomKey);
+    const actionButton = event.target.closest('[data-action]');
+    if (actionButton) {
+      if (handleAction(actionButton)) return;
+    }
+
+    const dataCell = event.target.closest('.finish-data-cell');
+    if (dataCell) {
+      setSelectedRoomKey(dataCell.dataset.roomKey);
+      setSelectedGroupKey(dataCell.dataset.groupKey);
+
+      // チップ入力ON＋建材選択中なら、クリックした入力グループへ建材を反映。
+      if (getChipInputMode()) {
+        const inputId = getSelectedMaterialInputId();
+        const material = inputId != null ? findMaterialByInputId(inputId) : null;
+        if (material) {
+          const input = dataCell.querySelector('.finish-cell-input') ||
+            document.querySelector(`[data-group-key="${CSS.escape(dataCell.dataset.groupKey)}"] .finish-cell-input`);
+          if (input) {
+            const room = findRoomByKey(input.dataset.roomKey);
+            if (room) {
+              applyMaterialToCell(room, Number(input.dataset.partIndex), Number(input.dataset.inputRow), material);
+              renderRooms();
+              renderSimpleList();
+              applyVisualState();
+            }
+          }
+        }
+      }
+
+      applyVisualState();
+      return;
+    }
+
+    const roomRow = event.target.closest('tr[data-room-key]');
+    if (roomRow) {
+      setSelectedRoomKey(roomRow.dataset.roomKey);
+      applyVisualState();
+    }
+  });
+
+  root.addEventListener('focusin', (event) => {
+    const input = event.target.closest('.finish-cell-input');
+    if (!input) return;
+    const td = input.closest('.finish-data-cell');
+    if (!td) return;
+
+    setSelectedRoomKey(input.dataset.roomKey);
+    setSelectedGroupKey(td.dataset.groupKey);
+    setFocusedInputKey(input.dataset.inputKey);
+    applyVisualState();
+  });
+
+  root.addEventListener('focusout', (event) => {
+    const input = event.target.closest('.finish-cell-input');
+    if (!input) return;
+
+    const room = findRoomByKey(input.dataset.roomKey);
     if (!room) return;
-    const partIndex = Number(cellEl.dataset.partIndex);
-    const row = Number(cellEl.dataset.inputRow);
+    const partIndex = Number(input.dataset.partIndex);
+    const row = Number(input.dataset.inputRow);
 
-    if (event.target.classList.contains('finish-value-input')) {
-      setCellValue(room, partIndex, row, event.target.value);
-      updateCellBadge(cellEl);
-      updateHighlights();
-    } else if (event.target.classList.contains('finish-actual-part-input')) {
-      setCellActualPart(room, partIndex, row, event.target.value);
-      // 実際の部位名は別属性として仕上表IDとは切り離して保持する。
-      cellEl.dataset.actualPart = event.target.value;
+    if (input.dataset.kind === 'id') {
+      const material = commitCellInputId(room, partIndex, row);
+      if (!material && input.value.trim()) input.title = '登録済みの入力IDではありません';
+    } else if (input.dataset.kind === 'name') {
+      commitCellMaterialName(room, partIndex, row);
+    }
+
+    setFocusedInputKey(null);
+    renderRooms();
+    renderSimpleList();
+    applyVisualState();
+  });
+
+  root.addEventListener('input', (event) => {
+    const roomNoInput = event.target.closest('.room-no-input');
+    if (roomNoInput) {
+      updateRoomNo(roomNoInput.dataset.roomKey, roomNoInput.value);
+      return;
+    }
+
+    const roomNameInput = event.target.closest('.room-name-input');
+    if (roomNameInput) {
+      updateRoomName(roomNameInput.dataset.roomKey, roomNameInput.value);
+      return;
+    }
+
+    const input = event.target.closest('.finish-cell-input');
+    if (!input) return;
+    const room = findRoomByKey(input.dataset.roomKey);
+    if (!room) return;
+
+    const partIndex = Number(input.dataset.partIndex);
+    const row = Number(input.dataset.inputRow);
+
+    if (input.dataset.kind === 'id') {
+      setCellDraftInputId(room, partIndex, row, input.value);
+    } else if (input.dataset.kind === 'part') {
+      setCellActualPart(room, partIndex, row, input.value);
+    } else if (input.dataset.kind === 'name') {
+      setCellDraftName(room, partIndex, row, input.value);
     }
   });
+}
+
+function handleAction(button) {
+  switch (button.dataset.action) {
+    case 'add-normal-floor':
+      addNormalFloor();
+      return true;
+    case 'add-basement-floor':
+      addBasementFloor();
+      return true;
+    case 'add-stairs':
+      addStairs();
+      return true;
+    case 'add-roof':
+      addRoof();
+      return true;
+    case 'add-external-room':
+      addExternalRoom();
+      return true;
+    case 'add-row':
+      addInputRow(button.dataset.roomKey);
+      return true;
+    case 'add-room': {
+      // 通常階はフロア末尾へ追加。階段・屋上・外部は現在部屋の直後へ追加。
+      if (button.dataset.floorKey && !button.dataset.floorKey.includes('group')) {
+        addRoomToFloor(button.dataset.floorKey);
+      } else {
+        addRoomAfter(button.dataset.roomKey);
+      }
+      return true;
+    }
+    case 'insert-room':
+      addRoomAfter(button.dataset.roomKey);
+      return true;
+    case 'copy-room': {
+      const result = handleRoomCopy(button.dataset.roomKey);
+      if (result?.reason === 'area-mismatch') {
+        window.alert('内部と外部をまたいだ部屋コピーはできません。');
+      }
+      return true;
+    }
+    default:
+      return false;
+  }
 }

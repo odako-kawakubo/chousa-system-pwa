@@ -1,27 +1,11 @@
-# 調査システムPWA UI骨格 v0.1.0
+# 調査システムPWA 本開発版 v0.1.2
 
-Claude作成のUI骨格8ファイルを、HTMLとJavaScript内の参照パスに合わせて配置し直した版です。
+アスベスト調査業務向けPWAの本開発版です。
 
-## 構成
+v0.1.2では、認証・共通UIの既存構造を維持したまま、仕上表タブを本開発版構造へ落とし込みました。仕上表のデータは現時点ではサンプル案件＋ブラウザメモリ上で動作し、Firestore／OneDriveへの保存・同期はまだ行いません。
 
-```text
-src/
-├─ app.html
-├─ css/
-│  ├─ common.css
-│  └─ layout.css
-└─ js/
-   ├─ app-init.js
-   └─ ui/
-      ├─ tabs.js
-      ├─ drawer.js
-      ├─ project-panel.js
-      └─ modal.js
-```
+詳細は `docs/finish-table-v0.1.2.md` を参照してください。
 
-## 注意
-
-- 今回はファイル配置だけを修正しています。
-- UIコードの内容は変更していません。
-- Microsoft認証はまだこの8ファイルには接続していません。
-- Firebase Hostingの公開ディレクトリがリポジトリ直下 `.` のままの場合、`src/app.html` は `/src/app.html` で確認できます。
+- 本開発画面: `src/app.html`
+- 旧版参照: `archive/v0.15.10/`
+- ルート `app.html`: 旧版比較用。現行本開発の正本ではありません。
