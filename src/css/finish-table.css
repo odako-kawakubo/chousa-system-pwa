@@ -1,0 +1,378 @@
+/**
+ * finish-table.css
+ *
+ * このファイルの役割：
+ *   仕上表タブ専用の見た目（案件バナー・内部外部切替・部屋一覧・
+ *   簡易リスト・選択建材情報・写真確認モーダル）を定義する。
+ *   他タブ・ヘッダー・ドロワー・案件パネル・既存モーダルのスタイルは
+ *   common.css / layout.css 側にあり、ここでは変更しない。
+ *
+ * どこから読み込まれるか：
+ *   src/app.html の <head> から、common.css・layout.cssの次に読み込む。
+ *
+ * 色・変数について：
+ *   common.cssで定義済みの :root 変数（--main・--main2・--line等）を
+ *   そのまま利用する。ここで新しい配色の考え方は増やさない。
+ */
+
+/* ============================================================
+   案件バナー・ツールバー
+   ============================================================ */
+.finish-project-banner {
+  font-weight: 700;
+  font-size: 14px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.finish-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.finish-area-toggle,
+.finish-add-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.finish-area-btn.active {
+  background: var(--main);
+  border-color: var(--main);
+  color: #fff;
+}
+
+/* ============================================================
+   全体レイアウト（部屋一覧＋簡易リスト）
+   ============================================================ */
+.finish-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
+  align-items: start;
+}
+
+.finish-rooms-area {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.finish-simple-list-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  position: sticky;
+  top: 8px;
+}
+
+@media (max-width: 1050px) {
+  .finish-workspace {
+    grid-template-columns: 1fr;
+  }
+  .finish-simple-list-panel {
+    position: static;
+  }
+}
+
+/* ============================================================
+   階・階段・屋上・外部のグループ
+   ============================================================ */
+.finish-floor-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.finish-floor-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--head);
+  border-bottom: 1px solid var(--line);
+}
+
+.finish-floor-group-head h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.finish-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* ============================================================
+   部屋ブロック
+   ============================================================ */
+.finish-room {
+  border: 1px solid var(--line);
+  border-left: 4px solid transparent;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+/* 部屋選択：部屋全体の薄い青表示＋左端の青線 */
+.finish-room.selected {
+  background: var(--main2);
+  border-left-color: var(--main);
+}
+
+.finish-room-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.finish-room-floor,
+.finish-room-no {
+  font-size: 11.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+.finish-room-name {
+  flex: 1;
+  min-width: 100px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.finish-room-name:focus {
+  outline: none;
+  border-color: var(--main);
+}
+
+/* ============================================================
+   部位・入力枠（セル）
+   ============================================================ */
+.finish-room-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.finish-part {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.finish-part-label {
+  width: 56px;
+  min-width: 56px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.finish-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3px 5px;
+  background: #fbfcff;
+  min-width: 150px;
+}
+
+/* セル選択：入力中セルの青枠 */
+.finish-cell.editing {
+  border-color: var(--main);
+  box-shadow: 0 0 0 1px var(--main);
+}
+
+/* 簡易リストで選択中の建材と一致するセルの強調表示 */
+.finish-cell.selected-match {
+  outline: 2px solid var(--main);
+  outline-offset: -2px;
+}
+
+.finish-cell-other {
+  min-width: 210px;
+}
+
+.finish-value-input,
+.finish-actual-part-input {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 5px;
+  padding: 3px 4px;
+  font-size: 12px;
+  min-width: 70px;
+  flex: 1;
+}
+
+.finish-actual-part-input {
+  max-width: 90px;
+  color: var(--muted);
+}
+
+.finish-value-input:focus,
+.finish-actual-part-input:focus {
+  outline: none;
+  border-color: var(--main);
+  background: #fff;
+}
+
+.finish-cell-id-badge {
+  font-size: 10px;
+  color: #166534;
+  background: #dcfce7;
+  border-radius: 999px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* ============================================================
+   簡易リスト
+   ============================================================ */
+.finish-simple-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.finish-simple-list-head h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.finish-simple-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 46vh;
+  overflow: auto;
+}
+
+.finish-simple-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 7px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.finish-simple-item.selected {
+  outline: 2px solid var(--main);
+  outline-offset: -2px;
+  border-color: var(--main);
+}
+
+.finish-simple-color-swatch {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.finish-simple-item-id {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.finish-simple-item-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   選択建材情報
+   ============================================================ */
+.finish-selected-info {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.finish-selected-info-row {
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* ============================================================
+   仕上表専用：写真確認モーダル（既存モーダルとは独立）
+   ============================================================ */
+.finish-photo-confirm-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 9500;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.finish-photo-confirm-modal.open {
+  display: flex;
+}
+
+.finish-photo-confirm-card {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.finish-photo-confirm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.finish-photo-confirm-body {
+  padding: 14px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}

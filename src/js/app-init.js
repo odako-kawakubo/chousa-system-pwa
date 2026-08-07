@@ -55,6 +55,7 @@ import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
+import { initializeFinishTable } from './finish-table/finish-table-controller.js';
 
 /**
  * UI骨格の起動処理。
@@ -72,6 +73,7 @@ function initUiSkeleton() {
   bindProjectPanelEvents();
   bindModalEvents();
   bindAuthUiEvents();
+  initializeFinishTable();
 
   // 起動時は仕上表タブを表示する（v0.15.10と同じ既定タブ）
   showTab('finish');
