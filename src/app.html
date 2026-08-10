@@ -47,6 +47,14 @@
        src/js/demo/）。保存・同期・Firestore・OneDrive通信は未実装。
        他タブ・ヘッダー・案件パネル・ドロワー・既存モーダルの構造は
        変更していない。
+    7.（v0.1.3で更新）実機フィードバックを反映：＋階／＋B階を10部屋ブロック
+       単位へ変更、＋挿入／＋地下階／＋階段／＋屋上をドロワー（操作パネル）
+       側へ移動（＋B階だけは1-1ブロックの階セルにもショートカットを残す）、
+       部屋コピーの状態管理拡張（コピー元／コピー可／上書き／戻すの4状態、
+       内部外部またぎコピー、確認モーダル）、未登録建材の明示的な登録ボタン、
+       簡易リストの表示位置・配色調整と24色パレット化。ドロワーの開閉ロジック
+       （src/js/ui/drawer.js）は変更せず、.drawer-body内マークアップの追加と
+       finish-table-controller.js側のイベント配線だけで対応した。
 
   動作確認手順：
     src/js/app-init.js のコメント内「動作確認手順」を参照。
@@ -56,7 +64,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>調査システムPWA v0.1.2</title>
+<title>調査システムPWA v0.1.3</title>
 <link rel="stylesheet" href="./css/common.css" />
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
@@ -68,15 +76,15 @@
      ============================================================ -->
 <header class="app-header-compact">
   <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
-  <h1 id="caseHeaderTitle">案件未選択（v0.1.0 UI骨格）</h1>
-  <span class="pill header-version" id="headerVersion">v0.1.2</span>
+  <h1 id="caseHeaderTitle">案件未選択</h1>
+  <span class="pill header-version" id="headerVersion">v0.1.3</span>
   <span class="connection-dot offline" id="onlinePill" title="v0.1.0では通信を行いません"></span>
-  <span class="pill header-sync-state" id="firebasePill">未接続（v0.1.0）</span>
+  <span class="pill header-sync-state" id="firebasePill">未接続</span>
   <span class="pill header-device" id="devicePill">端末未設定</span>
   <button class="btn small header-auth-btn" id="msAuthBtn">Microsoftログイン</button>
   <span class="pill header-account" id="msPill">未ログイン</span>
   <span class="pill header-graph-state" id="graphTokenPill">Graphトークン：未取得</span>
-  <span class="hint">※ v0.1.0はUI骨格＋認証接続のみのため、仕上表等の業務データはまだ動作しません</span>
+  <span class="hint">仕上表機能実装中 v0.1.3</span>
 </header>
 
 <!-- ============================================================
@@ -229,7 +237,18 @@
       <h4>状態</h4>
       <div class="hint">v0.1.0（UI骨格）のため、このパネル内のボタンはまだ機能しません。</div>
     </div>
-    <div class="drawer-version">v0.1.2</div>
+    <!-- v0.1.3で追加：仕上表の階・部屋操作。開閉ロジック（src/js/ui/drawer.js）は
+         無編集。クリック処理はsrc/js/finish-table/finish-table-controller.jsが
+         bindDrawerFinishTools()で配線する。 -->
+    <div class="drawer-box" id="finishDrawerTools">
+      <h4>仕上表：階・部屋操作</h4>
+      <div class="hint">通常画面から移した操作です。＋B階は1-1ブロックの階セルからも実行できます。</div>
+      <button type="button" class="btn" id="drawerAddBasementFloor">＋地下階（10部屋）</button>
+      <button type="button" class="btn" id="drawerAddStairs">＋階段</button>
+      <button type="button" class="btn" id="drawerAddRoof">＋屋上</button>
+      <button type="button" class="btn" id="drawerInsertRoom" disabled>＋挿入（選択中の部屋の直後へ）</button>
+    </div>
+    <div class="drawer-version">v0.1.3</div>
   </div>
 </aside>
 

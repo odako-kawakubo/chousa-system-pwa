@@ -1,9 +1,18 @@
 /**
  * src/js/finish-table/finish-table-state.js
  *
- * v0.1.2 仕上表の状態管理。
+ * v0.1.3 仕上表の状態管理。
  * 保存・Firebase同期はまだ行わず、画面確認に必要な状態と業務ロジックを
  * このモジュールへ集約する。
+ *
+ * v0.1.3の変更点：
+ *   1. ＋階／＋地下階を、部屋1室ではなく10部屋ブロック単位の追加へ変更
+ *   2. 部屋コピーの状態管理を拡張（コピー元／コピー可／上書き／戻すの4状態、
+ *      内部外部またぎコピーの許可、コピー元解除時の全クリア）。コピー状態は
+ *      既存の roomCopy スロットに引き続き集約し、selectedRoomKey等の入力選択
+ *      状態とは混ぜない（この分離は v0.1.2 時点から変更していない設計方針）
+ *   3. 未登録の建材名称を自動登録しないよう変更（登録は
+ *      registerCellMaterial()が呼ばれたときだけ行う）
  */
 
 import { sampleProject } from '../demo/sample-project.js';
@@ -16,6 +25,9 @@ import {
 } from '../demo/sample-finish-data.js';
 
 export { INTERNAL_PARTS, EXTERNAL_PARTS };
+
+/** ＋階／＋地下階1回あたりに追加する部屋数（v0.1.3で1→10へ変更）。 */
+const ROOMS_PER_FLOOR = 10;
 
 let state = null;
 const listeners = [];
@@ -53,7 +65,7 @@ export function initFinishTableState() {
     roof: structure.roof,
     externalRooms: structure.externalRooms,
 
-    // 表示・選択状態
+    // 表示・選択状態（仕上表の入力選択に関するものだけを持つ）
     colorMode: true,
     chipInputMode: false,
     simpleListOpen: true,
@@ -62,11 +74,12 @@ export function initFinishTableState() {
     focusedInputKey: null,
     selectedMaterialInputId: null,
 
-    // 部屋コピー専用状態（一般Undo/Redoではない）
+    // 部屋コピー専用状態。入力選択状態（selectedRoomKey等）とは意図的に分離する。
+    // 「部屋を選んでいるだけなのにコピーの色が付く」事故を防ぐための設計。
     roomCopy: {
       sourceRoomKey: null,
-      backups: {},
-      done: {}
+      backups: {}, // { [対象roomKey]: コピー実行前のrowCount/cellsスナップショット }
+      done: {}     // { [対象roomKey]: true } … 「戻す」操作が可能な対象
     }
   };
   notify();
@@ -110,7 +123,7 @@ export function getPartsForAreaCode(areaCode) {
 }
 
 /* ============================================================
-   仕上表ID
+   仕上表ID（v0.1.3では算出方法自体は変更しない：4章「今回は触らない」）
    ============================================================ */
 
 function pad(value, length) {
@@ -231,7 +244,13 @@ export function clearCellMaterial(room, partIndex, row) {
   cell.materialName = '';
 }
 
-/** 名称入力確定時：既存参照、なければ新規建材登録。 */
+/**
+ * 名称入力確定時（フォーカスが外れたとき）の処理。
+ *
+ * v0.1.3の変更：既存建材と一致すればその建材を参照するが、一致しない場合は
+ * 「自動登録」をしない。未登録のまま（materialIdが空のまま）残し、
+ * renderer側がID欄に「登録」ボタンを出す判定に使う。
+ */
 export function commitCellMaterialName(room, partIndex, row) {
   const cell = ensureCell(room, partIndex, row);
   const name = String(cell.materialName || '').trim();
@@ -240,11 +259,18 @@ export function commitCellMaterialName(room, partIndex, row) {
     return null;
   }
 
-  let material = findMaterialByName(name);
-  if (!material) material = registerMaterial(name);
-  linkCellToMaterial(cell, material);
+  const material = findMaterialByName(name);
+  if (material) {
+    linkCellToMaterial(cell, material);
+    notify();
+    return material;
+  }
+
+  // 未登録：登録はせず、名称だけ保持する（自動登録の廃止）。
+  cell.materialId = '';
+  cell.inputId = '';
   notify();
-  return material;
+  return null;
 }
 
 /** ID入力確定時：既存の入力IDならその建材を参照する。 */
@@ -259,6 +285,28 @@ export function commitCellInputId(room, partIndex, row) {
   linkCellToMaterial(cell, material);
   notify();
   return material;
+}
+
+/**
+ * ID欄の「登録」ボタン押下時だけ呼ばれる、明示的な新規建材登録（v0.1.3で追加）。
+ * 末尾英字の正式付与・建材ID正式採番は後続工程（4章「今回は触らない」）。
+ */
+export function registerCellMaterial(room, partIndex, row) {
+  const cell = ensureCell(room, partIndex, row);
+  const name = String(cell.materialName || '').trim();
+  if (!name) return null;
+
+  let material = findMaterialByName(name);
+  if (!material) material = registerMaterial(name);
+  linkCellToMaterial(cell, material);
+  notify();
+  return material;
+}
+
+/** 「登録」ボタンを表示すべきか（名称は入力済みだが、どの建材にも未リンク）。 */
+export function isCellPendingRegistration(room, partIndex, row) {
+  const cell = getCell(room, partIndex, row);
+  return Boolean(cell.materialName && cell.materialName.trim()) && !cell.materialId;
 }
 
 /* ============================================================
@@ -298,6 +346,7 @@ export function registerMaterial(name) {
     inputId: nextInputId,
     no: nextMaterialNo,
     name: normalized,
+    // 24色パレットを巡回させる（25件目以降は1番から再利用）。
     color: MATERIAL_COLOR_PALETTE[(nextInputId - 1) % MATERIAL_COLOR_PALETTE.length],
     note: '',
     photoCount: 0
@@ -415,23 +464,30 @@ function renumberFlat(list) {
   });
 }
 
+/**
+ * ＋階：通常階を追加する。
+ * v0.1.3で1部屋→10部屋ブロック（ROOMS_PER_FLOOR）へ変更。
+ */
 export function addNormalFloor() {
   const list = state.floors.filter((floor) => floor.areaCode === 'I');
   const next = list.length ? Math.max(...list.map((floor) => floor.floor)) + 1 : 1;
-  state.floors.push({
-    uid: uid('floor'), areaCode: 'I', floor: next, label: `${next}階`,
-    rooms: [createFloorRoom('I', next, 1)]
-  });
+  const rooms = [];
+  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) rooms.push(createFloorRoom('I', next, i));
+  state.floors.push({ uid: uid('floor'), areaCode: 'I', floor: next, label: `${next}階`, rooms });
   notify();
 }
 
+/**
+ * ＋B階（地下階追加）：地下階を追加する。
+ * v0.1.3で1部屋→10部屋ブロックへ変更。呼び出し元は「1-1」ブロックの
+ * 階セル内ショートカットと、操作パネル（ドロワー）の2箇所（finish-table-controller.js）。
+ */
 export function addBasementFloor() {
   const list = state.floors.filter((floor) => floor.areaCode === 'B');
   const next = list.length ? Math.max(...list.map((floor) => floor.floor)) + 1 : 1;
-  state.floors.push({
-    uid: uid('floor'), areaCode: 'B', floor: next, label: `地下${next}階`,
-    rooms: [createFloorRoom('B', next, 1)]
-  });
+  const rooms = [];
+  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) rooms.push(createFloorRoom('B', next, i));
+  state.floors.push({ uid: uid('floor'), areaCode: 'B', floor: next, label: `地下${next}階`, rooms });
   notify();
 }
 
@@ -461,6 +517,12 @@ export function addRoomToFloor(floorKey) {
   notify();
 }
 
+/**
+ * ＋挿入：指定した部屋の直後へ1部屋挿入する。
+ * v0.1.3では通常画面のボタンからは消え、操作パネル（ドロワー）から
+ * 「現在選択中の部屋（selectedRoomKey）」を対象に呼ばれる
+ * （finish-table-controller.js）。この関数自体の挙動は変更していない。
+ */
 export function addRoomAfter(roomKeyValue) {
   const room = findRoomByKey(roomKeyValue);
   if (!room) return;
@@ -503,9 +565,26 @@ export function updateRoomName(roomKeyValue, value) {
   room.name = String(value ?? '');
 }
 
+/**
+ * 1-1ブロック（1階・1部屋目）判定。＋B階ショートカット表示に使う。
+ */
+export function isFirstNormalFloorFirstRoom(room, floor) {
+  return !!floor && floor.areaCode === 'I' && floor.floor === 1
+    && room.areaCode === 'I' && room.roomIndex === 1;
+}
+
 /* ============================================================
-   部屋コピー / コピー前へ戻す
+   部屋コピー
    ============================================================ */
+
+function roomHasContent(room) {
+  if (!room) return false;
+  return Object.values(room.cells || {}).some((cell) =>
+    (cell.materialName && String(cell.materialName).trim()) ||
+    (cell.actualPart && String(cell.actualPart).trim()) ||
+    (cell.inputId && String(cell.inputId).trim())
+  );
+}
 
 function sameAreaFamily(source, target) {
   if (!source || !target) return false;
@@ -514,53 +593,94 @@ function sameAreaFamily(source, target) {
   return sourceFamily === targetFamily;
 }
 
+/**
+ * 部屋コピー用ボタンの表示状態を判定する（4種類＋idle）。
+ * 'restore'   = 戻す（淡い緑） … このroomは既にコピー実行済みで元に戻せる
+ * 'source'    = コピー元（淡い赤）
+ * 'target-overwrite' = 上書き（淡いオレンジ） … コピー元選択中、この部屋に既存入力あり
+ * 'target-empty'     = コピー可（淡い青）     … コピー元選択中、この部屋は空
+ * 'idle'      = 通常の「コピー」（コピー元未選択、または対象外）
+ */
 export function getRoomCopyButtonState(roomKeyValue) {
   const copy = state.roomCopy;
   if (copy.done[roomKeyValue]) return 'restore';
   if (copy.sourceRoomKey === roomKeyValue) return 'source';
-  if (copy.sourceRoomKey) return 'target';
+  if (copy.sourceRoomKey) {
+    const room = findRoomByKey(roomKeyValue);
+    return roomHasContent(room) ? 'target-overwrite' : 'target-empty';
+  }
   return 'idle';
 }
 
-export function handleRoomCopy(roomKeyValue) {
-  const room = findRoomByKey(roomKeyValue);
-  if (!room) return { ok: false };
-
+/**
+ * コピーボタン押下時に「何が起きるか」だけを判定する（状態は変更しない）。
+ * 確認ダイアログが必要かどうかをfinish-table-controller.jsが判断するために使う。
+ *
+ * @returns {{type:'none'|'become-source'|'cancel-source'|'restore'|'copy', crossFamily?:boolean, overwrite?:boolean}}
+ */
+export function describeRoomCopyClick(roomKeyValue) {
   const copy = state.roomCopy;
+  const room = findRoomByKey(roomKeyValue);
+  if (!room) return { type: 'none' };
 
-  if (copy.done[roomKeyValue] && copy.backups[roomKeyValue]) {
-    const backup = clone(copy.backups[roomKeyValue]);
-    room.rowCount = backup.rowCount;
-    room.cells = backup.cells;
-    delete copy.done[roomKeyValue];
-    delete copy.backups[roomKeyValue];
-    notify();
-    return { ok: true, action: 'restore' };
-  }
-
-  if (!copy.sourceRoomKey) {
-    copy.sourceRoomKey = roomKeyValue;
-    notify();
-    return { ok: true, action: 'source' };
-  }
-
-  if (copy.sourceRoomKey === roomKeyValue) {
-    copy.sourceRoomKey = null;
-    notify();
-    return { ok: true, action: 'cancel' };
-  }
+  if (copy.done[roomKeyValue]) return { type: 'restore' };
+  if (!copy.sourceRoomKey) return { type: 'become-source' };
+  if (copy.sourceRoomKey === roomKeyValue) return { type: 'cancel-source' };
 
   const source = findRoomByKey(copy.sourceRoomKey);
-  if (!sameAreaFamily(source, room)) {
-    return { ok: false, reason: 'area-mismatch' };
-  }
+  return {
+    type: 'copy',
+    crossFamily: !sameAreaFamily(source, room),
+    overwrite: roomHasContent(room)
+  };
+}
+
+/** コピー元として選択する。 */
+export function startRoomCopySource(roomKeyValue) {
+  state.roomCopy.sourceRoomKey = roomKeyValue;
+  notify();
+}
+
+/**
+ * コピー元の選択を解除する。
+ * v0.1.3の修正：解除時にdone／backupsも含めてコピー関連状態を全てクリアし、
+ * 「戻す」表示が解除後も残る不具合を修正する。コピー先セルに既に反映済みの
+ * 値そのものは変更しない（元に戻す操作だけができなくなる）。
+ */
+export function cancelRoomCopySource() {
+  state.roomCopy = { sourceRoomKey: null, backups: {}, done: {} };
+  notify();
+}
+
+/** 「戻す」：対象部屋をコピー実行前の状態へ戻す。 */
+export function restoreRoomCopy(roomKeyValue) {
+  const copy = state.roomCopy;
+  const room = findRoomByKey(roomKeyValue);
+  if (!room || !copy.backups[roomKeyValue]) return;
+
+  const backup = clone(copy.backups[roomKeyValue]);
+  room.rowCount = backup.rowCount;
+  room.cells = backup.cells;
+  delete copy.done[roomKeyValue];
+  delete copy.backups[roomKeyValue];
+  notify();
+}
+
+/**
+ * コピーを実行する（確認ダイアログでの確定後にfinish-table-controller.jsから呼ぶ）。
+ * 実行前のコピー先の内容はbackupsへ退避し、「戻す」で復元できるようにする。
+ */
+export function executeRoomCopy(roomKeyValue) {
+  const copy = state.roomCopy;
+  const source = findRoomByKey(copy.sourceRoomKey);
+  const room = findRoomByKey(roomKeyValue);
+  if (!source || !room) return;
 
   copy.backups[roomKeyValue] = clone({ rowCount: room.rowCount, cells: room.cells });
   room.rowCount = Math.max(room.rowCount, source.rowCount);
   room.cells = clone(source.cells);
   copy.done[roomKeyValue] = true;
   notify();
-  return { ok: true, action: 'copied' };
 }
 
 /* ============================================================

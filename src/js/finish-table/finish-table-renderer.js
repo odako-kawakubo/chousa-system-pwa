@@ -1,8 +1,18 @@
 /**
  * src/js/finish-table/finish-table-renderer.js
  *
- * v0.1.2 仕上表のDOM描画専用モジュール。
+ * v0.1.3 仕上表のDOM描画専用モジュール。
  * 状態変更は行わず、stateを読み取ってテーブル・操作列・選択表示を描画する。
+ *
+ * v0.1.3の変更点：
+ *   1. 簡易リストパネルを仕上表テーブルの上へ移動（テンプレート内の順序を変更）
+ *   2. 右上ツールバーの「＋地下階／＋階段／＋屋上」を撤去（ドロワーへ移動。
+ *      renderer側は何も描画しない。finish-table-controller.js側でドロワーの
+ *      .drawer-body内マークアップとして配線する）
+ *   3. 「1-1」ブロック（1階・1部屋目）の階セルへ「＋B階」ショートカットボタンを追加
+ *   4. 部屋ブロック側の「＋挿入」ボタンを撤去（ドロワーへ移動）
+ *   5. コピーボタンを4状態（コピー元／コピー可／上書き／戻す）表示に対応
+ *   6. ID欄に、未登録建材名称が入力されているときだけ「登録」ボタンを表示
  */
 
 import {
@@ -19,11 +29,22 @@ import {
   getFocusedInputKey,
   getSelectedMaterialInputId,
   getRoomCopyButtonState,
+  isFirstNormalFloorFirstRoom,
+  isCellPendingRegistration,
   orderedInternalGroups
 } from './finish-table-state.js';
 import { formatProjectDisplayName } from '../demo/sample-project.js';
 
 const OTHER_PART_INDEXES = new Set([5, 6]);
+
+/** コピーボタンの状態→表示ラベル対応（4状態＋通常）。 */
+const COPY_STATE_LABEL = {
+  idle: 'コピー',
+  source: 'コピー元',
+  restore: '戻す',
+  'target-empty': 'コピー可',
+  'target-overwrite': '上書き'
+};
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -59,16 +80,14 @@ export function renderFinishTab(container) {
         </div>
 
         <div class="finish-toolbar-fill"></div>
-
-        <!-- 地下階・階段・屋上の追加だけは専用操作として残す。
-             通常の＋行／＋部屋／＋階は表セル内へ配置する。 -->
-        <div class="finish-toolbar-group finish-structure-tools" id="finishStructureTools"></div>
       </div>
+
+      <!-- v0.1.3：簡易リストは仕上表の上に表示する -->
+      <section class="finish-simple-list-panel" id="finishSimpleListPanel"></section>
 
       <div class="finish-table-scroll" id="finishTableScroll">
         <div class="finish-table-track">
           <div class="finish-table-host" id="finishRoomsArea"></div>
-          <section class="finish-simple-list-panel" id="finishSimpleListPanel"></section>
         </div>
       </div>
     </div>
@@ -105,16 +124,8 @@ export function renderToolbarState() {
     listBtn.textContent = `簡易リスト ${state.simpleListOpen ? '▼' : '▶'}`;
   }
 
-  const tools = document.getElementById('finishStructureTools');
-  if (tools) {
-    tools.innerHTML = state.areaMode === 'internal'
-      ? `
-        <button type="button" class="btn small" data-action="add-basement-floor">＋地下階</button>
-        <button type="button" class="btn small" data-action="add-stairs">＋階段</button>
-        <button type="button" class="btn small" data-action="add-roof">＋屋上</button>
-      `
-      : '';
-  }
+  // v0.1.3：＋地下階／＋階段／＋屋上はドロワー（操作パネル）側へ移動したため、
+  // ここでは右上ツールバーに何も描画しない。
 }
 
 function currentRooms() {
@@ -235,6 +246,7 @@ function renderRoomRows(room, group, parts, roomIsLast, isLastNormalFloor) {
           <div class="room-control">
             <strong>${escapeHtml(floorText)}</strong>
             ${renderFloorAddButton(group, isLastNormalFloor, roomIsLast)}
+            ${renderBasementShortcutButton(room, group)}
           </div>
         </td>
         <td class="finish-meta room-no-cell" rowspan="${span}">
@@ -243,7 +255,6 @@ function renderRoomRows(room, group, parts, roomIsLast, isLastNormalFloor) {
             <div class="room-action-stack">
               <button type="button" class="room-mini-btn" data-action="add-row" data-room-key="${escapeHtml(key)}">＋行</button>
               ${roomIsLast ? `<button type="button" class="room-mini-btn" data-action="add-room" data-room-key="${escapeHtml(key)}" data-floor-key="${escapeHtml(floorGroupKey(group))}">＋部屋</button>` : ''}
-              <button type="button" class="room-mini-btn insert" data-action="insert-room" data-room-key="${escapeHtml(key)}">＋挿入</button>
             </div>
           </div>
         </td>
@@ -262,18 +273,36 @@ function renderRoomRows(room, group, parts, roomIsLast, isLastNormalFloor) {
   return html;
 }
 
+/** ＋階：通常階の最終部屋の階セルにだけ表示する（v0.1.2から変更なし）。 */
 function renderFloorAddButton(group, isLastNormalFloor, roomIsLast) {
   const state = getState();
   if (state.areaMode !== 'internal' || !isLastNormalFloor || !roomIsLast || group.areaCode !== 'I') return '';
   return '<button type="button" class="room-mini-btn floor-add" data-action="add-normal-floor">＋階</button>';
 }
 
+/**
+ * ＋B階（地下階追加）ショートカット：v0.1.3で追加。
+ * 「1-1」ブロック（1階・1部屋目）の階セルにだけ表示する、普段使い用の近道。
+ * 同じ処理を呼ぶボタンは、操作パネル（ドロワー）側にも別途用意する
+ * （finish-table-controller.js＋src/app.htmlの.drawer-body側）。
+ */
+function renderBasementShortcutButton(room, group) {
+  const state = getState();
+  if (state.areaMode !== 'internal') return '';
+  if (!isFirstNormalFloorFirstRoom(room, group)) return '';
+  return '<button type="button" class="room-mini-btn basement-add" data-action="add-basement-floor">＋B階</button>';
+}
+
+/**
+ * 部屋コピー用ボタン。v0.1.3で4状態（コピー元／コピー可／上書き／戻す）＋
+ * 通常時の「コピー」を、状態ごとのCSSクラス（state-xxx）で描き分ける。
+ */
 function renderCopyButton(key) {
   const status = getRoomCopyButtonState(key);
-  const label = status === 'restore' ? '戻す' : status === 'source' ? 'コピー元' : status === 'target' ? 'コピー' : 'コピー';
+  const label = COPY_STATE_LABEL[status] || 'コピー';
   return `
     <div class="room-control">
-      <button type="button" class="room-copy-btn ${status}" data-action="copy-room" data-room-key="${escapeHtml(key)}">${label}</button>
+      <button type="button" class="room-copy-btn state-${status}" data-action="copy-room" data-room-key="${escapeHtml(key)}">${label}</button>
     </div>
   `;
 }
@@ -286,9 +315,17 @@ function renderPartCells(room, partIndex, row) {
   const material = cell.inputId ? getState().materials.find((m) => String(m.inputId) === String(cell.inputId)) : null;
   const style = getState().colorMode && material ? ` style="--material-bg:${material.color}"` : '';
 
+  // v0.1.3：名称は入力済みだがどの建材にもリンクされていない（＝未登録）場合、
+  // ID欄へ「登録」ボタンを出す。自動登録は行わない。
+  const pendingRegistration = isCellPendingRegistration(room, partIndex, row);
+  const registerButton = pendingRegistration
+    ? `<button type="button" class="finish-register-btn" data-action="register-material" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" title="この名称を新規建材として登録します">登録</button>`
+    : '';
+
   let html = `
     <td class="finish-data-cell group-first" data-group-key="${escapeHtml(groupKey)}" data-room-key="${escapeHtml(roomKey(room))}" data-finish-id="${escapeHtml(finishId)}"${style}>
       <input class="finish-cell-input finish-id-input" data-input-key="${escapeHtml(inputKey(room, partIndex, row, 'id'))}" data-kind="id" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" value="${escapeHtml(cell.inputId)}" placeholder="ID" inputmode="numeric">
+      ${registerButton}
     </td>
   `;
 
@@ -310,6 +347,12 @@ function renderPartCells(room, partIndex, row) {
 
 /**
  * DOM再構築なしで、部屋選択・入力グループ・簡易リスト一致・フォーカスを再適用する。
+ *
+ * グループ強調枠（is-material-match／is-group-selected）は、CSS側で
+ * 「全セル共通の上辺・下辺」＋「先頭セルだけ左辺／最終セルだけ右辺」を
+ * 青にする方式のまま（v0.1.3でも変更していない。内部の境界線＝ID/部位/
+ * 建材名称の間は通常のグレーを残す）。ここでは対象セルへクラスを
+ * 付け外しするだけで、枠の描き方自体（CSS）には触れない。
  */
 export function applyVisualState() {
   const table = document.getElementById('finishTable');
@@ -338,5 +381,77 @@ export function applyVisualState() {
 
   table.querySelectorAll('.finish-cell-input').forEach((input) => {
     input.classList.toggle('is-focused-input', input.dataset.inputKey === getFocusedInputKey());
+  });
+}
+
+/* ============================================================
+   部屋コピー用の確認ダイアログ（v0.1.3で新設）
+   ブラウザ標準のconfirm()は使わず、自前の小型モーダルで完結させる。
+   src/js/ui/modal.js（既存の汎用モーダル開閉）は使用・変更しない。
+   ============================================================ */
+
+/** 呼び出し中のPromiseのresolve関数（同時に1件だけを想定）。 */
+let pendingConfirmResolve = null;
+
+function ensureConfirmModal() {
+  if (document.getElementById('finishConfirmModal')) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'finish-confirm-modal';
+  modal.id = 'finishConfirmModal';
+  modal.innerHTML = `
+    <div class="finish-confirm-card">
+      <div class="finish-confirm-body" id="finishConfirmBody"></div>
+      <div class="finish-confirm-actions">
+        <button type="button" class="btn small" id="finishConfirmCancel">キャンセル</button>
+        <button type="button" class="btn small primary" id="finishConfirmOk"></button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // 背景（カード外側）クリックはキャンセル扱い。カード内クリックは伝播を止める。
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) resolveConfirm(false);
+  });
+  modal.querySelector('.finish-confirm-card').addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  document.getElementById('finishConfirmCancel').addEventListener('click', () => resolveConfirm(false));
+  document.getElementById('finishConfirmOk').addEventListener('click', () => resolveConfirm(true));
+}
+
+function resolveConfirm(result) {
+  document.getElementById('finishConfirmModal')?.classList.remove('open');
+  const resolve = pendingConfirmResolve;
+  pendingConfirmResolve = null;
+  if (resolve) resolve(result);
+}
+
+/**
+ * 部屋コピーの確認ダイアログを表示し、キャンセル／確定の結果をPromiseで返す。
+ * 上書きコピー・内部外部またぎコピーの両方でこの関数を再利用する
+ * （文言と確定ボタンの文字列だけを差し替える）。
+ *
+ * @param {string} message 確認文言（改行は\nで指定）
+ * @param {string} okLabel 確定ボタンの文字列（例：「上書きする」「コピーする」）
+ * @returns {Promise<boolean>} 確定=true、キャンセル・背景クリック=false
+ */
+export function showFinishConfirm(message, okLabel) {
+  ensureConfirmModal();
+
+  const body = document.getElementById('finishConfirmBody');
+  body.innerHTML = '';
+  String(message).split('\n').forEach((line) => {
+    const p = document.createElement('p');
+    p.textContent = line;
+    body.appendChild(p);
+  });
+
+  document.getElementById('finishConfirmOk').textContent = okLabel;
+  document.getElementById('finishConfirmModal').classList.add('open');
+
+  return new Promise((resolve) => {
+    pendingConfirmResolve = resolve;
   });
 }

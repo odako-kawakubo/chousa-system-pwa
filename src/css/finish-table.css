@@ -1,8 +1,24 @@
 /**
  * src/css/finish-table.css
  *
- * v0.1.2 仕上表専用スタイル。
+ * v0.1.3 仕上表専用スタイル。
  * 旧v0.15.10の見た目を参考にしつつ、継ぎ足しではなく本開発版用に整理して定義する。
+ *
+ * v0.1.3の変更点：
+ *   1. 簡易リストが仕上表の上に来たため、横スクロール領域（.finish-table-track）
+ *      との幅連動が不要になった（.finish-simple-list-panelは単独でwidth:100%）
+ *   2. 簡易リストの背景をさらに淡い黄色へ、チップOFF時の背景を
+ *      「パネルより少し濃い黄色」に調整
+ *   3. 部屋コピーボタンの4状態（コピー元／コピー可／上書き／戻す）の配色を追加
+ *   4. ID欄の「登録」ボタンのスタイルを追加
+ *   5. 部屋コピー確認モーダル（.finish-confirm-modal）のスタイルを追加
+ *   6. 使われなくなった右上ツールバーの構造ツール用スタイル（.finish-structure-tools）を削除
+ *
+ * グループ強調枠（.is-material-match / .is-group-selected）の描き方は
+ * v0.1.2から変更していない：全セル共通で上辺・下辺を青、先頭セルだけ左辺、
+ * 最終セルだけ右辺を青にする。内部の境界線（ID/部位/建材名称の間）は
+ * 通常のグレーのまま残す（全セル4辺を青にすると内側の線が二重になり、
+ * 外周1本には見えなくなるため、その方式は採らない）。
  */
 
 /* ============================================================
@@ -43,14 +59,8 @@
   color: #fff;
 }
 
-.finish-structure-tools .btn {
-  font-size: 9px;
-  padding: 2px 6px;
-}
-
 /* ============================================================
-   横スクロール領域
-   仕上表を基準幅とし、簡易リストも同じtrack幅へ追従させる。
+   横スクロール領域（仕上表テーブル本体のみ。簡易リストはこの外側＝上に表示）
    ============================================================ */
 .finish-table-scroll {
   overflow-x: auto;
@@ -63,8 +73,7 @@
   min-width: 1160px;
 }
 
-.finish-table-host,
-.finish-simple-list-panel {
+.finish-table-host {
   width: 100%;
 }
 
@@ -182,7 +191,7 @@
   background: #fff;
 }
 
-/* コピー・＋行・＋部屋・＋階を同じ小型ボタン系へ統一。 */
+/* ・行／＋部屋／＋階／＋B階を同じ小型ボタン系へ統一。 */
 .room-copy-btn,
 .room-mini-btn {
   border: 1px solid #cbd5e1;
@@ -199,9 +208,40 @@
 
 .room-copy-btn:hover,
 .room-mini-btn:hover { background: #eef2f7; }
-.room-copy-btn.source { background: #dbeafe; border-color: #60a5fa; color: #1d4ed8; font-weight: 700; }
-.room-copy-btn.restore { background: #fef3c7; border-color: #f59e0b; color: #92400e; font-weight: 700; }
-.room-mini-btn.insert { color: #64748b; }
+
+/* ============================================================
+   部屋コピーボタン：4状態＋通常（v0.1.3）
+   コピー元＝淡い赤／コピー可＝淡い青／上書き＝淡いオレンジ／戻す＝淡い緑
+   ============================================================ */
+.room-copy-btn.state-idle {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+.room-copy-btn.state-source {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+  font-weight: 700;
+}
+.room-copy-btn.state-target-empty {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.room-copy-btn.state-target-overwrite {
+  background: #ffedd5;
+  border-color: #fb923c;
+  color: #9a3412;
+  font-weight: 700;
+}
+.room-copy-btn.state-restore {
+  background: #dcfce7;
+  border-color: #4ade80;
+  color: #15803d;
+  font-weight: 700;
+}
 
 /* ============================================================
    入力セル
@@ -259,6 +299,22 @@
   box-shadow: 0 0 0 1px rgba(59, 130, 246, .12);
 }
 
+/* v0.1.3：ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。 */
+.finish-register-btn {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 8px;
+  line-height: 1.2;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.finish-register-btn:hover { background: #fef3c7; }
+
 /* ============================================================
    選択表示
    ============================================================ */
@@ -275,7 +331,7 @@
 
 /*
  * グループ強調：通常はID+建材名称、その他はID+部位+建材名称。
- * 内側の縦罫線は通常色のまま、外周だけ青くする。
+ * 内側の縦罫線は通常色のまま、外周だけ青くする（v0.1.2から変更なし）。
  */
 .finish-data-cell.is-material-match,
 .finish-data-cell.is-group-selected {
@@ -298,15 +354,15 @@
 .finish-data-cell.group-last.is-group-selected { border-right-color: #1d4ed8; }
 
 /* ============================================================
-   簡易リスト
+   簡易リスト（v0.1.3：仕上表の上に表示。背景をさらに淡く）
    ============================================================ */
 .finish-simple-list-panel {
   box-sizing: border-box;
-  margin-top: 4px;
+  margin-bottom: 6px;
   padding: 4px 6px 5px;
-  border: 1px solid #eee5b6;
+  border: 1px solid #f0e8bd;
   border-radius: 6px;
-  background: #fffef7;
+  background: #fffefb;
 }
 
 .finish-simple-list-items {
@@ -321,9 +377,10 @@
 .finish-simple-item {
   min-height: 20px;
   padding: 2px 7px;
-  border: 1px solid #eadf98;
+  border: 1px solid #e9d98a;
   border-radius: 999px;
-  background: #fff8cf;
+  /* パネル背景（#fffefb）より少し濃い黄色。カラー表示OFF時のみ使う。 */
+  background: #fdf1b8;
   color: #334155;
   font-size: 11px;
   line-height: 1.25;
@@ -332,6 +389,7 @@
   cursor: pointer;
 }
 
+/* カラー表示ON時は、建材ごとの色をそのまま使う。 */
 .finish-simple-item.color-on {
   background: var(--chip-bg);
   border-color: rgba(100, 116, 139, .28);
@@ -398,3 +456,34 @@
   border-bottom: 1px solid #e2e8f0;
 }
 .finish-photo-confirm-body { padding: 16px 12px; font-size: 12px; }
+
+/* ============================================================
+   部屋コピー確認モーダル（v0.1.3で新設。上書き／内部外部またぎコピー用）
+   src/js/ui/modal.jsは使わず、仕上表側だけで完結させる。
+   ============================================================ */
+.finish-confirm-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  background: rgba(15, 23, 42, .45);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.finish-confirm-modal.open { display: flex; }
+.finish-confirm-card {
+  width: min(360px, 100%);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, .25);
+  padding: 16px;
+}
+.finish-confirm-body { font-size: 13px; color: #1f2937; line-height: 1.6; }
+.finish-confirm-body p { margin: 0 0 4px; }
+.finish-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
