@@ -64,7 +64,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>調査システムPWA v0.1.3</title>
+<title>調査システムPWA</title>
 <link rel="stylesheet" href="./css/common.css" />
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
@@ -77,14 +77,14 @@
 <header class="app-header-compact">
   <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
   <h1 id="caseHeaderTitle">案件未選択</h1>
-  <span class="pill header-version" id="headerVersion">v0.1.3</span>
-  <span class="connection-dot offline" id="onlinePill" title="v0.1.0では通信を行いません"></span>
+  <span class="pill header-version" id="headerVersion"></span>
+  <span class="connection-dot offline" id="onlinePill" title="通信機能は未実装です"></span>
   <span class="pill header-sync-state" id="firebasePill">未接続</span>
   <span class="pill header-device" id="devicePill">端末未設定</span>
   <button class="btn small header-auth-btn" id="msAuthBtn">Microsoftログイン</button>
   <span class="pill header-account" id="msPill">未ログイン</span>
   <span class="pill header-graph-state" id="graphTokenPill">Graphトークン：未取得</span>
-  <span class="hint">仕上表機能実装中 v0.1.3</span>
+  <span class="hint" id="appDevelopmentHint">仕上表機能実装中</span>
 </header>
 
 <!-- ============================================================
@@ -107,7 +107,7 @@
   <div class="project-restore-status" id="projectRestoreStatus"></div>
   <div class="project-side-list" id="projectList">
     <div class="hint" style="padding:16px 4px">
-      案件一覧はv0.1.0では未実装です（案件管理モジュール実装時に表示されます）
+      案件一覧は未実装です（案件管理モジュール実装時に表示されます）
     </div>
   </div>
 </aside>
@@ -126,7 +126,7 @@
       <button class="btn small primary" disabled>検索</button>
     </div>
     <div class="project-restore-status show warn">
-      OneDrive連携はv0.1.0では未実装です。案件検索はここでは動作しません。
+      OneDrive連携は未実装です。案件検索はここでは動作しません。
     </div>
     <div class="shared-project-list" id="sharedProjectList"></div>
   </div>
@@ -235,7 +235,7 @@
   <div class="drawer-body">
     <div class="drawer-box">
       <h4>状態</h4>
-      <div class="hint">v0.1.0（UI骨格）のため、このパネル内のボタンはまだ機能しません。</div>
+      <div class="hint" id="appVersionStatus"></div>
     </div>
     <!-- v0.1.3で追加：仕上表の階・部屋操作。開閉ロジック（src/js/ui/drawer.js）は
          無編集。クリック処理はsrc/js/finish-table/finish-table-controller.jsが
@@ -248,7 +248,7 @@
       <button type="button" class="btn" id="drawerAddRoof">＋屋上</button>
       <button type="button" class="btn" id="drawerInsertRoom" disabled>＋挿入（選択中の部屋の直後へ）</button>
     </div>
-    <div class="drawer-version">v0.1.3</div>
+    <div class="drawer-version" id="drawerVersion"></div>
   </div>
 </aside>
 
@@ -261,7 +261,7 @@
       <h3 id="photoPreviewTitle">写真プレビュー</h3>
       <button class="btn small" data-modal-close data-modal-target="photoPreviewModal">閉じる</button>
     </div>
-    <div class="photo-preview-body" id="photoPreviewBody">v0.1.0では未実装です</div>
+    <div class="photo-preview-body" id="photoPreviewBody">写真プレビューは未実装です</div>
   </div>
 </div>
 

@@ -50,12 +50,37 @@
  *   10. ブラウザのコンソールに致命的エラーが出ていないことを確認する
  */
 
+import { appConfig } from '../config/app-config.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
+
+
+/**
+ * app-config.js の version を画面上のバージョン表記へ一括反映する。
+ * HTML側へバージョン番号を直書きしないことで、今後はappConfig.versionだけを
+ * 更新すればヘッダー・操作パネル・document.titleが同じ値になる。
+ */
+function applyAppVersionDisplay() {
+  const versionText = `v${appConfig.version}`;
+
+  document.title = `${appConfig.appName} ${versionText}`;
+
+  const headerVersion = document.getElementById('headerVersion');
+  if (headerVersion) headerVersion.textContent = versionText;
+
+  const developmentHint = document.getElementById('appDevelopmentHint');
+  if (developmentHint) developmentHint.textContent = `仕上表機能実装中 ${versionText}`;
+
+  const versionStatus = document.getElementById('appVersionStatus');
+  if (versionStatus) versionStatus.textContent = `${versionText}（仕上表機能実装中）`;
+
+  const drawerVersion = document.getElementById('drawerVersion');
+  if (drawerVersion) drawerVersion.textContent = versionText;
+}
 
 /**
  * UI骨格の起動処理。
@@ -68,6 +93,7 @@ import { initializeFinishTable } from './finish-table/finish-table-controller.js
  * ・ここでは画面表示の準備だけを行う。案件データの読込や保存は行わない。
  */
 function initUiSkeleton() {
+  applyAppVersionDisplay();
   bindTabEvents();
   bindDrawerEvents();
   bindProjectPanelEvents();
