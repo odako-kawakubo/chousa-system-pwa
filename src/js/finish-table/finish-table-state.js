@@ -1,21 +1,10 @@
 /**
  * src/js/finish-table/finish-table-state.js
  *
- * v0.1.4 仕上表の状態管理。
- * 保存・Firebase同期はまだ行わず、画面確認に必要な状態と業務ロジックを
- * このモジュールへ集約する。
- *
- * v0.1.4の変更点：
- *   1. 階（B階／通常階／階段／R階）の折りたたみ状態（collapsedFloors）を新設。
- *      selectedRoomKey等の入力選択、roomCopy、Undo/Redo履歴とは独立した
- *      専用の状態として持つ。表示の開閉だけを行い、部屋・建材データは変更しない。
- *   2. Undo/Redo（戻る／進む。finish-table-history.js）用に、対象となる状態
- *      （floors/stairs/roof/externalRooms/roomCopy）だけを取り出す
- *      getUndoableSnapshot()／復元するrestoreUndoableSnapshot()を追加。
- *      collapsedFloors・選択状態・簡易リストの表示設定はUndo/Redoの対象外のため、
- *      スナップショットに含めない。
- *   3. 地下階・屋上の表示名を「地下1階」→「B1階」へ変更（renderer側の
- *      屋上表示は finish-table-renderer.js 側で変更）。
+ * 仕上表の状態管理と業務ロジックを集約する。
+ * 現在はサンプル案件をメモリ上で扱い、部屋・建材入力・選択状態・部屋コピー・
+ * 階折りたたみ・Undo/Redo用スナップショットを管理する。
+ * 正式レコード保存とFirebase同期は別レイヤーとして追加する前提で分離している。
  */
 
 import { sampleProject } from '../demo/sample-project.js';
@@ -29,7 +18,7 @@ import {
 
 export { INTERNAL_PARTS, EXTERNAL_PARTS };
 
-/** ＋階／＋地下階1回あたりに追加する部屋数（v0.1.3で1→10へ変更）。 */
+/** ＋階／＋地下階1回あたりに追加する部屋数。 */
 const ROOMS_PER_FLOOR = 10;
 
 let state = null;
@@ -85,7 +74,7 @@ export function initFinishTableState() {
       done: {}     // { [対象roomKey]: true } … 「戻す」操作が可能な対象
     },
 
-    // 階の折りたたみ専用状態（v0.1.4で追加）。floorGroupKey()の値の集合。
+    // 階の折りたたみ専用状態。floorGroupKey()の値の集合。
     // 表示の開閉だけに使い、Undo/Redo（戻る/進む）の対象にも含めない。
     collapsedFloors: new Set()
   };
@@ -97,7 +86,7 @@ export function getState() {
 }
 
 /* ============================================================
-   Undo/Redo（戻る/進む）用のスナップショット（v0.1.4で追加）
+   Undo/Redo（戻る/進む）用のスナップショット
    finish-table-history.jsはこの2関数だけを介して状態を読み書きし、
    状態の中身そのものは知らない。
    ============================================================ */
@@ -170,7 +159,7 @@ export function getPartsForAreaCode(areaCode) {
 }
 
 /* ============================================================
-   仕上表ID（v0.1.3では算出方法自体は変更しない：4章「今回は触らない」）
+   仕上表ID
    ============================================================ */
 
 function pad(value, length) {
@@ -212,7 +201,7 @@ export function inputKey(room, partIndex, row, kind) {
 }
 
 /**
- * 部屋No./部屋名フィールド用の識別キー（v0.1.4.2で追加）。
+ * 部屋No./部屋名フィールド用の識別キー。
  * data系セルのinputKey（roomKey|partIndex|row|kind）とは形が異なり、
  * 衝突しないようにする。「現在編集中のフィールド」を判定する
  * getFocusedInputKey()の値として、data系セルのinputKeyと同じ変数で
@@ -308,7 +297,7 @@ export function clearCellMaterial(room, partIndex, row) {
 /**
  * 名称入力確定時（フォーカスが外れたとき）の処理。
  *
- * v0.1.3の変更：既存建材と一致すればその建材を参照するが、一致しない場合は
+ * 現在の動作：既存建材と一致すればその建材を参照するが、一致しない場合は
  * 「自動登録」をしない。未登録のまま（materialIdが空のまま）残し、
  * renderer側がID欄に「登録」ボタンを出す判定に使う。
  */
@@ -349,7 +338,7 @@ export function commitCellInputId(room, partIndex, row) {
 }
 
 /**
- * ID欄の「登録」ボタン押下時だけ呼ばれる、明示的な新規建材登録（v0.1.3で追加）。
+ * ID欄の「登録」ボタン押下時だけ呼ばれる、明示的な新規建材登録。
  * 末尾英字の正式付与・建材ID正式採番は後続工程（4章「今回は触らない」）。
  */
 export function registerCellMaterial(room, partIndex, row) {
@@ -491,7 +480,7 @@ export function getSimpleListOpen() {
 }
 
 /**
- * 階見出し行の開閉（v0.1.4で追加）。
+ * 階見出し行の開閉。
  * 表示・非表示だけを切り替える操作であり、部屋・建材データは変更しない。
  * Undo/Redo（戻る/進む）の対象には含めない（notify()で再描画はするが、
  * finish-table-history.jsのrecordHistory()は呼ばない）。
@@ -550,7 +539,7 @@ function renumberFlat(list) {
 
 /**
  * ＋階：通常階を追加する。
- * v0.1.3で1部屋→10部屋ブロック（ROOMS_PER_FLOOR）へ変更。
+ * 1回の追加操作で10部屋ブロック（ROOMS_PER_FLOOR）を生成する。
  */
 export function addNormalFloor() {
   const list = state.floors.filter((floor) => floor.areaCode === 'I');
@@ -563,9 +552,9 @@ export function addNormalFloor() {
 
 /**
  * ＋B階（地下階追加）：地下階を追加する。
- * v0.1.3で1部屋→10部屋ブロックへ変更。呼び出し元は「1-1」ブロックの
+ * 1回の追加操作で10部屋ブロックを生成する。呼び出し元は「1-1」ブロックの
  * 階セル内ショートカットと、操作パネル（ドロワー）の2箇所（finish-table-controller.js）。
- * v0.1.4：表示名を「地下${next}階」から「B${next}階」へ変更（部屋No.表記の
+ * 地下階は「B${next}階」と表示し、部屋No.表記と揃える（
  * B1-1等は変更していない）。
  */
 export function addBasementFloor() {
@@ -605,7 +594,7 @@ export function addRoomToFloor(floorKey) {
 
 /**
  * ＋挿入：指定した部屋の直後へ1部屋挿入する。
- * v0.1.3では通常画面のボタンからは消え、操作パネル（ドロワー）から
+ * この操作は操作パネル（ドロワー）から
  * 「現在選択中の部屋（selectedRoomKey）」を対象に呼ばれる
  * （finish-table-controller.js）。この関数自体の挙動は変更していない。
  */
@@ -729,7 +718,7 @@ export function startRoomCopySource(roomKeyValue) {
 
 /**
  * コピー元の選択を解除する。
- * v0.1.3の修正：解除時にdone／backupsも含めてコピー関連状態を全てクリアし、
+ * 解除時はdone／backupsも含めてコピー関連状態を全てクリアし、
  * 「戻す」表示が解除後も残る不具合を修正する。コピー先セルに既に反映済みの
  * 値そのものは変更しない（元に戻す操作だけができなくなる）。
  */

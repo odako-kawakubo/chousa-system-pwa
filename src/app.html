@@ -2,62 +2,16 @@
   src/app.html
 
   このファイルの役割：
-    本開発版のメイン画面。ヘッダー・案件選択パネル・上部タブ・各タブの枠・
-    ドロワー・モーダルの「見た目」を、v0.15.10の配置・寸法・配色に合わせて
-    再現する（v0.1.0）。v0.1.2では、仕上表タブを横長テーブルUIへ再構成し、サンプル案件を
-    使ったUI＋基本挙動を実装している。
+    本開発版のメイン画面。ヘッダー・案件選択パネル・上部タブ・各タブ領域・
+    操作パネル・モーダルのDOM骨格を定義する。仕上表の実データ描画と操作は
+    src/js/finish-table/ 配下、認証は src/js/auth/ と src/js/ui/auth-ui.js、
+    バージョン表示と更新処理は src/js/app-version.js / app-update.js が担当する。
 
-  どこから呼ばれるか：
-    ブラウザから直接開く（今後 index.html からの遷移先にもなる）。
-
-  何を取得しているか：
-    Firebase Authenticationのログイン状態と、Microsoft Graph用アクセストークン
-    （src/js/auth/microsoft-auth.js経由）。案件データ・仕上表データ・建材データは
-    このリポジトリ整理の時点でもまだ存在しない。
-
-  何を判定しているか：
-    ヘッダーのMicrosoftログインボタンがログイン中かログアウト中かだけを判定する
-    （src/js/ui/auth-ui.js）。業務データに関する判定はまだ行わない。
-
-  どこへ書き込んでいるか：
-    Graphアクセストークンをブラウザのsessionストレージへ一時保存する
-    （タブを閉じると消える）。それ以外の保存処理は持たない。
-
-  どの処理とは分離しているか：
-    ・v0.15.10にあった AppManager / StateManager / StorageManager /
-      FirebaseSync / OneDrive連携 / インラインonclick構造 / 自動タイマーは
-      一切持ち込んでいない。
-    ・各タブの中身（仕上表の表・建材リストの行・写真グリッド等）は
-      本開発版の該当バージョン（v0.3.0以降）で実装する。ここでは
-      「タブを開いたときに、その枠とタイトルだけが見える」状態を作る。
-
-  今回の変更：
-    1. v0.1.0（UI骨格のみ）として新規作成
-    2. ヘッダー・案件パネル・タブ7種・ドロワー・モーダル3種の枠を配置
-    3. 各タブの中身は「ここに◯◯を実装します」のプレースホルダーのみ
-    4. インラインonclickは使用せず、data属性 + 外部JS（type="module"）で
-       開閉のみを制御
-    5.（リポジトリ整理時に追加）ヘッダーへMicrosoftログインボタン・
-       ログインユーザー名表示・Graphトークン取得状態表示を接続
-       （src/js/ui/auth-ui.js）。認証処理自体はsrc/js/auth/microsoft-auth.js
-       を書き直さずそのまま使用。
-    6.（v0.1.2で更新）仕上表タブへ、公式サンプル案件（SAMPLE-001）を使った
-       内部／外部の部屋一覧・簡易リスト・建材カラー表示・セル選択などの
-       UIと基本挙動を実装（src/js/finish-table/・src/js/materials/・
-       src/js/demo/）。保存・同期・Firestore・OneDrive通信は未実装。
-       他タブ・ヘッダー・案件パネル・ドロワー・既存モーダルの構造は
-       変更していない。
-    7.（v0.1.3で更新）実機フィードバックを反映：＋階／＋B階を10部屋ブロック
-       単位へ変更、＋挿入／＋地下階／＋階段／＋屋上をドロワー（操作パネル）
-       側へ移動（＋B階だけは1-1ブロックの階セルにもショートカットを残す）、
-       部屋コピーの状態管理拡張（コピー元／コピー可／上書き／戻すの4状態、
-       内部外部またぎコピー、確認モーダル）、未登録建材の明示的な登録ボタン、
-       簡易リストの表示位置・配色調整と24色パレット化。ドロワーの開閉ロジック
-       （src/js/ui/drawer.js）は変更せず、.drawer-body内マークアップの追加と
-       finish-table-controller.js側のイベント配線だけで対応した。
-
-  動作確認手順：
-    src/js/app-init.js のコメント内「動作確認手順」を参照。
+  現在の方針：
+    ・バージョン番号は app-config.js を正本とし、HTMLへ直書きしない。
+    ・仕上表はサンプル案件でUIと基本操作を確認できる。
+    ・他タブの業務機能、正式レコード、保存・同期は段階的に実装する。
+    ・インラインonclickは使わず、各JSモジュールからイベントを配線する。
 -->
 <!doctype html>
 <html lang="ja">
@@ -89,7 +43,7 @@
 
 <!-- ============================================================
      案件選択パネル（左スライドイン）
-     中身の案件一覧はv0.1.0では空。案件管理モジュール実装時に描画する。
+     案件一覧は案件管理モジュール実装時に描画する。
      ============================================================ -->
 <div class="project-side-backdrop" id="projectSideBackdrop" data-project-panel-close></div>
 <aside class="project-side-panel" id="projectSidePanel" aria-hidden="true">
@@ -153,34 +107,32 @@
       </nav>
     </div>
 
-    <!-- 仕上表タブ：v0.1.2で横長テーブルUI＋基本挙動を実装。
-         中身はsrc/js/finish-table/finish-table-controller.jsが
-         initializeFinishTable()実行時に描画する（このsection自体は空のまま）。 -->
+    <!-- 仕上表タブ：中身はfinish-table-controller.jsが初期化時に描画する。 -->
     <section class="content" id="finish"></section>
 
-    <!-- 建材リストタブ：v0.6.0以降で実装 -->
+    <!-- 建材リストタブ：正式な建材レコード連携と合わせて実装する。 -->
     <section class="content" id="materials" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>建材リスト</h3></div>
         <div class="hint" style="padding:24px">
           ここに建材リスト（No./ID/部位/建材名称/採取情報等）を実装します。<br />
-          v0.5.0（建材レコード）・v0.6.0（建材リスト）で追加予定。
+          正式な建材レコードと連携する画面として実装予定です。
         </div>
       </div>
     </section>
 
-    <!-- 写真タブ：v0.7.0以降で実装 -->
+    <!-- 写真タブ：写真レコード・OneDrive連携と合わせて実装する。 -->
     <section class="content" id="photos" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>写真</h3></div>
         <div class="hint" style="padding:24px">
           ここに目視調査写真・建材採取写真の画面を実装します。<br />
-          v0.7.0で追加予定。
+          写真レコードとOneDrive連携に合わせて追加予定です。
         </div>
       </div>
     </section>
 
-    <!-- 調査図タブ：v0.15.10でも単体HTML版では停止表示のプレースホルダー -->
+    <!-- 調査図タブ：仕様確定後に実装するプレースホルダー。 -->
     <section class="content" id="survey-map" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>調査図</h3></div>
@@ -190,28 +142,29 @@
       </div>
     </section>
 
-    <!-- 同期タブ：v0.9.0以降で実装 -->
+    <!-- 同期タブ：Firebase差分同期基盤と合わせて実装する。 -->
     <section class="content" id="sync" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>同期</h3></div>
         <div class="hint" style="padding:24px">
           ここに未同期件数・同期状態の表示を実装します。<br />
-          v0.9.0（Firestore差分同期）で追加予定。
+          Firebase差分同期基盤と合わせて追加予定です。
         </div>
       </div>
     </section>
 
-    <!-- 設定タブ：案件情報や建材候補の管理をv0.5.0以降で実装 -->
+    <!-- 設定タブ：案件情報・建材候補・端末設定などを扱う。 -->
     <section class="content" id="settings" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>設定</h3></div>
         <div class="hint" style="padding:24px">
-          ここに案件基本情報・建材候補・部位候補・端末設定を実装します。
+          ここに案件基本情報・建材候補・部位候補・端末設定を実装します。<br />
+          アプリバージョン：<span id="settingsVersionValue"></span>
         </div>
       </div>
     </section>
 
-    <!-- レコードタブ：主レコード3種の一覧をv0.2.0以降の状態管理と合わせて実装 -->
+    <!-- レコードタブ：仕上表・建材・写真の正式レコード確認用。 -->
     <section class="content" id="records" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>レコード</h3></div>
@@ -224,7 +177,7 @@
 </div>
 
 <!-- ============================================================
-     ドロワー（右スライドイン。中身のボタンはv0.1.0では未実装）
+     ドロワー（右スライドイン。各機能のイベントは担当モジュールが配線する）
      ============================================================ -->
 <div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
 <aside class="drawer" id="drawer">
@@ -237,9 +190,7 @@
       <h4>状態</h4>
       <div class="hint" id="appVersionStatus"></div>
     </div>
-    <!-- v0.1.3で追加：仕上表の階・部屋操作。開閉ロジック（src/js/ui/drawer.js）は
-         無編集。クリック処理はsrc/js/finish-table/finish-table-controller.jsが
-         bindDrawerFinishTools()で配線する。 -->
+    <!-- 仕上表の階・部屋操作。クリック処理はfinish-table-controller.jsが配線する。 -->
     <div class="drawer-box" id="finishDrawerTools">
       <h4>仕上表：階・部屋操作</h4>
       <div class="hint">通常画面から移した操作です。＋B階は1-1ブロックの階セルからも実行できます。</div>
@@ -248,12 +199,31 @@
       <button type="button" class="btn" id="drawerAddRoof">＋屋上</button>
       <button type="button" class="btn" id="drawerInsertRoom" disabled>＋挿入（選択中の部屋の直後へ）</button>
     </div>
+    <div class="drawer-box">
+      <h4>保守</h4>
+      <div class="hint">最新版の確認と、アプリ本体キャッシュの再取得を行います。</div>
+      <button type="button" class="btn" id="showUpdatePromptButton">最新版に更新</button>
+    </div>
     <div class="drawer-version" id="drawerVersion"></div>
   </div>
 </aside>
 
 <!-- ============================================================
-     写真拡大プレビューモーダル（v0.7.0で実際の写真表示を実装）
+     最新版への更新確認モーダル
+     ============================================================ -->
+<div class="update-modal" id="updateModal" data-update-modal-close>
+  <div class="update-card" data-modal-stop>
+    <h3>最新版に更新</h3>
+    <div class="hint" id="updateMessage">最新版を確認します。</div>
+    <div class="update-actions">
+      <button type="button" class="btn" data-update-modal-close>キャンセル</button>
+      <button type="button" class="btn primary" id="confirmAppUpdateButton">更新する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     写真拡大プレビューモーダル（写真機能実装時に内容を接続する）
      ============================================================ -->
 <div class="photo-preview-modal" id="photoPreviewModal" data-modal-close data-modal-target="photoPreviewModal">
   <div class="photo-preview-card" data-modal-stop>

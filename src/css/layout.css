@@ -9,7 +9,7 @@
  *   src/app.html の <head> から、common.css の次に読み込む。
  *
  * 参照元：
- *   v0.15.10 の以下のクラスを、幅・高さ・余白・色・位置ともにそのまま踏襲：
+ *   旧単体HTML版の以下のクラスを、幅・高さ・余白・色・位置の基準として踏襲：
  *     header.app-header-compact / .project-side-panel / .project-side-backdrop
  *     .tabs / .tab / .content / .drawer / .drawer-backdrop
  *     .update-modal / .shared-project-modal / .photo-preview-modal

@@ -1,49 +1,11 @@
 /**
  * src/js/finish-table/finish-table-controller.js
  *
- * v0.1.4.3 仕上表のイベント配線。
- * DOM描画はrenderer、状態更新はstate、簡易リスト描画はsimple-list、
- * Undo/Redoの履歴スタックはfinish-table-historyへ委譲する。
+ * 仕上表のイベント配線とユーザー操作の入口を担当する。
+ * DOM描画はrenderer、状態更新はstate、簡易リストはsimple-list、履歴はhistoryへ分離する。
  *
- * v0.1.4.3 表示構造：
- *   ヘッダーと本体の横位置をJSで同期する処理は廃止した。
- *   .finish-table-scroll 1個のネイティブ2Dスクロール内で、ヘッダーと本体が
- *   同じ座標系を共有する。controller側はスクロール同期処理を持たない。
- *
- * v0.1.4.2 Phase 1の変更点（iPad Safari実機不具合の対応）：
- *   1. セル選択・フォーカス移動時に呼ぶ再描画を、部屋選択・入力グループ選択・
- *      フォーカス枠だけを更新する軽量関数（applyRoomSelection等）へ変更した。
- *      建材の一致判定（applyMaterialMatchHighlight、全セル走査が必要で重い）は、
- *      建材選択が変わる操作（チップクリック・簡易リスト選択）のときだけ呼ぶ。
- *      renderRooms()は内部で全種類を再適用する（DOM再構築後は前回参照が
- *      失効するため）ので、renderRooms()の直後に重ねて呼ばない。
- *   2. 階見出し行の開閉を、▼/▶ボタン単体ではなく行全体
- *      （.finish-floor-heading）のクリックで判定するよう変更した
- *      （見た目を薄くしてもタップ領域を確保するため）。
- *
- * v0.1.4.2 Phase 2の変更点（Apple Pencil / Scribble対策。今回のsticky構造
- * 再設計では変更していない）：
- *   3.【常時input構造の廃止】ID/建材名称/部位/部屋No./部屋名の各欄は、
- *      既定では表示専用<span class="finish-cell-display">（renderer側）で
- *      描画される。指・マウス・Apple Pencilのいずれでも、単純タップなら
- *      finish-table-renderer.jsのswapDisplayToInput()で<input>へ差し替え、
- *      input.focus()する。focus()が同期的に発火させる
- *      focusinイベントを、既存のfocusinハンドラ（部屋・入力グループ選択、
- *      フォーカス枠、Undo用スナップショットの記録）がそのまま処理する
- *      ため、focusin側のロジックは「常時<input>」時代からほぼ変更していない
- *      （data-input-key/data-field-keyという既存の属性で対象を判定する
- *      仕組みをそのまま利用できるため）。
- *   4.【Apple Pencil判定】pointerdown時の座標を記録し、pointermoveで一定距離
- *      以上動いた場合だけ「Pencilドラッグ」と判定する。Pencilの単純タップは
- *      指と同じ通常クリックとして扱い、セル編集・チップ入力を許可する。
- *      ドラッグ後に発生するclickだけを抑止することで、スクロール中にinputを
- *      生成せずScribble誤入力を防ぐ。
- *   5.【編集終了】blur（focusout）時は、対象欄だけをinputからspanへ
- *      戻すのではなく、setFocusedInputKey(null)した上でrenderRooms()を
- *      呼ぶ（Phase 1以前からの「blurで全体を再描画する」パターンをそのまま
- *      使う）。再描画時、renderFieldControl()/renderRoomFieldControl()が
- *      getFocusedInputKey()と一致しない欄をspanとして描画するため、
- *      結果的に編集していた欄がspanへ戻る。
+ * 現在の表構造は「1個の2Dスクロール領域 + 部屋単位の左固定ペイン」。
+ * Apple Pencilは単純タップを通常操作として扱い、ドラッグ時だけ編集開始を抑止する。
  */
 
 import {
@@ -177,7 +139,7 @@ function updateDrawerInsertButtonState() {
   if (button) button.disabled = !getSelectedRoomKey();
 }
 
-/** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴（v0.1.4から変更なし）。 */
+/** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴。 */
 function bindUndoRedoButtons() {
   document.getElementById('finishUndoBtn')?.addEventListener('click', () => {
     const restored = popUndo(getUndoableSnapshot());
@@ -233,78 +195,38 @@ function bindEvents(root) {
   /*
    * Apple Pencil / Scribble対策。
    *
-   * Pencil自体は通常の入力デバイスとして扱う。
-   * 単純タップなら、指と同じくセル選択・文字入力・チップ入力を許可する。
-   * 一方、Pencilで表をスクロールしたときは、その直後のclickを抑止して
-   * span→input化を発生させない。これによりScribbleの誤入力を防ぐ。
+   * Pencilを禁止するのではなく、単純タップとドラッグを判別する。
+   * ・単純タップ：指・マウスと同じ通常操作へ流す（選択／文字入力／チップ入力）。
+   * ・ドラッグ：スクロールとして扱い、span→input化などの編集開始を行わない。
+   *
+   * 通常表示では編集欄をspanにしているため、スクロール中にScribbleが反応する
+   * inputを作らない。Pencilタップ時だけpointerupで通常操作を直接実行し、
+   * その直後にSafariが生成するclickは1回だけ抑止して二重実行を防ぐ。
    */
-  const PEN_DRAG_THRESHOLD_PX = 8;
+  const PEN_DRAG_THRESHOLD_PX = 12;
+  const PEN_CLICK_SUPPRESS_MS = 500;
   let penPointer = null;
-  let suppressPenClick = false;
+  let ignoreNextPenClick = false;
+  let ignorePenClickUntil = 0;
 
-  root.addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'pen') {
-      penPointer = null;
-      suppressPenClick = false;
-      return;
-    }
-
-    penPointer = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      dragged: false
-    };
-    suppressPenClick = false;
-  }, { passive: true });
-
-  root.addEventListener('pointermove', (event) => {
-    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-
-    const dx = event.clientX - penPointer.startX;
-    const dy = event.clientY - penPointer.startY;
-    if (Math.hypot(dx, dy) >= PEN_DRAG_THRESHOLD_PX) {
-      penPointer.dragged = true;
-    }
-  }, { passive: true });
-
-  root.addEventListener('pointerup', (event) => {
-    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-    suppressPenClick = penPointer.dragged;
-    penPointer = null;
-  }, { passive: true });
-
-  root.addEventListener('pointercancel', (event) => {
-    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-    suppressPenClick = penPointer.dragged;
-    penPointer = null;
-  }, { passive: true });
-
-  root.addEventListener('click', (event) => {
-    // Pencilでドラッグ／スクロールした直後のclickだけを無視する。
-    // 単純タップではsuppressPenClickがfalseなので、以降は指と同じ処理へ進む。
-    if (suppressPenClick) {
-      suppressPenClick = false;
-      return;
-    }
-
-    const areaButton = event.target.closest('.finish-area-btn');
+  function handleFinishActivation(target) {
+    const areaButton = target.closest('.finish-area-btn');
     if (areaButton) {
       setAreaMode(areaButton.dataset.areaMode);
       return;
     }
 
-    if (event.target.closest('#finishColorToggleBtn')) {
+    if (target.closest('#finishColorToggleBtn')) {
       toggleColorMode();
       return;
     }
 
-    if (event.target.closest('#finishChipInputToggleBtn')) {
+    if (target.closest('#finishChipInputToggleBtn')) {
       toggleChipInputMode();
       return;
     }
 
-    if (event.target.closest('#finishSimpleListToggleBtn')) {
+    if (target.closest('#finishSimpleListToggleBtn')) {
       toggleSimpleListOpen();
       return;
     }
@@ -312,7 +234,7 @@ function bindEvents(root) {
     // 階見出し行の開閉：行全体をタップ判定にする（見た目のボタンは小さくても、
     // 行の横幅ぶんの当たり判定を確保するため）。表示だけの操作のため、
     // Undo/Redo履歴には積まない。
-    const floorHeading = event.target.closest('.finish-floor-heading');
+    const floorHeading = target.closest('.finish-floor-heading');
     if (floorHeading) {
       toggleFloorCollapsed(floorHeading.dataset.floorKey);
       return;
@@ -320,7 +242,7 @@ function bindEvents(root) {
 
     // ID欄の「登録」ボタン：未登録の建材名称を、押下されたときだけ新規登録する。
     // 新規建材登録はUndo/Redoの対象外（withHistoryを使わない）。
-    const registerButton = event.target.closest('[data-action="register-material"]');
+    const registerButton = target.closest('[data-action="register-material"]');
     if (registerButton) {
       const room = findRoomByKey(registerButton.dataset.roomKey);
       if (room) {
@@ -336,22 +258,20 @@ function bindEvents(root) {
     }
 
     // 部屋コピーボタン：確認ダイアログが必要な場合は非同期で処理する。
-    const copyButton = event.target.closest('[data-action="copy-room"]');
+    const copyButton = target.closest('[data-action="copy-room"]');
     if (copyButton) {
       handleCopyRoomClick(copyButton.dataset.roomKey);
       return;
     }
 
-    const actionButton = event.target.closest('[data-action]');
+    const actionButton = target.closest('[data-action]');
     if (actionButton) {
       if (handleAction(actionButton)) return;
     }
 
-    const dataCell = event.target.closest('.finish-data-cell');
+    const dataCell = target.closest('.finish-data-cell');
     if (dataCell) {
-      // Pencilでも「どのセルを指したか」という選択操作までは許可する。
-      // ここで部屋・入力グループの選択状態を先に更新することで、
-      // Pencilの単純タップでも指タップと同じ選択枠を表示できる。
+      // 入力デバイスに関係なく、先に部屋・入力グループの選択状態を確定する。
       setSelectedRoomKey(dataCell.dataset.roomKey);
       setSelectedGroupKey(dataCell.dataset.groupKey);
       updateDrawerInsertButtonState();
@@ -380,11 +300,11 @@ function bindEvents(root) {
       }
 
       // 通常のセル選択：表示専用<span>をタップした場合だけ<input>へ
-      // 差し替えてfocus()する（Apple Pencil対策の中核）。focus()が同期的に
+      // 差し替えてfocus()する。focus()が同期的に
       // 発火させるfocusinイベントを、下のfocusinハンドラがそのまま処理し、
       // 部屋・入力グループ選択／フォーカス枠／Undo用スナップショットの
       // 記録までを一括して行う。
-      const displaySpan = event.target.closest('.finish-cell-display');
+      const displaySpan = target.closest('.finish-cell-display');
       if (displaySpan) {
         const input = swapDisplayToInput(displaySpan);
         if (input) input.focus();
@@ -401,10 +321,9 @@ function bindEvents(root) {
     // 差し替える（dataCellと同じ理由・同じ仕組み）。この欄は
     // .finish-room-block[data-room-key] の内側にあるため、下のroomBlock分岐で
     // 部屋選択も行われる（従来と同じ操作意味を維持する）。
-    const roomFieldDisplay = event.target.closest('.room-no-cell .finish-cell-display, .room-name-cell .finish-cell-display');
+    const roomFieldDisplay = target.closest('.room-no-cell .finish-cell-display, .room-name-cell .finish-cell-display');
     if (roomFieldDisplay) {
       // spanをinputへ差し替える前に部屋選択を確定する。
-      // Pencilの単純タップも指と同じ通常編集として扱う。
       setSelectedRoomKey(roomFieldDisplay.dataset.roomKey);
       updateDrawerInsertButtonState();
       applyRoomSelection();
@@ -414,13 +333,86 @@ function bindEvents(root) {
       return;
     }
 
-    const roomBlock = event.target.closest('.finish-room-block[data-room-key]');
+    const roomBlock = target.closest('.finish-room-block[data-room-key]');
     if (roomBlock) {
-      // 部屋ブロック自体の選択も、入力デバイスに関係なく通常どおり許可する。
       setSelectedRoomKey(roomBlock.dataset.roomKey);
       updateDrawerInsertButtonState();
       applyRoomSelection();
     }
+  }
+
+  root.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'pen') return;
+
+    const scrollHost = event.target.closest('.finish-table-scroll');
+    penPointer = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      target: event.target,
+      dragged: false,
+      scrollHost,
+      startScrollLeft: scrollHost ? scrollHost.scrollLeft : 0,
+      startScrollTop: scrollHost ? scrollHost.scrollTop : 0
+    };
+
+    // 新しいPencil操作が始まったら、前回操作のclick抑止状態は破棄する。
+    ignoreNextPenClick = false;
+    ignorePenClickUntil = 0;
+  }, { passive: true });
+
+  root.addEventListener('pointermove', (event) => {
+    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
+
+    const dx = event.clientX - penPointer.startX;
+    const dy = event.clientY - penPointer.startY;
+    if (Math.hypot(dx, dy) >= PEN_DRAG_THRESHOLD_PX) {
+      penPointer.dragged = true;
+    }
+  }, { passive: true });
+
+  root.addEventListener('pointerup', (event) => {
+    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
+
+    const gesture = penPointer;
+    penPointer = null;
+
+    const scrollMoved = Boolean(
+      gesture.scrollHost && (
+        gesture.scrollHost.scrollLeft !== gesture.startScrollLeft ||
+        gesture.scrollHost.scrollTop !== gesture.startScrollTop
+      )
+    );
+    const wasDrag = gesture.dragged || scrollMoved;
+
+    // Safariがpointerup後に生成するclickは、タップ・ドラッグのどちらでも
+    // この1操作分だけ無視する。タップ処理はここで直接1回だけ実行する。
+    ignoreNextPenClick = true;
+    ignorePenClickUntil = performance.now() + PEN_CLICK_SUPPRESS_MS;
+
+    if (wasDrag) return;
+
+    handleFinishActivation(gesture.target);
+  }, { passive: true });
+
+  root.addEventListener('pointercancel', (event) => {
+    if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
+
+    penPointer = null;
+    ignoreNextPenClick = true;
+    ignorePenClickUntil = performance.now() + PEN_CLICK_SUPPRESS_MS;
+  }, { passive: true });
+
+  root.addEventListener('click', (event) => {
+    if (ignoreNextPenClick && performance.now() <= ignorePenClickUntil) {
+      ignoreNextPenClick = false;
+      ignorePenClickUntil = 0;
+      return;
+    }
+
+    ignoreNextPenClick = false;
+    ignorePenClickUntil = 0;
+    handleFinishActivation(event.target);
   });
 
   root.addEventListener('focusin', (event) => {
@@ -449,7 +441,7 @@ function bindEvents(root) {
     setFocusedInputKey(input.dataset.inputKey);
     updateDrawerInsertButtonState();
 
-    // v0.1.4.1：セル選択・フォーカス移動では、部屋選択・入力グループ選択・
+    // セル選択・フォーカス移動では、部屋選択・入力グループ選択・
     // フォーカス枠だけを更新する（建材一致判定＝全セル走査は行わない）。
     applyRoomSelection();
     applyGroupSelection();
@@ -467,7 +459,7 @@ function bindEvents(root) {
       finalizePendingEdit(input.value);
       setFocusedInputKey(null);
       // renderRooms()が、focusedInputKeyと一致しなくなったこの欄を
-      // 表示専用<span>へ戻す（Phase 2：常時<input>構造の廃止に伴う対応）。
+      // 編集終了後は再描画で表示専用<span>へ戻す。
       renderRooms();
       renderSimpleList();
       return;
@@ -495,7 +487,7 @@ function bindEvents(root) {
 
     setFocusedInputKey(null);
     // renderRooms()は内部で全種類の選択表示を再適用するため、この後に
-    // applyVisualState()等を重ねて呼ばない（v0.1.4.1で二重呼び出しを解消）。
+    // applyVisualState()等を重ねて呼ばず、同じ表示更新を二重実行しない。
     renderRooms();
     renderSimpleList();
   });

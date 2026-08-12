@@ -1,56 +1,15 @@
 /**
  * src/js/app-init.js
  *
- * このファイルの役割：
- *   本開発版の起動処理。各UIモジュール（タブ・ドロワー・案件パネル・
- *   モーダル・認証UI）へのイベント配線と、最初に表示するタブの指定だけを行う。
+ * アプリ起動時の初期化順序をまとめる入口モジュール。
+ * バージョン表示、タブ、ドロワー、案件パネル、モーダル、更新機能、認証UI、
+ * 仕上表を順に初期化し、最後に仕上表タブを表示する。
  *
- * どこから呼ばれるか：
- *   src/app.html の末尾から type="module" で読み込まれ、
- *   DOMContentLoaded のタイミングで自動的に実行される。
- *
- * 何を取得しているか：
- *   何も取得しない（各UIモジュール側がDOM要素を取得する）。
- *
- * 何を判定しているか：
- *   何も判定しない。案件データ・仕上表データはこの時点でまだ存在しないため。
- *   ログイン中かどうかの判定は src/js/ui/auth-ui.js 側の責務。
- *
- * どこへ書き込んでいるか：
- *   どこにも書き込まない。イベントを登録するだけ。
- *
- * どの処理とは分離しているか：
- *   ・案件の読込・状態の初期化（v0.2.0以降で追加予定の app-state.js）
- *   ・仕上表・建材リスト・写真タブの描画処理（v0.3.0以降で追加予定）
- *   ・ローカル保存／Firestore同期／OneDrive連携（v0.8〜v0.10で追加予定）
- *   これらはこのファイルには一切含まれていない。
- *   認証処理の中身（ログイン・ログアウト・トークン取得）は
- *   src/js/auth/microsoft-auth.js が持ち、ここでは呼び出すだけ。
- *
- * 今回の変更：
- *   1. タブ・ドロワー・案件パネル・モーダルのイベント配線のみ実装
- *   2. 起動時に仕上表タブをデフォルト表示
- *   3. 保存・状態管理・外部通信は未実装（意図的に何も行わない）
- *   4.（リポジトリ整理時に追加）認証UI（src/js/ui/auth-ui.js）の
- *      イベント配線を追加。既存のタブ・ドロワー・案件パネル・モーダルの
- *      初期化順序は変更していない。
- *
- * 動作確認手順：
- *   1. src/app.html をブラウザで開く
- *   2. 仕上表タブが最初から表示されていることを確認する
- *   3. 各タブ（建材リスト／写真／調査図／同期／設定／レコード）を
- *      クリックし、中身は空でも枠とタイトルが切り替わることを確認する
- *   4. ヘッダーの「案件」ボタンで案件選択パネルが左から開閉することを確認する
- *   5. 「操作」ボタンでドロワーが右から開閉することを確認する
- *   6. 案件選択パネル内の「既存案件を開く」ボタンでモーダルが開閉することを確認する
- *   7. ヘッダーの「Microsoftログイン」でログインし、ユーザー名と
- *      Graphトークン取得状態が表示されることを確認する
- *   8. 「ログアウト」で未ログイン表示へ戻ることを確認する
- *   9. 再読み込み後もログイン状態が維持されることを確認する
- *   10. ブラウザのコンソールに致命的エラーが出ていないことを確認する
+ * 業務データの保存・同期そのものは各担当モジュールへ分離し、ここでは行わない。
  */
 
-import { appConfig } from '../config/app-config.js';
+import { applyAppVersionDisplay } from './app-version.js';
+import { bindAppUpdateEvents } from './app-update.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
@@ -58,29 +17,6 @@ import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
 
-
-/**
- * app-config.js の version を画面上のバージョン表記へ一括反映する。
- * HTML側へバージョン番号を直書きしないことで、今後はappConfig.versionだけを
- * 更新すればヘッダー・操作パネル・document.titleが同じ値になる。
- */
-function applyAppVersionDisplay() {
-  const versionText = `v${appConfig.version}`;
-
-  document.title = `${appConfig.appName} ${versionText}`;
-
-  const headerVersion = document.getElementById('headerVersion');
-  if (headerVersion) headerVersion.textContent = versionText;
-
-  const developmentHint = document.getElementById('appDevelopmentHint');
-  if (developmentHint) developmentHint.textContent = `仕上表機能実装中 ${versionText}`;
-
-  const versionStatus = document.getElementById('appVersionStatus');
-  if (versionStatus) versionStatus.textContent = `${versionText}（仕上表機能実装中）`;
-
-  const drawerVersion = document.getElementById('drawerVersion');
-  if (drawerVersion) drawerVersion.textContent = versionText;
-}
 
 /**
  * UI骨格の起動処理。
@@ -98,10 +34,11 @@ function initUiSkeleton() {
   bindDrawerEvents();
   bindProjectPanelEvents();
   bindModalEvents();
+  bindAppUpdateEvents();
   bindAuthUiEvents();
   initializeFinishTable();
 
-  // 起動時は仕上表タブを表示する（v0.15.10と同じ既定タブ）
+  // 起動時は仕上表タブを既定表示する。
   showTab('finish');
 }
 

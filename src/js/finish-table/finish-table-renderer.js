@@ -1,38 +1,12 @@
 /**
  * src/js/finish-table/finish-table-renderer.js
  *
- * v0.1.4.3 仕上表のDOM描画専用モジュール。
- * 状態変更は行わず、stateを読み取ってテーブル・操作列・選択表示を描画する。
+ * 仕上表のDOM描画専用モジュール。
+ * 表は1個の2Dスクロール領域で描画し、左側は1部屋につき1個の固定ペイン、
+ * 右側は入力行を持つ。空固定セル・rowspan・clone overlay・JS横同期は使わない。
  *
- * v0.1.4.3 表示構造：
- *   仕上表は .finish-table-scroll 1個だけを縦横両方のネイティブ
- *   スクロール領域として使用する。ヘッダーも本体も同じscroll座標系に置き、
- *   scrollLeft→transform等のJS同期は行わない。
- *
- *   ・ヘッダー … top:0 にsticky
- *   ・左固定領域 … 1部屋につき1個の固定ペインをleft:0にsticky
- *   ・右入力領域 … rowCount分の28px行を持つ
- *   ・2行目以降の空固定セル、rowspan、clone overlay、absolute見せかけ結合は使わない
- *
- *   列幅はcomputeColumnLayout()を唯一の正本とし、ヘッダー・左固定ペイン・
- *   右入力領域へ同じlayout結果を適用する。
- *
- * v0.1.4.2 Phase 2（Apple Pencil / Scribble対策。今回のsticky構造再設計
- * では変更していない）：
- *   ID/建材名称/部位/部屋No./部屋名の各欄は、編集中（focusedInputKeyと
- *   一致する）のときだけ<input>を描画し、それ以外は
- *   <span class="finish-cell-display">（表示専用要素）を描画する。
- *   iPad SafariのScribbleは、Apple Pencilが<input>等の編集可能要素に
- *   触れると手書き認識を始めるため、「常時<input>が画面に露出している」
- *   こと自体が問題だった。表示専用のspanは非フォーカス要素であり、
- *   Scribbleが反応する対象がそもそも存在しない。表示→編集への切り替え
- *   （spanをinputへ差し替える処理）はfinish-table-controller.js側の
- *   clickハンドラが行い、pointerType==='pen'（直前のpointerdownで記録）
- *   のときは切り替えを一切行わない。swapDisplayToInput()がこの切り替え
- *   処理の中核。編集終了（blur）時は、対象フィールドだけをinputからspan
- *   へ戻すのではなく、focusedInputKeyをnullにしてrenderRooms()を呼ぶ
- *   （既存の「blurで全体再描画する」パターンをそのまま使う）ことで、
- *   再描画時の条件分岐が自動的にspanへ戻す。
+ * 通常時の編集欄はspanとして描画し、実際に編集を開始した欄だけinputへ差し替える。
+ * これによりApple Pencilでスクロール中にScribbleが編集欄へ反応することを避ける。
  */
 
 import {
@@ -59,7 +33,7 @@ import { formatProjectDisplayName } from '../demo/sample-project.js';
 
 const OTHER_PART_INDEXES = new Set([5, 6]);
 
-/** コピーボタンの状態→表示ラベル対応（4状態＋通常）。v0.1.3から変更なし。 */
+/** コピーボタンの状態→表示ラベル対応（4状態＋通常）。 */
 const COPY_STATE_LABEL = {
   idle: 'コピー',
   source: 'コピー元',
@@ -116,7 +90,7 @@ export function renderFinishTab(container) {
       <section class="finish-simple-list-panel" id="finishSimpleListPanel"></section>
 
       <!--
-        v0.1.4.3 再構成：仕上表は1個の2Dスクロール領域で動かす。
+        仕上表は1個の2Dスクロール領域で動かす。
         左側は1部屋=1固定ブロック、右側だけが入力行を持つ。
         空固定セル・rowspan・clone overlay・JS横同期は使わない。
       -->
@@ -242,7 +216,7 @@ function computeColumnLayout() {
 /**
  * 仕上表を「1個の2Dスクロール領域 + 部屋単位ブロック」で再描画する。
  *
- * v0.1.4.3 書き換え：
+ * 現在の描画構造：
  * ・ヘッダーと本体は同じ .finish-sheet 幅・同じ computeColumnLayout() を共有する
  * ・左固定領域は、各入力行に空セルを作る方式を廃止する
  * ・左側は 1部屋 = 1つの .finish-room-fixed として生成する
@@ -467,7 +441,7 @@ function renderCopyButton(key) {
 /**
  * 部屋No./部屋名の欄。
  *
- * v0.1.4.2 Phase 2：編集中（focusedInputKeyがこの欄のroomFieldKeyと一致する）
+ * 編集中（focusedInputKeyがこの欄のroomFieldKeyと一致する）
  * のときだけ<input>を描画し、それ以外は表示専用の<span class="finish-cell-display">
  * を描画する（常時<input>構造の廃止。ファイル冒頭のコメント参照）。
  *
@@ -493,7 +467,7 @@ function renderRoomFieldControl(room, field) {
 /**
  * データセル1枠（ID／部位／建材名称のいずれか）を組み立てる。
  *
- * v0.1.4.2 Phase 2：編集中（focusedInputKeyがこの欄のinputKeyと一致する）
+ * 編集中（focusedInputKeyがこの欄のinputKeyと一致する）
  * のときだけ<input>を描画し、それ以外は表示専用の<span class="finish-cell-display">
  * を描画する（常時<input>構造の廃止。ファイル冒頭のコメント参照）。
  *
@@ -578,12 +552,10 @@ function renderPartCells(room, partIndex, row) {
  * 表示専用の<span class="finish-cell-display">を<input>へ差し替え、
  * フォーカスできる状態で返す。
  *
- * finish-table-controller.jsが、文字編集を開始できるタップ
- * （Apple Pencil以外）を検知したときにだけ呼ぶ。Pencilタップでは
- * 選択表示のみ更新し、この関数は呼ばない。テーブル全体を再描画せず、対象のフィールドだけを
- * 差し替えることで、タップのたびに仕上表全体が再描画される負荷・
- * ちらつきを避ける（v0.1.4.1で対応した「セル選択のたびに全体再描画しない」
- * 方針をPhase 2でも維持するため）。
+ * finish-table-controller.jsが編集開始と判定したタップ時に呼ぶ。
+ * Pencilも単純タップなら指・マウスと同じ処理を使う。ドラッグ時は呼ばない。
+ * テーブル全体を再描画せず対象フィールドだけを差し替えることで、
+ * 選択のたびに全体再描画される負荷とちらつきを避ける。
  *
  * spanがis-placeholder（値が空でplaceholder文字列を表示中）の場合、
  * textContentはplaceholder文字列そのものなので、そのままinput.valueへ

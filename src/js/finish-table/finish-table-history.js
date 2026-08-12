@@ -1,7 +1,7 @@
 /**
  * src/js/finish-table/finish-table-history.js
  *
- * v0.1.4で新設。仕上表全体に対する「戻る／進む」（Undo/Redo）専用の
+ * 仕上表全体に対する「戻る／進む」（Undo/Redo）専用の
  * 履歴スタックだけを持つモジュール。
  *
  * 何を取得しているか：
