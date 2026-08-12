@@ -35,10 +35,10 @@
  *      （data-input-key/data-field-keyという既存の属性で対象を判定する
  *      仕組みをそのまま利用できるため）。
  *   4.【Apple Pencil判定】pointerdownイベントでpointerTypeを記録し
- *      （clickイベント自体にはpointerType情報がないため）、'pen'のときは
- *      セル選択・編集開始（表示span→input切り替え）を一切発火させない。
- *      既定表示がフォーカス不可能な<span>であるため、Pencil接触時に
- *      そもそもScribbleが手書き認識の対象にできる要素が存在しない。
+ *      （clickイベント自体にはpointerType情報がないため）、'pen'のときも
+ *      セル／部屋の「選択」は許可する。一方、表示span→inputへの切り替えは
+ *      行わず、Pencil接触では文字編集を開始しない。既定表示がフォーカス
+ *      不可能な<span>のため、スクロール中にScribble対象となるinputを作らない。
  *   5.【編集終了】blur（focusout）時は、対象欄だけをinputからspanへ
  *      戻すのではなく、setFocusedInputKey(null)した上でrenderRooms()を
  *      呼ぶ（Phase 1以前からの「blurで全体を再描画する」パターンをそのまま
@@ -234,7 +234,8 @@ function bindEvents(root) {
   /*
    * Apple Pencil対策：clickイベント自体にはpointerType情報がないため、
    * 直前のpointerdownで記録しておく。以降のclick/focusin判定で
-   * 'pen'かどうかを見て、セル選択・編集開始を発火させるかどうかを決める。
+   * 'pen'かどうかを見て、文字編集を開始してよいかどうかを決める。
+   * Pencilでも単純タップによる選択は許可し、input化だけを抑止する。
    */
   let lastPointerType = 'mouse';
   root.addEventListener('pointerdown', (event) => {
@@ -303,15 +304,21 @@ function bindEvents(root) {
 
     const dataCell = event.target.closest('.finish-data-cell');
     if (dataCell) {
-      // Apple Pencil接触では、通常のセル選択・編集開始（表示span→input
-      // 切り替え）を一切発火させない。既定表示はフォーカス不可能な<span>
-      // であり、Pencil接触に反応して手書き認識を始める対象がそもそも
-      // 存在しないが、意図しないセル選択が起きないようJS側でも止める。
-      if (lastPointerType === 'pen') return;
-
+      // Pencilでも「どのセルを指したか」という選択操作までは許可する。
+      // ここで部屋・入力グループの選択状態を先に更新することで、
+      // Pencilの単純タップでも指タップと同じ選択枠を表示できる。
       setSelectedRoomKey(dataCell.dataset.roomKey);
       setSelectedGroupKey(dataCell.dataset.groupKey);
       updateDrawerInsertButtonState();
+
+      // Apple Pencilでは選択表示だけ更新し、span→inputへの差し替えや
+      // チップ入力による値反映は開始しない。これによりPencilスクロール時に
+      // Scribble対象となるinputを生成しないまま、タップ選択だけを可能にする。
+      if (lastPointerType === 'pen') {
+        applyRoomSelection();
+        applyGroupSelection();
+        return;
+      }
 
       // チップ入力ON＋建材選択中なら、クリックした入力グループへ建材を反映。
       // 対象欄は表示専用<span>・編集中<input>のどちらの場合もあるため、
@@ -359,13 +366,14 @@ function bindEvents(root) {
     // .finish-room-block[data-room-key] の内側にあるため、下のroomBlock分岐で
     // 部屋選択も行われる（従来と同じ操作意味を維持する）。
     const roomFieldDisplay = event.target.closest('.room-no-cell .finish-cell-display, .room-name-cell .finish-cell-display');
-    if (roomFieldDisplay && lastPointerType !== 'pen') {
-      // spanをinputへ差し替えると元のevent.targetはDOMから外れるため、
-      // 差し替え前に部屋選択を確定しておく。新しい1部屋=1固定ブロック構造でも
-      // 部屋No./部屋名タップ時の選択表示を確実に維持するための処理。
+    if (roomFieldDisplay) {
+      // spanをinputへ差し替える前に部屋選択を確定する。
+      // Pencilの場合も部屋選択は許可するが、編集用inputには切り替えない。
       setSelectedRoomKey(roomFieldDisplay.dataset.roomKey);
       updateDrawerInsertButtonState();
       applyRoomSelection();
+      if (lastPointerType === 'pen') return;
+
       const input = swapDisplayToInput(roomFieldDisplay);
       if (input) input.focus();
       return;
@@ -373,7 +381,8 @@ function bindEvents(root) {
 
     const roomBlock = event.target.closest('.finish-room-block[data-room-key]');
     if (roomBlock) {
-      if (lastPointerType === 'pen') return;
+      // 部屋ブロック自体の選択もPencilタップを許可する。
+      // 編集開始を伴わないため、Scribble対策とは競合しない。
       setSelectedRoomKey(roomBlock.dataset.roomKey);
       updateDrawerInsertButtonState();
       applyRoomSelection();

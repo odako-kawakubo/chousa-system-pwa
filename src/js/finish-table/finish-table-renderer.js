@@ -578,8 +578,9 @@ function renderPartCells(room, partIndex, row) {
  * 表示専用の<span class="finish-cell-display">を<input>へ差し替え、
  * フォーカスできる状態で返す。
  *
- * finish-table-controller.jsが、タップ（pointerType!=='pen'）を検知した
- * ときにだけ呼ぶ。テーブル全体を再描画せず、対象のフィールドだけを
+ * finish-table-controller.jsが、文字編集を開始できるタップ
+ * （Apple Pencil以外）を検知したときにだけ呼ぶ。Pencilタップでは
+ * 選択表示のみ更新し、この関数は呼ばない。テーブル全体を再描画せず、対象のフィールドだけを
  * 差し替えることで、タップのたびに仕上表全体が再描画される負荷・
  * ちらつきを避ける（v0.1.4.1で対応した「セル選択のたびに全体再描画しない」
  * 方針をPhase 2でも維持するため）。
