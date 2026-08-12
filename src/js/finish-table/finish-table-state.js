@@ -1,18 +1,21 @@
 /**
  * src/js/finish-table/finish-table-state.js
  *
- * v0.1.3 仕上表の状態管理。
+ * v0.1.4 仕上表の状態管理。
  * 保存・Firebase同期はまだ行わず、画面確認に必要な状態と業務ロジックを
  * このモジュールへ集約する。
  *
- * v0.1.3の変更点：
- *   1. ＋階／＋地下階を、部屋1室ではなく10部屋ブロック単位の追加へ変更
- *   2. 部屋コピーの状態管理を拡張（コピー元／コピー可／上書き／戻すの4状態、
- *      内部外部またぎコピーの許可、コピー元解除時の全クリア）。コピー状態は
- *      既存の roomCopy スロットに引き続き集約し、selectedRoomKey等の入力選択
- *      状態とは混ぜない（この分離は v0.1.2 時点から変更していない設計方針）
- *   3. 未登録の建材名称を自動登録しないよう変更（登録は
- *      registerCellMaterial()が呼ばれたときだけ行う）
+ * v0.1.4の変更点：
+ *   1. 階（B階／通常階／階段／R階）の折りたたみ状態（collapsedFloors）を新設。
+ *      selectedRoomKey等の入力選択、roomCopy、Undo/Redo履歴とは独立した
+ *      専用の状態として持つ。表示の開閉だけを行い、部屋・建材データは変更しない。
+ *   2. Undo/Redo（戻る／進む。finish-table-history.js）用に、対象となる状態
+ *      （floors/stairs/roof/externalRooms/roomCopy）だけを取り出す
+ *      getUndoableSnapshot()／復元するrestoreUndoableSnapshot()を追加。
+ *      collapsedFloors・選択状態・簡易リストの表示設定はUndo/Redoの対象外のため、
+ *      スナップショットに含めない。
+ *   3. 地下階・屋上の表示名を「地下1階」→「B1階」へ変更（renderer側の
+ *      屋上表示は finish-table-renderer.js 側で変更）。
  */
 
 import { sampleProject } from '../demo/sample-project.js';
@@ -80,13 +83,57 @@ export function initFinishTableState() {
       sourceRoomKey: null,
       backups: {}, // { [対象roomKey]: コピー実行前のrowCount/cellsスナップショット }
       done: {}     // { [対象roomKey]: true } … 「戻す」操作が可能な対象
-    }
+    },
+
+    // 階の折りたたみ専用状態（v0.1.4で追加）。floorGroupKey()の値の集合。
+    // 表示の開閉だけに使い、Undo/Redo（戻る/進む）の対象にも含めない。
+    collapsedFloors: new Set()
   };
   notify();
 }
 
 export function getState() {
   return state;
+}
+
+/* ============================================================
+   Undo/Redo（戻る/進む）用のスナップショット（v0.1.4で追加）
+   finish-table-history.jsはこの2関数だけを介して状態を読み書きし、
+   状態の中身そのものは知らない。
+   ============================================================ */
+
+/**
+ * Undo/Redoの対象となる状態だけを取り出して複製する。
+ * 対象：floors／stairs／roof／externalRooms／roomCopy
+ * 対象外：selectedRoomKey等の選択状態、collapsedFloors（折りたたみ）、
+ *         colorMode／chipInputMode／simpleListOpen／areaMode（表示設定）
+ *
+ * @returns {object}
+ */
+export function getUndoableSnapshot() {
+  return clone({
+    floors: state.floors,
+    stairs: state.stairs,
+    roof: state.roof,
+    externalRooms: state.externalRooms,
+    roomCopy: state.roomCopy
+  });
+}
+
+/**
+ * getUndoableSnapshot()で取得したスナップショットを状態へ戻す。
+ * 折りたたみ状態・選択状態・表示設定には触れない。
+ *
+ * @param {object} snapshot
+ */
+export function restoreUndoableSnapshot(snapshot) {
+  if (!snapshot) return;
+  state.floors = snapshot.floors;
+  state.stairs = snapshot.stairs;
+  state.roof = snapshot.roof;
+  state.externalRooms = snapshot.externalRooms;
+  state.roomCopy = snapshot.roomCopy;
+  notify();
 }
 
 /* ============================================================
@@ -162,6 +209,20 @@ export function cellGroupKey(room, partIndex, row) {
 
 export function inputKey(room, partIndex, row, kind) {
   return `${cellGroupKey(room, partIndex, row)}|${kind}`;
+}
+
+/**
+ * 部屋No./部屋名フィールド用の識別キー（v0.1.4.2で追加）。
+ * data系セルのinputKey（roomKey|partIndex|row|kind）とは形が異なり、
+ * 衝突しないようにする。「現在編集中のフィールド」を判定する
+ * getFocusedInputKey()の値として、data系セルのinputKeyと同じ変数で
+ * 共用する（part-index/row を持たないだけの同じ役割）。
+ *
+ * @param {object} room
+ * @param {'room-no'|'room-name'} field
+ */
+export function roomFieldKey(room, field) {
+  return `${roomKey(room)}|${field}`;
 }
 
 /* ============================================================
@@ -429,6 +490,29 @@ export function getSimpleListOpen() {
   return !!state.simpleListOpen;
 }
 
+/**
+ * 階見出し行の開閉（v0.1.4で追加）。
+ * 表示・非表示だけを切り替える操作であり、部屋・建材データは変更しない。
+ * Undo/Redo（戻る/進む）の対象には含めない（notify()で再描画はするが、
+ * finish-table-history.jsのrecordHistory()は呼ばない）。
+ *
+ * @param {string} floorKeyValue floorGroupKey()の値
+ */
+export function toggleFloorCollapsed(floorKeyValue) {
+  if (!floorKeyValue) return;
+  if (state.collapsedFloors.has(floorKeyValue)) {
+    state.collapsedFloors.delete(floorKeyValue);
+  } else {
+    state.collapsedFloors.add(floorKeyValue);
+  }
+  notify();
+}
+
+/** @returns {boolean} その階（floorGroupKey）が折りたたまれているか。 */
+export function isFloorCollapsed(floorKeyValue) {
+  return state.collapsedFloors.has(floorKeyValue);
+}
+
 /* ============================================================
    追加・挿入・部屋No.
    ============================================================ */
@@ -481,13 +565,15 @@ export function addNormalFloor() {
  * ＋B階（地下階追加）：地下階を追加する。
  * v0.1.3で1部屋→10部屋ブロックへ変更。呼び出し元は「1-1」ブロックの
  * 階セル内ショートカットと、操作パネル（ドロワー）の2箇所（finish-table-controller.js）。
+ * v0.1.4：表示名を「地下${next}階」から「B${next}階」へ変更（部屋No.表記の
+ * B1-1等は変更していない）。
  */
 export function addBasementFloor() {
   const list = state.floors.filter((floor) => floor.areaCode === 'B');
   const next = list.length ? Math.max(...list.map((floor) => floor.floor)) + 1 : 1;
   const rooms = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) rooms.push(createFloorRoom('B', next, i));
-  state.floors.push({ uid: uid('floor'), areaCode: 'B', floor: next, label: `地下${next}階`, rooms });
+  state.floors.push({ uid: uid('floor'), areaCode: 'B', floor: next, label: `B${next}階`, rooms });
   notify();
 }
 

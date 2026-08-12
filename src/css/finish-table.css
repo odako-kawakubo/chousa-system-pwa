@@ -1,24 +1,17 @@
 /**
  * src/css/finish-table.css
  *
- * v0.1.3 仕上表専用スタイル。
- * 旧v0.15.10の見た目を参考にしつつ、継ぎ足しではなく本開発版用に整理して定義する。
+ * v0.1.4.3 仕上表専用スタイル。
  *
- * v0.1.3の変更点：
- *   1. 簡易リストが仕上表の上に来たため、横スクロール領域（.finish-table-track）
- *      との幅連動が不要になった（.finish-simple-list-panelは単独でwidth:100%）
- *   2. 簡易リストの背景をさらに淡い黄色へ、チップOFF時の背景を
- *      「パネルより少し濃い黄色」に調整
- *   3. 部屋コピーボタンの4状態（コピー元／コピー可／上書き／戻す）の配色を追加
- *   4. ID欄の「登録」ボタンのスタイルを追加
- *   5. 部屋コピー確認モーダル（.finish-confirm-modal）のスタイルを追加
- *   6. 使われなくなった右上ツールバーの構造ツール用スタイル（.finish-structure-tools）を削除
+ * 表示構造は「1個の2Dスクロール領域 + 部屋単位freeze pane」に一本化する。
+ * ・.finish-table-scroll が縦横両方の唯一のネイティブスクロール領域
+ * ・ヘッダーは同じscroll領域内で top:0 にsticky
+ * ・左側は1部屋につき1個の固定ペインを left:0 にsticky
+ * ・右側だけが入力行を持ち、＋行で増えた分だけ部屋ブロックが自然に伸びる
+ * ・空セル、rowspan、clone overlay、JS横同期、absolute見せかけ結合は使わない
  *
- * グループ強調枠（.is-material-match / .is-group-selected）の描き方は
- * v0.1.2から変更していない：全セル共通で上辺・下辺を青、先頭セルだけ左辺、
- * 最終セルだけ右辺を青にする。内部の境界線（ID/部位/建材名称の間）は
- * 通常のグレーのまま残す（全セル4辺を青にすると内側の線が二重になり、
- * 外周1本には見えなくなるため、その方式は採らない）。
+ * Apple Pencil / Scribble対策（通常span、編集時のみinput、penでは編集開始しない）
+ * はv0.1.4.2の仕組みをそのまま維持する。
  */
 
 /* ============================================================
@@ -41,6 +34,19 @@
   gap: 4px;
   margin-bottom: 5px;
   flex-wrap: wrap;
+  /*
+   * 操作バー自体をsticky固定する。top:0にはしない。アプリ既存のヘッダー
+   * （header.app-header-compact）と上部タブバー（.app .toolbar）が、この
+   * タブより先に画面上端へsticky固定されているため、それらの高さぶん
+   * （--finish-page-stack-h。renderer.jsのupdateStickyMetrics()が実測して
+   * 設定）だけ下から固定を始めないと、既存ヘッダー等に重なってしまう。
+   * 固定pxで決め打ちしない。
+   */
+  position: sticky;
+  top: var(--finish-page-stack-h, 96px);
+  z-index: 40;
+  background: var(--bg);
+  padding: 4px 0;
 }
 
 .finish-toolbar-group {
@@ -60,303 +66,12 @@
 }
 
 /* ============================================================
-   横スクロール領域（仕上表テーブル本体のみ。簡易リストはこの外側＝上に表示）
-   ============================================================ */
-.finish-table-scroll {
-  overflow-x: auto;
-  overflow-y: visible;
-  padding-bottom: 4px;
-}
-
-.finish-table-track {
-  width: max-content;
-  min-width: 1160px;
-}
-
-.finish-table-host {
-  width: 100%;
-}
-
-/* ============================================================
-   仕上表テーブル
-   ============================================================ */
-.finish-table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: max-content;
-  min-width: 1160px;
-  background: #fff;
-  color: #253044;
-}
-
-.finish-table col.col-floor { width: 30px; min-width: 30px; }
-.finish-table col.col-room-no { width: 40px; min-width: 40px; }
-.finish-table col.col-copy { width: 30px; min-width: 30px; }
-.finish-table col.col-room-name { width: 70px; min-width: 70px; }
-.finish-table col.col-id { width: 30px; min-width: 30px; }
-
-.finish-table th,
-.finish-table td {
-  border: 1px solid #cbd5e1;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.finish-table thead th {
-  position: sticky;
-  z-index: 8;
-  background: #eef3f8;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.finish-head-parent th {
-  top: 0;
-  height: 15px;
-  min-height: 15px;
-  font-size: 10px;
-  line-height: 15px;
-  font-weight: 700;
-}
-
-.finish-head-child th {
-  top: 15px;
-  height: 10px;
-  min-height: 10px;
-  font-size: 8px;
-  line-height: 10px;
-  font-weight: 500;
-}
-
-/* 左4列は横スクロール中も固定する。 */
-.finish-table th:nth-child(1),
-.finish-table td.floor-cell { position: sticky; left: 0; z-index: 6; }
-.finish-table th:nth-child(2),
-.finish-table td.room-no-cell { position: sticky; left: 30px; z-index: 6; }
-.finish-table th:nth-child(3),
-.finish-table td.copy-cell { position: sticky; left: 70px; z-index: 6; }
-.finish-table th:nth-child(4),
-.finish-table td.room-name-cell { position: sticky; left: 100px; z-index: 6; }
-.finish-table thead th:nth-child(-n+4) { z-index: 12; }
-
-.finish-table tbody tr { height: 28px; }
-
-.finish-meta {
-  background: #fff;
-  vertical-align: middle;
-  text-align: center;
-}
-
-.floor-cell { font-size: 10px; font-weight: 700; }
-.room-no-cell { font-size: 12px; font-weight: 700; }
-.copy-cell { font-size: 9px; }
-.room-name-cell { font-size: 11px; font-weight: 400; }
-
-.room-control {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 2px;
-}
-
-.room-action-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-}
-
-.room-no-input,
-.room-name-input {
-  width: calc(100% - 4px);
-  min-width: 0;
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  text-align: center;
-  padding: 1px 2px;
-  color: inherit;
-}
-
-.room-no-input { font-size: 12px; font-weight: 700; }
-.room-name-input { font-size: 11px; font-weight: 400; }
-.room-no-input:focus,
-.room-name-input:focus {
-  outline: none;
-  border-color: #60a5fa;
-  background: #fff;
-}
-
-/* ・行／＋部屋／＋階／＋B階を同じ小型ボタン系へ統一。 */
-.room-copy-btn,
-.room-mini-btn {
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  background: #f8fafc;
-  color: #475569;
-  padding: 1px 4px;
-  min-height: 16px;
-  font-size: 8px;
-  line-height: 1.15;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.room-copy-btn:hover,
-.room-mini-btn:hover { background: #eef2f7; }
-
-/* ============================================================
-   部屋コピーボタン：4状態＋通常（v0.1.3）
-   コピー元＝淡い赤／コピー可＝淡い青／上書き＝淡いオレンジ／戻す＝淡い緑
-   ============================================================ */
-.room-copy-btn.state-idle {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
-}
-.room-copy-btn.state-source {
-  background: #fee2e2;
-  border-color: #f87171;
-  color: #b91c1c;
-  font-weight: 700;
-}
-.room-copy-btn.state-target-empty {
-  background: #dbeafe;
-  border-color: #60a5fa;
-  color: #1d4ed8;
-  font-weight: 700;
-}
-.room-copy-btn.state-target-overwrite {
-  background: #ffedd5;
-  border-color: #fb923c;
-  color: #9a3412;
-  font-weight: 700;
-}
-.room-copy-btn.state-restore {
-  background: #dcfce7;
-  border-color: #4ade80;
-  color: #15803d;
-  font-weight: 700;
-}
-
-/* ============================================================
-   入力セル
-   ============================================================ */
-.finish-data-cell {
-  height: 28px;
-  background: #fff;
-  vertical-align: middle;
-  position: relative;
-}
-
-/* カラーON時：建材が入っている入力グループは淡い建材色。 */
-.finish-table.color-mode .finish-data-cell[style*="--material-bg"] {
-  background: var(--material-bg);
-}
-
-.finish-cell-input {
-  width: calc(100% - 4px);
-  height: 22px;
-  margin: 2px;
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  outline: none;
-  background: transparent;
-  padding: 1px 3px;
-  color: #1f2937;
-}
-
-.finish-id-input {
-  font-size: 12px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.finish-name-input { font-size: 11px; font-weight: 400; }
-.finish-part-input { font-size: 10px; font-weight: 400; }
-
-/* 未入力セルの補助文字だけ小さく・薄くする。 */
-.finish-cell-input::placeholder {
-  color: #bcc4ce;
-  font-size: 8px;
-  font-weight: 400;
-  opacity: 1;
-}
-
-/*
- * 入力中の「白抜き」はセル全体ではなく、実際にフォーカス中のinputだけ。
- * 部屋選択の薄水色や建材色はセル背景として残る。
- */
-.finish-cell-input.is-focused-input,
-.finish-cell-input:focus {
-  background: #fff;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, .12);
-}
-
-/* v0.1.3：ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。 */
-.finish-register-btn {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  border: 1px solid #f59e0b;
-  border-radius: 4px;
-  background: #fffbeb;
-  color: #92400e;
-  font-size: 8px;
-  line-height: 1.2;
-  padding: 0 3px;
-  cursor: pointer;
-}
-.finish-register-btn:hover { background: #fef3c7; }
-
-/* ============================================================
-   選択表示
-   ============================================================ */
-/* 入力対象がある部屋全体を薄い水色にする。 */
-.finish-table tbody tr.is-room-selected > td.finish-meta,
-.finish-table tbody tr.is-room-selected > td.finish-data-cell:not([style*="--material-bg"]) {
-  background: #eaf4ff;
-}
-
-/* カラーOFF時は建材色が無いので、部屋選択色を全セルへ適用。 */
-.finish-table:not(.color-mode) tbody tr.is-room-selected > td.finish-data-cell {
-  background: #eaf4ff;
-}
-
-/*
- * グループ強調：通常はID+建材名称、その他はID+部位+建材名称。
- * 内側の縦罫線は通常色のまま、外周だけ青くする（v0.1.2から変更なし）。
- */
-.finish-data-cell.is-material-match,
-.finish-data-cell.is-group-selected {
-  border-top-width: 2px;
-  border-bottom-width: 2px;
-  border-top-color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-.finish-data-cell.group-first.is-material-match,
-.finish-data-cell.group-first.is-group-selected { border-left: 2px solid #2563eb; }
-.finish-data-cell.group-last.is-material-match,
-.finish-data-cell.group-last.is-group-selected { border-right: 2px solid #2563eb; }
-
-/* 入力対象グループは簡易リスト一致より少し強く見えるようにする。 */
-.finish-data-cell.is-group-selected {
-  border-top-color: #1d4ed8;
-  border-bottom-color: #1d4ed8;
-}
-.finish-data-cell.group-first.is-group-selected { border-left-color: #1d4ed8; }
-.finish-data-cell.group-last.is-group-selected { border-right-color: #1d4ed8; }
-
-/* ============================================================
-   簡易リスト（v0.1.3：仕上表の上に表示。背景をさらに淡く）
+   簡易リスト（操作バーの下にsticky固定）
    ============================================================ */
 .finish-simple-list-panel {
+  position: sticky;
+  top: calc(var(--finish-page-stack-h, 96px) + var(--finish-toolbar-h, 34px));
+  z-index: 39;
   box-sizing: border-box;
   margin-bottom: 6px;
   padding: 4px 6px 5px;
@@ -429,6 +144,508 @@
 .finish-photo-link:disabled { color: #94a3b8; cursor: default; }
 
 /* ============================================================
+   仕上表 2Dスクロール / freeze pane
+   ============================================================
+   v0.1.4.3 書き換え：
+   ・ネイティブスクロールは .finish-table-scroll 1個だけ
+   ・左側は 1部屋 = 1つの .finish-room-fixed として描画する
+   ・右側だけが rowCount 分の入力行を持つ
+   ・2行目以降の空固定セル、rowspan、clone overlay、absoluteによる
+     「見せかけ結合」は使わない
+   ・左固定領域全体1個をstickyにし、4列個別stickyは使わない
+   ============================================================ */
+.finish-table-scroll {
+  position: relative;
+  overflow: auto;
+  max-height: calc(100dvh - var(--finish-page-stack-h, 96px) - var(--finish-toolbar-h, 34px) - var(--finish-list-h, 0px) - 18px);
+  min-height: 220px;
+  padding-bottom: 4px;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+  background: #fff;
+}
+
+.finish-table-host {
+  width: max-content;
+  min-width: 100%;
+}
+
+/* ============================================================
+   仕上表シート共通
+   ============================================================ */
+.finish-table {
+  position: relative;
+  width: max-content;
+  background: #fff;
+  color: #253044;
+}
+
+/* ============================================================
+   ヘッダー
+   左固定4列と建材ヘッダーを同じ幅定義で2ペインに分ける。
+   ヘッダー全体は同じ2Dスクロール領域の中でtop:0にsticky。
+   ============================================================ */
+.finish-sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: grid;
+  height: 25px;
+  background: #eef3f8;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.finish-header-fixed {
+  position: sticky;
+  left: 0;
+  z-index: 52;
+  display: grid;
+  height: 25px;
+  background: #eef3f8;
+  box-shadow: inset -2px 0 #64748b;
+}
+
+.finish-header-fixed-cell {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 25px;
+  border-left: 1px solid #cbd5e1;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.finish-header-fixed-cell + .finish-header-fixed-cell {
+  border-left: 0;
+  border-right: 0;
+}
+.finish-header-fixed-cell:not(:last-child) { border-right: 1px solid #cbd5e1; }
+
+.finish-header-materials {
+  display: grid;
+  height: 25px;
+  background: #eef3f8;
+}
+
+.finish-head-material-group {
+  box-sizing: border-box;
+  height: 25px;
+  border-right: 1px solid #cbd5e1;
+  overflow: hidden;
+}
+.finish-header-group-label {
+  height: 15px;
+  line-height: 15px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  border-bottom: 1px solid #cbd5e1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.finish-header-group-children {
+  display: flex;
+  align-items: stretch;
+  height: 10px;
+}
+.finish-header-child-cell {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: 10px;
+  line-height: 10px;
+  font-size: 8px;
+  font-weight: 500;
+  text-align: center;
+  border-right: 1px solid #cbd5e1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.finish-header-child-cell:last-child { border-right: none; }
+
+/* ============================================================
+   階見出し
+   ============================================================ */
+.finish-floor-heading {
+  position: relative;
+  height: 15px;
+  box-sizing: border-box;
+  background: #e2e8f0;
+  border-bottom: 1px solid #cbd5e1;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.finish-floor-heading-inner {
+  position: sticky;
+  left: 4px;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  line-height: 15px;
+  padding: 0 4px;
+  background: #e2e8f0;
+}
+
+.finish-floor-toggle {
+  display: inline-block;
+  font-size: 7px;
+  line-height: 1;
+  color: #64748b;
+}
+
+.finish-floor-heading-label {
+  font-size: 8px;
+  font-weight: 700;
+  color: #475569;
+  margin-left: 3px;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   1部屋 = 1固定ブロック + 右入力行群
+   ============================================================ */
+.finish-room-block {
+  display: grid;
+  align-items: stretch;
+  width: 100%;
+  min-height: 56px; /* デフォルト2行 × 28px */
+  border-bottom: 1px solid #b7c2d0;
+}
+
+.finish-room-fixed {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  align-items: stretch;
+  align-self: stretch;
+  background: #fff;
+}
+
+/* 固定列と建材列の境界線。
+ * Safari で inset box-shadow が隣接要素に埋もれることがあるため、
+ * 本体側だけ疑似要素で前面に明示描画する。
+ * width はレイアウト幅へ加算されないので、列位置は変わらない。
+ */
+.finish-room-fixed::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: #64748b;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.finish-meta {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid #cbd5e1;
+  background: #fff;
+  vertical-align: middle;
+  text-align: center;
+  overflow: hidden;
+}
+.finish-meta:not(:last-child) { border-right: 1px solid #cbd5e1; }
+
+.floor-cell { font-size: 10px; font-weight: 700; }
+.room-no-cell { font-size: 12px; font-weight: 700; }
+.copy-cell { font-size: 9px; }
+.room-name-cell { font-size: 11px; font-weight: 400; }
+
+.finish-room-materials {
+  width: var(--finish-material-w);
+  min-width: var(--finish-material-w);
+}
+
+.finish-material-row {
+  display: grid;
+  width: var(--finish-material-w);
+  height: 28px;
+  box-sizing: border-box;
+}
+.finish-material-row:not(:last-child) .finish-data-cell {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.room-control {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px;
+}
+
+.room-action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.room-no-input,
+.room-name-input {
+  width: calc(100% - 4px);
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  text-align: center;
+  padding: 1px 2px;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+.room-no-input { font-size: 12px; font-weight: 700; }
+.room-name-input { font-size: 11px; font-weight: 400; }
+.room-no-input:focus,
+.room-name-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  background: #fff;
+}
+
+/* ＋行／＋部屋／＋階／＋B階を同じ小型ボタン系へ統一。 */
+.room-copy-btn,
+.room-mini-btn {
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  padding: 1px 4px;
+  min-height: 16px;
+  font-size: 8px;
+  line-height: 1.15;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.room-copy-btn:hover,
+.room-mini-btn:hover { background: #eef2f7; }
+
+/* ============================================================
+   部屋コピーボタン：4状態＋通常
+   ============================================================ */
+.room-copy-btn.state-idle {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+.room-copy-btn.state-source {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+  font-weight: 700;
+}
+.room-copy-btn.state-target-empty {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.room-copy-btn.state-target-overwrite {
+  background: #ffedd5;
+  border-color: #fb923c;
+  color: #9a3412;
+  font-weight: 700;
+}
+.room-copy-btn.state-restore {
+  background: #dcfce7;
+  border-color: #4ade80;
+  color: #15803d;
+  font-weight: 700;
+}
+
+/* ============================================================
+   入力セル
+   ============================================================ */
+.finish-data-cell {
+  position: relative;
+  box-sizing: border-box;
+  height: 28px;
+  min-width: 0;
+  background: #fff;
+  border-right: 1px solid #cbd5e1;
+  overflow: hidden;
+}
+
+/* カラーON時：建材が入っている入力グループは淡い建材色。 */
+.finish-table.color-mode .finish-data-cell[style*="--material-bg"] {
+  background: var(--material-bg);
+}
+
+.finish-cell-input {
+  width: calc(100% - 4px);
+  height: 22px;
+  margin: 2px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  background: transparent;
+  padding: 1px 3px;
+  color: #1f2937;
+  /*
+   * Apple PencilがiPad Safariの「Scribble（手書き入力）」として反応し、
+   * 縦スクロールが描画動作のように奪われる不具合への対応。manipulationは
+   * ダブルタップズーム等の余計なジェスチャーを無効化しつつ、パン
+   * （スクロール）操作自体は妨げない標準的な指定。
+   */
+  touch-action: manipulation;
+}
+
+.finish-id-input {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.finish-name-input { font-size: 11px; font-weight: 400; }
+.finish-part-input { font-size: 10px; font-weight: 400; }
+
+/* 未入力セルの補助文字だけ小さく・薄くする。 */
+.finish-cell-input::placeholder {
+  color: #bcc4ce;
+  font-size: 8px;
+  font-weight: 400;
+  opacity: 1;
+}
+
+/*
+ * 入力中の「白抜き」はセル全体ではなく、実際にフォーカス中のinputだけ。
+ * 部屋選択の薄水色や建材色はセル背景として残る。
+ */
+.finish-cell-input.is-focused-input,
+.finish-cell-input:focus {
+  background: #fff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, .12);
+}
+
+/* ============================================================
+   表示専用セル（v0.1.4.2 Phase 2で新設）
+   ==============================================================
+   ID/建材名称/部位/部屋No./部屋名の各欄は、編集中（タップして<input>へ
+   差し替えられた状態）以外は、この<span class="finish-cell-display">で
+   表示する。iPad SafariのScribbleはApple Pencilが<input>等の編集可能
+   要素に触れると手書き認識を始めるため、「常時<input>が画面に露出して
+   いる」こと自体が問題だった。この要素は既定でフォーカス不可能な
+   ただの<span>であり、Scribbleが反応できる対象がそもそも存在しない
+   （タップされたときだけfinish-table-controller.js／
+   finish-table-renderer.jsのswapDisplayToInput()が<input>へ差し替える）。
+   .finish-cell-inputと同じ幅・高さ・余白・枠にすることで、編集中と
+   非編集中で見た目のサイズが変わらないようにする（タップのたびに
+   セルサイズがガタつくのを防ぐ）。
+   ============================================================ */
+.finish-cell-display {
+  display: block;
+  width: calc(100% - 4px);
+  height: 22px;
+  margin: 2px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 1px 3px;
+  line-height: 18px;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+/* 未入力セルの補助文字（旧::placeholderに相当）だけ小さく・薄くする。 */
+.finish-cell-display.is-placeholder {
+  color: #bcc4ce;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+/* ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。 */
+.finish-register-btn {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 8px;
+  line-height: 1.2;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.finish-register-btn:hover { background: #fef3c7; }
+
+/* ============================================================
+   選択表示
+   ============================================================ */
+/* 部屋選択時は左固定ブロックと右入力行群を同時に薄い水色にする。 */
+.finish-room-block.is-room-selected .finish-meta,
+.finish-room-block.is-room-selected .finish-data-cell:not([style*="--material-bg"]) {
+  background: #eaf4ff;
+}
+
+/* カラーOFF時は建材色が無いので、部屋選択色を全入力セルへ適用。 */
+.finish-table:not(.color-mode) .finish-room-block.is-room-selected .finish-data-cell {
+  background: #eaf4ff;
+}
+
+/* グループ強調：通常罫線とは別レイヤーで内側へ描画する。
+ * border を上書きしないため、部屋内の横罫線と選択枠が競合しない。
+ */
+.finish-data-cell.is-material-match {
+  box-shadow:
+    inset 0 2px 0 #2563eb,
+    inset 0 -2px 0 #2563eb;
+}
+.finish-data-cell.group-first.is-material-match {
+  box-shadow:
+    inset 2px 0 0 #2563eb,
+    inset 0 2px 0 #2563eb,
+    inset 0 -2px 0 #2563eb;
+}
+.finish-data-cell.group-last.is-material-match {
+  box-shadow:
+    inset -2px 0 0 #2563eb,
+    inset 0 2px 0 #2563eb,
+    inset 0 -2px 0 #2563eb;
+}
+
+.finish-data-cell.is-group-selected {
+  box-shadow:
+    inset 0 2px 0 #1d4ed8,
+    inset 0 -2px 0 #1d4ed8;
+}
+.finish-data-cell.group-first.is-group-selected {
+  box-shadow:
+    inset 2px 0 0 #1d4ed8,
+    inset 0 2px 0 #1d4ed8,
+    inset 0 -2px 0 #1d4ed8;
+}
+.finish-data-cell.group-last.is-group-selected {
+  box-shadow:
+    inset -2px 0 0 #1d4ed8,
+    inset 0 2px 0 #1d4ed8,
+    inset 0 -2px 0 #1d4ed8;
+}
+
+/* ============================================================
    写真件数確認モーダル（写真本体は後続）
    ============================================================ */
 .finish-photo-confirm-modal {
@@ -458,8 +675,8 @@
 .finish-photo-confirm-body { padding: 16px 12px; font-size: 12px; }
 
 /* ============================================================
-   部屋コピー確認モーダル（v0.1.3で新設。上書き／内部外部またぎコピー用）
-   src/js/ui/modal.jsは使わず、仕上表側だけで完結させる。
+   部屋コピー確認モーダル（上書き／内部外部またぎコピー用）
+   src/js/ui/modal.jsは使わず、仕上表側だけで完結させる（v0.1.3から変更なし）。
    ============================================================ */
 .finish-confirm-modal {
   display: none;

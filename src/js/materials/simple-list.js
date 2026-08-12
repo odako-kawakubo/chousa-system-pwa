@@ -4,6 +4,13 @@
  * v0.1.2 簡易リスト専用モジュール。
  * チップ選択は「参照状態」として保持し、チップ入力ONのときだけ
  * controller側が仕上表へ建材を反映する。
+ *
+ * v0.1.4.1の変更点：
+ *   チップ選択時に呼ぶ再描画を、仕上表全体を再適用するapplyVisualState()から、
+ *   建材の一致強調だけを更新するapplyMaterialMatchHighlight()へ変更した。
+ *   チップ選択は部屋選択・セル選択とは無関係な操作のため、仕上表側の
+ *   無関係な表示（部屋選択・入力グループ選択・フォーカス枠）まで
+ *   毎回再走査する必要がない。
  */
 
 import {
@@ -13,7 +20,7 @@ import {
   findMaterialByInputId,
   getMaterialUsageRoomNos
 } from '../finish-table/finish-table-state.js';
-import { applyVisualState } from '../finish-table/finish-table-renderer.js';
+import { applyMaterialMatchHighlight } from '../finish-table/finish-table-renderer.js';
 
 let boundContainer = null;
 
@@ -34,7 +41,7 @@ export function initSimpleList(container) {
       // 同じチップをもう一度押したら選択解除。
       setSelectedMaterialInputId(current === inputId ? null : inputId);
       renderSimpleList();
-      applyVisualState();
+      applyMaterialMatchHighlight();
       return;
     }
 

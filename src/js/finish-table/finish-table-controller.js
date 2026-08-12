@@ -1,18 +1,50 @@
 /**
  * src/js/finish-table/finish-table-controller.js
  *
- * v0.1.3 仕上表のイベント配線。
- * DOM描画はrenderer、状態更新はstate、簡易リスト描画はsimple-listへ委譲する。
+ * v0.1.4.3 仕上表のイベント配線。
+ * DOM描画はrenderer、状態更新はstate、簡易リスト描画はsimple-list、
+ * Undo/Redoの履歴スタックはfinish-table-historyへ委譲する。
  *
- * v0.1.3の変更点：
- *   1. 部屋コピーのクリックを、確認ダイアログ（上書き／内部外部またぎ）を
- *      経由してから状態を更新する非同期フローへ変更
- *   2. ID欄の「登録」ボタン（未登録建材の明示的な新規登録）を配線
- *   3. ドロワー（操作パネル）内の「＋挿入／＋地下階／＋階段／＋屋上」を配線。
- *      src/js/ui/drawer.jsは一切変更せず、開閉ロジック以外の部分
- *      （src/app.htmlの.drawer-body内マークアップ）にだけイベントを足す。
- *   4. 「＋挿入」はコピー等と同様に、既存の選択状態（selectedRoomKey）を
- *      そのまま利用する（新しい状態は追加していない）
+ * v0.1.4.3 表示構造：
+ *   ヘッダーと本体の横位置をJSで同期する処理は廃止した。
+ *   .finish-table-scroll 1個のネイティブ2Dスクロール内で、ヘッダーと本体が
+ *   同じ座標系を共有する。controller側はスクロール同期処理を持たない。
+ *
+ * v0.1.4.2 Phase 1の変更点（iPad Safari実機不具合の対応）：
+ *   1. セル選択・フォーカス移動時に呼ぶ再描画を、部屋選択・入力グループ選択・
+ *      フォーカス枠だけを更新する軽量関数（applyRoomSelection等）へ変更した。
+ *      建材の一致判定（applyMaterialMatchHighlight、全セル走査が必要で重い）は、
+ *      建材選択が変わる操作（チップクリック・簡易リスト選択）のときだけ呼ぶ。
+ *      renderRooms()は内部で全種類を再適用する（DOM再構築後は前回参照が
+ *      失効するため）ので、renderRooms()の直後に重ねて呼ばない。
+ *   2. 階見出し行の開閉を、▼/▶ボタン単体ではなく行全体
+ *      （.finish-floor-heading）のクリックで判定するよう変更した
+ *      （見た目を薄くしてもタップ領域を確保するため）。
+ *
+ * v0.1.4.2 Phase 2の変更点（Apple Pencil / Scribble対策。今回のsticky構造
+ * 再設計では変更していない）：
+ *   3.【常時input構造の廃止】ID/建材名称/部位/部屋No./部屋名の各欄は、
+ *      既定では表示専用<span class="finish-cell-display">（renderer側）で
+ *      描画される。編集を開始できるのは、pointerdownで記録した直近の
+ *      pointerType（下記lastPointerType）が'pen'でないときに、その欄を
+ *      クリックした場合だけ：finish-table-renderer.jsのswapDisplayToInput()
+ *      で<input>へ差し替え、input.focus()する。focus()が同期的に発火させる
+ *      focusinイベントを、既存のfocusinハンドラ（部屋・入力グループ選択、
+ *      フォーカス枠、Undo用スナップショットの記録）がそのまま処理する
+ *      ため、focusin側のロジックは「常時<input>」時代からほぼ変更していない
+ *      （data-input-key/data-field-keyという既存の属性で対象を判定する
+ *      仕組みをそのまま利用できるため）。
+ *   4.【Apple Pencil判定】pointerdownイベントでpointerTypeを記録し
+ *      （clickイベント自体にはpointerType情報がないため）、'pen'のときは
+ *      セル選択・編集開始（表示span→input切り替え）を一切発火させない。
+ *      既定表示がフォーカス不可能な<span>であるため、Pencil接触時に
+ *      そもそもScribbleが手書き認識の対象にできる要素が存在しない。
+ *   5.【編集終了】blur（focusout）時は、対象欄だけをinputからspanへ
+ *      戻すのではなく、setFocusedInputKey(null)した上でrenderRooms()を
+ *      呼ぶ（Phase 1以前からの「blurで全体を再描画する」パターンをそのまま
+ *      使う）。再描画時、renderFieldControl()/renderRoomFieldControl()が
+ *      getFocusedInputKey()と一致しない欄をspanとして描画するため、
+ *      結果的に編集していた欄がspanへ戻る。
  */
 
 import {
@@ -47,60 +79,95 @@ import {
   toggleChipInputMode,
   getChipInputMode,
   toggleSimpleListOpen,
+  toggleFloorCollapsed,
   describeRoomCopyClick,
   startRoomCopySource,
   cancelRoomCopySource,
   restoreRoomCopy,
-  executeRoomCopy
+  executeRoomCopy,
+  getUndoableSnapshot,
+  restoreUndoableSnapshot
 } from './finish-table-state.js';
 import {
   renderFinishTab,
   renderToolbarState,
   renderRooms,
-  applyVisualState,
-  showFinishConfirm
+  applyRoomSelection,
+  applyGroupSelection,
+  applyFocusedInputHighlight,
+  showFinishConfirm,
+  updateStickyMetrics,
+  swapDisplayToInput
 } from './finish-table-renderer.js';
+import { recordHistory, canUndo, canRedo, popUndo, popRedo, resetHistory } from './finish-table-history.js';
 import { initSimpleList, renderSimpleList } from '../materials/simple-list.js';
+
+/** フォーカス中の文字入力について、編集開始前のスナップショットと値を覚えておく。 */
+let pendingEditSnapshot = null;
+let pendingEditBeforeValue = null;
 
 export function initializeFinishTable() {
   const finishSection = document.getElementById('finish');
   if (!finishSection) return;
 
   initFinishTableState();
+  resetHistory();
   renderFinishTab(finishSection);
   initSimpleList(document.getElementById('finishSimpleListPanel'));
   bindEvents(finishSection);
   bindDrawerFinishTools();
-
+  bindUndoRedoButtons();
+  updateUndoRedoButtons();
+  setupStickyMetrics(finishSection);
   // state側でnotifyされた変更は、構造・操作列・簡易リストを一貫して再描画する。
+  // renderRooms()が内部で全種類の選択表示を再適用するため、ここで個別関数を
+  // 重ねて呼ぶ必要はない。
   subscribe(() => {
     renderToolbarState();
     renderRooms();
     renderSimpleList();
-    applyVisualState();
     updateDrawerInsertButtonState();
+    updateStickyMetrics(finishSection);
   });
 }
 
 /**
+ * 操作バー・簡易リストの高さ変化を監視し、sticky位置（renderer側のCSS変数）へ
+ * 反映する。簡易リストの開閉・チップ数増減・画面幅変更のいずれでも高さが
+ * 変わり得るため、固定pxで決め打ちせずResizeObserverで実測する。
+ *
+ * @param {HTMLElement} root #finish セクション要素
+ */
+function setupStickyMetrics(root) {
+  updateStickyMetrics(root);
+
+  const toolbar = root.querySelector('.finish-toolbar');
+  const list = root.querySelector('.finish-simple-list-panel');
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(() => updateStickyMetrics(root));
+    if (toolbar) observer.observe(toolbar);
+    if (list) observer.observe(list);
+  }
+  window.addEventListener('resize', () => updateStickyMetrics(root));
+}
+
+/**
  * 操作パネル（ドロワー）内の仕上表用ボタンを配線する。
- * src/js/ui/drawer.js（開閉ロジック）は一切変更しない。ここではボタンの
- * クリック処理だけを追加する。対象ボタンはsrc/app.htmlの.drawer-body内。
+ * src/js/ui/drawer.js（開閉ロジック）は一切変更しない。
  */
 function bindDrawerFinishTools() {
   document.getElementById('drawerAddBasementFloor')?.addEventListener('click', () => {
-    addBasementFloor();
+    withHistory(() => addBasementFloor());
   });
   document.getElementById('drawerAddStairs')?.addEventListener('click', () => {
-    addStairs();
+    withHistory(() => addStairs());
   });
   document.getElementById('drawerAddRoof')?.addEventListener('click', () => {
-    addRoof();
+    withHistory(() => addRoof());
   });
   document.getElementById('drawerInsertRoom')?.addEventListener('click', () => {
-    // 「現在選択中の部屋」は新しい状態を作らず、既存のselectedRoomKeyをそのまま使う。
     const key = getSelectedRoomKey();
-    if (key) addRoomAfter(key);
+    if (key) withHistory(() => addRoomAfter(key));
   });
   updateDrawerInsertButtonState();
 }
@@ -111,9 +178,68 @@ function updateDrawerInsertButtonState() {
   if (button) button.disabled = !getSelectedRoomKey();
 }
 
+/** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴（v0.1.4から変更なし）。 */
+function bindUndoRedoButtons() {
+  document.getElementById('finishUndoBtn')?.addEventListener('click', () => {
+    const restored = popUndo(getUndoableSnapshot());
+    if (restored) restoreUndoableSnapshot(restored);
+    updateUndoRedoButtons();
+  });
+  document.getElementById('finishRedoBtn')?.addEventListener('click', () => {
+    const restored = popRedo(getUndoableSnapshot());
+    if (restored) restoreUndoableSnapshot(restored);
+    updateUndoRedoButtons();
+  });
+}
+
+function updateUndoRedoButtons() {
+  const undoBtn = document.getElementById('finishUndoBtn');
+  const redoBtn = document.getElementById('finishRedoBtn');
+  if (undoBtn) undoBtn.disabled = !canUndo();
+  if (redoBtn) redoBtn.disabled = !canRedo();
+}
+
+/**
+ * Undo/Redo対象の操作を、操作前スナップショットの記録とセットで実行する。
+ *
+ * @param {() => void} mutate 実際に状態を変更する処理
+ */
+function withHistory(mutate) {
+  const before = getUndoableSnapshot();
+  mutate();
+  recordHistory(before);
+  updateUndoRedoButtons();
+}
+
+/**
+ * 文字入力の確定処理。focusinで保存しておいた「編集前スナップショット・
+ * 編集前の値」と、確定時の値を比較し、変わっていた場合だけ1操作として
+ * 履歴へ積む（1文字ごとには積まない）。
+ *
+ * @param {string} currentValue 確定時点の入力欄の値
+ */
+function finalizePendingEdit(currentValue) {
+  if (pendingEditSnapshot && currentValue !== pendingEditBeforeValue) {
+    recordHistory(pendingEditSnapshot);
+    updateUndoRedoButtons();
+  }
+  pendingEditSnapshot = null;
+  pendingEditBeforeValue = null;
+}
+
 function bindEvents(root) {
   if (root.dataset.finishEventsBound === '1') return;
   root.dataset.finishEventsBound = '1';
+
+  /*
+   * Apple Pencil対策：clickイベント自体にはpointerType情報がないため、
+   * 直前のpointerdownで記録しておく。以降のclick/focusin判定で
+   * 'pen'かどうかを見て、セル選択・編集開始を発火させるかどうかを決める。
+   */
+  let lastPointerType = 'mouse';
+  root.addEventListener('pointerdown', (event) => {
+    lastPointerType = event.pointerType || 'mouse';
+  }, { passive: true });
 
   root.addEventListener('click', (event) => {
     const areaButton = event.target.closest('.finish-area-btn');
@@ -137,7 +263,17 @@ function bindEvents(root) {
       return;
     }
 
+    // 階見出し行の開閉：行全体をタップ判定にする（見た目のボタンは小さくても、
+    // 行の横幅ぶんの当たり判定を確保するため）。表示だけの操作のため、
+    // Undo/Redo履歴には積まない。
+    const floorHeading = event.target.closest('.finish-floor-heading');
+    if (floorHeading) {
+      toggleFloorCollapsed(floorHeading.dataset.floorKey);
+      return;
+    }
+
     // ID欄の「登録」ボタン：未登録の建材名称を、押下されたときだけ新規登録する。
+    // 新規建材登録はUndo/Redoの対象外（withHistoryを使わない）。
     const registerButton = event.target.closest('[data-action="register-material"]');
     if (registerButton) {
       const room = findRoomByKey(registerButton.dataset.roomKey);
@@ -149,7 +285,6 @@ function bindEvents(root) {
         );
         renderRooms();
         renderSimpleList();
-        applyVisualState();
       }
       return;
     }
@@ -168,42 +303,99 @@ function bindEvents(root) {
 
     const dataCell = event.target.closest('.finish-data-cell');
     if (dataCell) {
+      // Apple Pencil接触では、通常のセル選択・編集開始（表示span→input
+      // 切り替え）を一切発火させない。既定表示はフォーカス不可能な<span>
+      // であり、Pencil接触に反応して手書き認識を始める対象がそもそも
+      // 存在しないが、意図しないセル選択が起きないようJS側でも止める。
+      if (lastPointerType === 'pen') return;
+
       setSelectedRoomKey(dataCell.dataset.roomKey);
       setSelectedGroupKey(dataCell.dataset.groupKey);
       updateDrawerInsertButtonState();
 
       // チップ入力ON＋建材選択中なら、クリックした入力グループへ建材を反映。
+      // 対象欄は表示専用<span>・編集中<input>のどちらの場合もあるため、
+      // どちらのクラスも対象にする共通セレクタで探す。
       if (getChipInputMode()) {
         const inputId = getSelectedMaterialInputId();
         const material = inputId != null ? findMaterialByInputId(inputId) : null;
         if (material) {
-          const input = dataCell.querySelector('.finish-cell-input') ||
-            document.querySelector(`[data-group-key="${CSS.escape(dataCell.dataset.groupKey)}"] .finish-cell-input`);
-          if (input) {
-            const room = findRoomByKey(input.dataset.roomKey);
+          const field = dataCell.querySelector('.finish-cell-display, .finish-cell-input') ||
+            document.querySelector(`[data-group-key="${CSS.escape(dataCell.dataset.groupKey)}"] .finish-cell-display, [data-group-key="${CSS.escape(dataCell.dataset.groupKey)}"] .finish-cell-input`);
+          if (field) {
+            const room = findRoomByKey(field.dataset.roomKey);
             if (room) {
-              applyMaterialToCell(room, Number(input.dataset.partIndex), Number(input.dataset.inputRow), material);
+              withHistory(() => {
+                applyMaterialToCell(room, Number(field.dataset.partIndex), Number(field.dataset.inputRow), material);
+              });
               renderRooms();
               renderSimpleList();
-              applyVisualState();
+              return;
             }
           }
         }
       }
 
-      applyVisualState();
+      // 通常のセル選択：表示専用<span>をタップした場合だけ<input>へ
+      // 差し替えてfocus()する（Apple Pencil対策の中核）。focus()が同期的に
+      // 発火させるfocusinイベントを、下のfocusinハンドラがそのまま処理し、
+      // 部屋・入力グループ選択／フォーカス枠／Undo用スナップショットの
+      // 記録までを一括して行う。
+      const displaySpan = event.target.closest('.finish-cell-display');
+      if (displaySpan) {
+        const input = swapDisplayToInput(displaySpan);
+        if (input) input.focus();
+      } else {
+        // 既にinput化されている欄（編集中）をクリックした場合は、部屋・
+        // 入力グループの表示だけ軽量に再適用する（仕上表全体は再描画しない）。
+        applyRoomSelection();
+        applyGroupSelection();
+      }
       return;
     }
 
-    const roomRow = event.target.closest('tr[data-room-key]');
-    if (roomRow) {
-      setSelectedRoomKey(roomRow.dataset.roomKey);
+    // 部屋No./部屋名欄：表示専用<span>をタップした場合だけ<input>へ
+    // 差し替える（dataCellと同じ理由・同じ仕組み）。この欄は
+    // .finish-room-block[data-room-key] の内側にあるため、下のroomBlock分岐で
+    // 部屋選択も行われる（従来と同じ操作意味を維持する）。
+    const roomFieldDisplay = event.target.closest('.room-no-cell .finish-cell-display, .room-name-cell .finish-cell-display');
+    if (roomFieldDisplay && lastPointerType !== 'pen') {
+      // spanをinputへ差し替えると元のevent.targetはDOMから外れるため、
+      // 差し替え前に部屋選択を確定しておく。新しい1部屋=1固定ブロック構造でも
+      // 部屋No./部屋名タップ時の選択表示を確実に維持するための処理。
+      setSelectedRoomKey(roomFieldDisplay.dataset.roomKey);
       updateDrawerInsertButtonState();
-      applyVisualState();
+      applyRoomSelection();
+      const input = swapDisplayToInput(roomFieldDisplay);
+      if (input) input.focus();
+      return;
+    }
+
+    const roomBlock = event.target.closest('.finish-room-block[data-room-key]');
+    if (roomBlock) {
+      if (lastPointerType === 'pen') return;
+      setSelectedRoomKey(roomBlock.dataset.roomKey);
+      updateDrawerInsertButtonState();
+      applyRoomSelection();
     }
   });
 
   root.addEventListener('focusin', (event) => {
+    // 部屋No./部屋名：編集前の値をUndo/Redo用に控えておくほか、
+    // 表示span⇔input切り替えの判定に使うfocusedInputKeyも設定する
+    // （data系セルのinputKeyと衝突しない別形式のroomFieldKeyを共用する。
+    // finish-table-state.jsのroomFieldKey()を参照）。
+    const roomNoInput = event.target.closest('.room-no-input');
+    const roomNameInput = event.target.closest('.room-name-input');
+    if (roomNoInput || roomNameInput) {
+      const input = roomNoInput || roomNameInput;
+      setFocusedInputKey(input.dataset.fieldKey);
+      applyFocusedInputHighlight();
+      pendingEditSnapshot = getUndoableSnapshot();
+      pendingEditBeforeValue = input.value;
+      return;
+    }
+
     const input = event.target.closest('.finish-cell-input');
     if (!input) return;
     const td = input.closest('.finish-data-cell');
@@ -213,12 +405,37 @@ function bindEvents(root) {
     setSelectedGroupKey(td.dataset.groupKey);
     setFocusedInputKey(input.dataset.inputKey);
     updateDrawerInsertButtonState();
-    applyVisualState();
+
+    // v0.1.4.1：セル選択・フォーカス移動では、部屋選択・入力グループ選択・
+    // フォーカス枠だけを更新する（建材一致判定＝全セル走査は行わない）。
+    applyRoomSelection();
+    applyGroupSelection();
+    applyFocusedInputHighlight();
+
+    pendingEditSnapshot = getUndoableSnapshot();
+    pendingEditBeforeValue = input.value;
   });
 
   root.addEventListener('focusout', (event) => {
+    const roomNoInput = event.target.closest('.room-no-input');
+    const roomNameInput = event.target.closest('.room-name-input');
+    if (roomNoInput || roomNameInput) {
+      const input = roomNoInput || roomNameInput;
+      finalizePendingEdit(input.value);
+      setFocusedInputKey(null);
+      // renderRooms()が、focusedInputKeyと一致しなくなったこの欄を
+      // 表示専用<span>へ戻す（Phase 2：常時<input>構造の廃止に伴う対応）。
+      renderRooms();
+      renderSimpleList();
+      return;
+    }
+
     const input = event.target.closest('.finish-cell-input');
     if (!input) return;
+
+    // 値が変わっていれば、実際の確定処理より先に履歴を積む
+    // （記録するのは「確定前」の状態にするため）。
+    finalizePendingEdit(input.value);
 
     const room = findRoomByKey(input.dataset.roomKey);
     if (!room) return;
@@ -229,15 +446,15 @@ function bindEvents(root) {
       const material = commitCellInputId(room, partIndex, row);
       if (!material && input.value.trim()) input.title = '登録済みの入力IDではありません';
     } else if (input.dataset.kind === 'name') {
-      // v0.1.3：未登録名は自動登録しない（commitCellMaterialName側の変更）。
-      // 未登録のままならID欄に「登録」ボタンが出る。
+      // 未登録名は自動登録しない。未登録のままならID欄に「登録」ボタンが出る。
       commitCellMaterialName(room, partIndex, row);
     }
 
     setFocusedInputKey(null);
+    // renderRooms()は内部で全種類の選択表示を再適用するため、この後に
+    // applyVisualState()等を重ねて呼ばない（v0.1.4.1で二重呼び出しを解消）。
     renderRooms();
     renderSimpleList();
-    applyVisualState();
   });
 
   root.addEventListener('input', (event) => {
@@ -272,15 +489,7 @@ function bindEvents(root) {
 }
 
 /**
- * 部屋コピーボタンのクリックを処理する（v0.1.3で新設）。
- *
- * 手順：
- * 1. describeRoomCopyClick()で「何が起きるか」を判定する（状態はまだ変更しない）
- * 2. 種別に応じて即時実行 or 確認ダイアログを経由する
- *    - 内部／外部をまたぐ場合は先に「またぎコピー」確認
- *    - 対象に既存入力がある場合は「上書き」確認
- *    - どちらかでキャンセルされたら、コピーは実行しない
- * 3. 確認が揃ったらexecuteRoomCopy()で実際にコピーする
+ * 部屋コピーボタンのクリックを処理する。
  *
  * @param {string} roomKeyValue
  */
@@ -296,6 +505,8 @@ async function handleCopyRoomClick(roomKeyValue) {
     return;
   }
   if (info.type === 'restore') {
+    // コピー専用の「戻す」。仕上表全体のUndo/Redo（戻る/進む）とは別物のため、
+    // ここではwithHistory()を使わない。
     restoreRoomCopy(roomKeyValue);
     return;
   }
@@ -317,36 +528,34 @@ async function handleCopyRoomClick(roomKeyValue) {
     if (!confirmed) return;
   }
 
-  executeRoomCopy(roomKeyValue);
+  withHistory(() => executeRoomCopy(roomKeyValue));
 }
 
 function handleAction(button) {
   switch (button.dataset.action) {
     case 'add-normal-floor':
-      addNormalFloor();
+      withHistory(() => addNormalFloor());
       return true;
     case 'add-basement-floor':
-      // 「1-1」ブロックの階セル・ドロワーいずれのボタンもこの同じ処理を呼ぶ。
-      addBasementFloor();
+      withHistory(() => addBasementFloor());
       return true;
     case 'add-stairs':
-      addStairs();
+      withHistory(() => addStairs());
       return true;
     case 'add-roof':
-      addRoof();
+      withHistory(() => addRoof());
       return true;
     case 'add-external-room':
-      addExternalRoom();
+      withHistory(() => addExternalRoom());
       return true;
     case 'add-row':
-      addInputRow(button.dataset.roomKey);
+      withHistory(() => addInputRow(button.dataset.roomKey));
       return true;
     case 'add-room': {
-      // 通常階はフロア末尾へ追加。階段・屋上・外部は現在部屋の直後へ追加。
       if (button.dataset.floorKey && !button.dataset.floorKey.includes('group')) {
-        addRoomToFloor(button.dataset.floorKey);
+        withHistory(() => addRoomToFloor(button.dataset.floorKey));
       } else {
-        addRoomAfter(button.dataset.roomKey);
+        withHistory(() => addRoomAfter(button.dataset.roomKey));
       }
       return true;
     }
