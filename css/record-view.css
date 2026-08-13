@@ -1,0 +1,122 @@
+/**
+ * src/css/record-view.css
+ *
+ * レコード確認タブ専用スタイル。
+ * v0.14.28の「サブタブ＋件数pill＋横スクロール表」の見え方を参考にしつつ、
+ * 本開発版のDOM・モジュール構成に合わせて新規定義している。
+ */
+
+.record-view-panel {
+  overflow: hidden;
+}
+
+.record-view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.record-view-subtab {
+  background: #fff;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.record-view-subtab.active {
+  background: var(--main);
+  border-color: var(--main);
+  color: #fff;
+}
+
+.record-view-toolbar .record-view-hint {
+  flex: 1 1 280px;
+  min-width: 180px;
+}
+
+.record-view-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 230px);
+  position: relative;
+  border-top: 1px solid var(--line);
+}
+
+.record-view-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max-content;
+  width: max-content;
+  font-size: 11.5px;
+}
+
+.record-view-table th,
+.record-view-table td {
+  min-width: 74px;
+  max-width: 260px;
+  padding: 5px 7px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.record-view-table th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--head);
+  font-weight: 700;
+  text-align: center;
+}
+
+.record-view-table .record-view-sticky-first {
+  position: sticky;
+  left: 0;
+  z-index: 11;
+  min-width: 88px;
+  background: #f8fafc;
+  box-shadow: 1px 0 0 var(--line);
+  font-weight: 700;
+}
+
+.record-view-table th.record-view-sticky-first {
+  z-index: 31;
+  background: var(--head);
+}
+
+.record-view-table .record-view-wrap {
+  min-width: 160px;
+  max-width: 280px;
+  white-space: pre-wrap;
+  line-height: 1.3;
+}
+
+.record-view-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.record-view-representative {
+  color: var(--main);
+  font-weight: 700;
+}
+
+.record-view-empty {
+  padding: 28px 16px !important;
+  text-align: center;
+  color: var(--muted);
+  background: #fff !important;
+}
+
+@media (max-width: 850px) {
+  .record-view-table-wrap {
+    max-height: calc(100vh - 250px);
+  }
+
+  .record-view-table {
+    font-size: 11px;
+  }
+}

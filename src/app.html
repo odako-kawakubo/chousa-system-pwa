@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="./css/common.css" />
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
+<link rel="stylesheet" href="./css/record-view.css" />
 </head>
 <body>
 
@@ -164,12 +165,33 @@
       </div>
     </section>
 
-    <!-- レコードタブ：仕上表・建材・写真の正式レコード確認用。 -->
+    <!-- レコードタブ：Storeに実際に保持されている正式レコードを読み取り専用で確認する。 -->
     <section class="content" id="records" style="display:none">
-      <div class="panel">
-        <div class="panel-head"><h3>レコード</h3></div>
-        <div class="hint" style="padding:24px">
-          ここに仕上表・建材・写真の各レコード一覧を実装します。
+      <div class="panel record-view-panel">
+        <div class="record-view-toolbar">
+          <button class="btn small record-view-subtab active" data-record-view-tab="material">建材</button>
+          <button class="btn small record-view-subtab" data-record-view-tab="finish">仕上表</button>
+          <button class="btn small record-view-subtab" data-record-view-tab="photo">写真</button>
+
+          <span class="pill">
+            <span id="recordViewCountLabel">建材レコード</span>
+            <b id="recordViewTotalCount">0</b>件
+          </span>
+          <span class="pill ok" id="recordViewActivePill">
+            有効 <b id="recordViewActiveCount">0</b>件
+          </span>
+          <span class="pill" id="recordViewRepresentativePill" style="display:none">
+            代表 <b id="recordViewRepresentativeCount">0</b>件
+          </span>
+
+          <span class="hint record-view-hint" id="recordViewHint">
+            正式Storeの保存内容を確認します。
+          </span>
+          <button class="btn small" id="recordViewRefreshButton">レコード再表示</button>
+        </div>
+
+        <div class="record-view-table-wrap">
+          <table class="record-view-table" id="recordViewTable"></table>
         </div>
       </div>
     </section>

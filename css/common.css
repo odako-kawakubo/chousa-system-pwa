@@ -1,2 +1,177 @@
-:root{--bg:#f5f7fb;--panel:#fff;--line:#d6dce8;--text:#1f2937;--muted:#64748b;--main:#2563eb;--main2:#eaf1ff;--green:#16a34a;--orange:#f59e0b;--red:#dc2626;--head:#e8edf6}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;color:var(--text);background:var(--bg)}button,input,select{font:inherit}.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 11px;font-size:13px;cursor:pointer}.btn.primary{background:var(--main);border-color:var(--main);color:#fff}.btn.small{padding:4px 8px;font-size:12px}.btn:disabled{opacity:.55;cursor:not-allowed}.pill{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff;font-size:12px;white-space:nowrap}.hint{font-size:12px;color:var(--muted);line-height:1.5}.panel{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+/**
+ * common.css
+ *
+ * このファイルの役割：
+ *   アプリ全体で共通して使う「色・文字・ボタン・ピル」等の基礎スタイルを定義する。
+ *   個々のタブ（仕上表・建材リスト・写真など）専用のスタイルはここには置かない。
+ *
+ * どこから読み込まれるか：
+ *   src/app.html の <head> から最初に読み込む。
+ *
+ * 参照元：
+ *   旧単体HTML版の
+ *   :root 変数、.btn、.pill、.hint の定義をそのまま踏襲している。
+ *   数値・色を変更した箇所はない（見た目を1画面ずつ合わせる方針のため）。
+ *
+ * 分離していること：
+ *   ・レイアウト（ヘッダー高さ・タブ・ドロワーの位置など）は layout.css 側
+ *   ・各タブ内部の専用スタイル（仕上表の表・写真グリッド等）は本開発版が
+ *     そのタブを実装するタイミングで追加する専用CSSファイル側
+ */
+
+/* ============================================================
+   カラー・寸法変数
+   旧単体HTML版の :root を基準にした値。ここを変えると全体の配色が変わるため、
+   本開発版で色を変更したい場合は、必ずこの1箇所だけを直す。
+   ============================================================ */
+:root {
+  --bg: #f5f7fb;
+  --panel: #fff;
+  --line: #d6dce8;
+  --text: #1f2937;
+  --muted: #64748b;
+  --main: #2563eb;
+  --main2: #eaf1ff;
+  --green: #16a34a;
+  --orange: #f59e0b;
+  --red: #dc2626;
+  --head: #e8edf6;
+  --section: #dbeafe;
+  --simple: #fff8c5;
+  --record: #f8fafc;
+  --registered: #eefaf1;
+  --edit: #fff7ed;
+}
+
+/* ============================================================
+   ベースリセット
+   ============================================================ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
+
+h1 {
+  font-size: 15px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   ピル（状態表示バッジ）
+   例：オンライン状態、同期状態、端末名、ログイン状態など。
+   ============================================================ */
+.pill {
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #fff;
+  white-space: nowrap;
+}
+.pill.ok,
+.ok {
+  color: var(--green);
+}
+.pill.warn,
+.warn {
+  color: var(--orange);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ============================================================
+   ボタン
+   ============================================================ */
+.btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn.primary {
+  background: var(--main);
+  border-color: var(--main);
+  color: #fff;
+}
+.btn.ghost {
+  background: #f8fafc;
+}
+.btn.small {
+  font-size: 11.5px;
+  padding: 3px 7px;
+  border-radius: 7px;
+}
+.btn.icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   汎用パネル（各タブ内のカード状コンテナで共通利用）
+   ============================================================ */
+.panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcff;
+}
+.panel-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* ============================================================
+   接続状態ドット（オンライン/オフライン表示）
+   ============================================================ */
+.connection-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #cbd5e1;
+}
+.connection-dot.offline {
+  background: #94a3b8;
+}
+.connection-dot.wait {
+  background: var(--orange);
+}
+.connection-dot.error {
+  background: var(--red);
+}

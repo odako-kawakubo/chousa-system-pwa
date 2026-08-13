@@ -163,7 +163,7 @@ function currentRooms() {
 
 /** 階／コピー/部屋名の各固定列の幅（px）。部屋No.列だけが可変。 */
 const FLOOR_COL_WIDTH = 30;
-const COPY_COL_WIDTH = 35;
+const COPY_COL_WIDTH = 38;
 const ROOM_NAME_COL_WIDTH = 70;
 /** ID列の幅（px）。建材名称・その他部位の列だけがセル内容に応じて可変。 */
 const ID_COL_WIDTH = 30;
@@ -204,8 +204,10 @@ function computeColumnLayout() {
     }
   });
 
+  // 部屋No.列は内部・外部とも内容に応じて可変。
+  // 最小幅はヘッダ「部屋No.」が切れない幅を確保し、長い文字列だけ自然に広げる。
   const longestRoomNo = rooms.reduce((max, room) => Math.max(max, String(room.roomNo || '').length), 0);
-  const roomNoWidth = Math.max(40, Math.min(90, 18 + longestRoomNo * 7));
+  const roomNoWidth = Math.max(54, Math.min(160, 22 + longestRoomNo * 8));
 
   const fixedRegionWidth = FLOOR_COL_WIDTH + roomNoWidth + COPY_COL_WIDTH + ROOM_NAME_COL_WIDTH;
 
