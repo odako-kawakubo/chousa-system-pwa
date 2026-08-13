@@ -3,7 +3,7 @@
  *
  * 仕上表・建材の業務ロジック。
  *
- * v0.1.5.1B 方針：
+ * v0.1.5.1D 方針：
  * - 1入力枠 = 1 finishRecord。未入力枠も実レコードとして保持する。
  * - 独立した部屋レコード／代表レコード／rowCountsは持たない。
  * - 同一部屋のfinishRecordは内部補助ID roomUid で束ねる。
@@ -53,6 +53,17 @@ function partsForArea(areaCode) {
 function defaultPartName(areaCode, partIndex) {
   const raw = partsForArea(areaCode)[partIndex - 1] || '';
   return partIndex >= 5 ? 'その他' : raw;
+}
+
+/**
+ * その他1/2の業務上の部位名を正規化する。
+ * 入力が空、またはスロット名そのもの（その他1/その他2）の場合は
+ * 正式な部位名「その他」として保持する。実部位が入力されていればその値を使う。
+ */
+function normalizeOtherPartName(value) {
+  const text = String(value ?? '').trim();
+  if (!text || text === 'その他1' || text === 'その他2') return 'その他';
+  return text;
 }
 
 function appendSystemMemo(existing, message) {
@@ -301,7 +312,7 @@ function writeCellPatch(anchor, partIndex, row, patch) {
   }
   const normalizedPatch = { ...patch };
   if (Object.prototype.hasOwnProperty.call(normalizedPatch, 'part') && partIndex >= 5) {
-    normalizedPatch.part = String(normalizedPatch.part || '').trim() || 'その他';
+    normalizedPatch.part = normalizeOtherPartName(normalizedPatch.part);
   }
   finishRecordStore.set({ ...existing, ...normalizedPatch, updatedAt: nowIso() });
   refreshMaterialUsageDerivedFields();
@@ -399,10 +410,16 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
         materialRecordStore.set(material);
       }
     }
-    writeCellPatch(anchor, partIndex, row, {
+    const patch = {
       inputId: String(material.inputId),
       materialId: material.materialId
-    });
+    };
+    // その他1/2は実部位未入力なら、業務上の部位名を「その他」として保持する。
+    if (partIndex >= 5) {
+      const current = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
+      patch.part = normalizeOtherPartName(current?.part);
+    }
+    writeCellPatch(anchor, partIndex, row, patch);
     refreshMaterialUsageDerivedFields();
   });
   return material;
@@ -481,11 +498,36 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
   const target = targetRecords[0];
   if (!sourceRecords.length || !target) return;
 
+  // コピー先には、既に存在するfinishRecordへ値だけを書き込む。
+  // コピー元の方が行数が多い場合だけ不足する入力枠を新規生成し、
+  // コピー元の方が少ない場合は余分な入力枠を除いて行構成を一致させる。
+  const sourcePositions = new Set(sourceRecords.map((record) => record.position));
+  const targetByPosition = new Map(targetRecords.map((record) => [record.position, record]));
+
   finishRecordStore.batch(() => {
-    targetRecords.forEach((record) => finishRecordStore.remove(record.finishId));
+    // コピー元に存在しない余分な行は、コピー後の行構成から外す。
+    targetRecords.forEach((record) => {
+      if (!sourcePositions.has(record.position)) finishRecordStore.remove(record.finishId);
+    });
+
     sourceRecords.forEach((source) => {
       const partIndex = partIndexFromPosition(source.position);
-      const part = partIndex >= 5 ? (source.part || 'その他') : defaultPartName(target.areaCode, partIndex);
+      const part = partIndex >= 5 ? (String(source.part || '').trim() || 'その他') : defaultPartName(target.areaCode, partIndex);
+      const existing = targetByPosition.get(source.position);
+
+      if (existing) {
+        // 既存のコピー先レコードはID・位置情報を維持し、入力内容だけ上書きする。
+        finishRecordStore.set({
+          ...existing,
+          part,
+          materialId: source.materialId,
+          inputId: source.inputId,
+          updatedAt: nowIso()
+        });
+        return;
+      }
+
+      // コピー元の行数が多い場合のみ、コピー先に不足するfinishRecordを追加する。
       finishRecordStore.set(createFinishRecord({
         areaCode: target.areaCode,
         roomPosition: target.roomPosition,
@@ -496,8 +538,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         part,
         materialId: source.materialId,
         inputId: source.inputId,
-        roomUid: target.roomUid,
-        systemMemo: source.systemMemo
+        roomUid: target.roomUid
       }));
     });
   });
@@ -532,6 +573,65 @@ export function seedInitialMaterials() {
   materialRecordStore.batch(() => records.forEach((record) => materialRecordStore.set(record)));
 }
 
+/**
+ * 初期確認用：テスト建材を仕上表へランダム風に配置する。
+ * Math.random()は使わず固定シードを使うため、同じレビュー版では毎回同じ配置になる。
+ * 本番データ生成とは切り離したdemo専用処理。
+ */
+function assignSampleMaterialsToFinishRecords(records) {
+  const materials = materialRecordStore.getAll().filter((material) => material.status === 'active');
+  if (!materials.length || !records.length) return records;
+
+  // その他1/2へテスト建材が入る場合に使う実部位候補。
+  // 本番の候補設定とは無関係な、レビュー用demoデータだけの値。
+  const sampleOtherParts = ['窓枠', '配管', '梁', '柱', '貫通部', '床下', '壁部'];
+
+  let seed = 15103;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
+
+  const applySampleMaterial = (record, material) => {
+    const partIndex = partIndexFromPosition(record.position);
+    const next = {
+      ...record,
+      materialId: material.materialId,
+      inputId: String(material.inputId)
+    };
+
+    // ランダム配置済みの「その他」建材は、実部位入力ありの状態も確認できるようにする。
+    // その他1/2というスロット名はpartへ保存せず、実部位名を保存する。
+    if (partIndex >= 5) {
+      next.part = sampleOtherParts[Math.floor(random() * sampleOtherParts.length)];
+    }
+    return next;
+  };
+
+  // 全20件が少なくとも1回は確認できるよう、候補セルを固定シードでシャッフルして先に割り当てる。
+  const indices = records.map((_, index) => index);
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  const used = new Set();
+  materials.forEach((material, materialIndex) => {
+    const index = indices[materialIndex % indices.length];
+    records[index] = applySampleMaterial(records[index], material);
+    used.add(index);
+  });
+
+  // 残りは約28%を追加で埋め、同じ建材が複数部屋・複数部位に出る状態も確認できるようにする。
+  records.forEach((record, index) => {
+    if (used.has(index) || random() >= 0.28) return;
+    const material = materials[Math.floor(random() * materials.length)];
+    records[index] = applySampleMaterial(record, material);
+  });
+
+  return records;
+}
+
 export function seedInitialFinishRecords() {
   const records = [];
   INITIAL_STRUCTURE_SEED.floors.forEach(({ areaCode, floor, roomCount }) => {
@@ -542,6 +642,7 @@ export function seedInitialFinishRecords() {
   INITIAL_STRUCTURE_SEED.externalRoomNames.forEach((name, index) => {
     records.push(...buildFlatRoomSeed('E', index + 1, name));
   });
+  assignSampleMaterialsToFinishRecords(records);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
   refreshMaterialUsageDerivedFields();
 }

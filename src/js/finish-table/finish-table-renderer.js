@@ -163,7 +163,7 @@ function currentRooms() {
 
 /** 階／コピー/部屋名の各固定列の幅（px）。部屋No.列だけが可変。 */
 const FLOOR_COL_WIDTH = 30;
-const COPY_COL_WIDTH = 35;
+const COPY_COL_WIDTH = 38;
 const ROOM_NAME_COL_WIDTH = 70;
 /** ID列の幅（px）。建材名称・その他部位の列だけがセル内容に応じて可変。 */
 const ID_COL_WIDTH = 30;
@@ -204,8 +204,10 @@ function computeColumnLayout() {
     }
   });
 
+  // 部屋No.列は内部・外部とも内容に応じて可変。
+  // 最小幅はヘッダ「部屋No.」が切れない幅を確保し、長い文字列だけ自然に広げる。
   const longestRoomNo = rooms.reduce((max, room) => Math.max(max, String(room.roomNo || '').length), 0);
-  const roomNoWidth = Math.max(40, Math.min(90, 18 + longestRoomNo * 7));
+  const roomNoWidth = Math.max(54, Math.min(160, 22 + longestRoomNo * 8));
 
   const fixedRegionWidth = FLOOR_COL_WIDTH + roomNoWidth + COPY_COL_WIDTH + ROOM_NAME_COL_WIDTH;
 
@@ -660,20 +662,44 @@ export function applyMaterialMatchHighlight() {
   const table = findTable();
   if (!table) return;
 
+  // 前回の強調を解除する。
   lastMatchCells.forEach((cell) => cell.classList.remove('is-material-match'));
   lastMatchCells = [];
 
   const selectedMaterial = getSelectedMaterialInputId();
   if (selectedMaterial == null) return;
 
-  table.querySelectorAll('[data-group-key]').forEach((td) => {
-    const idField = td.querySelector('.finish-id-input');
+  /*
+   * 簡易リストの選択値は入力IDなので、まず各入力グループのIDセルだけを確認する。
+   * 一致したら、そのセル単体ではなく同じ data-group-key を持つセル全部へ
+   * is-material-match を付ける。
+   *
+   * 通常部位: ID + 建材名称
+   * その他:   ID + 部位 + 建材名称
+   *
+   * これにより group-first / group-middle / group-last のCSSが連続して効き、
+   * 1つの建材入力枠全体を1本の青枠として表示できる。
+   */
+  const matchedGroupKeys = new Set();
+
+  table.querySelectorAll('[data-group-key]').forEach((cell) => {
+    const idField = cell.querySelector('.finish-id-input');
     if (!idField) return;
+
     const idValue = 'value' in idField ? idField.value : idField.textContent;
-    if (String(idValue) === String(selectedMaterial)) {
-      td.classList.add('is-material-match');
-      lastMatchCells.push(td);
-    }
+    if (String(idValue).trim() !== String(selectedMaterial).trim()) return;
+
+    const groupKey = cell.dataset.groupKey;
+    if (groupKey) matchedGroupKeys.add(groupKey);
+  });
+
+  matchedGroupKeys.forEach((groupKey) => {
+    const groupCells = Array.from(
+      table.querySelectorAll(`[data-group-key="${CSS.escape(groupKey)}"]`),
+    );
+
+    groupCells.forEach((cell) => cell.classList.add('is-material-match'));
+    lastMatchCells.push(...groupCells);
   });
 }
 

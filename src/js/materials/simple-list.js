@@ -74,7 +74,10 @@ export function renderSimpleList() {
   const selected = getSelectedMaterialInputId();
   container.innerHTML = `
     <div class="finish-simple-list-items" id="finishSimpleListItems">
-      ${materialRecordStore.getAll().map((material) => renderChip(material, selected, state.colorMode)).join('')}
+      ${materialRecordStore.getAll()
+        .filter((material) => material.status === 'active')
+        .map((material) => renderChip(material, selected, state.colorMode))
+        .join('')}
     </div>
     <div class="finish-selected-info">${renderSelectedInfo(selected)}</div>
   `;

@@ -1,0 +1,318 @@
+/**
+ * src/css/material-list.css
+ *
+ * v0.1.5.2B 建材リスト専用スタイル。
+ * 14.28の一覧性を参考に、本開発の固定列・入力仕様へ合わせて整理している。
+ */
+
+.material-list-panel {
+  overflow: hidden;
+}
+
+.material-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.material-list-toolbar-left,
+.material-list-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.material-list-toolbar .material-list-selected {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-list-color-toggle {
+  min-height: 28px;
+}
+
+.material-list-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 190px);
+  border-top: 0;
+  background: #fff;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.material-list-table {
+  --material-id-width: 35px;
+  --material-part-width: 72px;
+  --material-name-width: 184px;
+  min-width: 1290px;
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11.5px;
+  color: #0f172a;
+}
+
+.material-list-table th,
+.material-list-table td {
+  box-sizing: border-box;
+  padding: 4px 5px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.material-list-table th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--head);
+  text-align: center;
+  font-weight: 700;
+}
+
+.material-list-table .col-no {
+  width: 35px;
+  min-width: 35px;
+  max-width: 35px;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* 正式仕様：左固定はID / 部位 / 建材名称。No.は固定しない。 */
+.material-list-table .col-id {
+  width: var(--material-id-width);
+  min-width: var(--material-id-width);
+  max-width: var(--material-id-width);
+  text-align: center;
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  font-weight: 700;
+}
+
+.material-list-table .col-part {
+  width: var(--material-part-width);
+  min-width: var(--material-part-width);
+  max-width: var(--material-part-width);
+  position: sticky;
+  left: var(--material-id-width);
+  z-index: 11;
+  white-space: normal;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.material-list-table .col-name {
+  width: var(--material-name-width);
+  min-width: var(--material-name-width);
+  max-width: var(--material-name-width);
+  position: sticky;
+  left: calc(var(--material-id-width) + var(--material-part-width));
+  z-index: 10;
+  font-weight: 700;
+}
+
+.material-list-table th.col-id,
+.material-list-table th.col-part,
+.material-list-table th.col-name {
+  z-index: 30;
+  background: var(--head);
+}
+
+.material-list-table .col-place {
+  min-width: 190px;
+  max-width: 250px;
+  white-space: normal;
+  line-height: 1.28;
+}
+
+.material-list-table .col-level,
+.material-list-table .col-sample-count {
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  text-align: center;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.material-list-table .col-analysis {
+  min-width: 92px;
+  text-align: center;
+}
+
+.material-list-table .col-note {
+  min-width: 190px;
+}
+
+/* 採取場所1〜3・採取部位は、内容で列を広げずヘッダが収まる程度に固定する。 */
+.material-list-table .col-sample-place,
+.material-list-table .col-sample-part {
+  width: 82px;
+  min-width: 82px;
+  max-width: 82px;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.material-list-table .col-sample-done {
+  min-width: 52px;
+  text-align: center;
+}
+
+.material-list-table .col-sample-date {
+  min-width: 112px;
+  width: 112px;
+  text-align: center;
+}
+
+.material-list-table .wrap2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: normal;
+  line-height: 1.28;
+}
+
+/*
+ * 仕上表と同じPencil思想：文字編集欄は通常span。
+ * Scribble対象となるinputは編集開始した1セルだけ生成する。
+ */
+.material-list-table .material-cell-display {
+  display: block;
+  width: 100%;
+  min-height: 27px;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  touch-action: manipulation;
+}
+
+.material-list-table .material-cell-display:hover {
+  border-color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.material-list-table .material-cell-display:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: -1px;
+}
+
+.material-list-table .material-cell-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 27px;
+  padding: 2px 4px;
+  border: 1px solid #2563eb;
+  border-radius: 5px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.10);
+}
+
+.material-list-table .material-select,
+.material-list-table .material-date-input {
+  width: 100%;
+  min-width: 0;
+  height: 27px;
+  box-sizing: border-box;
+  padding: 1px 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.material-list-table .compact-select {
+  text-overflow: ellipsis;
+}
+
+.material-list-table .material-checkbox {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.material-list-table .disabled-cell {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.material-list-table .disabled-cell .material-select {
+  background: #e9eef4;
+  border-color: #d8e0e9;
+  color: #94a3b8;
+}
+
+.material-list-table .placeholder-value {
+  color: #94a3b8;
+}
+
+.material-list-table tbody tr {
+  cursor: pointer;
+}
+
+.material-list-table tbody tr:hover td {
+  box-shadow: inset 0 0 0 9999px rgba(15, 23, 42, 0.025);
+}
+
+/* カラー表示ON時は No. / ID / 部位 / 建材名称だけ建材色を使う。 */
+.material-list-table.color-mode tbody .material-color-cell {
+  background: var(--material-row-color, #fff);
+}
+
+/* sticky列は通常背景を明示して、横スクロール時に下の列が透けないようにする。 */
+.material-list-table:not(.color-mode) tbody .col-id,
+.material-list-table:not(.color-mode) tbody .col-part,
+.material-list-table:not(.color-mode) tbody .col-name {
+  background: #fff;
+}
+
+.material-list-table tbody tr.selected-material-row td {
+  box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, 0.075);
+}
+
+.material-list-table tbody tr.selected-material-row .col-id,
+.material-list-table tbody tr.selected-material-row .col-part,
+.material-list-table tbody tr.selected-material-row .col-name {
+  box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, 0.075);
+}
+
+.material-list-empty {
+  padding: 28px !important;
+  color: #94a3b8;
+  text-align: center;
+}
+
+@media (max-width: 850px) {
+  .material-list-table-wrap {
+    max-height: calc(100vh - 220px);
+  }
+
+  .material-list-table {
+    font-size: 11px;
+    --material-name-width: 170px;
+  }
+}

@@ -65,6 +65,7 @@ export function findByInputId(inputId) {
   const normalized = String(inputId ?? '').trim();
   if (!normalized) return undefined;
   for (const record of records.values()) {
+    if (record.status !== 'active') continue;
     if (String(record.inputId) === normalized) return record;
   }
   return undefined;
@@ -79,6 +80,7 @@ export function findByInputId(inputId) {
 export function findByName(normalizedName) {
   if (!normalizedName) return undefined;
   for (const record of records.values()) {
+    if (record.status !== 'active') continue;
     if (record.name === normalizedName) return record;
   }
   return undefined;

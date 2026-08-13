@@ -17,6 +17,8 @@ import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
 import { initializeRecordView } from './record-view/record-view-controller.js';
+import { initializeMaterialList } from './materials/material-list-controller.js';
+import { initializeMaterialOperations } from './materials/material-operations-controller.js';
 
 
 /**
@@ -38,6 +40,8 @@ function initUiSkeleton() {
   bindAppUpdateEvents();
   bindAuthUiEvents();
   initializeFinishTable();
+  initializeMaterialList();
+  initializeMaterialOperations();
   initializeRecordView();
 
   // 起動時は仕上表タブを既定表示する。

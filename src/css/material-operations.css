@@ -1,0 +1,267 @@
+/**
+ * src/css/material-operations.css
+ *
+ * v0.14.28の建材統合・削除パネルを参考に、本開発ドロワー用へ整理したスタイル。
+ */
+
+.material-operations-box {
+  background: #fbfcff;
+}
+
+.material-op-accordion {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.material-op-accordion-head {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.material-op-accordion.open .material-op-accordion-head {
+  border-bottom: 1px solid var(--line);
+}
+
+.material-op-open-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.material-op-accordion-body {
+  display: none;
+  padding: 9px;
+}
+
+.material-op-accordion.open .material-op-accordion-body {
+  display: block;
+}
+
+.material-op-section-gap {
+  margin-top: 10px;
+}
+
+.material-picker-wrap {
+  margin-top: 6px;
+}
+
+.material-picker-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.material-picker-open .plus {
+  color: var(--main);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.material-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 22px;
+  margin-top: 6px;
+}
+
+.material-picker-chips .empty {
+  color: #94a3b8;
+  font-size: 11.5px;
+}
+
+.material-picker-chip {
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.material-picker-help,
+.picker-note {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.material-picker-panel {
+  display: none;
+  margin-top: 6px;
+}
+
+.material-picker-panel.open {
+  display: block;
+}
+
+.material-group-picker {
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+
+.material-pick-group {
+  padding: 4px 0 6px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.material-pick-group:last-child {
+  border-bottom: 0;
+}
+
+.material-pick-group-title {
+  margin: 2px 0 4px;
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.material-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.material-pick-row:hover {
+  background: #f8fafc;
+}
+
+.material-pick-row.excluded-by-target {
+  display: none;
+}
+
+.material-pick-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--main);
+}
+
+.material-pick-main {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.material-pick-no {
+  color: #1e3a8a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.material-pick-name {
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.material-pick-inputid {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.material-pick-use {
+  display: block;
+  max-width: 115px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b45309;
+  font-size: 10.5px;
+}
+
+.delete-section-title {
+  margin: 3px 0 5px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.delete-section-title.unused {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.delete-section-title.used {
+  margin-top: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.material-picker-actions,
+.drawer-material-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.drawer-material-actions .btn {
+  width: auto;
+  min-width: 82px;
+  text-align: center;
+}
+
+.material-photo-defer-note {
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px dashed #dbe2ea;
+}
+
+.material-operations-box .btn.danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.material-operations-box .btn.danger:hover {
+  background: #b91c1c;
+}

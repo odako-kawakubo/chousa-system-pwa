@@ -575,11 +575,14 @@
   font-weight: 400;
 }
 
-/* ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。 */
+/* ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。
+ * セル端へ寄せず、IDセル内の中央へ表示する。
+ */
 .finish-register-btn {
   position: absolute;
-  right: 2px;
+  left: 50%;
   bottom: 2px;
+  transform: translateX(-50%);
   border: 1px solid #f59e0b;
   border-radius: 4px;
   background: #fffbeb;
@@ -588,6 +591,7 @@
   line-height: 1.2;
   padding: 0 3px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .finish-register-btn:hover { background: #fef3c7; }
 

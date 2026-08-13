@@ -2,7 +2,7 @@
  * src/js/finish-table/finish-table-view-model.js
  *
  * finishRecordStore + materialRecordStore から仕上表表示用ViewModelを再構築する。
- * v0.1.5.1Bでは「1入力枠=1finishRecord」を正本とし、rowCountsや代表レコードは使わない。
+ * v0.1.5.1Dでは「1入力枠=1finishRecord」を正本とし、rowCountsや代表レコードは使わない。
  */
 
 import * as finishRecordStore from '../store/finish-record-store.js';

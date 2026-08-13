@@ -146,6 +146,14 @@ function refreshFromStores() {
 }
 
 /**
+ * 他タブからmaterialRecordを更新した場合に、仕上表と簡易リストを
+ * 現在のStore内容で再描画する公開入口。
+ */
+export function refreshFinishTableFromStores() {
+  refreshFromStores();
+}
+
+/**
  * 操作バー・簡易リストの高さ変化を監視し、sticky位置（renderer側のCSS変数）へ
  * 反映する。簡易リストの開閉・チップ数増減・画面幅変更のいずれでも高さが
  * 変わり得るため、固定pxで決め打ちせずResizeObserverで実測する。

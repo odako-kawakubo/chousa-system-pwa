@@ -23,6 +23,8 @@
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
 <link rel="stylesheet" href="./css/record-view.css" />
+<link rel="stylesheet" href="./css/material-list.css" />
+<link rel="stylesheet" href="./css/material-operations.css" />
 </head>
 <body>
 
@@ -111,16 +113,8 @@
     <!-- 仕上表タブ：中身はfinish-table-controller.jsが初期化時に描画する。 -->
     <section class="content" id="finish"></section>
 
-    <!-- 建材リストタブ：正式な建材レコード連携と合わせて実装する。 -->
-    <section class="content" id="materials" style="display:none">
-      <div class="panel">
-        <div class="panel-head"><h3>建材リスト</h3></div>
-        <div class="hint" style="padding:24px">
-          ここに建材リスト（No./ID/部位/建材名称/採取情報等）を実装します。<br />
-          正式な建材レコードと連携する画面として実装予定です。
-        </div>
-      </div>
-    </section>
+    <!-- 建材リストタブ：materialRecordStoreを正本としてcontrollerが描画する。 -->
+    <section class="content" id="materials" style="display:none"></section>
 
     <!-- 写真タブ：写真レコード・OneDrive連携と合わせて実装する。 -->
     <section class="content" id="photos" style="display:none">
@@ -212,6 +206,7 @@
       <h4>状態</h4>
       <div class="hint" id="appVersionStatus"></div>
     </div>
+    <div id="materialOperationsMount"></div>
     <!-- 仕上表の階・部屋操作。クリック処理はfinish-table-controller.jsが配線する。 -->
     <div class="drawer-box" id="finishDrawerTools">
       <h4>仕上表：階・部屋操作</h4>
