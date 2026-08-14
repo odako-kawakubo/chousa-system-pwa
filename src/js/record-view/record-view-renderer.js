@@ -33,6 +33,29 @@ const MATERIAL_COLUMNS = [
   ['updatedAt', '更新日時']
 ];
 
+
+const PHOTO_COLUMNS = [
+  ['photoId', '写真ID'],
+  ['photoTypeLabel', '区分'],
+  ['fileName', 'ファイル名'],
+  ['oneDrivePath', 'OneDrive保存先'],
+  ['syncStatus', '同期状態'],
+  ['isRepresentative', '代表写真'],
+  ['capturedDevice', '撮影端末'],
+  ['capturedAt', '撮影日時'],
+  ['isEdited', '編集有無'],
+  ['lastEditedDevice', '最終編集端末'],
+  ['lastEditedAt', '最終編集日時'],
+  ['deleted', '削除状態'],
+  ['roomPosition', '部屋位置'],
+  ['materialId', '建材ID'],
+  ['samplingPlace', '採取場所'],
+  ['samplingBranch', '採取枝番'],
+  ['sampleNo', '試料No.'],
+  ['part', '部位'],
+  ['shootingTypeLabel', '撮影区分']
+];
+
 const FINISH_COLUMNS = [
   ['finishId', '仕上表ID'],
   ['roomUid', '内部部屋ID'],
@@ -53,16 +76,22 @@ const FINISH_COLUMNS = [
 ];
 
 function formatValue(key, value) {
-  if (value === null || value === undefined) return '';
+  if (value === null || value === undefined || value === '') return '';
+  if (Array.isArray(value)) return value.join('、');
+  if (key === 'isRepresentative') return value ? '代表' : '-';
+  if (key === 'isEdited') return value ? 'あり' : 'なし';
+  if (key === 'deleted') return value ? '削除' : '有効';
+  if (key === 'samplingBranch' && Number(value) === 0) return '-';
   return String(value);
 }
+
 
 function setText(id, text) {
   const element = document.getElementById(id);
   if (element) element.textContent = text;
 }
 
-function renderTable(columns, records, emptyMessage) {
+function renderTable(columns, records, emptyMessage, options = {}) {
   const table = document.getElementById('recordViewTable');
   if (!table) return;
 
@@ -93,7 +122,8 @@ function renderTable(columns, records, emptyMessage) {
       const tr = document.createElement('tr');
       columns.forEach(([key], index) => {
         const td = document.createElement('td');
-        td.textContent = formatValue(key, record[key]);
+        const formatted = formatValue(key, record[key]);
+        td.textContent = options.emptyAsDash && formatted === '' ? '-' : formatted;
         td.title = td.textContent;
         if (index === 0) td.classList.add('record-view-sticky-first');
         if (key === 'systemMemo' || key === 'note' || key === 'remarks' || key === 'usageLocation') {
@@ -125,15 +155,19 @@ export function renderRecordView(viewModel) {
   setText('recordViewHint', viewModel.hint);
 
   const activePill = document.getElementById('recordViewActivePill');
-  if (activePill) activePill.style.display = viewModel.unavailable ? 'none' : '';
+  if (activePill) activePill.style.display = '';
 
   const representativePill = document.getElementById('recordViewRepresentativePill');
   if (representativePill) {
-    representativePill.style.display = 'none';
+    const showRepresentative = viewModel.type === RECORD_VIEW_TABS.PHOTO;
+    representativePill.style.display = showRepresentative ? '' : 'none';
+    if (showRepresentative) {
+      setText('recordViewRepresentativeCount', String(viewModel.representativeCount || 0));
+    }
   }
 
   if (viewModel.type === RECORD_VIEW_TABS.PHOTO) {
-    renderTable([['status', '状態']], [], 'photoRecordStoreは未実装です。');
+    renderTable(PHOTO_COLUMNS, viewModel.records, '写真レコードはまだありません。', { emptyAsDash: true });
     return;
   }
 

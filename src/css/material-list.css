@@ -266,6 +266,22 @@
   color: #94a3b8;
 }
 
+.material-list-table .disabled-cell .material-date-input,
+.material-list-table .disabled-cell .material-multi-select-summary {
+  background: #e9eef4;
+  border-color: #d8e0e9;
+  color: #94a3b8;
+}
+
+.material-list-table .disabled-cell .material-checkbox {
+  opacity: 0.45;
+}
+
+.material-list-table .material-multi-select.is-disabled {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
 .material-list-table .placeholder-value {
   color: #94a3b8;
 }
@@ -316,3 +332,98 @@
     --material-name-width: 170px;
   }
 }
+
+
+/* v0.1.5.3D 4点修正: 部位は2件ごとに明示改行。 */
+.material-list-table .material-part-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: normal;
+  line-height: 1.28;
+}
+.material-list-table .material-part-line { display: block; }
+
+/* 採取部位は複数選択。iPadでもチェック操作しやすいセル内ポップアップ。 */
+.material-list-table .material-multi-select { position: relative; width: 100%; }
+.material-list-table .material-multi-select-summary {
+  list-style: none;
+  width: 100%;
+  height: 27px;
+  padding: 4px 20px 4px 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+.material-list-table .material-multi-select-summary::-webkit-details-marker { display: none; }
+.material-list-table .material-multi-select-summary::after {
+  content: '▾';
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 10px;
+}
+.material-list-table .material-multi-select[open] .material-multi-select-summary::after { content: '▴'; }
+.material-list-table .material-multi-select-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 3px);
+  z-index: 80;
+  min-width: 150px;
+  max-width: 230px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .16);
+}
+.material-list-table .material-multi-select-menu-head {
+  position: sticky;
+  top: -5px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -5px -5px 4px;
+  padding: 5px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+.material-list-table .material-multi-select-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.material-list-table .material-multi-select-close:hover { background: #e2e8f0; }
+.material-list-table .material-multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 5px;
+  border-radius: 5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.material-list-table .material-multi-select-option:hover { background: #f1f5f9; }
+.material-list-table .material-multi-select-option input { width: 17px; height: 17px; margin: 0; }
+.material-list-table .material-multi-select-empty { color: #94a3b8; font-size: 11px; padding: 6px; display: block; }

@@ -235,23 +235,24 @@ function getUndoableSnapshot() {
 
 /**
  * getUndoableSnapshot()で取得したスナップショットへ両Storeを復元する。
- * runRecordTransaction()中は両Storeのsubscribe通知を完全に抑制し、
- * 復元完了後にrefreshFromStores()を1回だけ呼ぶ。
- * replaceAll()にもnotify:falseを渡し、Store個別の通知経路を作らない。
+ * runRecordTransaction()では両Storeの更新通知をbatch()でまとめる。
+ * この仕上表自身は従来どおり復元完了後にrefreshFromStores()を1回だけ呼ぶ。
+ * replaceAll()も通常通知を使い、外部ViewはStore.subscribe()だけで更新へ追従する。
+ * 仕上表自身は従来どおり直後のrefreshFromStores()で1回だけ確定描画する。
  */
 function restoreUndoableSnapshot(snapshot) {
   if (!snapshot) return;
   runRecordTransaction(() => {
-    finishRecordStore.replaceAll(snapshot.finish, { notify: false });
-    materialRecordStore.replaceAll(snapshot.material, { notify: false });
+    finishRecordStore.replaceAll(snapshot.finish);
+    materialRecordStore.replaceAll(snapshot.material);
   });
   refreshFromStores();
 }
 
 /**
  * Undo/Redo対象の操作を、操作前スナップショットの記録とセットで実行する。
- * mutate自体はrunRecordTransaction()でくるみ、transaction中のStore通知は
- * 完全に抑制する。実行後にrefreshFromStores()を1回だけ呼ぶ。
+ * mutate自体はrunRecordTransaction()でくるみ、Store通知はbatch()でまとめる。
+ * 実行後に仕上表自身はrefreshFromStores()を1回だけ呼ぶ。
  *
  * @param {() => void} mutate 実際にfinishRecordStore／materialRecordStoreを
  *   変更する処理（finish-table-actions.jsの関数を呼ぶ）

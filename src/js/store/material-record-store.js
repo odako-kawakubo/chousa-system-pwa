@@ -5,7 +5,7 @@
  * メモリ上に保持するだけで、Firebase・OneDrive等の外部接続は一切行わない
  * （ローカル完結。v0.1.5.1の禁止事項）。
  *
- * finish-record-store.jsと同じCRUD・購読・batch()・通知抑制の形を持つ独立した
+ * finish-record-store.jsと同じCRUD・購読・batch()の形を持つ独立した
  * 別モジュール。互いに相手のStoreを参照・importせず、複数Storeにまたがる
  * 操作の調整はfinish-table-actions.jsのrunRecordTransaction()が行う。
  */
@@ -16,13 +16,8 @@ let records = new Map();
 const listeners = [];
 let batchDepth = 0;
 let pendingNotify = false;
-let notificationMuteDepth = 0;
 
 function notify() {
-  // 複数Storeをまたぐtransaction中はStore個別の通知を発火しない。
-  // transaction完了後の画面更新は呼び出し側が1回だけ行う。
-  if (notificationMuteDepth > 0) return;
-
   if (batchDepth > 0) {
     pendingNotify = true;
     return;
@@ -117,8 +112,7 @@ export function exportSnapshot() {
 /**
  * スナップショットから全体を復元する。
  * @param {import('../records/material-record.js').MaterialRecord[]} snapshotRecords
- * @param {{ notify?: boolean }} [options] notify:falseのときはsubscribeへの通知を抑制する
- *   （finish-table-actions.jsのrunRecordTransaction()経由で使う）。
+ * @param {{ notify?: boolean }} [options] notify:falseのときはsubscribeへの通知を抑制する。
  */
 export function replaceAll(snapshotRecords, options = {}) {
   const shouldNotify = options.notify !== false;
@@ -146,21 +140,6 @@ export function batch(callback) {
   }
 }
 
-/**
- * callback中だけsubscribe通知を完全に抑制する。
- * batch()の「最後に1回通知」とは異なり、ここでは遅延通知も残さない。
- * finish/materialの複数Store transactionを1つの業務操作として扱うために使う。
- *
- * @param {() => void} callback
- */
-export function runWithoutNotification(callback) {
-  notificationMuteDepth += 1;
-  try {
-    callback();
-  } finally {
-    notificationMuteDepth -= 1;
-  }
-}
 
 /** 初期化時に呼ぶ。全レコードを空にする（通知はしない。呼び出し側が初期投入後に行う）。 */
 export function clearAll() {

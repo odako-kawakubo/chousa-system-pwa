@@ -76,7 +76,8 @@ function buildRoom(roomRecords, materialById) {
       inputId: record.inputId || '',
       materialId: record.materialId || '',
       materialName,
-      actualPart: partIndex >= 5 && record.part === 'その他' ? '' : (record.part || '')
+      // その他1/2の実部位未入力時はRecord正本の「その他」を画面にも表示する。
+      actualPart: partIndex >= 5 ? (record.part || '') : ''
     };
   });
 

@@ -4,6 +4,8 @@
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+import { getShootingTypeLabel } from '../records/photo-record.js';
 
 export const RECORD_VIEW_TABS = Object.freeze({ MATERIAL: 'material', FINISH: 'finish', PHOTO: 'photo' });
 
@@ -25,12 +27,6 @@ function compareNatural(a, b) {
   return String(a ?? '').localeCompare(String(b ?? ''), 'ja', { numeric: true, sensitivity: 'base' });
 }
 
-/**
- * レコード確認用の仕上表順。
- * 正式な表示順は「外部 → 地下 → 地上階 → 階段 → 屋上」。
- * 外部は仕上表上の roomPosition 順をそのまま使い、地下は深い階から、
- * 地上階は低い階から並べる。各部屋の中は position 順。
- */
 function compareFinishRecords(a, b) {
   const areaDiff = (FINISH_AREA_ORDER[a.areaCode] ?? 99) - (FINISH_AREA_ORDER[b.areaCode] ?? 99);
   if (areaDiff) return areaDiff;
@@ -60,7 +56,6 @@ export function buildFinishRecordView() {
   const records = finishRecordStore.getAll()
     .map((record) => ({
       ...record,
-      // 仕上表レコードの確認画面では、建材IDに紐づく現在の建材名称も表示する。
       materialName: record.materialId ? (materialById.get(record.materialId)?.name || '') : ''
     }))
     .sort(compareFinishRecords);
@@ -75,15 +70,47 @@ export function buildFinishRecordView() {
   };
 }
 
+function comparePhotoRecords(a, b) {
+  const typeDiff = (a.photoType === 'visual' ? 0 : 1) - (b.photoType === 'visual' ? 0 : 1);
+  if (typeDiff) return typeDiff;
+
+  if (a.photoType === 'visual') {
+    const roomDiff = compareNatural(a.roomPosition, b.roomPosition);
+    if (roomDiff) return roomDiff;
+    const partDiff = compareNatural(a.part, b.part);
+    if (partDiff) return partDiff;
+  } else {
+    const materialDiff = compareNatural(a.materialId, b.materialId);
+    if (materialDiff) return materialDiff;
+    const branchDiff = Number(a.samplingBranch || 0) - Number(b.samplingBranch || 0);
+    if (branchDiff) return branchDiff;
+    const stageOrder = { before: 0, during: 1, after: 2, section: 3 };
+    const stageDiff = (stageOrder[a.shootingType] ?? 99) - (stageOrder[b.shootingType] ?? 99);
+    if (stageDiff) return stageDiff;
+  }
+
+  const capturedDiff = compareNatural(a.capturedAt, b.capturedAt);
+  if (capturedDiff) return capturedDiff;
+  return compareNatural(a.photoId, b.photoId);
+}
+
 export function buildPhotoRecordView() {
+  const records = photoRecordStore.getAll()
+    .map((record) => ({
+      ...record,
+      photoTypeLabel: record.photoType === 'visual' ? '目視' : '採取',
+      shootingTypeLabel: getShootingTypeLabel(record.shootingType)
+    }))
+    .sort(comparePhotoRecords);
+
   return {
     type: RECORD_VIEW_TABS.PHOTO,
     label: '写真',
-    totalCount: 0,
-    activeCount: 0,
-    hint: 'photoRecordStore は未実装です。写真レコードは後続段階で接続します。',
-    records: [],
-    unavailable: true
+    totalCount: records.length,
+    activeCount: records.filter((record) => !record.deleted).length,
+    representativeCount: records.filter((record) => !record.deleted && record.isRepresentative).length,
+    hint: 'photoRecordStore の実データです。目視写真は部屋位置＋部位、採取写真は建材ID＋採取枝番＋撮影区分で管理します。',
+    records
   };
 }
 

@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="./css/record-view.css" />
 <link rel="stylesheet" href="./css/material-list.css" />
 <link rel="stylesheet" href="./css/material-operations.css" />
+<link rel="stylesheet" href="./css/photos.css" />
 </head>
 <body>
 
@@ -116,16 +117,8 @@
     <!-- 建材リストタブ：materialRecordStoreを正本としてcontrollerが描画する。 -->
     <section class="content" id="materials" style="display:none"></section>
 
-    <!-- 写真タブ：写真レコード・OneDrive連携と合わせて実装する。 -->
-    <section class="content" id="photos" style="display:none">
-      <div class="panel">
-        <div class="panel-head"><h3>写真</h3></div>
-        <div class="hint" style="padding:24px">
-          ここに目視調査写真・建材採取写真の画面を実装します。<br />
-          写真レコードとOneDrive連携に合わせて追加予定です。
-        </div>
-      </div>
-    </section>
+    <!-- 写真タブ：photo-controller.jsがphotoRecordStoreを正本として描画する。 -->
+    <section class="content" id="photos" style="display:none"></section>
 
     <!-- 調査図タブ：仕様確定後に実装するプレースホルダー。 -->
     <section class="content" id="survey-map" style="display:none">

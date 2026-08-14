@@ -97,7 +97,7 @@ function renderRows(rows, selectedMaterialId, colorMode) {
       <tr class="${selected.trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
         <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
         <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
-        <td class="col-part material-color-cell"><div class="wrap2">${displayText(row.part)}</div></td>
+        <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
         <td class="col-name material-color-cell material-edit-cell">
           ${renderTextDisplay(row, 'name', row.name, '建材名称')}
         </td>
@@ -111,16 +111,16 @@ function renderRows(rows, selectedMaterialId, colorMode) {
         <td class="col-note material-edit-cell">
           ${renderTextDisplay(row, 'note', row.note, '調査備考', '調査備考')}
         </td>
-        <td class="col-sample-count material-control-cell">
-          ${renderSelect(row, 'sampleCount', MATERIAL_SAMPLE_COUNT_OPTIONS, row.sampleCountLabel)}
+        <td class="col-sample-count material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+          ${renderSelect(row, 'sampleCount', row.samplingEnabled ? MATERIAL_SAMPLE_COUNT_OPTIONS : ['-', ...MATERIAL_SAMPLE_COUNT_OPTIONS], row.sampleCountLabel, !row.samplingEnabled)}
         </td>
         ${renderSamplePlaceCell(row, 1)}
         ${renderSamplePlaceCell(row, 2)}
         ${renderSamplePlaceCell(row, 3)}
-        <td class="col-sample-part material-control-cell">
-          ${renderCandidateSelect(row, 'samplePart', row.usageParts, row.samplePart)}
+        <td class="col-sample-part material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+          ${renderSamplePartMultiSelect(row, !row.samplingEnabled)}
         </td>
-        <td class="col-sample-done material-control-cell">
+        <td class="col-sample-done material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
           <input
             type="checkbox"
             class="material-checkbox"
@@ -128,10 +128,11 @@ function renderRows(rows, selectedMaterialId, colorMode) {
             data-field="sampleDone"
             data-material-id="${escapeAttr(row.materialId)}"
             ${row.sampleDone ? 'checked' : ''}
+            ${row.samplingEnabled ? '' : 'disabled'}
             aria-label="採取 ${escapeAttr(row.inputId)}"
           />
         </td>
-        <td class="col-sample-date material-control-cell">
+        <td class="col-sample-date material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
           <input
             type="date"
             class="material-date-input"
@@ -139,6 +140,7 @@ function renderRows(rows, selectedMaterialId, colorMode) {
             data-field="sampleDate"
             data-material-id="${escapeAttr(row.materialId)}"
             value="${escapeAttr(row.sampleDate)}"
+            ${row.samplingEnabled ? '' : 'disabled'}
             aria-label="採取日 ${escapeAttr(row.inputId)}"
           />
         </td>
@@ -164,13 +166,14 @@ function renderTextDisplay(row, kind, value, label, placeholder = '') {
   `;
 }
 
-function renderSelect(row, field, values, current) {
+function renderSelect(row, field, values, current, disabled = false) {
   return `
     <select
       class="material-select"
       data-material-control
       data-field="${escapeAttr(field)}"
       data-material-id="${escapeAttr(row.materialId)}"
+      ${disabled ? 'disabled' : ''}
     >
       ${values.map((value) => `<option value="${escapeAttr(value)}" ${String(current) === String(value) ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}
     </select>
@@ -204,6 +207,52 @@ function renderSamplePlaceCell(row, index) {
   `;
 }
 
+
+function renderSamplePartMultiSelect(row, disabled = false) {
+  const selected = Array.isArray(row.samplePart) ? row.samplePart : [];
+  const values = uniqueWithCurrent(row.usageParts, selected);
+  const label = selected.length ? selected.join('、') : '選択';
+
+  return `
+    <details class="material-multi-select${disabled ? ' is-disabled' : ''}" data-material-multi-select data-disabled="${disabled ? '1' : '0'}">
+      <summary class="material-multi-select-summary" title="${escapeAttr(label)}">${escapeHtml(label)}</summary>
+      <div class="material-multi-select-menu">
+        <div class="material-multi-select-menu-head">
+          <span>採取部位</span>
+          <button type="button" class="material-multi-select-close" data-action="close-material-multi-select" aria-label="閉じる">×</button>
+        </div>
+        ${values.length ? values.map((value) => `
+          <label class="material-multi-select-option">
+            <input
+              type="checkbox"
+              data-material-multi-part
+              data-material-id="${escapeAttr(row.materialId)}"
+              value="${escapeAttr(value)}"
+              ${selected.includes(value) ? 'checked' : ''}
+              ${disabled ? 'disabled' : ''}
+            />
+            <span>${escapeHtml(value)}</span>
+          </label>
+        `).join('') : '<span class="material-multi-select-empty">候補なし</span>'}
+      </div>
+    </details>
+  `;
+}
+
+function renderPartLines(value) {
+  const parts = String(value || '')
+    .split(/[、,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!parts.length) return '<span class="placeholder-value">－</span>';
+
+  const lines = [];
+  for (let index = 0; index < parts.length; index += 2) {
+    lines.push(parts.slice(index, index + 2).join('、'));
+  }
+  return lines.map((line) => `<span class="material-part-line">${escapeHtml(line)}</span>`).join('');
+}
+
 function renderCandidateSelect(row, field, candidates, current, disabled = false) {
   const values = uniqueWithCurrent(candidates, current);
   return `
@@ -221,8 +270,9 @@ function renderCandidateSelect(row, field, candidates, current, disabled = false
 }
 
 function uniqueWithCurrent(candidates, current) {
+  const currentValues = Array.isArray(current) ? current : [current];
   const values = [];
-  [...(candidates || []), current]
+  [...(candidates || []), ...currentValues]
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .forEach((value) => {
@@ -240,12 +290,13 @@ function renderSelectedLabel(rows, selectedMaterialId) {
 function computePartColumnWidth(rows) {
   let maxChars = 0;
   rows.forEach((row) => {
-    const chunks = String(row.part || '').split('、');
-    chunks.forEach((chunk) => {
-      maxChars = Math.max(maxChars, Array.from(chunk).length);
-    });
+    const parts = String(row.part || '').split(/[、,，]/).map((item) => item.trim()).filter(Boolean);
+    for (let index = 0; index < parts.length; index += 2) {
+      const line = parts.slice(index, index + 2).join('、');
+      maxChars = Math.max(maxChars, Array.from(line).length);
+    }
   });
-  return Math.max(60, Math.min(100, 18 + maxChars * 11));
+  return Math.max(60, Math.min(100, 18 + maxChars * 9));
 }
 
 function displayText(value) {

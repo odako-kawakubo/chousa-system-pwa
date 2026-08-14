@@ -11,7 +11,7 @@
  * - 行選択だけでは一覧全体を再描画しない。
  */
 
-import { normalizeMaterialName, splitBaseNameAndSuffix } from '../records/material-record.js';
+import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
 import { materialRecordStore } from '../finish-table/finish-table-actions.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { getColorMode, toggleColorMode } from '../finish-table/finish-table-state.js';
@@ -21,6 +21,7 @@ import { renderMaterialList } from './material-list-renderer.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
+let outsideMultiSelectBound = false;
 
 const PEN_DRAG_THRESHOLD_PX = 12;
 const PEN_CLICK_SUPPRESS_MS = 500;
@@ -33,6 +34,7 @@ export function initializeMaterialList() {
   if (!rootElement) return;
 
   bindMaterialListEvents();
+  bindOutsideMultiSelectClose();
   document.querySelector('.tabs .tab[data-tab="materials"]')?.addEventListener('click', refreshMaterialList);
   refreshMaterialList();
 }
@@ -69,6 +71,15 @@ function bindMaterialListEvents() {
     }
     ignoreNextPenClick = false;
     ignorePenClickUntil = 0;
+
+    const closeMultiSelect = event.target.closest('[data-action="close-material-multi-select"]');
+    if (closeMultiSelect) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMultiSelect.closest('[data-material-multi-select]')?.removeAttribute('open');
+      return;
+    }
+
     handleMaterialActivation(event.target);
   });
 
@@ -93,10 +104,30 @@ function bindMaterialListEvents() {
   });
 
   rootElement.addEventListener('change', (event) => {
+    const multiPart = event.target.closest('[data-material-multi-part]');
+    if (multiPart) {
+      if (multiPart.disabled) return;
+      updateSamplePartsFromChecklist(multiPart.dataset.materialId);
+      return;
+    }
+
     const control = event.target.closest('[data-material-control]');
     if (!control) return;
     updateMaterialControl(control);
   });
+}
+
+function bindOutsideMultiSelectClose() {
+  if (outsideMultiSelectBound) return;
+  outsideMultiSelectBound = true;
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!rootElement) return;
+    if (event.target.closest('[data-material-multi-select]')) return;
+    rootElement.querySelectorAll('[data-material-multi-select][open]').forEach((details) => {
+      details.removeAttribute('open');
+    });
+  }, { passive: true });
 }
 
 function handlePenPointerDown(event) {
@@ -261,17 +292,25 @@ function updateMaterialControl(control) {
       next.level = String(control.value || '-');
       break;
     case 'analysisRequired':
-      next.analysisRequired = String(control.value || '未調査');
+      next.analysisRequired = String(control.value || '採取・分析');
+      // 採取・分析では採取数1が最低条件。既存の2/3は維持し、
+      // 未設定・0・不正値だけ1へ補完する。
+      if (next.analysisRequired === '採取・分析') {
+        const currentCount = Number(next.sampleCount);
+        if (!Number.isFinite(currentCount) || currentCount < 1) next.sampleCount = 1;
+        else next.sampleCount = Math.min(3, currentCount);
+        applySingleRecordSamplingAutofill(next);
+      }
       break;
     case 'sampleCount':
-      next.sampleCount = control.value === '-' ? 0 : Math.max(1, Math.min(3, Number(control.value) || 0));
+      // 採取・分析中は1〜3のみ。0/「-」は許可しない。
+      next.sampleCount = Math.max(1, Math.min(3, Number(control.value) || 1));
       applySingleRecordSamplingAutofill(next);
       // 採取数を減らしても2・3の既存値は消さない。表示だけグレーアウトする。
       break;
     case 'sampleLocation1':
     case 'sampleLocation2':
     case 'sampleLocation3':
-    case 'samplePart':
     case 'sampleDate':
       next[field] = String(control.value || '');
       break;
@@ -285,6 +324,39 @@ function updateMaterialControl(control) {
 
   materialRecordStore.set(next);
   refreshMaterialList();
+  refreshRecordView();
+}
+
+
+function updateSamplePartsFromChecklist(materialId) {
+  const record = materialRecordStore.get(materialId);
+  if (!record || !rootElement) return;
+
+  const inputs = [...rootElement.querySelectorAll('[data-material-multi-part]')]
+    .filter((input) => input.dataset.materialId === materialId);
+  const selected = inputs
+    .filter((input) => input.checked)
+    .map((input) => String(input.value || '').trim())
+    .filter(Boolean);
+
+  const current = normalizeSampleParts(record.samplePart);
+  if (JSON.stringify(current) === JSON.stringify(selected)) return;
+
+  materialRecordStore.set({
+    ...record,
+    samplePart: selected,
+    updatedAt: new Date().toISOString()
+  });
+
+  // 複数選択中に一覧全体を再描画するとdetailsが閉じてしまうため、
+  // 現在セルの表示だけ更新する。Store通知により写真タブは即時更新される。
+  const details = inputs[0]?.closest('[data-material-multi-select]');
+  const summary = details?.querySelector('.material-multi-select-summary');
+  if (summary) {
+    const label = selected.length ? selected.join('、') : '選択';
+    summary.textContent = label;
+    summary.title = label;
+  }
   refreshRecordView();
 }
 
@@ -361,9 +433,26 @@ function applySamplingAutofill() {
  */
 function applySingleRecordSamplingAutofill(record) {
   let changed = false;
+
+  // 採取・分析以外では採取関連値を保持するだけで、自動補完は行わない。
+  if (String(record.analysisRequired || '採取・分析') !== '採取・分析') {
+    return false;
+  }
+
+  // 採取・分析では採取数1が最低条件。旧Recordの0/未設定もここで1へ正規化する。
+  let count = Number(record.sampleCount);
+  if (!Number.isFinite(count) || count < 1) {
+    count = 1;
+    record.sampleCount = 1;
+    changed = true;
+  } else if (count > 3) {
+    count = 3;
+    record.sampleCount = 3;
+    changed = true;
+  }
+
   const places = splitDerivedList(record.usageLocation);
   const parts = splitDerivedList(record.part);
-  const count = Math.max(0, Math.min(3, Number(record.sampleCount) || 0));
 
   if (places.length === 1) {
     for (let index = 1; index <= count; index += 1) {
@@ -375,8 +464,12 @@ function applySingleRecordSamplingAutofill(record) {
     }
   }
 
-  if (parts.length === 1 && !record.samplePart) {
-    record.samplePart = parts[0];
+  const selectedParts = normalizeSampleParts(record.samplePart);
+  if (parts.length === 1 && selectedParts.length === 0) {
+    record.samplePart = [parts[0]];
+    changed = true;
+  } else if (!Array.isArray(record.samplePart)) {
+    record.samplePart = selectedParts;
     changed = true;
   }
 

@@ -83,7 +83,7 @@ export function hasSamplingOrAnalysisData(record) {
   if (analysis && analysis !== '未調査') return true;
   if (Number(record.sampleCount) > 0) return true;
   if (record.sampleLocation1 || record.sampleLocation2 || record.sampleLocation3) return true;
-  if (record.samplePart || record.sampleDone || record.sampleDate || record.sampleName) return true;
+  if ((Array.isArray(record.samplePart) ? record.samplePart.length : String(record.samplePart || '').trim()) || record.sampleDone || record.sampleDate || record.sampleName) return true;
   if (record.analysisResult || record.remarks) return true;
   return false;
 }

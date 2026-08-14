@@ -26,7 +26,7 @@
  * @property {string} sampleLocation1
  * @property {string} sampleLocation2
  * @property {string} sampleLocation3
- * @property {string} samplePart
+ * @property {string[]} samplePart 複数選択された採取部位。旧string入力もcreate時に配列へ正規化する。
  * @property {boolean} sampleDone
  * @property {string} sampleDate
  * @property {string} sampleName
@@ -126,11 +126,35 @@ export function colorForInputId(inputId) {
   return MATERIAL_COLOR_PALETTE[index < 0 ? 0 : index];
 }
 
+
+/** 採取部位を重複なし配列へ正規化する。旧stringレコードも互換で受ける。 */
+export function normalizeSampleParts(value) {
+  const source = Array.isArray(value) ? value : String(value ?? '').split(/[、,，]/);
+  const out = [];
+  source
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      if (!out.includes(item)) out.push(item);
+    });
+  return out;
+}
+
+/** 表示・写真Record連携用に「、」区切り文字列へ変換する。 */
+export function samplePartsToText(value) {
+  return normalizeSampleParts(value).join('、');
+}
+
 /** materialRecordを1件生成する。 */
 export function createMaterialRecord(fields) {
   const name = String(fields.name ?? '');
   const { baseName, suffixLetter } = splitBaseNameAndSuffix(name);
   const inputId = Number(fields.inputId);
+  const analysisRequired = fields.analysisRequired || '採取・分析';
+  const rawSampleCount = Number(fields.sampleCount);
+  const sampleCount = analysisRequired === '採取・分析'
+    ? Math.max(1, Math.min(3, Number.isFinite(rawSampleCount) && rawSampleCount > 0 ? rawSampleCount : 1))
+    : Math.max(0, Math.min(3, Number.isFinite(rawSampleCount) ? rawSampleCount : 0));
 
   return {
     status: fields.status || 'active',
@@ -142,12 +166,12 @@ export function createMaterialRecord(fields) {
     usageLocation: String(fields.usageLocation ?? ''),
     level: String(fields.level ?? '-'),
     note: String(fields.note ?? ''),
-    analysisRequired: fields.analysisRequired || '未調査',
-    sampleCount: Math.max(0, Math.min(3, Number(fields.sampleCount) || 0)),
+    analysisRequired,
+    sampleCount,
     sampleLocation1: String(fields.sampleLocation1 ?? ''),
     sampleLocation2: String(fields.sampleLocation2 ?? ''),
     sampleLocation3: String(fields.sampleLocation3 ?? ''),
-    samplePart: String(fields.samplePart ?? ''),
+    samplePart: normalizeSampleParts(fields.samplePart),
     sampleDone: Boolean(fields.sampleDone),
     sampleDate: String(fields.sampleDate ?? ''),
     sampleName: String(fields.sampleName ?? ''),

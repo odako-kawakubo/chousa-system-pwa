@@ -8,10 +8,8 @@ let records = new Map();
 const listeners = [];
 let batchDepth = 0;
 let pendingNotify = false;
-let notificationMuteDepth = 0;
 
 function notify() {
-  if (notificationMuteDepth > 0) return;
   if (batchDepth > 0) { pendingNotify = true; return; }
   listeners.forEach((callback) => callback());
 }
@@ -59,10 +57,5 @@ export function batch(callback) {
   }
 }
 
-export function runWithoutNotification(callback) {
-  notificationMuteDepth += 1;
-  try { callback(); }
-  finally { notificationMuteDepth -= 1; }
-}
 
 export function clearAll() { records = new Map(); }

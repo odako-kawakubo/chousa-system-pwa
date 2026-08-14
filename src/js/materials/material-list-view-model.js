@@ -1,3 +1,5 @@
+import { normalizeSampleParts, samplePartsToText } from '../records/material-record.js';
+
 /**
  * src/js/materials/material-list-view-model.js
  *
@@ -12,7 +14,7 @@
 
 export const MATERIAL_LEVEL_OPTIONS = ['-', '3', '2', '1'];
 export const MATERIAL_ANALYSIS_OPTIONS = ['採取・分析', '目視', 'みなし', '対象外'];
-export const MATERIAL_SAMPLE_COUNT_OPTIONS = ['-', '1', '2', '3'];
+export const MATERIAL_SAMPLE_COUNT_OPTIONS = ['1', '2', '3'];
 
 /** 有効建材を建材No.順に並べ、表示用オブジェクトへ変換する。 */
 export function buildMaterialListRows(records) {
@@ -35,15 +37,21 @@ export function buildMaterialListRows(records) {
         usageParts,
         usagePlaces,
         level: normalizeLevel(record.level),
-        analysisRequired: String(record.analysisRequired || '未調査'),
+        analysisRequired: String(record.analysisRequired || '採取・分析'),
+        samplingEnabled: String(record.analysisRequired || '採取・分析') === '採取・分析',
         note: String(record.note || ''),
         sampleCount,
         sampleCountLabel: sampleCount > 0 ? String(sampleCount) : '-',
         sampleLocation1: String(record.sampleLocation1 || ''),
         sampleLocation2: String(record.sampleLocation2 || ''),
         sampleLocation3: String(record.sampleLocation3 || ''),
-        sampleLocationEnabled: [sampleCount >= 1, sampleCount >= 2, sampleCount >= 3],
-        samplePart: String(record.samplePart || ''),
+        sampleLocationEnabled: [
+          String(record.analysisRequired || '採取・分析') === '採取・分析' && sampleCount >= 1,
+          String(record.analysisRequired || '採取・分析') === '採取・分析' && sampleCount >= 2,
+          String(record.analysisRequired || '採取・分析') === '採取・分析' && sampleCount >= 3
+        ],
+        samplePart: normalizeSampleParts(record.samplePart),
+        samplePartText: samplePartsToText(record.samplePart),
         sampleDone: Boolean(record.sampleDone),
         sampleDate: String(record.sampleDate || ''),
         color: String(record.color || '')

@@ -4,6 +4,6 @@
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.5.2',
-  mode: 'material-operations-development'
+  version: '0.1.5.3E',
+  mode: 'photo-tab-development'
 };

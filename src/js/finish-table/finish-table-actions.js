@@ -560,16 +560,26 @@ export function restoreRoomCopy(roomKey, backupRecords) {
    ============================================================ */
 
 export function seedInitialMaterials() {
-  const records = SAMPLE_MATERIALS_SEED.map(([materialId, inputId, name, note, photoCount]) =>
-    createMaterialRecord({
+  const records = SAMPLE_MATERIALS_SEED.map(([materialId, inputId, name, note, photoCount]) => {
+    // v0.1.5.3B 写真タブの建材採取UIを実機確認できるよう、
+    // demoデータのうち2件だけ採取対象として初期設定する。
+    // 本番の採取条件・保存処理とは切り離したサンプル値。
+    const samplingDemo = materialId === 'R001'
+      ? { analysisRequired: '採取・分析', sampleCount: 2, sampleLocation1: '1-1', sampleLocation2: '1-2', samplePart: '壁' }
+      : materialId === 'R002'
+        ? { analysisRequired: '採取・分析', sampleCount: 1, sampleLocation1: '北面', samplePart: '外壁' }
+        : {};
+
+    return createMaterialRecord({
       materialId,
       inputId,
       materialNo: inputId,
       name: normalizeMaterialName(name),
       note,
-      photoCount
-    })
-  );
+      photoCount,
+      ...samplingDemo
+    });
+  });
   materialRecordStore.batch(() => records.forEach((record) => materialRecordStore.set(record)));
 }
 
@@ -652,8 +662,11 @@ export function seedInitialFinishRecords() {
    ============================================================ */
 
 export function runRecordTransaction(mutate) {
-  finishRecordStore.runWithoutNotification(() => {
-    materialRecordStore.runWithoutNotification(() => mutate());
+  // Store更新通知は各Storeのbatch()へ一本化する。
+  // transaction専用DOMイベントや通知完全抑制は使わず、変更されたStoreが
+  // batch終了時に通常のsubscribe通知を1回だけ発火する。
+  finishRecordStore.batch(() => {
+    materialRecordStore.batch(() => mutate());
   });
 }
 
