@@ -52,7 +52,10 @@ function partsForArea(areaCode) {
 
 function defaultPartName(areaCode, partIndex) {
   const raw = partsForArea(areaCode)[partIndex - 1] || '';
-  return partIndex >= 5 ? 'その他' : raw;
+
+  // その他1/2は、建材が未入力の段階では実部位も空欄のままにする。
+  // 建材登録時に実部位が空ならnormalizeOtherPartName()で「その他」へ確定する。
+  return partIndex >= 5 ? '' : raw;
 }
 
 /**
@@ -64,6 +67,13 @@ function normalizeOtherPartName(value) {
   const text = String(value ?? '').trim();
   if (!text || text === 'その他1' || text === 'その他2') return 'その他';
   return text;
+}
+
+
+function normalizeCandidateMaterialInput(rawValue) {
+  const normalized = normalizeMaterialName(rawValue);
+  // 候補の優先1は「【入力ID】建材名称」で表示するため、確定時は表示用IDを外して名称だけ扱う。
+  return normalized.replace(/^【\d+】\s*/, '');
 }
 
 function appendSystemMemo(existing, message) {
@@ -338,7 +348,7 @@ export function commitCellId(roomKey, partIndex, row, rawInputId) {
 export function commitCellName(roomKey, partIndex, row, rawName) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor) return null;
-  const name = normalizeMaterialName(rawName);
+  const name = normalizeCandidateMaterialInput(rawName);
   if (!name) {
     writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '' });
     return null;
@@ -357,6 +367,10 @@ export function commitCellActualPart(roomKey, partIndex, row, rawValue) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor) return;
   writeCellPatch(anchor, partIndex, row, { part: String(rawValue ?? '') });
+
+  // その他部位を変更したら建材Recordの使用部位も同時に再集計する。
+  // これにより次に開く建材候補の優先1/2が最新部位へ追従する。
+  refreshMaterialUsageDerivedFields();
 }
 
 export function isCellPendingRegistration(roomKey, partIndex, row) {
@@ -386,7 +400,7 @@ function nextInputIdForMaterials() {
  */
 export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
   const anchor = findRepresentativeByRoomKey(roomKey);
-  const normalized = normalizeMaterialName(rawName);
+  const normalized = normalizeCandidateMaterialInput(rawName);
   if (!anchor || !normalized) return null;
 
   let material = materialRecordStore.findByName(normalized);

@@ -43,11 +43,11 @@ function photoThumb(photo, { compact = false, extra = false } = {}) {
   if (!photo) {
     return `<div class="photo-thumb-card photo-thumb-empty ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}"><span>未撮影</span></div>`;
   }
-  return `<button class="photo-thumb-card ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" type="button" data-photo-preview="${esc(photo.photoId)}" title="${esc(photo.fileName || photo.photoId)}">
+  return `<div class="photo-thumb-card ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" title="${esc(photo.fileName || photo.photoId)}">
     <span class="photo-thumb-icon">📷</span>
     <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
-    ${photo.isRepresentative ? '<span class="photo-rep-badge">代表</span>' : ''}
-  </button>`;
+    <button class="photo-expand-btn" type="button" data-photo-expand="${esc(photo.photoId)}" aria-label="写真を拡大">拡大</button>
+  </div>`;
 }
 
 function renderOtherPhotoRows(photos) {

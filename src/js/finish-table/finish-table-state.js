@@ -55,7 +55,7 @@ export function initFinishTableState() {
     project: sampleProject,
 
     activeAreaMode: 'internal',
-    colorMode: true,
+    colorMode: false,
     chipInputMode: false,
     simpleListOpen: true,
 

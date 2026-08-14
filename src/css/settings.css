@@ -1,0 +1,28 @@
+/** v0.1.5.4B 設定タブ専用 */
+.settings-root{display:grid;gap:12px}
+.settings-subtabs{display:flex;gap:6px;position:sticky;top:106px;z-index:12;background:var(--bg);padding-bottom:6px}
+.settings-subtab.active{background:var(--main);border-color:var(--main);color:#fff}
+.settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.settings-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.settings-project-card{grid-column:1/-1}
+.settings-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);background:#fbfcff}
+.settings-card-head h3{margin:0 0 3px;font-size:14px}
+.settings-form-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;padding:14px}
+.settings-form-grid label{display:grid;gap:5px;font-size:12px;font-weight:700;color:#475569}
+.settings-form-grid input,.settings-add-row input,.settings-table-input{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 8px;font-size:13px;color:var(--text)}
+.settings-span-2{grid-column:1/-1}
+.settings-add-row{display:grid;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line);background:#f8fafc}
+.settings-add-material{grid-template-columns:minmax(90px,.7fr) minmax(160px,1.5fr) auto}
+.settings-add-part{grid-template-columns:minmax(160px,1fr) auto}
+.settings-table-wrap{max-height:430px;overflow:auto}
+.settings-table{width:100%;border-collapse:collapse;font-size:12px}
+.settings-table th{position:sticky;top:0;z-index:1;background:var(--head);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+.settings-table td{padding:4px 6px;border-bottom:1px solid #e7ebf2;vertical-align:middle}
+.settings-table-input{border-color:transparent;background:transparent;padding:5px 6px}
+.settings-table-input:focus{border-color:#93c5fd;background:#fff;outline:2px solid rgba(37,99,235,.12)}
+.settings-part-table-wrap{max-height:360px}
+.settings-sync-placeholder-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px}
+.settings-placeholder-box{display:grid;gap:5px;padding:14px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc}
+.settings-placeholder-box b{font-size:13px}.settings-placeholder-box span{font-size:12px;color:var(--muted);line-height:1.5}
+@media(max-width:900px){.settings-grid{grid-template-columns:1fr}.settings-project-card{grid-column:auto}.settings-form-grid{grid-template-columns:1fr}.settings-span-2{grid-column:auto}.settings-sync-placeholder-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.settings-add-material{grid-template-columns:1fr}.settings-add-part{grid-template-columns:1fr}.settings-subtabs{top:104px}}

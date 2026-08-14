@@ -22,6 +22,9 @@ import {
 } from '../finish-table/finish-table-state.js';
 import { materialRecordStore, getMaterialUsageRoomNos } from '../finish-table/finish-table-actions.js';
 import { applyMaterialMatchHighlight } from '../finish-table/finish-table-renderer.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+import { openPhotoViewer } from '../photos/photo-viewer.js';
 
 function findMaterialByInputId(inputId) {
   return materialRecordStore.findByInputId(inputId);
@@ -53,7 +56,7 @@ export function initSimpleList(container) {
     const photoButton = event.target.closest('[data-action="show-finish-photo-confirm"]');
     if (photoButton && !photoButton.disabled) {
       const material = findMaterialByInputId(getSelectedMaterialInputId());
-      if (material) openPhotoConfirmModal(material);
+      if (material) openMaterialVisualPhotos(material);
     }
   });
 
@@ -125,6 +128,28 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
+function visualPhotosForMaterial(material) {
+  if (!material) return [];
+  const keys = new Set();
+  finishRecordStore.getAll().forEach((record) => {
+    if (record.status !== 'active' || String(record.materialId || '') !== String(material.materialId || '')) return;
+    const part = String(record.part || '').trim();
+    if (record.roomPosition && part) keys.add(`${record.roomPosition}|${part}`);
+  });
+  return photoRecordStore.getActive()
+    .filter((photo) => photo.photoType === 'visual' && keys.has(`${photo.roomPosition}|${photo.part}`))
+    .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')));
+}
+
+function openMaterialVisualPhotos(material) {
+  const photos = visualPhotosForMaterial(material);
+  if (!photos.length) {
+    openPhotoConfirmModal(material, 'この建材が使われている部屋・部位の目視写真はまだありません。');
+    return;
+  }
+  openPhotoViewer(photos[0].photoId, { preferredMaterialId: material.materialId });
+}
+
 function ensurePhotoConfirmModal() {
   if (document.getElementById('finishPhotoConfirmModal')) return;
   const modal = document.createElement('div');
@@ -145,12 +170,11 @@ function ensurePhotoConfirmModal() {
   modal.querySelector('#finishPhotoConfirmClose').addEventListener('click', closePhotoConfirmModal);
 }
 
-function openPhotoConfirmModal(material) {
+function openPhotoConfirmModal(material, message = '') {
   const modal = document.getElementById('finishPhotoConfirmModal');
   if (!modal) return;
   document.getElementById('finishPhotoConfirmTitle').textContent = `写真確認：${material.name}`;
-  document.getElementById('finishPhotoConfirmBody').textContent =
-    `目視調査写真 ${material.photoCount}枚（サンプル件数）。写真本体の読込は後続実装です。`;
+  document.getElementById('finishPhotoConfirmBody').textContent = message || '目視写真を確認できません。';
   modal.classList.add('open');
 }
 

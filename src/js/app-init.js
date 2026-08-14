@@ -22,6 +22,7 @@ import { initializeMaterialOperations } from './materials/material-operations-co
 import { initializePhotoTab } from './photos/photo-controller.js';
 import * as photoRecordStore from './store/photo-record-store.js';
 import { seedInitialPhotoRecords } from './demo/sample-photos.js';
+import { initializeSettingsTab } from './settings/settings-controller.js';
 
 
 /**
@@ -53,6 +54,7 @@ function initUiSkeleton() {
 
   initializeRecordView();
   initializePhotoTab();
+  initializeSettingsTab();
 
   // 起動時は仕上表タブを既定表示する。
   showTab('finish');

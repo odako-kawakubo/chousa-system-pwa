@@ -14,7 +14,6 @@
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
 import { materialRecordStore } from '../finish-table/finish-table-actions.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
-import { getColorMode, toggleColorMode } from '../finish-table/finish-table-state.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows, splitDerivedList } from './material-list-view-model.js';
 import { renderMaterialList } from './material-list-renderer.js';
@@ -22,6 +21,10 @@ import { renderMaterialList } from './material-list-renderer.js';
 let rootElement = null;
 let selectedMaterialId = null;
 let outsideMultiSelectBound = false;
+
+// 建材リスト専用のカラー表示状態。仕上表／簡易リストとは独立して切り替える。
+// 初期状態は色なし（OFF）。
+let materialListColorMode = false;
 
 const PEN_DRAG_THRESHOLD_PX = 12;
 const PEN_CLICK_SUPPRESS_MS = 500;
@@ -51,7 +54,7 @@ export function refreshMaterialList() {
   if (selectedMaterialId && !rows.some((row) => row.materialId === selectedMaterialId)) {
     selectedMaterialId = null;
   }
-  renderMaterialList(rootElement, rows, selectedMaterialId, { colorMode: getColorMode() });
+  renderMaterialList(rootElement, rows, selectedMaterialId, { colorMode: materialListColorMode });
 }
 
 function bindMaterialListEvents() {
@@ -184,12 +187,19 @@ function handlePenPointerCancel(event) {
 }
 
 function handleMaterialActivation(target, options = {}) {
+  // 採取部位ポップの閉じるボタンは、指のclickだけでなくApple Pencilの
+  // pointerup直処理からも同じ経路で確実に閉じる。
+  const closeMultiSelect = target.closest('[data-action="close-material-multi-select"]');
+  if (closeMultiSelect) {
+    closeMultiSelect.closest('[data-material-multi-select]')?.removeAttribute('open');
+    return;
+  }
+
   const colorButton = target.closest('[data-action="toggle-material-color"]');
   if (colorButton) {
-    toggleColorMode();
+    // 建材リストだけを切り替える。仕上表／簡易リスト側のカラー状態は変更しない。
+    materialListColorMode = !materialListColorMode;
     refreshMaterialList();
-    // colorModeは仕上表・簡易リストと共通状態なので、そちらも同時に反映する。
-    refreshFinishTableFromStores();
     return;
   }
 

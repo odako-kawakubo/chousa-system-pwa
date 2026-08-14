@@ -41,7 +41,6 @@ import {
   getCell,
   getRoomCopyButtonState,
   isFirstNormalFloorFirstRoom,
-  isCellPendingRegistration,
   orderedInternalGroups
 } from './finish-table-view-model.js';
 import { formatProjectDisplayName } from '../demo/sample-project.js';
@@ -120,6 +119,9 @@ export function renderFinishTab(container) {
       <div class="finish-table-scroll" id="finishTableScroll">
         <div class="finish-table-host" id="finishRoomsArea"></div>
       </div>
+
+      <!-- v0.1.5.4B: iPadでも自由入力を邪魔しない、入力セル追従型の候補ポップ。 -->
+      <div class="finish-candidate-popup" id="finishCandidatePopup" hidden></div>
     </div>
   `;
 
@@ -546,15 +548,9 @@ function renderPartCells(room, partIndex, row) {
   const material = cell.materialId ? currentViewModel.materials.find((m) => String(m.materialId) === String(cell.materialId)) : null;
   const style = getState().colorMode && material ? ` style="--material-bg:${material.color}"` : '';
 
-  const pendingRegistration = isCellPendingRegistration(room, partIndex, row);
-  const registerButton = pendingRegistration
-    ? `<button type="button" class="finish-register-btn" data-action="register-material" data-room-key="${escapeHtml(roomKey(room))}" data-part-index="${partIndex}" data-input-row="${row}" title="この名称を新規建材として登録します">登録</button>`
-    : '';
-
   let html = `
     <div class="finish-data-cell group-first" data-group-key="${escapeHtml(groupKey)}" data-room-key="${escapeHtml(roomKey(room))}" data-finish-id="${escapeHtml(finishId)}" data-part-index="${partIndex}" data-input-row="${row}"${style}>
       ${renderFieldControl(room, partIndex, row, 'id', cell.inputId, 'ID', 'finish-id-input')}
-      ${registerButton}
     </div>
   `;
 

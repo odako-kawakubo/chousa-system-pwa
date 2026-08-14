@@ -393,43 +393,45 @@
   color: #b91c1c;
 }
 
-/* 写真拡大プレビューモーダル
- * v0.1.5.3D: 全画面ではなく中央の大きめViewerとして表示する。
- * 背景の暗い余白をタップすると閉じられるよう、周囲に余白を残す。
+/* 写真拡大・比較 共通PhotoViewer
+ * v0.1.5.4E: 通常拡大／比較を同じほぼ全面Viewerで扱う。
+ * 外側には閉じるためのわずかな暗背景だけを残し、写真表示領域を最大化する。
  */
 .photo-preview-modal {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.52);
+  background: rgba(15, 23, 42, 0.58);
   z-index: 9999;
   align-items: center;
   justify-content: center;
-  padding: clamp(18px, 4vw, 52px);
+  padding: clamp(6px, 1vw, 12px);
 }
 .photo-preview-modal.open {
   display: flex;
 }
 .photo-preview-card {
-  width: min(980px, 82vw);
-  max-width: calc(100vw - 36px);
-  max-height: 82dvh;
+  width: min(98vw, 1800px);
+  height: min(97dvh, 1200px);
+  max-width: calc(100vw - 12px);
+  max-height: calc(100dvh - 12px);
   background: #fff;
-  border-radius: 14px;
+  border-radius: 10px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.32);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.32);
 }
 .photo-preview-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 44px;
-  padding: 8px 12px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 8px;
   border-bottom: 1px solid var(--line);
   background: #f8fafc;
+  flex: 0 0 auto;
 }
 .photo-preview-head h3 {
   margin: 0;
@@ -441,11 +443,18 @@
 }
 .photo-preview-body {
   min-height: 0;
+  flex: 1 1 auto;
   overflow: hidden;
 }
 @media (max-width: 850px) {
-  .photo-preview-modal { padding: 28px; }
-  .photo-preview-card { width: min(900px, 88vw); max-height: 84dvh; }
+  .photo-preview-modal { padding: 6px; }
+  .photo-preview-card {
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+    max-width: none;
+    max-height: none;
+    border-radius: 8px;
+  }
 }
 
 /* ============================================================

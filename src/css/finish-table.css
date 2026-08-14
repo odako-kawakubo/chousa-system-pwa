@@ -575,25 +575,64 @@
   font-weight: 400;
 }
 
-/* ID欄の「登録」ボタン（未登録の建材名称が入力されている間だけ表示）。
- * セル端へ寄せず、IDセル内の中央へ表示する。
- */
+/* v0.1.5.4B: 未登録名称を編集中の間だけ、IDセル全体を「登録」ボタンにする。
+ * 木材・ガラス等を登録せず仕上表だけへ残す運用があるため、非編集中は表示しない。 */
 .finish-register-btn {
   position: absolute;
-  left: 50%;
-  bottom: 2px;
-  transform: translateX(-50%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   border: 1px solid #f59e0b;
-  border-radius: 4px;
+  border-radius: 0;
   background: #fffbeb;
   color: #92400e;
   font-size: 8px;
-  line-height: 1.2;
-  padding: 0 3px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
   cursor: pointer;
   white-space: nowrap;
+  touch-action: manipulation;
 }
 .finish-register-btn:hover { background: #fef3c7; }
+
+/* 入力セル追従型候補ポップ。native datalistを使わないため、iPadで画面中央へ
+ * 大きな候補UIが出ず、入力中のセルを見ながら自由入力できる。 */
+.finish-candidate-popup {
+  position: fixed;
+  z-index: 1200;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15,23,42,.18);
+}
+.finish-candidate-popup[hidden] { display: none; }
+.finish-candidate-item {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.finish-candidate-item:last-child { border-bottom: 0; }
+.finish-candidate-item:hover,
+.finish-candidate-item:focus-visible { background: #eff6ff; outline: none; }
 
 /* ============================================================
    選択表示

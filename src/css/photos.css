@@ -51,12 +51,14 @@
 .visual-info-line .label,.sample-compact-info .label{color:#475569;font-weight:600}
 .visual-material-line{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .visual-compact-actions{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:0}
-.photo-thumb-card{position:relative;width:190px;height:126px;flex:0 0 190px;aspect-ratio:3/2;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc center/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:7px;overflow:hidden;color:#334155;cursor:pointer;touch-action:manipulation}
+.photo-thumb-card{position:relative;width:190px;height:126px;flex:0 0 190px;aspect-ratio:3/2;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc center/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:7px;overflow:hidden;color:#334155;cursor:default;touch-action:manipulation}
 .photo-thumb-card.compact,.photo-thumb-card.extra{width:90px;height:58px;flex:0 0 90px;border-radius:8px}
 .photo-thumb-card.photo-thumb-empty{border-style:solid;background:#e5e7eb;color:#64748b;cursor:default}
 .photo-thumb-icon{font-size:22px}
 .photo-thumb-file{width:100%;font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.photo-rep-badge{position:absolute;top:4px;right:4px;background:#16a34a;color:#fff;border-radius:999px;padding:1px 5px;font-size:9px;font-weight:700}
+.photo-expand-btn{position:absolute;top:4px;right:4px;z-index:6;min-width:34px;height:22px;padding:0 6px;border:1px solid rgba(255,255,255,.8);border-radius:999px;background:rgba(15,23,42,.72);color:#fff;font-size:9px;font-weight:800;line-height:20px;text-align:center;cursor:pointer;touch-action:manipulation}
+.photo-expand-btn:hover{background:rgba(15,23,42,.88)}
+.photo-thumb-card.compact .photo-expand-btn,.photo-thumb-card.extra .photo-expand-btn{top:3px;right:3px;min-width:30px;height:19px;padding:0 5px;font-size:8px;line-height:17px}
 .visual-add-btn{width:36px;height:36px;flex:0 0 36px;border-radius:9px;font-size:22px;line-height:1;padding:0}
 .visual-camera-btn{white-space:nowrap}
 .visual-expand-row{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:34px}
@@ -103,7 +105,7 @@
    v0.1.5.3D PhotoViewer
    ============================================================ */
 .photo-preview-body{padding:0!important;overflow:hidden!important;background:#e9eef5}
-.photo-viewer-shell{position:relative;width:100%;height:min(68dvh,720px);min-height:360px;background:#0f172a;overflow:hidden;user-select:none}
+.photo-viewer-shell{position:relative;width:100%;height:100%;min-height:0;background:#0f172a;overflow:hidden;user-select:none}
 .photo-viewer-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;cursor:default}
 .photo-viewer-image{display:block;max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;transition:transform .12s ease;pointer-events:none}
 .photo-viewer-image.is-zoomed{transition:none}
@@ -130,7 +132,7 @@
   .photo-group-head{top:33px}
   .sample-stage-grid{min-width:560px}
   .photo-detail-body{padding:10px}
-  .photo-viewer-shell{height:min(64dvh,620px);min-height:320px}
+  .photo-viewer-shell{height:100%;min-height:0}
 }
 
 @media(max-width:650px){
@@ -143,3 +145,29 @@
   .sample-point-block{overflow-x:auto}
   .photo-viewer-nav{width:36px;height:48px;font-size:32px}
 }
+
+/* ============================================================
+   v0.1.5.4E 比較Viewer
+   ============================================================ */
+.photo-viewer-tools{position:absolute;top:8px;left:8px;z-index:10;display:flex;gap:5px}
+.photo-compare-shell{width:100%;height:100%;background:#0f172a;color:#e2e8f0;padding:4px;box-sizing:border-box;overflow:auto}
+.photo-compare-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:3px;font-size:12px;color:#cbd5e1}
+.photo-compare-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 4px;align-items:start}
+.photo-compare-pane{display:flex;flex-direction:column;min-width:0;background:#111827;overflow:hidden;border-radius:5px}
+.photo-compare-controls{display:flex;align-items:center;gap:4px;padding:3px;background:#1e293b}
+.photo-compare-controls select{min-width:0;flex:1;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
+.photo-compare-photo-nav{display:flex;align-items:center;justify-content:flex-end;gap:3px;flex:0 0 auto;font-size:11px;white-space:nowrap}
+.photo-compare-photo-nav .btn{min-width:26px;padding:2px 6px}
+.photo-compare-remove{margin-left:1px}
+/* 写真の比率はDまでと同じ3:2を維持。余白だけを詰める。 */
+.photo-compare-stage{position:relative;width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;background:#020617}
+.photo-compare-stage .photo-viewer-image{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;transform-origin:center;will-change:transform;pointer-events:none}
+.photo-compare-grid.count-3 .photo-compare-pane:nth-child(3){grid-column:1}
+@media(max-width:850px){
+  .photo-compare-shell{padding:2px}
+  .photo-compare-grid{gap:2px}
+  .photo-compare-controls{gap:2px;padding:2px}
+  .photo-compare-controls select{min-height:28px;font-size:11px}
+  .photo-compare-photo-nav .btn{min-width:24px;padding:2px 5px}
+}
+

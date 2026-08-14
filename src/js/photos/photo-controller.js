@@ -28,7 +28,7 @@ const state = {
   openSamplingKeys: new Set(),
   collapsedLocationGroups: new Set(),
   pendingAdd: null,
-  lastThumbTap: null
+  listScrollTop: { visual: 0, sampling: 0 }
 };
 
 const localPreviewUrls = new Map();
@@ -45,9 +45,25 @@ let unsubscribePhotoStore = null;
 let unsubscribeMaterialStore = null;
 let unsubscribeFinishStore = null;
 let storeRenderQueued = false;
+let renderedMode = 'visual';
+
+function rememberPhotoListScroll(mode = renderedMode) {
+  if (!body) return;
+  const list = body.querySelector('.photo-target-list');
+  if (list) state.listScrollTop[mode] = list.scrollTop;
+}
+
+function restorePhotoListScroll() {
+  if (!body) return;
+  const list = body.querySelector('.photo-target-list');
+  if (!list) return;
+  const top = Number(state.listScrollTop[state.mode] || 0);
+  requestAnimationFrame(() => { list.scrollTop = top; });
+}
 
 function render() {
   if (!root) return;
+  rememberPhotoListScroll(renderedMode);
   if (!body) body = root.querySelector('#photoModeBody');
 
   root.querySelectorAll('[data-photo-mode]').forEach((button) => {
@@ -58,12 +74,16 @@ function render() {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     state.selectedMaterialId = view.activeMaterial?.materialId || '';
     renderSamplingView(body, view, state);
+    renderedMode = state.mode;
+    restorePhotoListScroll();
     return;
   }
 
   const view = buildVisualPhotoView(state.selectedRoomUid);
   state.selectedRoomUid = view.activeRoom?.roomUid || '';
   renderVisualView(body, view, state);
+  renderedMode = state.mode;
+  restorePhotoListScroll();
 }
 
 function showCameraPending() {
@@ -240,9 +260,12 @@ function bindEvents() {
       return;
     }
 
-    // 写真サムネイルの単タップではViewerを開かない。
-    // iPadでの「選択」と「拡大」を分けるため、Viewerはダブルタップ専用にする。
-    if (event.target.closest('[data-photo-preview]')) return;
+    // v0.1.5.4B: Pencilのダブルタップ精度に依存せず、明示的な「拡大」ボタンでViewerを開く。
+    const expandButton = event.target.closest('[data-photo-expand]');
+    if (expandButton) {
+      openViewerForThumb(expandButton.dataset.photoExpand || '');
+      return;
+    }
 
     const representative = event.target.closest('[data-photo-representative]');
     if (representative) {
@@ -289,30 +312,6 @@ function bindEvents() {
   });
 
 
-  // iPad Safariでdblclickに依存しないよう、PointerEventでダブルタップも判定する。
-  root.addEventListener('pointerup', (event) => {
-    const thumb = event.target.closest('[data-photo-preview]');
-    if (!thumb) return;
-
-    const photoId = thumb.dataset.photoPreview || '';
-    const now = Date.now();
-    const point = { x: event.clientX, y: event.clientY };
-    const previous = state.lastThumbTap;
-
-    const isDoubleTap = previous
-      && previous.photoId === photoId
-      && now - previous.time <= 340
-      && Math.hypot(point.x - previous.x, point.y - previous.y) <= 30;
-
-    if (isDoubleTap) {
-      state.lastThumbTap = null;
-      openViewerForThumb(photoId);
-      return;
-    }
-
-    state.lastThumbTap = { photoId, time: now, x: point.x, y: point.y };
-  });
-
   root.querySelector('#photoFilePicker')?.addEventListener('change', (event) => {
     addPickedFile(event.target.files?.[0]);
   });
@@ -323,6 +322,50 @@ function bindEvents() {
  * 複数Storeが同じ業務操作で連続通知しても、写真タブの再描画は1回へまとめる。
  * 通知元はStore.subscribe()だけに統一し、transaction専用DOMイベントは使わない。
  */
+function compareTargetsForViewer(context = {}) {
+  const preferredMaterialId = String(context.preferredMaterialId || '').trim();
+  const materialsById = new Map(materialRecordStore.getAll().map((item) => [String(item.materialId || ''), item]));
+  const roomInfo = new Map();
+  finishRecordStore.getAll().forEach((record) => {
+    if (record.status !== 'active' || !record.roomPosition) return;
+    if (!roomInfo.has(record.roomPosition)) {
+      roomInfo.set(record.roomPosition, { roomPosition: record.roomPosition, roomNo: record.roomNo, roomName: record.roomName });
+    }
+  });
+
+  const groups = new Map();
+  photoRecordStore.getActive().filter((photo) => photo.photoType === PHOTO_TYPES.VISUAL).forEach((photo) => {
+    const key = `${photo.roomPosition}|${photo.part}`;
+    if (!groups.has(key)) groups.set(key, { key, roomPosition: photo.roomPosition, part: photo.part, photos: [] });
+    groups.get(key).photos.push(photo);
+  });
+
+  const usedByPreferred = new Set();
+  if (preferredMaterialId) {
+    finishRecordStore.getAll().forEach((record) => {
+      if (record.status !== 'active' || String(record.materialId || '') !== preferredMaterialId) return;
+      const part = String(record.part || '').trim();
+      if (record.roomPosition && part) usedByPreferred.add(`${record.roomPosition}|${part}`);
+    });
+  }
+
+  return [...groups.values()].map((group) => {
+    const room = roomInfo.get(group.roomPosition) || {};
+    const no = String(room.roomNo || group.roomPosition || '-').trim();
+    const name = String(room.roomName || '').trim();
+    const roomLabel = name && name !== no ? `${no} ${name}` : no;
+    return {
+      ...group,
+      label: `${roomLabel} / ${group.part}`,
+      preferred: usedByPreferred.has(group.key),
+      photos: group.photos.sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')))
+    };
+  }).sort((a, b) => {
+    if (a.preferred !== b.preferred) return a.preferred ? -1 : 1;
+    return a.label.localeCompare(b.label, 'ja', { numeric: true });
+  });
+}
+
 function scheduleStoreRender() {
   if (storeRenderQueued) return;
   storeRenderQueued = true;
@@ -343,7 +386,8 @@ export function initializePhotoTab() {
 
   initializePhotoViewer({
     getPhotosForPhoto: photosForViewer,
-    getPhotoSource: previewSourceForPhoto
+    getPhotoSource: previewSourceForPhoto,
+    getCompareTargets: compareTargetsForViewer
   });
 
   render();

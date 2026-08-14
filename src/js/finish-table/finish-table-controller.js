@@ -78,6 +78,7 @@ import {
   restoreRoomCopy,
   snapshotRoomRecords,
   runRecordTransaction,
+  refreshMaterialUsageDerivedFields,
   finishRecordStore,
   materialRecordStore
 } from './finish-table-actions.js';
@@ -94,10 +95,283 @@ import {
 } from './finish-table-renderer.js';
 import { recordHistory, canUndo, canRedo, popUndo, popRedo, resetHistory } from './finish-table-history.js';
 import { initSimpleList, renderSimpleList } from '../materials/simple-list.js';
+import { getMaterialOptions, getOtherMaterialOptions, getOtherPartOptions } from '../store/survey-candidate-store.js';
+
+
+function normalizeCandidateFilter(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function roomAnchorForInput(input) {
+  const roomKeyValue = String(input?.dataset?.roomKey || '');
+  return finishRecordStore.getAll().find((record) =>
+    record.status === 'active' && String(record.roomUid || '') === roomKeyValue
+  ) || null;
+}
+
+let activeCandidateInput = null;
+let activeCandidateOptions = [];
+
+function candidatePopup() {
+  return document.getElementById('finishCandidatePopup');
+}
+
+function closeCandidatePopup() {
+  const popup = candidatePopup();
+  if (!popup) return;
+  popup.hidden = true;
+  popup.innerHTML = '';
+  activeCandidateInput = null;
+  activeCandidateOptions = [];
+}
+
+function positionCandidatePopup(input) {
+  const popup = candidatePopup();
+  if (!popup || popup.hidden || !input) return;
+  const rect = input.getBoundingClientRect();
+  const gap = 4;
+  const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+  const desiredWidth = Math.min(360, Math.max(240, rect.width * 2.4));
+  const left = Math.max(8, Math.min(rect.left, viewportWidth - desiredWidth - 8));
+
+  popup.style.width = `${desiredWidth}px`;
+  popup.style.left = `${left}px`;
+  popup.style.top = `${rect.bottom + gap}px`;
+  popup.style.bottom = 'auto';
+
+  const popupHeight = Math.min(popup.scrollHeight || 260, 300);
+  if (rect.bottom + gap + popupHeight > viewportHeight - 8 && rect.top > popupHeight + gap + 8) {
+    popup.style.top = 'auto';
+    popup.style.bottom = `${Math.max(8, viewportHeight - rect.top + gap)}px`;
+  }
+}
+
+function getCandidateOptionsForInput(input) {
+  if (!input) return [];
+  const kind = input.dataset.kind;
+  const partIndex = Number(input.dataset.partIndex);
+
+  if (kind === 'part') {
+    return getOtherPartOptions().map((value) => ({
+      kind: 'part',
+      value,
+      name: value,
+      part: value,
+      applyPart: true
+    }));
+  }
+
+  if (kind !== 'name') return [];
+
+  if (partIndex >= 5) {
+    // その他1/2は共通候補。現在の実部位に限定せず、両枠で使用中の
+    // 「部位/建材」候補を同じ順序で表示する。
+    return getOtherMaterialOptions();
+  }
+
+  const anchor = roomAnchorForInput(input);
+  if (!anchor) return [];
+  const internalParts = ['床', '巾木', '壁', '天井'];
+  const externalParts = ['床 犬走', '外壁', '屋根', '軒裏'];
+  const parts = anchor.areaCode === 'E' ? externalParts : internalParts;
+  const part = parts[partIndex - 1] || '';
+  return getMaterialOptions(part, { defaultPart: part });
+}
+
+function renderCandidatePopup(input) {
+  const popup = candidatePopup();
+  if (!popup || !input || !document.contains(input)) return;
+
+  const filter = normalizeCandidateFilter(input.value);
+  const all = getCandidateOptionsForInput(input);
+  const visible = filter
+    ? all.filter((item) => normalizeCandidateFilter(item.value).includes(filter))
+    : all;
+
+  activeCandidateInput = input;
+  activeCandidateOptions = visible.slice(0, 60);
+
+  if (!activeCandidateOptions.length) {
+    closeCandidatePopup();
+    return;
+  }
+
+  popup.innerHTML = activeCandidateOptions.map((item, index) =>
+    `<button type="button" class="finish-candidate-item" data-candidate-index="${index}">${String(item.value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')}</button>`
+  ).join('');
+  popup.hidden = false;
+  positionCandidatePopup(input);
+}
+
+function updateFinishInputCandidates(input) {
+  if (!input || !['name', 'part'].includes(input.dataset.kind)) {
+    closeCandidatePopup();
+    return;
+  }
+  renderCandidatePopup(input);
+}
+
+function findGroupIdCell(input) {
+  const cell = input?.closest('.finish-data-cell');
+  const groupKey = cell?.dataset.groupKey;
+  if (!groupKey) return null;
+  return [...cell.closest('.finish-room-block')?.querySelectorAll('.finish-data-cell.group-first') || []]
+    .find((candidate) => candidate.dataset.groupKey === groupKey) || null;
+}
+
+function restoreDynamicRegisterButton(input) {
+  const idCell = findGroupIdCell(input);
+  if (!idCell || idCell.dataset.dynamicRegister !== '1') return;
+  idCell.innerHTML = idCell.dataset.dynamicRegisterOriginal || '';
+  delete idCell.dataset.dynamicRegister;
+  delete idCell.dataset.dynamicRegisterOriginal;
+}
+
+function syncDynamicRegisterButton(input) {
+  if (!input || input.dataset.kind !== 'name') return;
+  const idCell = findGroupIdCell(input);
+  if (!idCell) return;
+
+  const roomKeyValue = String(input.dataset.roomKey || '');
+  const partIndex = Number(input.dataset.partIndex);
+  const row = Number(input.dataset.inputRow);
+  const position = partIndex * 100 + row;
+  const finishRecord = finishRecordStore.getAll().find((record) =>
+    record.status === 'active'
+    && String(record.roomUid || '') === roomKeyValue
+    && Number(record.position) === position
+  ) || null;
+
+  const raw = String(input.value || '').trim();
+  const normalizedName = raw.replace(/^【\d+】\s*/, '').replace(/^.+?\//, '');
+  const linkedMaterial = finishRecord?.materialId
+    ? materialRecordStore.get(finishRecord.materialId)
+    : null;
+
+  // 編集開始直後から、未紐付けセルは内容が空でもIDセル全面を「登録」にする。
+  // 既存建材に紐付いているセルでも、名称を別名へ編集し始めた時点で登録候補へ切り替える。
+  const stillLinkedToCurrentMaterial = Boolean(
+    linkedMaterial
+    && normalizedName
+    && String(linkedMaterial.name || '').trim() === normalizedName
+  );
+  const shouldShow = !stillLinkedToCurrentMaterial;
+
+  if (!shouldShow) {
+    restoreDynamicRegisterButton(input);
+    return;
+  }
+
+  if (idCell.dataset.dynamicRegister !== '1') {
+    idCell.dataset.dynamicRegisterOriginal = idCell.innerHTML;
+    idCell.dataset.dynamicRegister = '1';
+  }
+
+  idCell.innerHTML = `<button type="button" class="finish-register-btn" data-action="register-material" data-room-key="${input.dataset.roomKey || ''}" data-part-index="${input.dataset.partIndex || ''}" data-input-row="${input.dataset.inputRow || ''}" title="この名称を建材レコードへ登録します">登録</button>`;
+}
+
+function commitCandidateSelection(option, input) {
+  if (!option || !input) return;
+  const roomKeyValue = input.dataset.roomKey;
+  const partIndex = Number(input.dataset.partIndex);
+  const row = Number(input.dataset.inputRow);
+  const pendingKey = cellPendingKey(roomKeyValue, partIndex, row);
+
+  if (input.dataset.kind === 'part') {
+    completeCellEdit(input, () => {
+      commitCellActualPart(roomKeyValue, partIndex, row, option.part || option.value);
+    });
+    return;
+  }
+
+  // 入力ID付きの既存建材は、その選択操作だけで確定して編集終了する。
+  if (option.materialId) {
+    const material = materialRecordStore.get(option.materialId);
+    if (!material) return;
+    completeCellEdit(input, () => {
+      if (partIndex >= 5 && option.applyPart && option.part) {
+        commitCellActualPart(roomKeyValue, partIndex, row, option.part);
+      }
+      applyMaterialToCell(roomKeyValue, partIndex, row, material);
+      clearPendingCellName(pendingKey);
+      refreshMaterialUsageDerivedFields();
+    });
+    return;
+  }
+
+  // ベース名／デフォルト候補は「未登録名を編集中」のまま維持する。
+  // ここでは建材レコードへ自動登録せず、入力値とpending名だけを更新する。
+  // その他候補に部位が含まれる場合は、実部位だけRecordへ反映する。
+  const name = String(option.name || option.baseName || option.value || '').trim();
+  if (!name) return;
+
+  if (partIndex >= 5 && option.applyPart && option.part) {
+    runRecordTransaction(() => {
+      commitCellActualPart(roomKeyValue, partIndex, row, option.part);
+    });
+  }
+
+  input.value = name;
+  setPendingCellName(pendingKey, name);
+  syncDynamicRegisterButton(input);
+  renderCandidatePopup(input);
+  input.focus();
+}
 
 /** フォーカス中の文字入力について、編集開始前のスナップショットと値を覚えておく。 */
 let pendingEditSnapshot = null;
 let pendingEditBeforeValue = null;
+
+/**
+ * 候補選択／登録のような明示操作で確定した入力キー。
+ * DOM再描画に伴って旧inputのfocusoutが後から発火しても、同じ値を二重確定しない。
+ * ブラウザごとのfocusout発火順に依存しないよう、1イベントループ分だけ保持する。
+ */
+let explicitlyCommittedInputKey = null;
+let explicitCommitReleaseTimer = null;
+
+function markExplicitlyCommitted(input) {
+  const key = String(input?.dataset?.inputKey || '');
+  explicitlyCommittedInputKey = key || null;
+  if (explicitCommitReleaseTimer) clearTimeout(explicitCommitReleaseTimer);
+  explicitCommitReleaseTimer = setTimeout(() => {
+    explicitlyCommittedInputKey = null;
+    explicitCommitReleaseTimer = null;
+  }, 250);
+}
+
+function consumeExplicitCommit(input) {
+  const key = String(input?.dataset?.inputKey || '');
+  if (!key || key !== explicitlyCommittedInputKey) return false;
+  explicitlyCommittedInputKey = null;
+  if (explicitCommitReleaseTimer) clearTimeout(explicitCommitReleaseTimer);
+  explicitCommitReleaseTimer = null;
+  return true;
+}
+
+/**
+ * 候補選択／登録でセル編集を明示確定する共通経路。
+ * 1操作につきStore確定と履歴記録を1回だけ行い、focusout側では再確定させない。
+ */
+function completeCellEdit(input, mutate) {
+  if (!input || typeof mutate !== 'function') return;
+  const before = pendingEditSnapshot || getUndoableSnapshot();
+  markExplicitlyCommitted(input);
+  closeCandidatePopup();
+  restoreDynamicRegisterButton(input);
+  setFocusedInputKey(null);
+  runRecordTransaction(mutate);
+  recordHistory(before);
+  updateUndoRedoButtons();
+  pendingEditSnapshot = null;
+  pendingEditBeforeValue = null;
+  refreshFromStores();
+}
 
 export function initializeFinishTable() {
   const finishSection = document.getElementById('finish');
@@ -321,6 +595,13 @@ function bindEvents(root) {
   let ignorePenClickUntil = 0;
 
   function handleFinishActivation(target) {
+    const candidateButton = target.closest('[data-candidate-index]');
+    if (candidateButton && activeCandidateInput) {
+      const option = activeCandidateOptions[Number(candidateButton.dataset.candidateIndex)];
+      if (option) commitCandidateSelection(option, activeCandidateInput);
+      return;
+    }
+
     const areaButton = target.closest('.finish-area-btn');
     if (areaButton) {
       setAreaMode(areaButton.dataset.areaMode);
@@ -361,10 +642,17 @@ function bindEvents(root) {
       const partIndex = Number(registerButton.dataset.partIndex);
       const row = Number(registerButton.dataset.inputRow);
       const pendingKey = cellPendingKey(roomKeyValue, partIndex, row);
-      const pendingName = getPendingCellName(pendingKey);
-      if (pendingName) {
-        withHistory(() => registerMaterialForCell(roomKeyValue, partIndex, row, pendingName));
-        clearPendingCellName(pendingKey);
+      const editingNameInput = [...root.querySelectorAll('.finish-name-input')].find((input) =>
+        input.dataset.roomKey === roomKeyValue
+        && Number(input.dataset.partIndex) === partIndex
+        && Number(input.dataset.inputRow) === row
+      );
+      const pendingName = String(editingNameInput?.value || getPendingCellName(pendingKey) || '').trim();
+      if (pendingName && editingNameInput) {
+        completeCellEdit(editingNameInput, () => {
+          registerMaterialForCell(roomKeyValue, partIndex, row, pendingName);
+          clearPendingCellName(pendingKey);
+        });
       }
       return;
     }
@@ -448,6 +736,14 @@ function bindEvents(root) {
       applyRoomSelection();
     }
   }
+
+  // 候補／登録ボタンを押した瞬間に編集中inputがblurしてDOMが再描画されるのを防ぐ。
+  // pointerup/click側で確定処理を行うため、指・Pencilとも押下中はfocusを維持する。
+  root.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('[data-candidate-index], [data-action="register-material"]')) {
+      event.preventDefault();
+    }
+  }, { passive: false });
 
   root.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'pen') return;
@@ -541,6 +837,11 @@ function bindEvents(root) {
 
     const input = event.target.closest('.finish-cell-input');
     if (!input) return;
+
+    // v0.1.5.4B: 編集セル直下へ案件内Record + 設定候補のポップを表示する。
+    updateFinishInputCandidates(input);
+    if (input.dataset.kind === 'name') syncDynamicRegisterButton(input);
+
     const td = input.closest('.finish-data-cell');
     if (!td) return;
 
@@ -559,6 +860,24 @@ function bindEvents(root) {
     pendingEditBeforeValue = input.value;
   });
 
+  root.addEventListener('input', (event) => {
+    const input = event.target.closest('.finish-cell-input');
+    if (!input) return;
+
+    if (input.dataset.kind === 'name' || input.dataset.kind === 'part') {
+      renderCandidatePopup(input);
+    }
+    if (input.dataset.kind === 'name') {
+      syncDynamicRegisterButton(input);
+    }
+  });
+
+  // 候補ポップ自身のスクロールでは閉じない。仕上表側を動かした場合だけ閉じる。
+  root.addEventListener('scroll', (event) => {
+    if (event.target?.closest?.('#finishCandidatePopup')) return;
+    closeCandidatePopup();
+  }, true);
+
   root.addEventListener('focusout', (event) => {
     const roomNoInput = event.target.closest('.room-no-input');
     const roomNameInput = event.target.closest('.room-name-input');
@@ -572,6 +891,17 @@ function bindEvents(root) {
 
     const input = event.target.closest('.finish-cell-input');
     if (!input) return;
+
+    // 候補選択／登録ですでに明示確定済みなら、DOM差し替え由来のfocusoutでは
+    // Storeを書き直さない。PC/iPadでfocusout順が違っても結果を同一にする。
+    if (consumeExplicitCommit(input)) {
+      if (activeCandidateInput === input) closeCandidatePopup();
+      restoreDynamicRegisterButton(input);
+      return;
+    }
+
+    if (activeCandidateInput === input) closeCandidatePopup();
+    if (input.dataset.kind === 'name') restoreDynamicRegisterButton(input);
 
     // 値が変わっていれば、実際の確定処理より先に履歴を積む
     // （記録するのは「確定前」の状態にするため）。

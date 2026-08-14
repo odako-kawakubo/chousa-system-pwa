@@ -18,8 +18,8 @@ export function applyAppVersionDisplay() {
 
   const textTargets = {
     headerVersion: versionText,
-    appDevelopmentHint: `写真タブ実装 ${versionText}`,
-    appVersionStatus: `${versionText}（写真タブ実装）`,
+    appDevelopmentHint: `設定タブ実装 ${versionText}`,
+    appVersionStatus: `${versionText}（設定タブ実装）`,
     drawerVersion: versionText,
     settingsVersionValue: versionText
   };
