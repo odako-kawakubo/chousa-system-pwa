@@ -68,15 +68,13 @@ function renderVisualTarget(target, openKeys) {
   const others = target.photos.filter((photo) => photo.photoId !== target.representative?.photoId);
   const hasInput = target.materials.length > 0;
 
-  // v0.1.5.3D:
-  // 入力済み → 「部位：○○　使用建材：【1】○○」
-  // 未入力   → 「未入力」だけ
-  const infoLine = hasInput
-    ? `<div class="visual-info-line">
-        <span><span class="label">部位：</span><b>${esc(target.part)}</b></span>
-        <span class="visual-material-line"><span class="label">使用建材：</span>${esc(target.materialText)}</span>
-      </div>`
-    : '<div class="visual-info-line visual-unentered"><b>未入力</b></div>';
+  // 部位は写真ブロックの対象そのものなので、建材未入力でも常に表示する。
+  // 未入力表示は対象建材だけに限定する。
+  const materialText = hasInput ? target.materialText : '未入力';
+  const infoLine = `<div class="visual-info-line ${hasInput ? '' : 'visual-unentered'}">
+      <span><span class="label">部位：</span><b>${esc(target.part)}</b></span>
+      <span class="visual-material-line"><span class="label">対象建材：</span>${esc(materialText)}</span>
+    </div>`;
 
   return `<article class="photo-frame-card visual-compact ${hasInput ? 'visual-has-input' : 'visual-empty'}" data-photo-target-key="${esc(target.key)}">
     ${infoLine}
@@ -175,6 +173,20 @@ export function renderPhotoShell(container, mode) {
   </div>`;
 }
 
+
+function renderUnorganizedBlock(photos, kind) {
+  const items = Array.isArray(photos) ? photos : [];
+  return `<article class="photo-unorganized-block">
+    <div class="photo-unorganized-head">
+      <b>未整理写真</b>
+      <span>${items.length}枚</span>
+    </div>
+    ${items.length
+      ? `<div class="photo-unorganized-photos">${items.map((photo) => photoThumb(photo, { compact: true })).join('')}</div>`
+      : `<div class="photo-unorganized-empty">未整理写真はありません</div>`}
+  </article>`;
+}
+
 export function renderVisualView(container, view, state) {
   const hint = document.getElementById('photoModeHint');
   if (hint) hint.textContent = '部屋ごとの目視写真。左から調査場所を選び、右で部位ごとの代表写真と追加写真を確認します。';
@@ -197,7 +209,7 @@ export function renderVisualView(container, view, state) {
         <h4>${esc(roomTitle(room))}</h4>
         <span class="hint">部屋位置 ${esc(room.roomPosition)}</span>
       </div>
-      <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}</div>
+      <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}${renderUnorganizedBlock(view.unorganizedPhotos, 'visual')}</div>
     </section>
   </div>`;
 }
@@ -288,7 +300,7 @@ export function renderSamplingView(container, view, state) {
         <h4>建材No.${esc(active.materialNo)}　${esc(active.name || '-')}</h4>
         <span class="hint">採取数 ${esc(active.sampleCount)}</span>
       </div>
-      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplePoint(point, state.openSamplingKeys)).join('')}</div>
+      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplePoint(point, state.openSamplingKeys)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
     </section>
   </div>`;
 }

@@ -171,3 +171,10 @@
   .photo-compare-photo-nav .btn{min-width:24px;padding:2px 5px}
 }
 
+
+/* v0.1.5.5B 各部屋／試料ブロック末尾の未整理写真 */
+.photo-unorganized-block{margin-top:10px;padding:10px;border:1px dashed #94a3b8;border-radius:10px;background:#f8fafc}
+.photo-unorganized-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;color:#475569;font-size:12px}
+.photo-unorganized-head b{color:#334155;font-size:13px}
+.photo-unorganized-photos{display:flex;gap:7px;flex-wrap:wrap}
+.photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}

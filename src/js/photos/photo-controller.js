@@ -19,6 +19,8 @@ import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer } from './photo-viewer.js';
+import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
+import { getPhotoBlob, getCameraPhotoRecords } from './photo-local-store.js';
 
 const state = {
   mode: 'visual',
@@ -84,10 +86,6 @@ function render() {
   renderVisualView(body, view, state);
   renderedMode = state.mode;
   restorePhotoListScroll();
-}
-
-function showCameraPending() {
-  alert('カメラアプリとの接続は後続レビュー版で実装します。今回は写真タブUI・PhotoViewer・photoRecord接続の確認版です。');
 }
 
 function photoById(photoId) {
@@ -174,6 +172,86 @@ function samplingContextFromKey(key, shootingType) {
     part: point.part,
     shootingType
   };
+}
+
+
+/**
+ * カメラへ渡す候補一覧。
+ * 目視はfinishRecordから作られた部屋/部位ViewModelをそのまま利用するため、
+ * 内部・外部それぞれの実部位候補と現在の仕上表構成が一致する。
+ * 採取はmaterialRecordの採取数・採取場所1〜3から全撮影点を平坦化する。
+ */
+function buildCameraOptions() {
+  const visual = buildVisualPhotoView('');
+  const visualRooms = visual.rooms.map((room) => {
+    const roomView = buildVisualPhotoView(room.roomUid);
+    return {
+      roomUid: room.roomUid,
+      areaCode: room.areaCode,
+      roomPosition: room.roomPosition,
+      roomNo: room.roomNo,
+      roomName: room.roomName,
+      targets: roomView.targets.map((target) => ({ part: target.part }))
+    };
+  });
+
+  const sampling = buildSamplingPhotoView('');
+  const samplingTargets = sampling.materials.flatMap((material) => material.points.map((point) => ({
+    materialId: material.materialId,
+    materialNo: material.materialNo,
+    sampleBaseNo: String(material.sampleNo || ''),
+    sampleNo: point.sampleNo,
+    samplingPlace: point.samplingPlace,
+    branch: point.branch,
+    part: point.part
+  })));
+
+  return { visualRooms, samplingTargets };
+}
+
+async function registerCameraPreview({ record, completedBlob }) {
+  const previous = localPreviewUrls.get(record.photoId);
+  if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
+  if (completedBlob && typeof URL.createObjectURL === 'function') {
+    localPreviewUrls.set(record.photoId, URL.createObjectURL(completedBlob));
+  }
+}
+
+async function hydrateLocalCameraPhotos() {
+  try {
+    const records = await getCameraPhotoRecords();
+    for (const record of records) {
+      photoRecordStore.set(record);
+      const blob = await getPhotoBlob(record.photoId, 'completed');
+      if (blob && typeof URL.createObjectURL === 'function') {
+        const previous = localPreviewUrls.get(record.photoId);
+        if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
+        localPreviewUrls.set(record.photoId, URL.createObjectURL(blob));
+      }
+    }
+  } catch (error) {
+    console.warn('ローカル撮影写真の復元に失敗しました', error);
+  }
+}
+
+function globalCameraContext() {
+  if (state.mode === 'sampling') {
+    const view = buildSamplingPhotoView(state.selectedMaterialId);
+    const material = view.activeMaterial;
+    const point = material?.points?.[0];
+    if (!material || !point) return null;
+    return {
+      photoType: PHOTO_TYPES.SAMPLING,
+      materialId: material.materialId,
+      branch: point.branch,
+      samplingBranch: point.branch,
+      shootingType: SHOOTING_TYPES.BEFORE
+    };
+  }
+  const view = buildVisualPhotoView(state.selectedRoomUid);
+  const target = view.targets?.[0];
+  if (!view.activeRoom || !target) return null;
+  return { photoType: PHOTO_TYPES.VISUAL, roomPosition: view.activeRoom.roomPosition, part: target.part };
 }
 
 /**
@@ -301,8 +379,24 @@ function bindEvents() {
       return;
     }
 
-    if (event.target.closest('[data-photo-camera-global],[data-photo-camera-visual],[data-photo-camera-sampling]')) {
-      showCameraPending();
+    const cameraVisual = event.target.closest('[data-photo-camera-visual]');
+    if (cameraVisual) {
+      const context = visualContextFromKey(cameraVisual.dataset.photoCameraVisual || '');
+      if (context) openCamera(context);
+      return;
+    }
+
+    const cameraSampling = event.target.closest('[data-photo-camera-sampling]');
+    if (cameraSampling) {
+      const context = samplingContextFromKey(cameraSampling.dataset.photoCameraSampling || '', SHOOTING_TYPES.BEFORE);
+      if (context) openCamera(context);
+      return;
+    }
+
+    if (event.target.closest('[data-photo-camera-global]')) {
+      const context = globalCameraContext();
+      if (context) openCamera(context);
+      else window.alert('撮影対象がありません。');
       return;
     }
 
@@ -390,7 +484,13 @@ export function initializePhotoTab() {
     getCompareTargets: compareTargetsForViewer
   });
 
+  initializeCameraController({
+    getOptions: buildCameraOptions,
+    onPhotoSaved: registerCameraPreview
+  });
+
   render();
+  hydrateLocalCameraPhotos().then(render);
 
   if (unsubscribePhotoStore) unsubscribePhotoStore();
   if (unsubscribeMaterialStore) unsubscribeMaterialStore();

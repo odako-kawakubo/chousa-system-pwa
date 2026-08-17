@@ -1,0 +1,475 @@
+/* =========================================================
+ * v0.1.5.5 内蔵カメラ
+ *
+ * Bの旧UIへ上書きを足さず、v64の撮影UI構造を基準に全面再構成。
+ * 左92px / 中央4:3 / 右92px。
+ * 左はメインパネル→展開パネル方式。
+ * ========================================================= */
+
+body.camera-open {
+  overflow: hidden !important;
+  touch-action: manipulation;
+}
+
+.camera-overlay {
+  --app-vw: 100vw;
+  --app-vh: 100dvh;
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  background: #000;
+  color: #fff;
+}
+
+.camera-overlay[hidden] {
+  display: none !important;
+}
+
+.camera-orientation-shell {
+  position: fixed;
+  inset: 0;
+  width: var(--app-vw);
+  height: var(--app-vh);
+  overflow: hidden;
+  background: #000;
+  transform-origin: center center;
+}
+
+.camera-screen {
+  position: relative;
+  width: var(--app-vw);
+  height: var(--app-vh);
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+
+/* ---------------------------------------------------------
+ * 左黒帯
+ * --------------------------------------------------------- */
+.camera-left-panel {
+  position: relative;
+  z-index: 20;
+  width: 92px;
+  height: var(--app-vh);
+  flex: 0 0 92px;
+  padding: calc(12px + env(safe-area-inset-top)) 8px calc(10px + env(safe-area-inset-bottom));
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.camera-left-panel::-webkit-scrollbar,
+.camera-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.camera-photo-count {
+  position: relative;
+  z-index: 30;
+  width: 68px;
+  padding: 7px 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 900;
+  text-align: center;
+  white-space: pre-line;
+  user-select: none;
+}
+
+.camera-board-control-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-bottom: 4px;
+  flex: 0 0 auto;
+}
+
+.camera-panel-main-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.camera-panel-main-button,
+.camera-panel-mini-button,
+.camera-panel-center-button {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08));
+  color: #fff;
+  font-family: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+
+.camera-panel-main-button:active,
+.camera-panel-mini-button:active,
+.camera-panel-center-button:active {
+  opacity: 0.72;
+}
+
+.camera-panel-main-button {
+  width: 72px;
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.camera-panel-main-button.active {
+  border-color: rgba(242, 201, 76, 0.95);
+  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.25) inset, 0 2px 8px rgba(0,0,0,0.35);
+}
+
+.camera-panel-expanded {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.camera-panel-expanded.show {
+  display: flex;
+}
+
+.camera-panel-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.camera-panel-vertical {
+  display: grid;
+  grid-template-rows: 30px 32px 30px;
+  width: 34px;
+  gap: 3px;
+  justify-items: center;
+  align-items: center;
+}
+
+.camera-panel-mini-button {
+  width: 34px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.camera-panel-center-button {
+  width: 34px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  white-space: pre-line;
+  background: rgba(255,255,255,0.2);
+}
+
+.camera-panel-single {
+  width: 44px;
+  display: grid;
+  grid-template-rows: 32px 38px 32px;
+  gap: 5px;
+  justify-items: center;
+  align-items: center;
+}
+
+.camera-panel-single .camera-panel-mini-button {
+  width: 44px;
+  height: 32px;
+  font-size: 17px;
+}
+
+.camera-panel-single .camera-panel-center-button {
+  width: 44px;
+  height: 38px;
+  font-size: 11px;
+}
+
+.camera-panel-close-button,
+.camera-close-button {
+  width: 58px;
+  min-height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255,255,255,0.92);
+  font-size: 11px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.camera-close-button {
+  margin-top: auto;
+}
+
+.camera-landscape-flip {
+  display: none;
+}
+
+/* ---------------------------------------------------------
+ * 中央4:3撮影領域
+ * --------------------------------------------------------- */
+.camera-capture-frame {
+  position: relative;
+  --capture-safe-h: calc(var(--app-vh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 10px);
+  --capture-safe-w: calc(var(--app-vw) - 184px);
+  width: min(var(--capture-safe-w), calc(var(--capture-safe-h) * 4 / 3));
+  height: min(var(--capture-safe-h), calc(var(--capture-safe-w) * 3 / 4));
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #000;
+  flex: 0 0 auto;
+}
+
+.camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  z-index: 1;
+}
+
+.camera-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.65);
+  pointer-events: none;
+}
+
+.camera-guide[hidden] {
+  display: none !important;
+}
+
+.camera-board-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.camera-board-layer[hidden] {
+  display: none !important;
+}
+
+.camera-board-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.camera-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  background: #fff;
+  transition: opacity 0.16s ease;
+}
+
+.camera-flash.flash {
+  opacity: 0.92;
+  transition: opacity 0.04s ease;
+}
+
+/* ---------------------------------------------------------
+ * 右黒帯：撮影操作
+ * --------------------------------------------------------- */
+.camera-controls {
+  position: relative;
+  z-index: 20;
+  width: 92px;
+  height: var(--app-vh);
+  flex: 0 0 92px;
+  padding: calc(10px + env(safe-area-inset-top)) 8px calc(10px + env(safe-area-inset-bottom));
+  margin: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.camera-control-button {
+  width: 64px;
+  min-height: 82px;
+  padding: 12px 8px;
+  border: none;
+  border-radius: 999px;
+  box-sizing: border-box;
+  font-size: 17px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  touch-action: manipulation;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.camera-control-button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.camera-control-button[hidden] {
+  display: none !important;
+}
+
+.camera-shoot-button {
+  min-height: 92px;
+  background: #fff;
+  color: #000;
+  font-size: 18px;
+}
+
+.camera-section-button {
+  background: #eb5757;
+  color: #fff;
+}
+
+.camera-section-button.active {
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.75) inset, 0 2px 8px rgba(0,0,0,0.35);
+}
+
+.camera-mode-button {
+  background: #27ae60;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------
+ * 撮影後レビュー
+ * --------------------------------------------------------- */
+.camera-review {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: #000;
+  display: grid;
+  grid-template-columns: 1fr 96px;
+  align-items: stretch;
+  gap: 0;
+}
+
+.camera-review[hidden] {
+  display: none !important;
+}
+
+.camera-review-image {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.camera-review-actions {
+  width: 96px;
+  padding: calc(12px + env(safe-area-inset-top)) 8px calc(12px + env(safe-area-inset-bottom));
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.camera-review-button {
+  width: 70px;
+  min-height: 92px;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 8px;
+  background: #f2c94c;
+  color: #000;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.camera-review-button.primary {
+  background: #fff;
+  color: #000;
+}
+
+/* ---------------------------------------------------------
+ * v64と同じ縦向き強制横画面 + 上下反転
+ * --------------------------------------------------------- */
+@media (orientation: portrait) {
+  .camera-overlay {
+    --app-vw: 100dvh;
+    --app-vh: 100vw;
+  }
+
+  .camera-orientation-shell {
+    left: 50%;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+
+  .camera-orientation-shell.flipped {
+    transform: translate(-50%, -50%) rotate(-90deg);
+  }
+
+  .camera-landscape-flip {
+    display: block;
+  }
+}
+
+@media (orientation: landscape) {
+  .camera-orientation-shell.flipped {
+    transform: rotate(180deg);
+  }
+}

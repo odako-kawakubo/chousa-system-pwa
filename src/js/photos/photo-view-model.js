@@ -172,11 +172,19 @@ function buildVisualTarget(room, part, finishRecords) {
 export function buildVisualPhotoView(selectedRoomUid = '') {
   const rooms = buildRoomList();
   const activeRoom = rooms.find((room) => room.roomUid === selectedRoomUid) || rooms[0] || null;
+  const unorganizedPhotos = activeRoom
+    ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
+        photo.photoType === 'visual'
+        && photo.roomPosition === activeRoom.roomPosition
+        && !String(photo.part || '').trim()
+      )))
+    : [];
   return {
     mode: 'visual',
     rooms,
     activeRoom,
-    targets: activeRoom ? buildVisualTargets(activeRoom) : []
+    targets: activeRoom ? buildVisualTargets(activeRoom) : [],
+    unorganizedPhotos
   };
 }
 
@@ -263,5 +271,12 @@ export function buildSamplingPhotoView(selectedMaterialId = '') {
   });
 
   const activeMaterial = materials.find((material) => material.materialId === selectedMaterialId) || materials[0] || null;
-  return { mode: 'sampling', materials, activeMaterial };
+  const unorganizedPhotos = activeMaterial
+    ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
+        photo.photoType === 'sampling'
+        && photo.materialId === activeMaterial.materialId
+        && (!Number(photo.samplingBranch) || !String(photo.shootingType || '').trim())
+      )))
+    : [];
+  return { mode: 'sampling', materials, activeMaterial, unorganizedPhotos };
 }

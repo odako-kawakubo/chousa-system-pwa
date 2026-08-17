@@ -45,6 +45,10 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {string} lastEditedDevice
  * @property {string} lastEditedAt
  * @property {boolean} deleted
+ * @property {'bottom-left'|'bottom-right'|'top-right'|'top-left'|''} boardPosition
+ * @property {'small'|'medium'|'large'|''} boardSize
+ * @property {string} localOriginalStatus
+ * @property {string} localCompletedStatus
  */
 
 /**
@@ -115,7 +119,11 @@ export function createPhotoRecord(fields) {
     isEdited: Boolean(fields.isEdited),
     lastEditedDevice: asText(fields.lastEditedDevice),
     lastEditedAt: asText(fields.lastEditedAt),
-    deleted: Boolean(fields.deleted)
+    deleted: Boolean(fields.deleted),
+    boardPosition: asText(fields.boardPosition),
+    boardSize: asText(fields.boardSize),
+    localOriginalStatus: asText(fields.localOriginalStatus),
+    localCompletedStatus: asText(fields.localCompletedStatus)
   };
 
   if (photoType === PHOTO_TYPES.VISUAL) {
