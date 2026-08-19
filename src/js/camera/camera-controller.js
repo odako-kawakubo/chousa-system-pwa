@@ -55,6 +55,13 @@ let boardCanvas = null;
 let review = null;
 let reviewImage = null;
 let stream = null;
+
+// カメラ取得の世代番号。close後に遅れて返った古いStreamを採用しないために使う。
+let cameraSessionId = 0;
+
+// null以外ならgetUserMedia実行中。世代番号を保持して多重起動を防ぐ。
+let cameraStartingSessionId = null;
+
 let state = null;
 let optionsProvider = null;
 let onPhotoSaved = null;
@@ -573,34 +580,82 @@ async function requestFullscreenSafe() {
 }
 
 function stopCameraStream() {
-  if (stream) stream.getTracks().forEach((track) => track.stop());
-  stream = null;
-  if (video) video.srcObject = null;
+  // 既存Streamの全Trackを止め、端末のカメラ利用を明示的に終了する。
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+    stream = null;
+  }
+
+  // video側も停止・切断する。iPadで画面を閉じた後に録画状態が残るのを防ぐ。
+  if (video) {
+    try {
+      video.pause();
+    } catch {
+      // pause()失敗は終了処理を妨げない。
+    }
+    video.srcObject = null;
+  }
+
   setCameraReady(false, 'カメラ停止中');
 }
 
-/** v64で実績のあるカメラ取得条件をそのまま基準にする。 */
+/**
+ * v0.14.13で現場テスト実績のある取得条件を基準にしつつ、
+ * getUserMediaの多重実行と、close後に遅れて返るStreamを防止する。
+ */
 async function startCameraStream() {
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('この環境ではカメラAPIを利用できません。');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('この環境ではカメラAPIを利用できません。');
+  }
+
+  // 権限ダイアログ中など、すでに1本の取得処理が走っている間は2本目を開始しない。
+  if (cameraStartingSessionId !== null) return;
+
+  const sessionId = ++cameraSessionId;
+  cameraStartingSessionId = sessionId;
   setCameraReady(false, 'カメラを準備しています');
-  stopCameraStream();
-  await requestFullscreenSafe();
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    },
-    audio: false
-  });
+  try {
+    // 以前のStreamが残っていた場合は、次の取得前に完全停止する。
+    stopCameraStream();
+    await requestFullscreenSafe();
 
-  video.srcObject = stream;
-  video.playsInline = true;
-  video.muted = true;
-  await video.play();
-  setCameraReady(true);
-  updateCameraUi();
+    const acquiredStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+
+    // getUserMedia待機中にカメラが閉じられた、または別世代が開始された場合、
+    // このStreamは古いので採用せず即停止する。
+    if (sessionId !== cameraSessionId || !root || root.hidden) {
+      acquiredStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    stream = acquiredStream;
+    video.srcObject = stream;
+    video.playsInline = true;
+    video.muted = true;
+    await video.play();
+
+    // play()待機中にもcloseされ得るため、採用直後にも世代を再確認する。
+    if (sessionId !== cameraSessionId || !root || root.hidden) {
+      stopCameraStream();
+      return;
+    }
+
+    setCameraReady(true);
+    updateCameraUi();
+  } finally {
+    // 古い非同期処理のfinallyで、新しい取得処理の起動中状態を解除しない。
+    if (cameraStartingSessionId === sessionId) {
+      cameraStartingSessionId = null;
+    }
+  }
 }
 
 async function getVideoInputCount() {
@@ -833,25 +888,40 @@ export function closeCamera() {
   if (!root || root.hidden) return;
   if (pendingReviewResolve) resolveReview(false);
   closeSidePanel();
+
+  // 現在待機中のgetUserMediaを論理的に無効化する。
+  // API自体は途中キャンセルできないため、後から返ったStreamはstartCameraStream側で破棄する。
+  cameraSessionId++;
+  cameraStartingSessionId = null;
+
   stopCameraStream();
   root.hidden = true;
   document.body.classList.remove('camera-open');
 }
 
-/** iOS / iPadOS復帰処理。live trackなら再利用し、失われた時だけ再取得する。 */
+/**
+ * iOS / iPadOS復帰処理。
+ * v0.14.13と同じくlive trackは再利用し、失われた場合だけ再取得する。
+ */
 async function resumeCameraIfNeeded() {
   if (!root || root.hidden || document.hidden || !state) return;
+
+  // 初回起動・再取得の途中なら、その処理を優先して横からgetUserMediaを重ねない。
+  if (cameraStartingSessionId !== null) return;
+
   const liveTrack = stream?.getVideoTracks?.().find((track) => track.readyState === 'live');
   if (liveTrack) {
     try {
-      video.srcObject = stream;
-      await video.play();
+      if (video.srcObject !== stream) video.srcObject = stream;
+      if (video.paused) await video.play();
       setCameraReady(true);
       return;
     } catch (error) {
       console.warn('Existing camera stream resume failed:', error);
     }
   }
+
+  // live trackが存在しない時だけ新しいStreamを取得する。
   try {
     await startCameraStream();
   } catch (error) {
@@ -873,6 +943,5 @@ export function initializeCameraController(options = {}) {
   listenersBound = true;
   document.addEventListener('visibilitychange', resumeCameraIfNeeded);
   window.addEventListener('pageshow', resumeCameraIfNeeded);
-  window.addEventListener('focus', resumeCameraIfNeeded);
   window.addEventListener('resize', handleResize);
 }
