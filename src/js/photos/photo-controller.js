@@ -82,7 +82,6 @@ function render() {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     state.selectedMaterialId = view.activeMaterial?.materialId || '';
     renderSamplingView(body, view, state);
-    hydrateThumbnailImages();
     renderedMode = state.mode;
     restorePhotoListScroll();
     return;
@@ -91,51 +90,12 @@ function render() {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   state.selectedRoomUid = view.activeRoom?.roomUid || '';
   renderVisualView(body, view, state);
-  hydrateThumbnailImages();
   renderedMode = state.mode;
   restorePhotoListScroll();
 }
 
 function photoById(photoId) {
   return photoRecordStore.get(photoId);
-}
-
-/**
- * 写真タブ内のサムネイルimgへ、Record外で管理している表示URLを差し込む。
- * 画像URLはphotoRecordへ保存しない。ローカル撮影画像はIndexedDBから復元済みの
- * Object URL、デモは一時Data URL、将来OneDrive接続後はremote URLを使う。
- */
-function hydrateThumbnailImages() {
-  if (!root) return;
-
-  root.querySelectorAll('[data-photo-thumb-image]').forEach((image) => {
-    const photoId = image.dataset.photoThumbImage || '';
-    const photo = photoById(photoId);
-    const card = image.closest('.photo-thumb-card');
-    const source = photo ? previewSourceForPhoto(photo) : '';
-
-    if (!source) {
-      image.removeAttribute('src');
-      card?.classList.remove('photo-thumb-ready');
-      card?.classList.add('photo-thumb-loading');
-      return;
-    }
-
-    if (image.getAttribute('src') !== source) image.src = source;
-    image.onload = () => {
-      card?.classList.add('photo-thumb-ready');
-      card?.classList.remove('photo-thumb-loading');
-    };
-    image.onerror = () => {
-      card?.classList.remove('photo-thumb-ready');
-      card?.classList.add('photo-thumb-loading');
-    };
-
-    if (image.complete && image.naturalWidth > 0) {
-      card?.classList.add('photo-thumb-ready');
-      card?.classList.remove('photo-thumb-loading');
-    }
-  });
 }
 
 function nextPhotoId() {
