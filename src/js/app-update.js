@@ -85,7 +85,8 @@ export async function showUpdatePrompt() {
 
 /**
  * Service Worker登録とCache Storageだけを破棄し、タイムスタンプ付きURLで
- * app.htmlを再取得する。案件データ用ストレージは削除しない。
+ * app.htmlを再取得する。IndexedDB / localStorage等の案件データは削除しない。
+ * JS / CSSの最新版確認はFirebase Hosting側のCache-Controlに任せる。
  */
 export async function reloadLatestApp(appPath = 'app.html') {
   try {
@@ -106,7 +107,9 @@ export async function reloadLatestApp(appPath = 'app.html') {
     console.warn('アプリ本体キャッシュの削除を一部実行できませんでした', error);
   }
 
-  location.href = buildStampedUrl(`./${String(appPath || 'app.html').replace(/^\.\//, '')}`);
+  // 履歴に旧版URLを積まず、タイムスタンプ付きapp.htmlへ置き換える。
+  // Firebase Hosting側のCache-Controlにより、HTML / JS / CSSは最新版を再検証する。
+  location.replace(buildStampedUrl(`./${String(appPath || 'app.html').replace(/^\.\//, '')}`));
 }
 
 /**
