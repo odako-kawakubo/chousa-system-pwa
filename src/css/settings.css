@@ -27,7 +27,7 @@
 @media(max-width:900px){.settings-grid{grid-template-columns:1fr}.settings-project-card{grid-column:auto}.settings-form-grid{grid-template-columns:1fr}.settings-span-2{grid-column:auto}.settings-sync-placeholder-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.settings-add-material{grid-template-columns:1fr}.settings-add-part{grid-template-columns:1fr}.settings-subtabs{top:104px}}
 
-/* v0.1.5.6B 案件情報 + 看板調整 + 実電子看板 */
+/* v0.1.5.6 案件情報 + 看板調整 + 実電子看板 */
 .settings-project-board-layout{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(330px,430px);
