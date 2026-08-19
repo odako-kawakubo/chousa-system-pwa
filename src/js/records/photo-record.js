@@ -57,6 +57,7 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @typedef {PhotoRecordCommon & {
  *   photoType: 'visual',
  *   roomPosition: string,
+ *   roomNo: string,
  *   part: string,
  *   materialId: '',
  *   samplingPlace: '',
@@ -72,10 +73,12 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @typedef {PhotoRecordCommon & {
  *   photoType: 'sampling',
  *   roomPosition: '',
+ *   roomNo: '',
  *   materialId: string,
  *   samplingPlace: string,
  *   samplingBranch: number,
  *   sampleNo: string,
+ *   sampleBaseNo: string,
  *   part: string,
  *   shootingType: 'before'|'during'|'after'|'section'
  * }} SamplingPhotoRecord
@@ -130,11 +133,13 @@ export function createPhotoRecord(fields) {
     return {
       ...common,
       roomPosition: asText(fields.roomPosition),
+      roomNo: asText(fields.roomNo),
       part: asText(fields.part),
       materialId: '',
       samplingPlace: '',
       samplingBranch: 0,
       sampleNo: '',
+      sampleBaseNo: '',
       shootingType: ''
     };
   }
@@ -147,10 +152,12 @@ export function createPhotoRecord(fields) {
   return {
     ...common,
     roomPosition: '',
+    roomNo: '',
     materialId: asText(fields.materialId),
     samplingPlace: asText(fields.samplingPlace),
     samplingBranch: normalizeSamplingBranch(fields.samplingBranch),
     sampleNo: asText(fields.sampleNo),
+    sampleBaseNo: asText(fields.sampleBaseNo) || asText(fields.sampleNo).split('-')[0],
     part: asText(fields.part),
     shootingType
   };

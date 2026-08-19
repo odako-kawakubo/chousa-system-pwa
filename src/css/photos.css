@@ -178,3 +178,25 @@
 .photo-unorganized-head b{color:#334155;font-size:13px}
 .photo-unorganized-photos{display:flex;gap:7px;flex-wrap:wrap}
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
+
+
+/* v0.1.5.6A 写真タブ編集モード */
+.photo-panel.photo-edit-mode .photo-thumb-card[data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
+.photo-panel.photo-edit-mode .photo-thumb-card[data-photo-id]::after{content:'編集';position:absolute;left:6px;bottom:6px;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.9);color:#fff;font-size:10px;font-weight:800}
+.photo-thumb-card{position:relative}
+
+
+/* v0.1.5.6A 共通看板編集画面 */
+body.photo-board-edit-open{overflow:hidden!important}
+.photo-board-editor{position:fixed;inset:0;z-index:32000;background:#0b0f17;color:#fff}
+.photo-board-editor[hidden]{display:none!important}
+.photo-board-editor-shell{width:100%;height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) 300px}
+.photo-board-editor-stage{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
+.photo-board-editor-stage canvas{display:block;width:100%;height:100%}
+.photo-board-editor-controls{display:flex;flex-direction:column;gap:12px;padding:14px;background:#111827;overflow:auto}
+.photo-board-editor-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.photo-board-editor-fields,.photo-board-editor-common{display:grid;gap:9px}
+.photo-board-editor-controls label{display:grid;gap:4px;font-size:12px;font-weight:700;color:#dbeafe}
+.photo-board-editor-controls select{width:100%;border:1px solid #475569;border-radius:8px;padding:8px;background:#fff;color:#111827;font:inherit}
+.photo-board-editor-history{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+@media(max-width:760px){.photo-board-editor-shell{grid-template-columns:1fr 220px}.photo-board-editor-controls{padding:8px}}

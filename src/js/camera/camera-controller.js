@@ -13,6 +13,9 @@
  */
 
 import { sampleProject } from '../demo/sample-project.js';
+import * as boardSettingsStore from '../settings/board-settings-store.js';
+import { getAvailablePhotoFileName } from '../photos/photo-filename.js';
+import { getDeviceCode } from '../device-code.js';
 import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { saveCapturedPhoto } from '../photos/photo-local-store.js';
@@ -43,7 +46,6 @@ const STAGE_INFO = Object.freeze({
 const BOARD_SIZE_ORDER = Object.freeze(['small', 'medium', 'large']);
 const JPEG_QUALITY = 0.82;
 const STORAGE_KEY = `chousa-camera:${sampleProject.projectId || 'project'}`;
-const DEVICE_KEY = 'chousa-device-code';
 const COUNTER_KEY = 'chousa-photo-counter';
 
 let root = null;
@@ -95,13 +97,6 @@ function persistCameraPreferences() {
   }));
 }
 
-function getDeviceCode() {
-  let value = localStorage.getItem(DEVICE_KEY);
-  if (value) return value;
-  value = Math.random().toString(36).slice(2, 6).toUpperCase();
-  localStorage.setItem(DEVICE_KEY, value);
-  return value;
-}
 
 function nextPhotoId(photoType) {
   const key = `${COUNTER_KEY}:${photoType}`;
@@ -149,12 +144,15 @@ function currentStatusCode() {
 
 /** 写真タブの正式値だけを使って看板表示データを作る。 */
 function buildBoardData() {
+  const boardSettings = boardSettingsStore.get();
   if (state.photoType === PHOTO_TYPES.SAMPLING) {
     const target = currentSamplingTarget();
     return {
       photoType: 'sampling',
-      projectName: sampleProject.projectName || '',
-      address: sampleProject.address || '',
+      projectName: boardSettings.subjectText || boardSettings.projectName || sampleProject.projectName || '',
+      address: boardSettings.addressText || boardSettings.address || '',
+      subjectFontSize: boardSettings.subjectFontSize,
+      addressFontSize: boardSettings.addressFontSize,
       samplingPlace: target.samplingPlace || '',
       sampleNo: samplingDisplayNo(target),
       statusCode: currentStatusCode(),
@@ -165,8 +163,10 @@ function buildBoardData() {
   const { room, target } = currentVisualTarget();
   return {
     photoType: 'visual',
-    projectName: sampleProject.projectName || '',
-    address: sampleProject.address || '',
+    projectName: boardSettings.subjectText || boardSettings.projectName || sampleProject.projectName || '',
+    address: boardSettings.addressText || boardSettings.address || '',
+    subjectFontSize: boardSettings.subjectFontSize,
+    addressFontSize: boardSettings.addressFontSize,
     roomNo: room.roomNo || '',
     part: target.part || '',
     statusCode: '5',
@@ -211,29 +211,6 @@ function createCaptureSnapshot() {
   };
 }
 
-function filenameBase(snapshot) {
-  if (snapshot.photoType === PHOTO_TYPES.SAMPLING) {
-    const branch = Number(snapshot.samplingBranch || 0);
-    const code = snapshot.shootingType === SHOOTING_TYPES.SECTION
-      ? '4'
-      : (STAGE_INFO[snapshot.shootingType]?.code || '1');
-    return `${snapshot.sampleBaseNo || '未整理'}-${branch || '未整理'}-${code}`;
-  }
-  return `${snapshot.roomNo || '未整理'}-${snapshot.part || '未整理'}-5`;
-}
-
-function nextFileName(snapshot) {
-  const base = filenameBase(snapshot);
-  const names = new Set(
-    photoRecordStore.getAll()
-      .filter((photo) => !photo.deleted)
-      .map((photo) => String(photo.fileName || ''))
-  );
-  if (!names.has(`${base}.jpg`)) return `${base}.jpg`;
-  let number = 2;
-  while (names.has(`${base}_${String(number).padStart(2, '0')}.jpg`)) number += 1;
-  return `${base}_${String(number).padStart(2, '0')}.jpg`;
-}
 
 function ensureCameraScreen() {
   if (root) return;
@@ -245,52 +222,54 @@ function ensureCameraScreen() {
     <div class="camera-orientation-shell" data-camera-orientation-shell>
       <div class="camera-screen">
         <aside class="camera-left-panel" aria-label="撮影補助操作">
+          <button type="button" class="camera-close-button" data-camera-close>戻る</button>
           <div class="camera-photo-count" data-camera-photo-count>撮影済み\n0枚</div>
           <button type="button" class="camera-panel-mini-button camera-landscape-flip" data-camera-landscape-flip>上下<br>反転</button>
 
           <div class="camera-board-control-panel">
-            <div class="camera-panel-main-list" data-camera-panel-main>
+            <div class="camera-panel-slot" data-camera-panel-slot="room">
               <button type="button" class="camera-panel-main-button" data-open-camera-panel="room">部屋</button>
+              <div class="camera-panel-expanded" data-camera-panel="room">
+                <button type="button" class="camera-panel-active-title" data-open-camera-panel="room">部屋</button>
+                <div class="camera-panel-single" data-camera-room-single>
+                  <button type="button" class="camera-panel-mini-button" data-room-prev>▲</button>
+                  <button type="button" class="camera-panel-center-button" data-room-value>部屋</button>
+                  <button type="button" class="camera-panel-mini-button" data-room-next>▼</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="camera-panel-slot" data-camera-panel-slot="sample">
               <button type="button" class="camera-panel-main-button" data-open-camera-panel="sample">検体</button>
+              <div class="camera-panel-expanded" data-camera-panel="sample">
+                <button type="button" class="camera-panel-active-title" data-open-camera-panel="sample">検体</button>
+                <div class="camera-panel-pair" data-camera-sample-pair>
+                  <div class="camera-panel-vertical">
+                    <button type="button" class="camera-panel-mini-button" data-sample-prev>▲</button>
+                    <button type="button" class="camera-panel-center-button" data-sample-value>検体</button>
+                    <button type="button" class="camera-panel-mini-button" data-sample-next>▼</button>
+                  </div>
+                  <div class="camera-panel-vertical" data-camera-point-column>
+                    <button type="button" class="camera-panel-mini-button" data-point-prev>▲</button>
+                    <button type="button" class="camera-panel-center-button" data-point-value>箇所</button>
+                    <button type="button" class="camera-panel-mini-button" data-point-next>▼</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="camera-panel-slot" data-camera-panel-slot="board">
               <button type="button" class="camera-panel-main-button" data-open-camera-panel="board">看板</button>
-            </div>
-
-            <div class="camera-panel-expanded" data-camera-panel="room">
-              <div class="camera-panel-single" data-camera-room-single>
-                <button type="button" class="camera-panel-mini-button" data-room-prev>▲</button>
-                <button type="button" class="camera-panel-center-button" data-room-value>部屋</button>
-                <button type="button" class="camera-panel-mini-button" data-room-next>▼</button>
-              </div>
-              <button type="button" class="camera-panel-close-button" data-close-camera-panel>閉じる</button>
-            </div>
-
-            <div class="camera-panel-expanded" data-camera-panel="sample">
-              <div class="camera-panel-pair" data-camera-sample-pair>
-                <div class="camera-panel-vertical">
-                  <button type="button" class="camera-panel-mini-button" data-sample-prev>▲</button>
-                  <button type="button" class="camera-panel-center-button" data-sample-value>検体</button>
-                  <button type="button" class="camera-panel-mini-button" data-sample-next>▼</button>
-                </div>
-                <div class="camera-panel-vertical" data-camera-point-column>
-                  <button type="button" class="camera-panel-mini-button" data-point-prev>▲</button>
-                  <button type="button" class="camera-panel-center-button" data-point-value>箇所</button>
-                  <button type="button" class="camera-panel-mini-button" data-point-next>▼</button>
+              <div class="camera-panel-expanded" data-camera-panel="board">
+                <button type="button" class="camera-panel-active-title" data-open-camera-panel="board">看板</button>
+                <div class="camera-panel-single">
+                  <button type="button" class="camera-panel-mini-button" data-board-larger>▲</button>
+                  <button type="button" class="camera-panel-center-button" data-board-position>🪧</button>
+                  <button type="button" class="camera-panel-mini-button" data-board-smaller>▼</button>
                 </div>
               </div>
-              <button type="button" class="camera-panel-close-button" data-close-camera-panel>閉じる</button>
-            </div>
-
-            <div class="camera-panel-expanded" data-camera-panel="board">
-              <div class="camera-panel-single">
-                <button type="button" class="camera-panel-mini-button" data-board-larger>▲</button>
-                <button type="button" class="camera-panel-center-button" data-board-position>🪧</button>
-                <button type="button" class="camera-panel-mini-button" data-board-smaller>▼</button>
-              </div>
-              <button type="button" class="camera-panel-close-button" data-close-camera-panel>閉じる</button>
             </div>
           </div>
-
-          <button type="button" class="camera-close-button" data-camera-close>戻る</button>
         </aside>
 
         <main class="camera-capture-frame">
@@ -329,18 +308,18 @@ function ensureCameraScreen() {
 }
 
 function openSidePanel(name) {
-  // v64と同じトグル動作。
-  // 同じボタンをもう一度押した場合は閉じる。
-  // 別のボタンを押した場合は、開いているパネルを閉じて対象パネルへ切り替える。
+  // 同じ項目を再押下したら通常ボタンへ戻す。
+  // 別項目なら現在の操作パネルを閉じ、その項目のボタン領域を操作パネルへ置き換える。
   activePanel = activePanel === name ? null : name;
 
-  // room / sample / board のうち、開けるのは常に1つだけ。
-  // メインの「部屋 / 検体(or部位) / 看板」ボタンは常時表示したままにする。
+  root.querySelectorAll('[data-camera-panel-slot]').forEach((slot) => {
+    slot.classList.toggle('active', slot.dataset.cameraPanelSlot === activePanel);
+  });
+
   root.querySelectorAll('[data-camera-panel]').forEach((panel) => {
     panel.classList.toggle('show', panel.dataset.cameraPanel === activePanel);
   });
 
-  // 現在開いている対象ボタンだけactive表示。
   root.querySelectorAll('[data-open-camera-panel]').forEach((button) => {
     button.classList.toggle('active', button.dataset.openCameraPanel === activePanel);
   });
@@ -350,8 +329,7 @@ function openSidePanel(name) {
 
 function closeSidePanel() {
   activePanel = null;
-
-  // メインボタンは常時表示。閉じる操作では展開パネルだけを閉じる。
+  root.querySelectorAll('[data-camera-panel-slot]').forEach((slot) => slot.classList.remove('active'));
   root.querySelectorAll('[data-camera-panel]').forEach((panel) => panel.classList.remove('show'));
   root.querySelectorAll('[data-open-camera-panel]').forEach((button) => button.classList.remove('active'));
 }
@@ -360,10 +338,6 @@ function handleCameraClick(event) {
   const openButton = event.target.closest('[data-open-camera-panel]');
   if (openButton) {
     openSidePanel(openButton.dataset.openCameraPanel);
-    return;
-  }
-  if (event.target.closest('[data-close-camera-panel]')) {
-    closeSidePanel();
     return;
   }
   if (event.target.closest('[data-camera-close]')) {
@@ -453,8 +427,8 @@ function updatePhotoCount() {
 function updateCameraUi() {
   if (!root || !state) return;
 
-  const roomButton = root.querySelector('[data-open-camera-panel="room"]');
-  const sampleButton = root.querySelector('[data-open-camera-panel="sample"]');
+  const roomButtons = root.querySelectorAll('[data-open-camera-panel="room"]');
+  const sampleButtons = root.querySelectorAll('[data-open-camera-panel="sample"]');
   const roomValue = root.querySelector('[data-room-value]');
   const sampleValue = root.querySelector('[data-sample-value]');
   const pointValue = root.querySelector('[data-point-value]');
@@ -468,8 +442,8 @@ function updateCameraUi() {
 
   if (state.photoType === PHOTO_TYPES.SAMPLING) {
     const target = currentSamplingTarget();
-    if (roomButton) roomButton.textContent = '部屋';
-    if (sampleButton) sampleButton.textContent = '検体';
+    roomButtons.forEach((button) => { button.textContent = '部屋'; });
+    sampleButtons.forEach((button) => { button.textContent = '検体'; });
     if (roomValue) roomValue.textContent = '箇所';
     if (sampleValue) sampleValue.textContent = '検体';
     if (pointValue) pointValue.textContent = '箇所';
@@ -484,8 +458,8 @@ function updateCameraUi() {
     }
   } else {
     const { room, target } = currentVisualTarget();
-    if (roomButton) roomButton.textContent = '部屋';
-    if (sampleButton) sampleButton.textContent = '部位';
+    roomButtons.forEach((button) => { button.textContent = '部屋'; });
+    sampleButtons.forEach((button) => { button.textContent = '部位'; });
     if (roomValue) roomValue.textContent = '部屋';
     if (sampleValue) sampleValue.textContent = '部位';
     if (pointColumn) pointColumn.hidden = true;
@@ -757,7 +731,7 @@ async function takePhoto() {
     ]);
 
     const photoId = nextPhotoId(snapshot.photoType);
-    const fileName = nextFileName(snapshot);
+    const fileName = getAvailablePhotoFileName(snapshot, photoRecordStore.getAll());
     const record = createPhotoRecord({
       photoId,
       photoType: snapshot.photoType,
@@ -766,10 +740,12 @@ async function takePhoto() {
       capturedDevice: getDeviceCode(),
       capturedAt: snapshot.capturedAt,
       roomPosition: snapshot.roomPosition,
+      roomNo: snapshot.roomNo,
       materialId: snapshot.materialId,
       samplingPlace: snapshot.samplingPlace,
       samplingBranch: snapshot.samplingBranch,
       sampleNo: snapshot.sampleNo,
+      sampleBaseNo: snapshot.sampleBaseNo,
       part: snapshot.part,
       shootingType: snapshot.shootingType,
       boardPosition: snapshot.boardPosition,

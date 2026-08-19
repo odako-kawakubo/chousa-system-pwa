@@ -43,7 +43,7 @@ function photoThumb(photo, { compact = false, extra = false } = {}) {
   if (!photo) {
     return `<div class="photo-thumb-card photo-thumb-empty ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}"><span>未撮影</span></div>`;
   }
-  return `<div class="photo-thumb-card ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" title="${esc(photo.fileName || photo.photoId)}">
+  return `<div class="photo-thumb-card ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" data-photo-id="${esc(photo.photoId)}" title="${esc(photo.fileName || photo.photoId)}">
     <span class="photo-thumb-icon">📷</span>
     <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
     <button class="photo-expand-btn" type="button" data-photo-expand="${esc(photo.photoId)}" aria-label="写真を拡大">拡大</button>
@@ -162,6 +162,8 @@ export function renderPhotoShell(container, mode) {
           <button class="photo-mode-tab ${mode === 'sampling' ? 'active' : ''}" type="button" data-photo-mode="sampling">建材採取</button>
         </div>
         <div class="right photo-top-actions">
+          <button class="btn small" type="button" data-photo-edit-mode>編集</button>
+          <button class="btn small" type="button" data-photo-edit-mode>編集</button>
           <button class="btn small" type="button" data-photo-picker>写真選択</button>
           <button class="btn small primary" type="button" data-photo-camera-global>カメラ起動</button>
         </div>
@@ -207,7 +209,7 @@ export function renderVisualView(container, view, state) {
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
         <h4>${esc(roomTitle(room))}</h4>
-        <span class="hint">部屋位置 ${esc(room.roomPosition)}</span>
+        <span class="hint">部屋No. ${esc(room.roomNo || '-')}</span>
       </div>
       <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}${renderUnorganizedBlock(view.unorganizedPhotos, 'visual')}</div>
     </section>

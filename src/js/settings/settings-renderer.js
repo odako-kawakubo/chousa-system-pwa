@@ -44,17 +44,58 @@ export function renderSettingsTab(root, viewModel) {
           <section class="settings-card settings-project-card">
             <div class="settings-card-head">
               <div>
-                <h3>案件情報</h3>
-                <div class="hint">v0.1.5.4BではUIのみ。Firebase正本化時に保存・同期を接続します。</div>
+                <h3>案件情報・電子看板</h3>
+                <div class="hint">案件情報を変更すると看板へ即時反映します。左で調整し、右の実看板を見ながら確認できます。</div>
               </div>
-              <span class="pill">UIのみ</span>
+              <span class="pill">ローカル</span>
             </div>
-            <div class="settings-form-grid">
-              <label><span>案件番号</span><input value="${escapeHtml(viewModel.project.projectNo)}" data-setting-project-field="projectNo"></label>
-              <label><span>案件名</span><input value="${escapeHtml(viewModel.project.projectName)}" data-setting-project-field="projectName"></label>
-              <label class="settings-span-2"><span>住所</span><input value="${escapeHtml(viewModel.project.address)}" placeholder="住所" data-setting-project-field="address"></label>
-              <label><span>調査日</span><input type="date" value="${escapeHtml(viewModel.project.surveyDate)}" data-setting-project-field="surveyDate"></label>
-              <label><span>調査者</span><input value="${escapeHtml(viewModel.project.surveyor)}" placeholder="調査者" data-setting-project-field="surveyor"></label>
+
+            <div class="settings-project-board-layout">
+              <div class="settings-project-left-column">
+                <section class="settings-project-section" aria-label="案件情報">
+                  <h4>案件情報</h4>
+                  <div class="settings-form-grid settings-project-fields">
+                    <label><span>案件番号</span><input value="${escapeHtml(viewModel.project.projectNo)}" data-setting-project-field="projectNo"></label>
+                    <label><span>案件名</span><input value="${escapeHtml(viewModel.project.projectName)}" data-setting-project-field="projectName"></label>
+                    <label class="settings-span-2"><span>住所</span><input value="${escapeHtml(viewModel.project.address)}" placeholder="住所" data-setting-project-field="address"></label>
+                    <label><span>調査日</span><input type="date" value="${escapeHtml(viewModel.project.surveyDate)}" data-setting-project-field="surveyDate"></label>
+                    <label><span>調査者</span><input value="${escapeHtml(viewModel.project.surveyor)}" placeholder="調査者" data-setting-project-field="surveyor"></label>
+                  </div>
+                </section>
+
+                <section class="settings-project-section settings-board-controls" aria-label="看板調整">
+                  <h4>看板調整</h4>
+                  <label><span>件名 改行</span><textarea rows="2" data-board-setting="subjectText">${escapeHtml(viewModel.board.subjectText)}</textarea></label>
+                  <label><span>住所 改行</span><textarea rows="2" data-board-setting="addressText">${escapeHtml(viewModel.board.addressText)}</textarea></label>
+
+                  <div class="settings-board-size-row">
+                    <div class="settings-board-font-control">
+                      <span>件名文字</span>
+                      <div class="settings-board-stepper">
+                        <button type="button" class="btn small" data-board-font-adjust="subjectFontSize" data-board-font-delta="-1" aria-label="件名文字を小さく">−</button>
+                        <input type="number" min="10" max="34" value="${escapeHtml(viewModel.board.subjectFontSize)}" data-board-setting="subjectFontSize" aria-label="件名文字サイズ">
+                        <button type="button" class="btn small" data-board-font-adjust="subjectFontSize" data-board-font-delta="1" aria-label="件名文字を大きく">＋</button>
+                      </div>
+                    </div>
+
+                    <div class="settings-board-font-control">
+                      <span>住所文字</span>
+                      <div class="settings-board-stepper">
+                        <button type="button" class="btn small" data-board-font-adjust="addressFontSize" data-board-font-delta="-1" aria-label="住所文字を小さく">−</button>
+                        <input type="number" min="9" max="30" value="${escapeHtml(viewModel.board.addressFontSize)}" data-board-setting="addressFontSize" aria-label="住所文字サイズ">
+                        <button type="button" class="btn small" data-board-font-adjust="addressFontSize" data-board-font-delta="1" aria-label="住所文字を大きく">＋</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button type="button" class="btn small settings-board-reset" data-action="reset-board-settings">看板設定をリセット</button>
+                </section>
+              </div>
+
+              <div class="settings-board-preview-column">
+                <div class="settings-board-preview-title">電子看板プレビュー</div>
+                <canvas class="settings-board-preview" data-settings-board-preview aria-label="電子看板プレビュー"></canvas>
+              </div>
             </div>
           </section>
 

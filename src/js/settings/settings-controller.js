@@ -10,21 +10,25 @@
 import { sampleProject } from '../demo/sample-project.js';
 import * as surveyCandidateStore from '../store/survey-candidate-store.js';
 import { renderSettingsTab } from './settings-renderer.js';
+import * as boardSettingsStore from './board-settings-store.js';
+import { renderBoardSample } from '../camera/camera-board.js';
 
 let root = null;
 let unsubscribe = null;
 
 function buildViewModel() {
+  const board = boardSettingsStore.get();
   return {
     project: {
       projectNo: sampleProject.projectNo || '',
-      projectName: sampleProject.projectName || '',
-      address: '',
+      projectName: board.projectName || sampleProject.projectName || '',
+      address: board.address || '',
       surveyDate: '',
       surveyor: ''
     },
     materialCandidates: surveyCandidateStore.getConfiguredMaterialCandidates(),
-    partCandidates: surveyCandidateStore.getConfiguredPartCandidates()
+    partCandidates: surveyCandidateStore.getConfiguredPartCandidates(),
+    board
   };
 }
 
@@ -33,6 +37,7 @@ function render() {
   const activeSection = root.querySelector('.settings-subtab.active')?.dataset.settingsSection || 'survey';
   renderSettingsTab(root, buildViewModel());
   showInnerSection(activeSection);
+  renderBoardPreview();
 }
 
 function showInnerSection(section) {
@@ -45,10 +50,95 @@ function showInnerSection(section) {
   });
 }
 
+function boardPreviewData() {
+  const settings = boardSettingsStore.get();
+  return {
+    photoType: 'visual',
+    projectName: settings.subjectText || settings.projectName,
+    address: settings.addressText || settings.address,
+    subjectFontSize: settings.subjectFontSize,
+    addressFontSize: settings.addressFontSize,
+    roomNo: '1-1',
+    part: '壁',
+    statusCode: '5',
+    date: new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date())
+  };
+}
+
+function renderBoardPreview() {
+  const canvas = root?.querySelector('[data-settings-board-preview]');
+  if (canvas) renderBoardSample(canvas, boardPreviewData());
+}
+
+function syncBoardFromInputs(changedElement = null) {
+  if (!root) return;
+
+  const projectNameInput = root.querySelector('[data-setting-project-field="projectName"]');
+  const addressInput = root.querySelector('[data-setting-project-field="address"]');
+  const subjectTextInput = root.querySelector('[data-board-setting="subjectText"]');
+  const addressTextInput = root.querySelector('[data-board-setting="addressText"]');
+
+  const projectName = projectNameInput?.value || '';
+  const address = addressInput?.value || '';
+
+  // 案件情報を変更した場合は、看板用文字列もその場で同じ値へ更新する。
+  // これにより「リセットを押した時だけ新しい案件情報が反映される」状態を作らない。
+  if (changedElement?.matches('[data-setting-project-field="projectName"]') && subjectTextInput) {
+    subjectTextInput.value = projectName;
+  }
+  if (changedElement?.matches('[data-setting-project-field="address"]') && addressTextInput) {
+    addressTextInput.value = address;
+  }
+
+  const subjectText = subjectTextInput?.value ?? projectName;
+  const addressText = addressTextInput?.value ?? address;
+  const subjectFontSize = root.querySelector('[data-board-setting="subjectFontSize"]')?.value;
+  const addressFontSize = root.querySelector('[data-board-setting="addressFontSize"]')?.value;
+
+  boardSettingsStore.set({
+    projectName,
+    address,
+    subjectText,
+    addressText,
+    subjectFontSize,
+    addressFontSize
+  });
+
+  renderBoardPreview();
+}
+
+function adjustBoardFontSize(field, delta) {
+  const input = root?.querySelector(`[data-board-setting="${field}"]`);
+  if (!input) return;
+
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 999);
+  const current = Number(input.value || 0);
+  const next = Math.max(min, Math.min(max, current + delta));
+
+  input.value = String(next);
+  syncBoardFromInputs(input);
+}
+
 function handleClick(event) {
   const subtab = event.target.closest('[data-settings-section]');
   if (subtab) {
     showInnerSection(subtab.dataset.settingsSection);
+    return;
+  }
+
+  const fontAdjust = event.target.closest('[data-board-font-adjust]');
+  if (fontAdjust) {
+    adjustBoardFontSize(
+      fontAdjust.dataset.boardFontAdjust,
+      Number(fontAdjust.dataset.boardFontDelta || 0)
+    );
+    return;
+  }
+
+  if (event.target.closest('[data-action="reset-board-settings"]')) {
+    boardSettingsStore.resetFormatting();
+    render();
     return;
   }
 
@@ -112,7 +202,13 @@ export function initializeSettingsTab() {
   if (root.dataset.settingsEventsBound !== '1') {
     root.dataset.settingsEventsBound = '1';
     root.addEventListener('click', handleClick);
+    root.addEventListener('input', (event) => {
+      if (event.target.matches('[data-board-setting], [data-setting-project-field="projectName"], [data-setting-project-field="address"]')) {
+        syncBoardFromInputs(event.target);
+      }
+    });
     root.addEventListener('change', handleChange);
+    window.addEventListener('resize', renderBoardPreview);
   }
 
   if (unsubscribe) unsubscribe();

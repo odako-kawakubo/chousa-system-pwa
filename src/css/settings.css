@@ -26,3 +26,31 @@
 .settings-placeholder-box b{font-size:13px}.settings-placeholder-box span{font-size:12px;color:var(--muted);line-height:1.5}
 @media(max-width:900px){.settings-grid{grid-template-columns:1fr}.settings-project-card{grid-column:auto}.settings-form-grid{grid-template-columns:1fr}.settings-span-2{grid-column:auto}.settings-sync-placeholder-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.settings-add-material{grid-template-columns:1fr}.settings-add-part{grid-template-columns:1fr}.settings-subtabs{top:104px}}
+
+/* v0.1.5.6B 案件情報 + 看板調整 + 実電子看板 */
+.settings-project-board-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(330px,430px);
+  gap:18px;
+  align-items:start;
+  padding:14px;
+}
+.settings-project-left-column{display:grid;gap:12px;min-width:0}
+.settings-project-section{min-width:0}
+.settings-project-section h4,.settings-board-preview-title{margin:0 0 8px;font-size:12px;font-weight:900;color:#334155}
+.settings-project-board-layout .settings-form-grid{padding:0}
+.settings-board-controls{display:grid;gap:9px;padding:11px;border:1px solid var(--line);border-radius:10px;background:#f8fafc}
+.settings-board-controls label{display:grid;gap:4px;font-size:11px;font-weight:700;color:#475569}
+.settings-board-controls textarea,.settings-board-controls input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 7px;font:inherit;color:var(--text)}
+.settings-board-size-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.settings-board-font-control{display:grid;gap:4px;font-size:11px;font-weight:700;color:#475569}
+.settings-board-stepper{display:grid;grid-template-columns:34px minmax(54px,1fr) 34px;gap:5px;align-items:center}
+.settings-board-stepper .btn{min-width:34px;height:32px;padding:0;font-size:17px;font-weight:900}
+.settings-board-stepper input{text-align:center;appearance:textfield;-moz-appearance:textfield}
+.settings-board-stepper input::-webkit-outer-spin-button,.settings-board-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.settings-board-reset{justify-self:start}
+.settings-board-preview-column{display:grid;gap:6px;justify-items:center;align-content:start;min-width:0;padding-top:1px}
+.settings-board-preview-title{justify-self:start;width:min(100%,390px)}
+.settings-board-preview{display:block;width:min(100%,390px);aspect-ratio:390/242;background:#fff;border:1px solid var(--line);border-radius:8px}
+@media(max-width:980px){.settings-project-board-layout{grid-template-columns:1fr}.settings-board-preview-column{justify-items:start}.settings-board-preview-title,.settings-board-preview{width:min(100%,420px)}}
+@media(max-width:640px){.settings-board-size-row{grid-template-columns:1fr}}

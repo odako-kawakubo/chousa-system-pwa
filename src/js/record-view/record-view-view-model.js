@@ -70,12 +70,18 @@ export function buildFinishRecordView() {
   };
 }
 
+function photoRoomNo(record) {
+  if (record.roomNo) return record.roomNo;
+  const finish = finishRecordStore.getAll().find((item) => item.roomPosition === record.roomPosition);
+  return finish?.roomNo || '';
+}
+
 function comparePhotoRecords(a, b) {
   const typeDiff = (a.photoType === 'visual' ? 0 : 1) - (b.photoType === 'visual' ? 0 : 1);
   if (typeDiff) return typeDiff;
 
   if (a.photoType === 'visual') {
-    const roomDiff = compareNatural(a.roomPosition, b.roomPosition);
+    const roomDiff = compareNatural(photoRoomNo(a), photoRoomNo(b));
     if (roomDiff) return roomDiff;
     const partDiff = compareNatural(a.part, b.part);
     if (partDiff) return partDiff;
@@ -98,6 +104,7 @@ export function buildPhotoRecordView() {
   const records = photoRecordStore.getAll()
     .map((record) => ({
       ...record,
+      roomNo: record.roomNo || photoRoomNo(record),
       photoTypeLabel: record.photoType === 'visual' ? '目視' : '採取',
       shootingTypeLabel: getShootingTypeLabel(record.shootingType)
     }))
@@ -109,7 +116,7 @@ export function buildPhotoRecordView() {
     totalCount: records.length,
     activeCount: records.filter((record) => !record.deleted).length,
     representativeCount: records.filter((record) => !record.deleted && record.isRepresentative).length,
-    hint: 'photoRecordStore の実データです。目視写真は部屋位置＋部位、採取写真は建材ID＋採取枝番＋撮影区分で管理します。',
+    hint: 'photoRecordStore の実データです。目視写真は部屋No.＋部位、採取写真は建材ID＋採取枝番＋撮影区分で管理します。',
     records
   };
 }

@@ -18,9 +18,10 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
-import { initializePhotoViewer, openPhotoViewer } from './photo-viewer.js';
+import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
 import { getPhotoBlob, getCameraPhotoRecords } from './photo-local-store.js';
+import { initializePhotoBoardEditor, openPhotoBoardEditor } from './photo-board-editor.js';
 
 const state = {
   mode: 'visual',
@@ -30,7 +31,8 @@ const state = {
   openSamplingKeys: new Set(),
   collapsedLocationGroups: new Set(),
   pendingAdd: null,
-  listScrollTop: { visual: 0, sampling: 0 }
+  listScrollTop: { visual: 0, sampling: 0 },
+  editMode: false
 };
 
 const localPreviewUrls = new Map();
@@ -67,6 +69,10 @@ function render() {
   if (!root) return;
   rememberPhotoListScroll(renderedMode);
   if (!body) body = root.querySelector('#photoModeBody');
+
+  root.querySelector('.photo-panel')?.classList.toggle('photo-edit-mode', state.editMode);
+  const editButton = root.querySelector('[data-photo-edit-mode]');
+  if (editButton) { editButton.classList.toggle('active', state.editMode); editButton.textContent = state.editMode ? '編集終了' : '編集'; }
 
   root.querySelectorAll('[data-photo-mode]').forEach((button) => {
     button.classList.toggle('active', button.dataset.photoMode === state.mode);
@@ -133,6 +139,7 @@ function addPickedFile(file) {
       ...common,
       photoType: PHOTO_TYPES.VISUAL,
       roomPosition: context.roomPosition,
+      roomNo: context.roomNo || '',
       part: context.part
     }));
     return;
@@ -145,6 +152,7 @@ function addPickedFile(file) {
     samplingPlace: context.samplingPlace,
     samplingBranch: context.branch,
     sampleNo: context.sampleNo,
+    sampleBaseNo: String(context.sampleNo || '').split('-')[0],
     part: context.part,
     shootingType: context.shootingType
   }));
@@ -154,7 +162,7 @@ function visualContextFromKey(key) {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   const target = view.targets.find((item) => item.key === key);
   if (!target) return null;
-  return { photoType: PHOTO_TYPES.VISUAL, roomPosition: target.roomPosition, part: target.part };
+  return { photoType: PHOTO_TYPES.VISUAL, roomPosition: target.roomPosition, roomNo: view.activeRoom?.roomNo || '', part: target.part };
 }
 
 function samplingContextFromKey(key, shootingType) {
@@ -276,10 +284,23 @@ function photosForViewer(photoId) {
     });
 }
 
+/** デモ写真だけはRecord外でSVGプレビューを生成する。OneDrive保存先には入れない。 */
+function demoPreviewSource(photo) {
+  if (!String(photo?.photoId || '').startsWith('DEMO-PHOTO-')) return '';
+  const label = photo.photoType === PHOTO_TYPES.VISUAL
+    ? `${photo.roomNo || photo.roomPosition || '-'} / ${photo.part || '-'}`
+    : `${photo.sampleNo || '-'} / ${photo.shootingType || '-'}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#dbe4ef"/><rect x="100" y="120" width="1000" height="560" rx="24" fill="#fff" fill-opacity=".35" stroke="#fff" stroke-width="8"/><text x="600" y="390" text-anchor="middle" font-family="sans-serif" font-size="72" font-weight="700" fill="#0f172a">${label}</text><text x="600" y="465" text-anchor="middle" font-family="sans-serif" font-size="32" fill="#334155">比較UI確認用デモ写真</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 /** PhotoViewerへ渡す表示URL。photoRecord自体へ一時URLは保存しない。 */
 function previewSourceForPhoto(photo) {
   const local = localPreviewUrls.get(photo.photoId);
   if (local) return local;
+
+  const demo = demoPreviewSource(photo);
+  if (demo) return demo;
 
   const remote = String(photo.oneDrivePath || '').trim();
   if (/^(?:https?:|blob:|data:)/i.test(remote)) return remote;
@@ -293,6 +314,11 @@ function openViewerForThumb(photoId) {
 
 function bindEvents() {
   root.addEventListener('click', (event) => {
+    if (event.target.closest('[data-photo-edit-mode]')) { state.editMode = !state.editMode; render(); return; }
+
+    const editThumb = state.editMode ? event.target.closest('.photo-thumb-card[data-photo-id]') : null;
+    if (editThumb && !event.target.closest('button')) { openPhotoBoardEditor(editThumb.dataset.photoId || ''); return; }
+
     const mode = event.target.closest('[data-photo-mode]');
     if (mode) {
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
@@ -481,12 +507,18 @@ export function initializePhotoTab() {
   initializePhotoViewer({
     getPhotosForPhoto: photosForViewer,
     getPhotoSource: previewSourceForPhoto,
-    getCompareTargets: compareTargetsForViewer
+    getCompareTargets: compareTargetsForViewer,
+    onEditPhoto: (photoId) => { closePhotoViewer(); openPhotoBoardEditor(photoId); }
   });
 
   initializeCameraController({
     getOptions: buildCameraOptions,
     onPhotoSaved: registerCameraPreview
+  });
+
+  initializePhotoBoardEditor({
+    getOptions: buildCameraOptions,
+    onSaved: registerCameraPreview
   });
 
   render();

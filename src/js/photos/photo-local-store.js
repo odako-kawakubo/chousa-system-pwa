@@ -124,3 +124,11 @@ export async function saveCapturedPhoto({ record, originalBlob, completedBlob })
   await savePhotoBlob(record.photoId, 'completed', completedBlob, metadata);
   await saveCameraPhotoRecord(record);
 }
+
+
+/** 撮影後編集でphotoRecordのローカル永続版だけ更新する。 */
+export async function updateCameraPhotoRecord(record) {
+  await saveCameraPhotoRecord(record);
+}
+
+

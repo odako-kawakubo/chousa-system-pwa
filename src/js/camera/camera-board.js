@@ -226,8 +226,8 @@ export function drawBoard(ctx, rect, data) {
   drawCenteredText(ctx, '内容', tableX, contentY, leftW, rowContent, 18);
   drawCenteredText(ctx, '日付', tableX, contentY + rowContent, leftW, rowDate, 18);
 
-  drawWrappedCenterText(ctx, data.projectName || '', tableX + leftW + 5, tableY, rightW - 10, rowSubject, 18, 2);
-  drawWrappedCenterText(ctx, data.address || '', tableX + leftW + 5, tableY + rowSubject, rightW - 10, rowAddress, 17, 2);
+  drawWrappedCenterText(ctx, data.projectName || '', tableX + leftW + 5, tableY, rightW - 10, rowSubject, Number(data.subjectFontSize) || 18, 2);
+  drawWrappedCenterText(ctx, data.address || '', tableX + leftW + 5, tableY + rowSubject, rightW - 10, rowAddress, Number(data.addressFontSize) || 17, 2);
 
   // 部屋No.はラベルと値を分けるが、v64同様ラベル/値間の縦罫線は描かない。
   drawLeftMiddleText(ctx, '　部屋No.', tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
@@ -333,3 +333,23 @@ export function renderBoardPreview(canvas, data, position, size) {
   const [x, y] = positions[position] || positions['bottom-left'];
   drawBoard(ctx, { x, y, width: boardWidth, height: boardHeight }, data);
 }
+
+
+/**
+ * 設定タブ・看板編集画面で看板単体を描画する。
+ * 撮影用プレビューと同じdrawBoard()を使用し、別デザインを作らない。
+ */
+export function renderBoardSample(canvas, data) {
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(1, rect.width || 390);
+  const cssHeight = Math.max(1, rect.height || Math.round(cssWidth * 242 / 390));
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBoard(ctx, { x: 0, y: 0, width: canvas.width, height: canvas.height }, data);
+}
+
+

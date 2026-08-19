@@ -42,7 +42,7 @@ body.camera-open {
   overflow: hidden;
   background: #000;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   gap: 0;
 }
@@ -73,6 +73,22 @@ body.camera-open {
   display: none;
 }
 
+.camera-close-button {
+  position: relative;
+  z-index: 30;
+  width: 68px;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255,255,255,0.92);
+  font-size: 11px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
 .camera-photo-count {
   position: relative;
   z-index: 30;
@@ -93,21 +109,27 @@ body.camera-open {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   padding-bottom: 4px;
   flex: 0 0 auto;
 }
 
-.camera-panel-main-list {
+/*
+ * v0.1.5.6B:
+ * 「部屋 / 検体(or部位) / 看板」の各ボタンはそれぞれ1つのslotを持つ。
+ * activeになったslotだけ、元のボタンを隠して同じ場所を操作パネルへ置き換える。
+ * 画面下へ共通展開パネルを追加しない。
+ */
+.camera-panel-slot {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 100%;
   align-items: center;
 }
 
 .camera-panel-main-button,
+.camera-panel-active-title,
 .camera-panel-mini-button,
 .camera-panel-center-button {
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -121,6 +143,7 @@ body.camera-open {
 }
 
 .camera-panel-main-button:active,
+.camera-panel-active-title:active,
 .camera-panel-mini-button:active,
 .camera-panel-center-button:active {
   opacity: 0.72;
@@ -134,54 +157,71 @@ body.camera-open {
   line-height: 1.15;
 }
 
-.camera-panel-main-button.active {
-  border-color: rgba(242, 201, 76, 0.95);
-  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.25) inset, 0 2px 8px rgba(0,0,0,0.35);
+.camera-panel-slot.active > .camera-panel-main-button {
+  display: none;
 }
 
 .camera-panel-expanded {
   display: none;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
+  width: 72px;
+  padding: 5px 3px 6px;
+  box-sizing: border-box;
+  border: 1px solid rgba(242, 201, 76, 0.62);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.055);
+  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.12) inset;
 }
 
 .camera-panel-expanded.show {
   display: flex;
 }
 
+/* active項目の名前。再押下すると通常ボタンへ戻る。 */
+.camera-panel-active-title {
+  width: 62px;
+  min-height: 25px;
+  padding: 2px 4px;
+  border-radius: 9px;
+  border-color: rgba(242, 201, 76, 0.92);
+  color: #f8d96a;
+  font-size: 11px;
+  line-height: 1;
+}
+
 .camera-panel-pair {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
 }
 
 .camera-panel-vertical {
   display: grid;
-  grid-template-rows: 30px 32px 30px;
-  width: 34px;
+  grid-template-rows: 27px 29px 27px;
+  width: 30px;
   gap: 3px;
   justify-items: center;
   align-items: center;
 }
 
 .camera-panel-mini-button {
-  width: 34px;
-  height: 30px;
-  border-radius: 9px;
-  font-size: 16px;
+  width: 30px;
+  height: 27px;
+  border-radius: 8px;
+  font-size: 15px;
   line-height: 1;
   padding: 0;
 }
 
 .camera-panel-center-button {
-  width: 34px;
-  height: 32px;
-  border-radius: 10px;
-  font-size: 12px;
+  width: 30px;
+  height: 29px;
+  border-radius: 9px;
+  font-size: 10px;
   line-height: 1;
   padding: 0;
   white-space: pre-line;
@@ -189,42 +229,24 @@ body.camera-open {
 }
 
 .camera-panel-single {
-  width: 44px;
+  width: 42px;
   display: grid;
-  grid-template-rows: 32px 38px 32px;
-  gap: 5px;
+  grid-template-rows: 29px 34px 29px;
+  gap: 4px;
   justify-items: center;
   align-items: center;
 }
 
 .camera-panel-single .camera-panel-mini-button {
-  width: 44px;
-  height: 32px;
-  font-size: 17px;
+  width: 42px;
+  height: 29px;
+  font-size: 16px;
 }
 
 .camera-panel-single .camera-panel-center-button {
-  width: 44px;
-  height: 38px;
-  font-size: 11px;
-}
-
-.camera-panel-close-button,
-.camera-close-button {
-  width: 58px;
-  min-height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255,255,255,0.92);
-  font-size: 11px;
-  font-weight: 900;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.camera-close-button {
-  margin-top: auto;
+  width: 42px;
+  height: 34px;
+  font-size: 10px;
 }
 
 .camera-landscape-flip {

@@ -9,6 +9,7 @@
 let getPhotosForPhoto = () => [];
 let getPhotoSource = () => '';
 let getCompareTargets = () => [];
+let onEditPhoto = null;
 let modal = null;
 let title = null;
 let body = null;
@@ -260,6 +261,7 @@ function renderNormal() {
   const canCompare = photo.photoType === 'visual' && getCompareTargets(viewerState.context).length >= 2;
   body.innerHTML = `<div class="photo-viewer-shell">
     <div class="photo-viewer-tools">
+      <button type="button" class="btn small" data-photo-edit>看板編集</button>
       ${canCompare ? '<button type="button" class="btn small" data-photo-compare-open>比較</button>' : ''}
     </div>
     <div class="photo-viewer-stage" data-photo-viewer-stage>${renderImage(photo)}</div>
@@ -404,6 +406,7 @@ function bindChrome() {
   if (bound || !modal || !body) return;
   bound = true;
   body.addEventListener('click', (event) => {
+    if (event.target.closest('[data-photo-edit]')) { const photo=currentPhoto(); if (photo) onEditPhoto?.(photo.photoId); return; }
     if (event.target.closest('[data-photo-viewer-prev]')) return moveNormal(-1);
     if (event.target.closest('[data-photo-viewer-next]')) return moveNormal(1);
     if (event.target.closest('[data-photo-compare-open]')) return openCompare();
@@ -450,6 +453,7 @@ export function initializePhotoViewer(options = {}) {
   getPhotosForPhoto = typeof options.getPhotosForPhoto === 'function' ? options.getPhotosForPhoto : (() => []);
   getPhotoSource = typeof options.getPhotoSource === 'function' ? options.getPhotoSource : (() => '');
   getCompareTargets = typeof options.getCompareTargets === 'function' ? options.getCompareTargets : (() => []);
+  onEditPhoto = typeof options.onEditPhoto === 'function' ? options.onEditPhoto : null;
   modal = document.getElementById('photoPreviewModal');
   title = document.getElementById('photoPreviewTitle');
   body = document.getElementById('photoPreviewBody');
