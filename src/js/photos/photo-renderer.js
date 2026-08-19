@@ -36,16 +36,19 @@ function floorLabel(room) {
 
 /**
  * 写真サムネイル。
- * 画像本体のURLはphotoRecordへ重複保存しないため、ここではメタ情報サムネイルを表示する。
- * 実画像がローカルで選択された場合はPhotoViewer側の一時URLでプレビューする。
+ * photoRecordへ画像URLは保存せず、Controllerが描画後に表示URLを解決してimgへ差し込む。
+ * 一覧は3:2・約150px表示を基準とし、実画像が未解決の場合だけカメラアイコンを表示する。
  */
 function photoThumb(photo, { compact = false, extra = false } = {}) {
   if (!photo) {
     return `<div class="photo-thumb-card photo-thumb-empty ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}"><span>未撮影</span></div>`;
   }
-  return `<div class="photo-thumb-card ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" data-photo-id="${esc(photo.photoId)}" title="${esc(photo.fileName || photo.photoId)}">
-    <span class="photo-thumb-icon">📷</span>
-    <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
+  return `<div class="photo-thumb-card photo-thumb-loading ${compact ? 'compact' : ''} ${extra ? 'extra' : ''}" data-photo-id="${esc(photo.photoId)}" title="${esc(photo.fileName || photo.photoId)}">
+    <img class="photo-thumb-image" data-photo-thumb-image="${esc(photo.photoId)}" alt="${esc(photo.fileName || photo.photoId || '写真')}" loading="lazy" decoding="async">
+    <div class="photo-thumb-fallback" aria-hidden="true">
+      <span class="photo-thumb-icon">📷</span>
+      <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
+    </div>
     <button class="photo-expand-btn" type="button" data-photo-expand="${esc(photo.photoId)}" aria-label="写真を拡大">拡大</button>
   </div>`;
 }
