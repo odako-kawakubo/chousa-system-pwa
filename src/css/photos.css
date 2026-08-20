@@ -187,19 +187,21 @@
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
 
 
-/* v0.1.5.6H 写真の編集 / 削除 共通選択モード
- * 選択責務はphoto-thumb-cardではなくdata-photo-selectableへ統一する。
- * 目視代表・目視追加・採取代表・採取追加・未整理写真のDOM差をここで吸収する。
+/* v0.1.5.6I 写真の編集 / 削除 共通選択モード
+ * data-photo-selectable は「選択対象」の識別だけを担当する。
+ * position / display / size など写真レイアウトの責務は変更しない。
+ * 選択ラベルは photo-thumb-card 内の独立DOMで表示する。
  */
-[data-photo-selectable]{position:relative}
 .photo-unorganized-item{display:inline-flex}
 .photo-panel.photo-selection-mode [data-photo-selectable][data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
 .photo-panel.photo-selection-delete [data-photo-selectable][data-photo-id]{outline-color:#dc2626}
-.photo-panel.photo-selection-mode [data-photo-selectable].photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
-.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected::after{content:'編集対象'}
-.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected::after{content:'削除対象';background:rgba(220,38,38,.92)}
 .photo-panel.photo-selection-mode [data-photo-selectable].photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
 .photo-panel.photo-selection-delete [data-photo-selectable].photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+.photo-selection-badge{display:none;position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
+.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected .photo-selection-badge{display:block}
+.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected .photo-selection-badge::before{content:'編集対象'}
+.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected .photo-selection-badge{display:block;background:rgba(220,38,38,.92)}
+.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected .photo-selection-badge::before{content:'削除対象'}
 /* 選択モード中も拡大ボタンは残す。代表/追加写真操作だけは誤操作防止のため隠す。 */
 .photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
 .photo-thumb-card{position:relative}

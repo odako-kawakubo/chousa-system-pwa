@@ -50,6 +50,7 @@ function photoThumb(photo, { compact = false, extra = false } = {}) {
       <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
     </div>
     <button class="photo-expand-btn" type="button" data-photo-expand="${esc(photo.photoId)}" aria-label="写真を拡大">拡大</button>
+    <span class="photo-selection-badge" aria-hidden="true"></span>
   </div>`;
 }
 
