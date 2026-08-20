@@ -187,14 +187,19 @@
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
 
 
-/* v0.1.5.6G 写真の編集 / 削除 共通選択モード */
-.photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
-.photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]{outline-color:#dc2626}
-.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
-.photo-panel.photo-selection-edit .photo-thumb-card.photo-selected::after{content:'編集対象'}
-.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected::after{content:'削除対象';background:rgba(220,38,38,.92)}
-.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
-.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+/* v0.1.5.6H 写真の編集 / 削除 共通選択モード
+ * 選択責務はphoto-thumb-cardではなくdata-photo-selectableへ統一する。
+ * 目視代表・目視追加・採取代表・採取追加・未整理写真のDOM差をここで吸収する。
+ */
+[data-photo-selectable]{position:relative}
+.photo-unorganized-item{display:inline-flex}
+.photo-panel.photo-selection-mode [data-photo-selectable][data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
+.photo-panel.photo-selection-delete [data-photo-selectable][data-photo-id]{outline-color:#dc2626}
+.photo-panel.photo-selection-mode [data-photo-selectable].photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
+.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected::after{content:'編集対象'}
+.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected::after{content:'削除対象';background:rgba(220,38,38,.92)}
+.photo-panel.photo-selection-mode [data-photo-selectable].photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
 /* 選択モード中も拡大ボタンは残す。代表/追加写真操作だけは誤操作防止のため隠す。 */
 .photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
 .photo-thumb-card{position:relative}
@@ -209,6 +214,7 @@ body.photo-board-edit-open{overflow:hidden!important}
 .photo-board-editor-stage canvas{display:block;width:100%;height:100%}
 .photo-board-editor-controls{display:flex;flex-direction:column;gap:12px;padding:14px;background:#111827;overflow:auto}
 .photo-board-editor-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.photo-board-editor-sequence-hint{padding:6px 8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#bfdbfe;font-size:11px;font-weight:700;text-align:center}
 .photo-board-editor-fields,.photo-board-editor-common{display:grid;gap:9px}
 .photo-board-editor-controls label{display:grid;gap:4px;font-size:12px;font-weight:700;color:#dbeafe}
 .photo-board-editor-controls select{width:100%;border:1px solid #475569;border-radius:8px;padding:8px;background:#fff;color:#111827;font:inherit}

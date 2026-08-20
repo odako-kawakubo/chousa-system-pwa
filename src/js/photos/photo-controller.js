@@ -21,7 +21,7 @@ import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
 import { getPhotoBlob, getCameraPhotoRecords, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
-import { initializePhotoBoardEditor, openPhotoBoardEditor } from './photo-board-editor.js';
+import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
 
 const state = {
@@ -53,7 +53,6 @@ let unsubscribeMaterialStore = null;
 let unsubscribeFinishStore = null;
 let storeRenderQueued = false;
 let renderedMode = 'visual';
-let editSequence = { ids: [], index: -1, active: false };
 
 function rememberPhotoScroll(mode = renderedMode) {
   if (!body) return;
@@ -93,7 +92,7 @@ function applySelectionUi() {
       : (buttonMode === 'delete' ? '削除' : '編集');
   });
 
-  root.querySelectorAll('.photo-thumb-card[data-photo-id]').forEach((card) => {
+  root.querySelectorAll('[data-photo-selectable][data-photo-id]').forEach((card) => {
     card.classList.toggle('photo-selected', state.selectedPhotoIds.has(card.dataset.photoId || ''));
   });
 }
@@ -416,39 +415,18 @@ function openViewerForThumb(photoId) {
   openPhotoViewer(photoId);
 }
 
-function resetEditSequence() {
-  editSequence = { ids: [], index: -1, active: false };
-}
-
-async function openEditSequenceAt(index) {
-  if (!editSequence.active) return false;
-  if (index < 0 || index >= editSequence.ids.length) return false;
-
-  editSequence.index = index;
-  const photoId = editSequence.ids[index];
-  const opened = await openPhotoBoardEditor(photoId, {
-    canNavigatePrev: index > 0,
-    canNavigateNext: index < editSequence.ids.length - 1
-  });
-
-  if (opened) return true;
-
-  // 元写真が無い等で開けない写真は、その方向へ1枚だけ飛ばして継続する。
-  const fallbackIndex = index < editSequence.ids.length - 1 ? index + 1 : index - 1;
-  if (fallbackIndex >= 0 && fallbackIndex < editSequence.ids.length && fallbackIndex !== index) {
-    return openEditSequenceAt(fallbackIndex);
-  }
-
-  resetEditSequence();
-  render();
-  return false;
-}
-
 function startEditSequence(photoIds) {
   const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
-  editSequence = { ids, index: ids.length ? 0 : -1, active: ids.length > 0 };
   clearSelectionMode();
-  if (editSequence.active) openEditSequenceAt(0);
+  if (!ids.length) return;
+
+  // 複数写真のドラフト保持・前後移動・一括保存はEditor側の1セッションへ集約する。
+  // Controller側には別の編集キューや保存経路を持たせない。
+  openPhotoBoardEditorSequence(ids).catch((error) => {
+    console.error(error);
+    window.alert(`看板編集を開始できませんでした。
+${error.message || error}`);
+  });
 }
 
 async function deleteSelectedPhotos(photoIds) {
@@ -520,7 +498,7 @@ function bindEvents() {
     }
 
     if (state.selectionMode) {
-      const selectableThumb = event.target.closest('.photo-thumb-card[data-photo-id]');
+      const selectableThumb = event.target.closest('[data-photo-selectable][data-photo-id]');
       if (selectableThumb) {
         togglePhotoSelection(selectableThumb.dataset.photoId || '');
         return;
@@ -717,27 +695,11 @@ export function initializePhotoTab() {
 
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
-    onSaved: async (payload) => {
-      await registerCameraPreview(payload);
+    onSaved: async ({ items = [] } = {}) => {
+      // Editorが変更写真だけを既存の1枚保存処理で順番に確定した結果を受け取る。
+      // Controllerは各完成画像のプレビューURL更新だけを行い、保存ロジックは持たない。
+      for (const item of items) await registerCameraPreview(item);
       render();
-
-      if (!editSequence.active) return;
-
-      // スワイプ移動も通常の保存ボタンも、Editorの同じsaveEdit()を通ってからここへ来る。
-      // 未保存のまま写真を切り替える経路は作らない。
-      const direction = Number(payload?.navigateDirection || 0);
-      const nextIndex = direction
-        ? editSequence.index + direction
-        : editSequence.index + 1;
-
-      if (nextIndex >= 0 && nextIndex < editSequence.ids.length) {
-        await openEditSequenceAt(nextIndex);
-      } else {
-        resetEditSequence();
-      }
-    },
-    onClosed: (reason) => {
-      if (reason === 'cancel' && editSequence.active) resetEditSequence();
     }
   });
 

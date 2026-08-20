@@ -1,9 +1,16 @@
 /**
  * src/js/photos/photo-board-editor.js
  *
- * v0.1.5.6A 撮影済み写真の電子看板編集。
- * v64の「元写真 + 看板を同じ画面で確認し、Undo/Redo後に再合成」の流れを採用し、
- * 本PWAでは写真固有項目だけを編集する。
+ * v0.1.5.6H 撮影済み写真の電子看板編集。
+ *
+ * Hでの主な変更：
+ * - 複数写真編集は「移動時保存」を廃止し、写真ごとのドラフトを編集セッション中に保持する。
+ * - 左右スワイプは表示写真の切替だけを行い、永続保存は発生させない。
+ * - 各写真ごとに draft / Undo・Redo履歴 / dirty状態を保持する。
+ * - 「保存」押下時だけ、変更された写真を既存の1枚保存経路で順番に確定する。
+ * - 閉じる時に未保存変更があれば確認してから破棄する。
+ *
+ * 確定経路は増やさず、persistEntry_() を全保存の唯一の入口とする。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -29,41 +36,59 @@ let canvas = null;
 let optionsProvider = () => ({ visualRooms: [], samplingTargets: [] });
 let onSaved = null;
 let onClosed = null;
-let active = null;
 let originalImage = null;
 let originalUrl = '';
-let history = [];
-let historyIndex = -1;
 let renderToken = 0;
 let saving = false;
+let switching = false;
 let swipeStart = null;
+
+/**
+ * 編集セッション。
+ * entries は写真ごとに独立した draft / history / dirty を持つ。
+ * スワイプで写真を移動しても内容はここに残るため、前の写真へ戻しても復元できる。
+ */
+let session = createEmptySession_();
+let active = null;
+
+function createEmptySession_() {
+  return {
+    ids: [],
+    index: -1,
+    entries: new Map()
+  };
+}
 
 function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
+function sameDraft_(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function dateText(value) {
   const d = value ? new Date(value) : new Date();
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
 }
 function sampleDisplay(base, branch) { return `${base || ''}${MARKS[branch] ? `-${MARKS[branch]}` : ''}`; }
-function currentStatusCode() {
-  if (active.record.photoType === PHOTO_TYPES.VISUAL) return '5';
-  if (active.draft.shootingType === SHOOTING_TYPES.SECTION) return '4';
-  return ({ before:'1', during:'2', after:'3' })[active.draft.shootingType] || '1';
+
+function currentStatusCode(entry = active) {
+  if (!entry) return '1';
+  if (entry.record.photoType === PHOTO_TYPES.VISUAL) return '5';
+  if (entry.draft.shootingType === SHOOTING_TYPES.SECTION) return '4';
+  return ({ before:'1', during:'2', after:'3' })[entry.draft.shootingType] || '1';
 }
-function boardData() {
+
+function boardData(entry = active) {
   const settings = boardSettingsStore.get();
   return {
-    photoType: active.record.photoType,
+    photoType: entry.record.photoType,
     projectName: settings.subjectText || settings.projectName,
     address: settings.addressText || settings.address,
     subjectFontSize: settings.subjectFontSize,
     addressFontSize: settings.addressFontSize,
-    roomNo: active.draft.roomNo,
-    part: active.draft.part,
-    samplingPlace: active.draft.samplingPlace,
-    sampleNo: sampleDisplay(active.draft.sampleBaseNo, active.draft.samplingBranch),
-    statusCode: currentStatusCode(),
-    date: dateText(active.record.capturedAt)
+    roomNo: entry.draft.roomNo,
+    part: entry.draft.part,
+    samplingPlace: entry.draft.samplingPlace,
+    sampleNo: sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
+    statusCode: currentStatusCode(entry),
+    date: dateText(entry.record.capturedAt)
   };
 }
 
@@ -105,26 +130,64 @@ function snapshotFromRecord(record) {
   };
 }
 
+function createEntry_(record) {
+  const initialDraft = snapshotFromRecord(record);
+  return {
+    record: { ...record },
+    initialDraft: clone(initialDraft),
+    draft: clone(initialDraft),
+    history: [clone(initialDraft)],
+    historyIndex: 0,
+    dirty: false
+  };
+}
+
+function refreshDirty_(entry = active) {
+  if (!entry) return;
+  entry.dirty = !sameDraft_(entry.draft, entry.initialDraft);
+}
+
+function hasUnsavedChanges_() {
+  return [...session.entries.values()].some((entry) => entry.dirty);
+}
+
 function pushHistory() {
+  if (!active) return;
   const snap = clone(active.draft);
-  const current = history[historyIndex];
-  if (current && JSON.stringify(current) === JSON.stringify(snap)) return;
-  history = history.slice(0, historyIndex + 1);
-  history.push(snap);
-  historyIndex = history.length - 1;
+  const current = active.history[active.historyIndex];
+  if (current && sameDraft_(current, snap)) return;
+  active.history = active.history.slice(0, active.historyIndex + 1);
+  active.history.push(snap);
+  active.historyIndex = active.history.length - 1;
+  refreshDirty_();
   updateHistoryButtons();
 }
+
 function applyHistory(index) {
-  if (index < 0 || index >= history.length) return;
-  historyIndex = index;
-  active.draft = clone(history[index]);
+  if (!active || index < 0 || index >= active.history.length) return;
+  active.historyIndex = index;
+  active.draft = clone(active.history[index]);
+  refreshDirty_();
   renderControls();
   renderPreview();
   updateHistoryButtons();
 }
+
 function updateHistoryButtons() {
-  root?.querySelector('[data-editor-undo]')?.toggleAttribute('disabled', historyIndex <= 0);
-  root?.querySelector('[data-editor-redo]')?.toggleAttribute('disabled', historyIndex >= history.length - 1);
+  root?.querySelector('[data-editor-undo]')?.toggleAttribute('disabled', !active || active.historyIndex <= 0);
+  root?.querySelector('[data-editor-redo]')?.toggleAttribute('disabled', !active || active.historyIndex >= active.history.length - 1);
+}
+
+function updateNavigationHint_() {
+  const hint = root?.querySelector('[data-editor-sequence-hint]');
+  if (!hint) return;
+  if (session.ids.length <= 1) {
+    hint.textContent = '';
+    hint.hidden = true;
+    return;
+  }
+  hint.hidden = false;
+  hint.textContent = `${session.index + 1} / ${session.ids.length}　左右スワイプで写真切替`;
 }
 
 function ensureRoot() {
@@ -137,6 +200,7 @@ function ensureRoot() {
       <div class="photo-board-editor-stage"><canvas data-photo-board-editor-canvas></canvas></div>
       <aside class="photo-board-editor-controls">
         <div class="photo-board-editor-head"><b>看板編集</b><button class="btn small" type="button" data-editor-close>閉じる</button></div>
+        <div class="photo-board-editor-sequence-hint" data-editor-sequence-hint hidden></div>
         <div data-editor-fields></div>
         <div class="photo-board-editor-common">
           <label>看板位置<select data-editor-position>${BOARD_POSITIONS.map((v)=>`<option value="${v}">${BOARD_POSITION_LABELS[v] || v}</option>`).join('')}</select></label>
@@ -164,6 +228,7 @@ function visualFields() {
     <label>部位<select data-editor-part>${parts.map((p)=>`<option value="${esc(p.part)}" ${p.part===active.draft.part?'selected':''}>${esc(p.part)}</option>`).join('')}</select></label>
   </div>`;
 }
+
 function samplingFields() {
   const materials = samplingMaterials();
   const targets = samplingMaterialTargets(active.draft.materialId || active.record.materialId);
@@ -177,11 +242,13 @@ function samplingFields() {
     </select></label>
   </div>`;
 }
+
 function renderControls() {
   if (!active || !root) return;
   root.querySelector('[data-editor-fields]').innerHTML = active.record.photoType === PHOTO_TYPES.VISUAL ? visualFields() : samplingFields();
   root.querySelector('[data-editor-position]').value = active.draft.boardPosition;
   root.querySelector('[data-editor-size]').value = active.draft.boardSize;
+  updateNavigationHint_();
 }
 
 async function loadImageFromBlob(blob) {
@@ -191,6 +258,13 @@ async function loadImageFromBlob(blob) {
   image.src = originalUrl;
   await image.decode();
   return image;
+}
+
+async function loadOriginalImageForEntry_(entry) {
+  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
+  if (!originalBlob) return false;
+  originalImage = await loadImageFromBlob(originalBlob);
+  return true;
 }
 
 function renderPreview() {
@@ -216,7 +290,7 @@ function renderPreview() {
     ctx.drawImage(originalImage, dx, dy, dw, dh);
     if (!(active.record.photoType === PHOTO_TYPES.SAMPLING && active.draft.shootingType === SHOOTING_TYPES.SECTION)) {
       const rect = getBoardRect(dw, dh, active.draft.boardPosition, active.draft.boardSize, wrap.clientWidth || 780);
-      drawBoard(ctx, { x: dx+rect.x, y: dy+rect.y, width: rect.width, height: rect.height }, boardData());
+      drawBoard(ctx, { x: dx+rect.x, y: dy+rect.y, width: rect.width, height: rect.height }, boardData(active));
     }
   });
 }
@@ -230,6 +304,7 @@ function syncSamplingPlace() {
 }
 
 function updateDraftFromEvent(target) {
+  if (!active) return;
   if (target.matches('[data-editor-room]')) {
     const room = visualRooms().find((r)=>r.roomPosition===target.value);
     active.draft.roomPosition = room?.roomPosition || '';
@@ -256,36 +331,56 @@ function updateDraftFromEvent(target) {
   renderPreview();
 }
 
-async function composeCompletedBlob() {
-  const originalBlob = await getPhotoBlob(active.record.photoId, 'original');
-  if (!originalBlob) throw new Error('元写真が端末内にありません。');
+async function composeCompletedBlob_(entry) {
+  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
+  if (!originalBlob) throw new Error(`元写真が端末内にありません。 (${entry.record.photoId})`);
   const img = await loadImageFromBlob(originalBlob);
-  const out = document.createElement('canvas'); out.width=img.width; out.height=img.height;
-  const ctx=out.getContext('2d'); ctx.drawImage(img,0,0);
-  if (!(active.record.photoType === PHOTO_TYPES.SAMPLING && active.draft.shootingType === SHOOTING_TYPES.SECTION)) {
-    const rect=getBoardRect(out.width,out.height,active.draft.boardPosition,active.draft.boardSize,780);
-    drawBoard(ctx,rect,boardData());
+  const out = document.createElement('canvas');
+  out.width = img.width;
+  out.height = img.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(img,0,0);
+  if (!(entry.record.photoType === PHOTO_TYPES.SAMPLING && entry.draft.shootingType === SHOOTING_TYPES.SECTION)) {
+    const rect = getBoardRect(out.width,out.height,entry.draft.boardPosition,entry.draft.boardSize,780);
+    drawBoard(ctx,rect,boardData(entry));
   }
   return new Promise((resolve,reject)=>out.toBlob((blob)=>blob?resolve(blob):reject(new Error('完成画像を生成できませんでした。')),'image/jpeg',0.82));
 }
 
-async function saveEdit(navigateDirection = 0) {
-  if (!active || saving) return;
-  saving = true;
-  const originalBlob = await getPhotoBlob(active.record.photoId, 'original');
-  if (!originalBlob) throw new Error('元写真が端末内にありません。');
-  const completedBlob = await composeCompletedBlob();
+/**
+ * 1枚分の正式な保存処理。
+ * 単独編集も複数編集の一括保存も必ずこの関数だけを通す。
+ */
+async function persistEntry_(entry) {
+  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
+  if (!originalBlob) throw new Error(`元写真が端末内にありません。 (${entry.record.photoId})`);
+
+  const completedBlob = await composeCompletedBlob_(entry);
   const now = new Date().toISOString();
-  const nextFields = active.record.photoType === PHOTO_TYPES.VISUAL
-    ? { roomPosition:active.draft.roomPosition, roomNo:active.draft.roomNo, part:active.draft.part }
-    : { materialId:active.draft.materialId || active.record.materialId, samplingPlace:active.draft.samplingPlace, samplingBranch:active.draft.samplingBranch, sampleNo:sampleDisplay(active.draft.sampleBaseNo, active.draft.samplingBranch), sampleBaseNo:active.draft.sampleBaseNo, part:active.draft.part, shootingType:active.draft.shootingType };
-  const fileName = getAvailablePhotoFileName({ photoType:active.record.photoType, ...nextFields }, photoRecordStore.getAll(), active.record.photoId);
+  const nextFields = entry.record.photoType === PHOTO_TYPES.VISUAL
+    ? { roomPosition:entry.draft.roomPosition, roomNo:entry.draft.roomNo, part:entry.draft.part }
+    : {
+        materialId:entry.draft.materialId || entry.record.materialId,
+        samplingPlace:entry.draft.samplingPlace,
+        samplingBranch:entry.draft.samplingBranch,
+        sampleNo:sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
+        sampleBaseNo:entry.draft.sampleBaseNo,
+        part:entry.draft.part,
+        shootingType:entry.draft.shootingType
+      };
+
+  const fileName = getAvailablePhotoFileName(
+    { photoType:entry.record.photoType, ...nextFields },
+    photoRecordStore.getAll(),
+    entry.record.photoId
+  );
+
   const record = photoRecordStore.set({
-    ...active.record,
+    ...entry.record,
     ...nextFields,
     fileName,
-    boardPosition:active.draft.boardPosition,
-    boardSize:active.draft.boardSize,
+    boardPosition:entry.draft.boardPosition,
+    boardSize:entry.draft.boardSize,
     isEdited:true,
     lastEditedDevice:getDeviceCode(),
     lastEditedAt:now,
@@ -293,26 +388,94 @@ async function saveEdit(navigateDirection = 0) {
     localOriginalStatus:'saved',
     localCompletedStatus:'saved'
   });
+
   await savePhotoBlob(record.photoId,'original',originalBlob,{createdAt:record.capturedAt,fileName,uploadStatus:'pending'});
   await savePhotoBlob(record.photoId,'completed',completedBlob,{createdAt:now,fileName,uploadStatus:'pending'});
   await updateCameraPhotoRecord(record);
-  closePhotoBoardEditor('saved');
-  saving = false;
-  await onSaved?.({ record, completedBlob, navigateDirection });
+
+  entry.record = { ...record };
+  entry.initialDraft = clone(entry.draft);
+  entry.history = [clone(entry.draft)];
+  entry.historyIndex = 0;
+  entry.dirty = false;
+
+  return { record, completedBlob };
+}
+
+/**
+ * 保存ボタンの処理。
+ * 変更された写真だけを、上の1枚保存処理へ順番に渡す。
+ */
+async function saveSession_() {
+  if (!active || saving) return;
+  saving = true;
+  try {
+    const dirtyEntries = session.ids
+      .map((photoId) => session.entries.get(photoId))
+      .filter((entry) => entry?.dirty);
+
+    const items = [];
+    for (const entry of dirtyEntries) {
+      items.push(await persistEntry_(entry));
+    }
+
+    closeEditorInternal_('saved');
+    await onSaved?.({ items });
+  } catch (error) {
+    // 一括保存の途中で失敗しても、現在編集中写真のプレビューへ戻してEditorを維持する。
+    // 既に確定した写真はdirty=falseになっているため、再度「保存」しても二重保存しない。
+    if (active) {
+      await loadOriginalImageForEntry_(active);
+      renderControls();
+      updateHistoryButtons();
+      renderPreview();
+    }
+    throw error;
+  } finally {
+    saving = false;
+  }
 }
 
 function canNavigate(direction) {
-  if (!active?.navigation) return false;
-  return direction < 0 ? Boolean(active.navigation.canNavigatePrev) : Boolean(active.navigation.canNavigateNext);
+  if (!session.ids.length) return false;
+  const nextIndex = session.index + direction;
+  return nextIndex >= 0 && nextIndex < session.ids.length;
+}
+
+async function activateIndex_(index) {
+  if (switching || saving) return false;
+  if (index < 0 || index >= session.ids.length) return false;
+
+  const photoId = session.ids[index];
+  const entry = session.entries.get(photoId);
+  if (!entry) return false;
+
+  switching = true;
+  try {
+    const loaded = await loadOriginalImageForEntry_(entry);
+    if (!loaded) {
+      window.alert('この写真の元写真が端末内にありません。');
+      return false;
+    }
+    session.index = index;
+    active = entry;
+    swipeStart = null;
+    renderControls();
+    updateHistoryButtons();
+    renderPreview();
+    return true;
+  } finally {
+    switching = false;
+  }
 }
 
 function handleEditorSwipeStart(event) {
-  if (!active || saving || event.pointerType === 'mouse' && event.button !== 0) return;
+  if (!active || saving || switching || event.pointerType === 'mouse' && event.button !== 0) return;
   swipeStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
 }
 
 function handleEditorSwipeEnd(event) {
-  if (!swipeStart || swipeStart.pointerId !== event.pointerId || !active || saving) {
+  if (!swipeStart || swipeStart.pointerId !== event.pointerId || !active || saving || switching) {
     swipeStart = null;
     return;
   }
@@ -320,18 +483,21 @@ function handleEditorSwipeEnd(event) {
   const dy = event.clientY - swipeStart.y;
   swipeStart = null;
 
-  // 横方向が明確なスワイプだけを写真移動として扱う。
   if (Math.abs(dx) < 70 || Math.abs(dx) <= Math.abs(dy) * 1.2) return;
   const direction = dx < 0 ? 1 : -1;
   if (!canNavigate(direction)) return;
 
-  // 写真切替前に必ず既存のsaveEdit()で現在写真を確定する。
-  // 未保存のまま次写真へ移動する経路は作らない。
-  saveEdit(direction).catch((error) => {
-    saving = false;
+  // Hではスワイプは表示切替だけ。永続保存は保存ボタンでのみ行う。
+  activateIndex_(session.index + direction).catch((error) => {
     console.error(error);
-    alert(`看板編集の保存に失敗しました。\n${error.message || error}`);
+    window.alert(`写真の切り替えに失敗しました。\n${error.message || error}`);
   });
+}
+
+function requestClose_() {
+  if (saving) return;
+  if (hasUnsavedChanges_() && !window.confirm('未保存の看板編集があります。変更を破棄して閉じますか？')) return;
+  closeEditorInternal_('cancel');
 }
 
 function bindEvents() {
@@ -341,11 +507,17 @@ function bindEvents() {
   stage?.addEventListener('pointerup', handleEditorSwipeEnd);
   stage?.addEventListener('pointercancel', () => { swipeStart = null; });
   root.addEventListener('click',(event)=>{
-    if (event.target.closest('[data-editor-close]')) return closePhotoBoardEditor();
-    if (event.target.closest('[data-editor-undo]')) return applyHistory(historyIndex-1);
-    if (event.target.closest('[data-editor-redo]')) return applyHistory(historyIndex+1);
+    if (event.target.closest('[data-editor-close]')) return requestClose_();
+    if (event.target.closest('[data-editor-undo]')) return applyHistory(active?.historyIndex - 1);
+    if (event.target.closest('[data-editor-redo]')) return applyHistory(active?.historyIndex + 1);
     if (event.target.closest('[data-editor-reset]')) return applyHistory(0);
-    if (event.target.closest('[data-editor-save]')) saveEdit().catch((error)=>{saving=false;console.error(error);alert(`看板編集の保存に失敗しました。\n${error.message||error}`);});
+    if (event.target.closest('[data-editor-save]')) {
+      saveSession_().catch((error)=>{
+        saving=false;
+        console.error(error);
+        window.alert(`看板編集の保存に失敗しました。\n${error.message||error}`);
+      });
+    }
   });
   window.addEventListener('resize',renderPreview);
 }
@@ -357,34 +529,56 @@ export function initializePhotoBoardEditor(options={}) {
   ensureRoot();
 }
 
-export async function openPhotoBoardEditor(photoId, navigation = {}) {
+async function startSession_(photoIds) {
   ensureRoot();
-  const record = photoRecordStore.get(photoId);
-  if (!record || record.deleted) return false;
-  const originalBlob = await getPhotoBlob(photoId,'original');
-  if (!originalBlob) { alert('この写真の元写真が端末内にありません。'); return false; }
-  originalImage = await loadImageFromBlob(originalBlob);
-  active = {
-    record:{...record},
-    draft:snapshotFromRecord(record),
-    navigation:{
-      canNavigatePrev:Boolean(navigation.canNavigatePrev),
-      canNavigateNext:Boolean(navigation.canNavigateNext)
-    }
-  };
-  saving = false;
-  swipeStart = null;
-  history=[clone(active.draft)]; historyIndex=0;
-  renderControls(); updateHistoryButtons();
-  root.hidden=false; document.body.classList.add('photo-board-edit-open');
-  renderPreview();
+  const ids = [...new Set(photoIds || [])].filter((photoId) => {
+    const record = photoRecordStore.get(photoId);
+    return Boolean(record && !record.deleted);
+  });
+  if (!ids.length) return false;
+
+  const entries = new Map();
+  for (const photoId of ids) {
+    const record = photoRecordStore.get(photoId);
+    entries.set(photoId, createEntry_(record));
+  }
+
+  session = { ids, index: 0, entries };
+  root.hidden=false;
+  document.body.classList.add('photo-board-edit-open');
+  const opened = await activateIndex_(0);
+  if (!opened) {
+    closeEditorInternal_('cancel');
+    return false;
+  }
   return true;
 }
 
-export function closePhotoBoardEditor(reason = 'cancel') {
+/** 単独写真編集。PhotoViewerからの編集もこの経路を使う。 */
+export function openPhotoBoardEditor(photoId) {
+  return startSession_([photoId]);
+}
+
+/** 複数写真編集。写真ごとのドラフトと履歴を1セッション内で保持する。 */
+export function openPhotoBoardEditorSequence(photoIds) {
+  return startSession_(photoIds);
+}
+
+function closeEditorInternal_(reason = 'cancel') {
   if (!root) return;
-  root.hidden=true; document.body.classList.remove('photo-board-edit-open');
-  active=null; history=[]; historyIndex=-1; originalImage=null; saving=false; swipeStart=null;
+  root.hidden=true;
+  document.body.classList.remove('photo-board-edit-open');
+  active=null;
+  session=createEmptySession_();
+  originalImage=null;
+  swipeStart=null;
+  switching=false;
   if (originalUrl) { URL.revokeObjectURL(originalUrl); originalUrl=''; }
   onClosed?.(reason);
+}
+
+/** 外部から強制的に閉じる必要がある場合の既存互換入口。 */
+export function closePhotoBoardEditor(reason = 'cancel') {
+  if (reason === 'cancel') return requestClose_();
+  closeEditorInternal_(reason);
 }
