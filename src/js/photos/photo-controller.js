@@ -53,8 +53,7 @@ let unsubscribeMaterialStore = null;
 let unsubscribeFinishStore = null;
 let storeRenderQueued = false;
 let renderedMode = 'visual';
-let editQueue = [];
-let editQueueActive = false;
+let editSequence = { ids: [], index: -1, active: false };
 
 function rememberPhotoScroll(mode = renderedMode) {
   if (!body) return;
@@ -417,23 +416,39 @@ function openViewerForThumb(photoId) {
   openPhotoViewer(photoId);
 }
 
-async function openNextQueuedEdit() {
-  if (!editQueueActive) return;
-  const nextId = editQueue.shift();
-  if (!nextId) {
-    editQueueActive = false;
-    render();
-    return;
+function resetEditSequence() {
+  editSequence = { ids: [], index: -1, active: false };
+}
+
+async function openEditSequenceAt(index) {
+  if (!editSequence.active) return false;
+  if (index < 0 || index >= editSequence.ids.length) return false;
+
+  editSequence.index = index;
+  const photoId = editSequence.ids[index];
+  const opened = await openPhotoBoardEditor(photoId, {
+    canNavigatePrev: index > 0,
+    canNavigateNext: index < editSequence.ids.length - 1
+  });
+
+  if (opened) return true;
+
+  // 元写真が無い等で開けない写真は、その方向へ1枚だけ飛ばして継続する。
+  const fallbackIndex = index < editSequence.ids.length - 1 ? index + 1 : index - 1;
+  if (fallbackIndex >= 0 && fallbackIndex < editSequence.ids.length && fallbackIndex !== index) {
+    return openEditSequenceAt(fallbackIndex);
   }
-  const opened = await openPhotoBoardEditor(nextId);
-  if (!opened) await openNextQueuedEdit();
+
+  resetEditSequence();
+  render();
+  return false;
 }
 
 function startEditSequence(photoIds) {
-  editQueue = [...photoIds];
-  editQueueActive = editQueue.length > 0;
+  const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
+  editSequence = { ids, index: ids.length ? 0 : -1, active: ids.length > 0 };
   clearSelectionMode();
-  if (editQueueActive) openNextQueuedEdit();
+  if (editSequence.active) openEditSequenceAt(0);
 }
 
 async function deleteSelectedPhotos(photoIds) {
@@ -496,6 +511,14 @@ function bindEvents() {
       return;
     }
 
+    // 選択モード中でも専用の「拡大」ボタンはPhotoViewerを開く。
+    // カード本体のタップだけを選択ON/OFFに使い、拡大操作と競合させない。
+    const expandButton = event.target.closest('[data-photo-expand]');
+    if (expandButton) {
+      openViewerForThumb(expandButton.dataset.photoExpand || '');
+      return;
+    }
+
     if (state.selectionMode) {
       const selectableThumb = event.target.closest('.photo-thumb-card[data-photo-id]');
       if (selectableThumb) {
@@ -549,12 +572,6 @@ function bindEvents() {
       const key = sampleToggle.dataset.photoToggleSampling || '';
       state.openSamplingKeys.has(key) ? state.openSamplingKeys.delete(key) : state.openSamplingKeys.add(key);
       render();
-      return;
-    }
-
-    const expandButton = event.target.closest('[data-photo-expand]');
-    if (expandButton) {
-      openViewerForThumb(expandButton.dataset.photoExpand || '');
       return;
     }
 
@@ -685,7 +702,12 @@ export function initializePhotoTab() {
     getPhotosForPhoto: photosForViewer,
     getPhotoSource: previewSourceForPhoto,
     getCompareTargets: compareTargetsForViewer,
-    onEditPhoto: (photoId) => { closePhotoViewer(); openPhotoBoardEditor(photoId); }
+    onEditPhoto: async (photoId) => {
+      // Viewerを先に閉じると、編集画面を開けなかった場合に写真だけ消えたように見える。
+      // Editorが正常に開いたことを確認してからViewerを閉じる。
+      const opened = await openPhotoBoardEditor(photoId);
+      if (opened) closePhotoViewer();
+    }
   });
 
   initializeCameraController({
@@ -698,13 +720,24 @@ export function initializePhotoTab() {
     onSaved: async (payload) => {
       await registerCameraPreview(payload);
       render();
-      if (editQueueActive) await openNextQueuedEdit();
+
+      if (!editSequence.active) return;
+
+      // スワイプ移動も通常の保存ボタンも、Editorの同じsaveEdit()を通ってからここへ来る。
+      // 未保存のまま写真を切り替える経路は作らない。
+      const direction = Number(payload?.navigateDirection || 0);
+      const nextIndex = direction
+        ? editSequence.index + direction
+        : editSequence.index + 1;
+
+      if (nextIndex >= 0 && nextIndex < editSequence.ids.length) {
+        await openEditSequenceAt(nextIndex);
+      } else {
+        resetEditSequence();
+      }
     },
     onClosed: (reason) => {
-      if (reason === 'cancel' && editQueueActive) {
-        editQueue = [];
-        editQueueActive = false;
-      }
+      if (reason === 'cancel' && editSequence.active) resetEditSequence();
     }
   });
 

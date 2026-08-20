@@ -688,8 +688,30 @@ function bindEvents(root) {
             const roomKeyValue = field.dataset.roomKey;
             const partIndex = Number(field.dataset.partIndex);
             const row = Number(field.dataset.inputRow);
-            withHistory(() => applyMaterialToCell(roomKeyValue, partIndex, row, material));
-            clearPendingCellName(cellPendingKey(roomKeyValue, partIndex, row));
+            const pendingKey = cellPendingKey(roomKeyValue, partIndex, row);
+            const currentRecord = finishRecordStore.get(dataCell.dataset.finishId || '');
+            const currentMaterialId = String(currentRecord?.materialId || '');
+            const currentInputId = String(currentRecord?.inputId || '');
+            const pendingName = String(getPendingCellName(pendingKey) || '').trim();
+            const selectedMaterialId = String(material.materialId || '');
+            const cellIsEmpty = !currentMaterialId && !currentInputId && !pendingName;
+
+            // チップ入力は「空欄へ入力 / 同じ建材なら解除 / 別建材なら保護」の3分岐。
+            // 判定は名称ではなくmaterialIdで行い、別建材を誤上書きしない。
+            if (cellIsEmpty) {
+              withHistory(() => applyMaterialToCell(roomKeyValue, partIndex, row, material));
+              clearPendingCellName(pendingKey);
+              return;
+            }
+
+            if (currentMaterialId && currentMaterialId === selectedMaterialId) {
+              // 削除専用の新経路は作らず、既存の正式な空ID確定処理を使う。
+              withHistory(() => commitCellId(roomKeyValue, partIndex, row, ''));
+              clearPendingCellName(pendingKey);
+              return;
+            }
+
+            // 別materialId、未登録ID、未確定名称が既にあるセルは変更しない。
             return;
           }
         }

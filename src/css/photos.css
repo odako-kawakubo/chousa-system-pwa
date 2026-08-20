@@ -187,15 +187,16 @@
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
 
 
-/* v0.1.5.6F 写真の編集 / 削除 共通選択モード */
+/* v0.1.5.6G 写真の編集 / 削除 共通選択モード */
 .photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
 .photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]{outline-color:#dc2626}
-.photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
-.photo-panel.photo-selection-edit .photo-thumb-card[data-photo-id]::after{content:'編集対象'}
-.photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]::after{content:'削除対象';background:rgba(220,38,38,.92)}
+.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
+.photo-panel.photo-selection-edit .photo-thumb-card.photo-selected::after{content:'編集対象'}
+.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected::after{content:'削除対象';background:rgba(220,38,38,.92)}
 .photo-panel.photo-selection-mode .photo-thumb-card.photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
 .photo-panel.photo-selection-delete .photo-thumb-card.photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
-.photo-panel.photo-selection-mode .photo-expand-btn,.photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
+/* 選択モード中も拡大ボタンは残す。代表/追加写真操作だけは誤操作防止のため隠す。 */
+.photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
 .photo-thumb-card{position:relative}
 
 
@@ -204,7 +205,7 @@ body.photo-board-edit-open{overflow:hidden!important}
 .photo-board-editor{position:fixed;inset:0;z-index:32000;background:#0b0f17;color:#fff}
 .photo-board-editor[hidden]{display:none!important}
 .photo-board-editor-shell{width:100%;height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) 300px}
-.photo-board-editor-stage{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
+.photo-board-editor-stage{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden;touch-action:pan-y}
 .photo-board-editor-stage canvas{display:block;width:100%;height:100%}
 .photo-board-editor-controls{display:flex;flex-direction:column;gap:12px;padding:14px;background:#111827;overflow:auto}
 .photo-board-editor-head{display:flex;align-items:center;justify-content:space-between;gap:8px}

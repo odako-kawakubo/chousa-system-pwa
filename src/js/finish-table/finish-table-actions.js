@@ -467,13 +467,47 @@ export function refreshMaterialUsageDerivedFields() {
   });
 }
 
+function materialUsageSortKey(record) {
+  const areaCode = String(record?.areaCode || '');
+  const floor = Number(record?.floor);
+  const position = String(record?.roomPosition || '');
+
+  // 使用箇所は現場で見る順を固定する。
+  // 外部 → 地下 → 1階 → 階段 → 2階以降 → 屋上。
+  if (areaCode === 'E') return [0, 0, position];
+  if (areaCode === 'B') return [1, Number.isFinite(floor) ? floor : 0, position];
+  if (areaCode === 'I' && floor === 1) return [2, 1, position];
+  if (areaCode === 'S') return [3, 0, position];
+  if (areaCode === 'I') return [4, Number.isFinite(floor) ? floor : 9999, position];
+  if (areaCode === 'R') return [5, 0, position];
+  return [6, Number.isFinite(floor) ? floor : 9999, position];
+}
+
 export function getMaterialUsageRoomNos(inputId) {
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) return [];
-  return finishRecordStore.getAll()
-    .filter((record) => record.status === 'active' && record.materialId === material.materialId)
-    .map((record) => record.roomNo)
-    .filter((value, index, array) => value && array.indexOf(value) === index);
+
+  // 1入力枠ごとのfinishRecordを、そのままroomNoへmapすると登録順になるため、
+  // roomUid単位で代表Recordを1件にまとめてから業務上の表示順で並べる。
+  const byRoom = new Map();
+  finishRecordStore.getAll().forEach((record) => {
+    if (record.status !== 'active' || record.materialId !== material.materialId) return;
+    const key = record.roomUid || `${record.areaCode}|${record.roomPosition}`;
+    if (!byRoom.has(key)) byRoom.set(key, record);
+  });
+
+  return [...byRoom.values()]
+    .sort((a, b) => {
+      const ak = materialUsageSortKey(a);
+      const bk = materialUsageSortKey(b);
+      for (let i = 0; i < ak.length; i += 1) {
+        if (ak[i] < bk[i]) return -1;
+        if (ak[i] > bk[i]) return 1;
+      }
+      return 0;
+    })
+    .map((record) => String(record.roomNo || '').trim())
+    .filter(Boolean);
 }
 
 /* ============================================================

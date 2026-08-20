@@ -139,7 +139,8 @@
 .finish-selected-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finish-selected-photo-actions { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex: 0 0 auto; }
 .finish-selected-rooms-wrap { position: relative; min-width: 80px; max-width: min(340px, 32vw); flex: 0 1 340px; overflow: hidden; }
-.finish-selected-rooms { display: block; color: #334155; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: thin; -webkit-overflow-scrolling: touch; padding-right: 12px; outline: none; }
+.finish-selected-rooms { display: block; color: #334155; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-right: 12px; outline: none; }
+.finish-selected-rooms::-webkit-scrollbar{display:none;width:0;height:0}
 .finish-selected-rooms-wrap.has-overflow .finish-selected-rooms-ellipsis { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 9px; background: linear-gradient(90deg, rgba(248,250,252,0), #f8fafc 45%); color: #334155; pointer-events: none; }
 .finish-selected-rooms-wrap:focus-within .finish-selected-rooms-ellipsis { opacity: 0; }
 

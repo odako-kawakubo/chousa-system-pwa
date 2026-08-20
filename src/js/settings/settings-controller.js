@@ -20,11 +20,11 @@ function buildViewModel() {
   const board = boardSettingsStore.get();
   return {
     project: {
-      projectNo: sampleProject.projectNo || '',
+      projectNo: board.projectNo || sampleProject.projectNo || '',
       projectName: board.projectName || sampleProject.projectName || '',
       address: board.address || '',
-      surveyDate: '',
-      surveyor: ''
+      surveyDate: board.surveyDate || '',
+      surveyor: board.surveyor || ''
     },
     materialCandidates: surveyCandidateStore.getConfiguredMaterialCandidates(),
     partCandidates: surveyCandidateStore.getConfiguredPartCandidates(),
@@ -73,13 +73,19 @@ function renderBoardPreview() {
 function syncBoardFromInputs(changedElement = null) {
   if (!root) return;
 
+  const projectNoInput = root.querySelector('[data-setting-project-field="projectNo"]');
   const projectNameInput = root.querySelector('[data-setting-project-field="projectName"]');
   const addressInput = root.querySelector('[data-setting-project-field="address"]');
+  const surveyDateInput = root.querySelector('[data-setting-project-field="surveyDate"]');
+  const surveyorInput = root.querySelector('[data-setting-project-field="surveyor"]');
   const subjectTextInput = root.querySelector('[data-board-setting="subjectText"]');
   const addressTextInput = root.querySelector('[data-board-setting="addressText"]');
 
+  const projectNo = projectNoInput?.value || '';
   const projectName = projectNameInput?.value || '';
   const address = addressInput?.value || '';
+  const surveyDate = surveyDateInput?.value || '';
+  const surveyor = surveyorInput?.value || '';
 
   // 案件情報を変更した場合は、看板用文字列もその場で同じ値へ更新する。
   // これにより「リセットを押した時だけ新しい案件情報が反映される」状態を作らない。
@@ -96,8 +102,11 @@ function syncBoardFromInputs(changedElement = null) {
   const addressFontSize = root.querySelector('[data-board-setting="addressFontSize"]')?.value;
 
   boardSettingsStore.set({
+    projectNo,
     projectName,
     address,
+    surveyDate,
+    surveyor,
     subjectText,
     addressText,
     subjectFontSize,
@@ -203,7 +212,7 @@ export function initializeSettingsTab() {
     root.dataset.settingsEventsBound = '1';
     root.addEventListener('click', handleClick);
     root.addEventListener('input', (event) => {
-      if (event.target.matches('[data-board-setting], [data-setting-project-field="projectName"], [data-setting-project-field="address"]')) {
+      if (event.target.matches('[data-board-setting], [data-setting-project-field]')) {
         syncBoardFromInputs(event.target);
       }
     });

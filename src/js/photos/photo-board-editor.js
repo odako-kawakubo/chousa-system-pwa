@@ -35,6 +35,8 @@ let originalUrl = '';
 let history = [];
 let historyIndex = -1;
 let renderToken = 0;
+let saving = false;
+let swipeStart = null;
 
 function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -267,7 +269,9 @@ async function composeCompletedBlob() {
   return new Promise((resolve,reject)=>out.toBlob((blob)=>blob?resolve(blob):reject(new Error('完成画像を生成できませんでした。')),'image/jpeg',0.82));
 }
 
-async function saveEdit() {
+async function saveEdit(navigateDirection = 0) {
+  if (!active || saving) return;
+  saving = true;
   const originalBlob = await getPhotoBlob(active.record.photoId, 'original');
   if (!originalBlob) throw new Error('元写真が端末内にありません。');
   const completedBlob = await composeCompletedBlob();
@@ -293,17 +297,55 @@ async function saveEdit() {
   await savePhotoBlob(record.photoId,'completed',completedBlob,{createdAt:now,fileName,uploadStatus:'pending'});
   await updateCameraPhotoRecord(record);
   closePhotoBoardEditor('saved');
-  await onSaved?.({ record, completedBlob });
+  saving = false;
+  await onSaved?.({ record, completedBlob, navigateDirection });
+}
+
+function canNavigate(direction) {
+  if (!active?.navigation) return false;
+  return direction < 0 ? Boolean(active.navigation.canNavigatePrev) : Boolean(active.navigation.canNavigateNext);
+}
+
+function handleEditorSwipeStart(event) {
+  if (!active || saving || event.pointerType === 'mouse' && event.button !== 0) return;
+  swipeStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+}
+
+function handleEditorSwipeEnd(event) {
+  if (!swipeStart || swipeStart.pointerId !== event.pointerId || !active || saving) {
+    swipeStart = null;
+    return;
+  }
+  const dx = event.clientX - swipeStart.x;
+  const dy = event.clientY - swipeStart.y;
+  swipeStart = null;
+
+  // 横方向が明確なスワイプだけを写真移動として扱う。
+  if (Math.abs(dx) < 70 || Math.abs(dx) <= Math.abs(dy) * 1.2) return;
+  const direction = dx < 0 ? 1 : -1;
+  if (!canNavigate(direction)) return;
+
+  // 写真切替前に必ず既存のsaveEdit()で現在写真を確定する。
+  // 未保存のまま次写真へ移動する経路は作らない。
+  saveEdit(direction).catch((error) => {
+    saving = false;
+    console.error(error);
+    alert(`看板編集の保存に失敗しました。\n${error.message || error}`);
+  });
 }
 
 function bindEvents() {
   root.addEventListener('change',(event)=>updateDraftFromEvent(event.target));
+  const stage = root.querySelector('.photo-board-editor-stage');
+  stage?.addEventListener('pointerdown', handleEditorSwipeStart);
+  stage?.addEventListener('pointerup', handleEditorSwipeEnd);
+  stage?.addEventListener('pointercancel', () => { swipeStart = null; });
   root.addEventListener('click',(event)=>{
     if (event.target.closest('[data-editor-close]')) return closePhotoBoardEditor();
     if (event.target.closest('[data-editor-undo]')) return applyHistory(historyIndex-1);
     if (event.target.closest('[data-editor-redo]')) return applyHistory(historyIndex+1);
     if (event.target.closest('[data-editor-reset]')) return applyHistory(0);
-    if (event.target.closest('[data-editor-save]')) saveEdit().catch((error)=>{console.error(error);alert(`看板編集の保存に失敗しました。\n${error.message||error}`);});
+    if (event.target.closest('[data-editor-save]')) saveEdit().catch((error)=>{saving=false;console.error(error);alert(`看板編集の保存に失敗しました。\n${error.message||error}`);});
   });
   window.addEventListener('resize',renderPreview);
 }
@@ -315,14 +357,23 @@ export function initializePhotoBoardEditor(options={}) {
   ensureRoot();
 }
 
-export async function openPhotoBoardEditor(photoId) {
+export async function openPhotoBoardEditor(photoId, navigation = {}) {
   ensureRoot();
   const record = photoRecordStore.get(photoId);
   if (!record || record.deleted) return false;
   const originalBlob = await getPhotoBlob(photoId,'original');
   if (!originalBlob) { alert('この写真の元写真が端末内にありません。'); return false; }
   originalImage = await loadImageFromBlob(originalBlob);
-  active = { record:{...record}, draft:snapshotFromRecord(record) };
+  active = {
+    record:{...record},
+    draft:snapshotFromRecord(record),
+    navigation:{
+      canNavigatePrev:Boolean(navigation.canNavigatePrev),
+      canNavigateNext:Boolean(navigation.canNavigateNext)
+    }
+  };
+  saving = false;
+  swipeStart = null;
   history=[clone(active.draft)]; historyIndex=0;
   renderControls(); updateHistoryButtons();
   root.hidden=false; document.body.classList.add('photo-board-edit-open');
@@ -333,7 +384,7 @@ export async function openPhotoBoardEditor(photoId) {
 export function closePhotoBoardEditor(reason = 'cancel') {
   if (!root) return;
   root.hidden=true; document.body.classList.remove('photo-board-edit-open');
-  active=null; history=[]; historyIndex=-1; originalImage=null;
+  active=null; history=[]; historyIndex=-1; originalImage=null; saving=false; swipeStart=null;
   if (originalUrl) { URL.revokeObjectURL(originalUrl); originalUrl=''; }
   onClosed?.(reason);
 }
