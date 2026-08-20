@@ -53,14 +53,19 @@ export function initSimpleList(container) {
       return;
     }
 
-    const photoButton = event.target.closest('[data-action="show-finish-photo-confirm"]');
-    if (photoButton && !photoButton.disabled) {
+    const visualButton = event.target.closest('[data-action="show-finish-visual-photos"]');
+    if (visualButton && !visualButton.disabled) {
       const material = findMaterialByInputId(getSelectedMaterialInputId());
       if (material) openMaterialVisualPhotos(material);
+      return;
+    }
+
+    const samplingButton = event.target.closest('[data-action="show-finish-sampling-photos"]');
+    if (samplingButton && !samplingButton.disabled) {
+      const material = findMaterialByInputId(getSelectedMaterialInputId());
+      if (material) openMaterialSamplingPhotos(material);
     }
   });
-
-  ensurePhotoConfirmModal();
 }
 
 export function renderSimpleList() {
@@ -103,19 +108,27 @@ function renderChip(material, selectedInputId, colorMode) {
 function renderSelectedInfo(inputId) {
   const material = inputId != null ? findMaterialByInputId(inputId) : null;
   if (!material) {
-    return '<span class="hint">建材チップを選択すると、使用部屋・調査備考・写真枚数を表示します。</span>';
+    return '<span class="hint">建材チップを選択すると、使用箇所・調査備考・写真を表示します。</span>';
   }
 
   const rooms = getMaterialUsageRoomNos(inputId);
   const roomText = rooms.length ? rooms.join('、') : '使用箇所なし';
+  const hasRoomOverflow = rooms.length > 10;
   const note = material.note || '－';
-  const photoDisabled = material.photoCount ? '' : ' disabled';
+  const visualPhotos = visualPhotosForMaterial(material);
+  const samplingPhotos = samplingPhotosForMaterial(material);
 
   return `
     <strong>【${material.inputId}】${escapeHtml(material.name)}</strong>
-    <span class="finish-selected-rooms">${escapeHtml(roomText)}</span>
-    <span>【調査備考】${escapeHtml(note)}</span>
-    <button type="button" class="finish-photo-link" data-action="show-finish-photo-confirm"${photoDisabled}>📷 ${material.photoCount}枚</button>
+    <span class="finish-selected-rooms-wrap ${hasRoomOverflow ? 'has-overflow' : ''}">
+      <span class="finish-selected-rooms" tabindex="0" aria-label="使用箇所：${escapeHtml(roomText)}">${escapeHtml(roomText)}</span>
+      ${hasRoomOverflow ? '<span class="finish-selected-rooms-ellipsis" aria-hidden="true">…</span>' : ''}
+    </span>
+    <span class="finish-selected-note">【調査備考】${escapeHtml(note)}</span>
+    <span class="finish-selected-photo-actions">写真：
+      <button type="button" class="finish-photo-link" data-action="show-finish-visual-photos"${visualPhotos.length ? '' : ' disabled'}>目視</button>
+      <button type="button" class="finish-photo-link" data-action="show-finish-sampling-photos"${samplingPhotos.length ? '' : ' disabled'}>採取</button>
+    </span>
   `;
 }
 
@@ -141,43 +154,22 @@ function visualPhotosForMaterial(material) {
     .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')));
 }
 
+function samplingPhotosForMaterial(material) {
+  if (!material) return [];
+  return photoRecordStore.getActive()
+    .filter((photo) => photo.photoType === 'sampling' && String(photo.materialId || '') === String(material.materialId || ''))
+    .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId || '').localeCompare(String(b.photoId || '')));
+}
+
 function openMaterialVisualPhotos(material) {
   const photos = visualPhotosForMaterial(material);
-  if (!photos.length) {
-    openPhotoConfirmModal(material, 'この建材が使われている部屋・部位の目視写真はまだありません。');
-    return;
-  }
-  openPhotoViewer(photos[0].photoId, { preferredMaterialId: material.materialId });
+  if (!photos.length) return;
+  openPhotoViewer(photos[0].photoId, { preferredMaterialId: material.materialId, photos });
 }
 
-function ensurePhotoConfirmModal() {
-  if (document.getElementById('finishPhotoConfirmModal')) return;
-  const modal = document.createElement('div');
-  modal.className = 'finish-photo-confirm-modal';
-  modal.id = 'finishPhotoConfirmModal';
-  modal.innerHTML = `
-    <div class="finish-photo-confirm-card">
-      <div class="finish-photo-confirm-head">
-        <b id="finishPhotoConfirmTitle">写真確認</b>
-        <button type="button" class="btn small" id="finishPhotoConfirmClose">閉じる</button>
-      </div>
-      <div class="finish-photo-confirm-body" id="finishPhotoConfirmBody"></div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', closePhotoConfirmModal);
-  modal.querySelector('.finish-photo-confirm-card').addEventListener('click', (event) => event.stopPropagation());
-  modal.querySelector('#finishPhotoConfirmClose').addEventListener('click', closePhotoConfirmModal);
+function openMaterialSamplingPhotos(material) {
+  const photos = samplingPhotosForMaterial(material);
+  if (!photos.length) return;
+  openPhotoViewer(photos[0].photoId, { photos });
 }
 
-function openPhotoConfirmModal(material, message = '') {
-  const modal = document.getElementById('finishPhotoConfirmModal');
-  if (!modal) return;
-  document.getElementById('finishPhotoConfirmTitle').textContent = `写真確認：${material.name}`;
-  document.getElementById('finishPhotoConfirmBody').textContent = message || '目視写真を確認できません。';
-  modal.classList.add('open');
-}
-
-function closePhotoConfirmModal() {
-  document.getElementById('finishPhotoConfirmModal')?.classList.remove('open');
-}

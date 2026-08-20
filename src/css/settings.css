@@ -8,8 +8,8 @@
 .settings-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);background:#fbfcff}
 .settings-card-head h3{margin:0 0 3px;font-size:14px}
 .settings-form-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;padding:14px}
-.settings-form-grid label{display:grid;gap:5px;font-size:12px;font-weight:700;color:#475569}
-.settings-form-grid input,.settings-add-row input,.settings-table-input{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 8px;font-size:13px;color:var(--text)}
+.settings-form-grid label{display:grid;gap:5px;min-width:0;font-size:12px;font-weight:700;color:#475569}
+.settings-form-grid input,.settings-add-row input,.settings-table-input{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 8px;font-size:13px;color:var(--text)}
 .settings-span-2{grid-column:1/-1}
 .settings-add-row{display:grid;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line);background:#f8fafc}
 .settings-add-material{grid-template-columns:minmax(90px,.7fr) minmax(160px,1.5fr) auto}
@@ -39,6 +39,7 @@
 .settings-project-section{min-width:0}
 .settings-project-section h4,.settings-board-preview-title{margin:0 0 8px;font-size:12px;font-weight:900;color:#334155}
 .settings-project-board-layout .settings-form-grid{padding:0}
+.settings-project-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .settings-board-controls{display:grid;gap:9px;padding:11px;border:1px solid var(--line);border-radius:10px;background:#f8fafc}
 .settings-board-controls label{display:grid;gap:4px;font-size:11px;font-weight:700;color:#475569}
 .settings-board-controls textarea,.settings-board-controls input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 7px;font:inherit;color:var(--text)}
@@ -53,4 +54,5 @@
 .settings-board-preview-title{justify-self:start;width:min(100%,390px)}
 .settings-board-preview{display:block;width:min(100%,390px);aspect-ratio:390/242;background:#fff;border:1px solid var(--line);border-radius:8px}
 @media(max-width:980px){.settings-project-board-layout{grid-template-columns:1fr}.settings-board-preview-column{justify-items:start}.settings-board-preview-title,.settings-board-preview{width:min(100%,420px)}}
+@media(max-width:900px){.settings-project-fields{grid-template-columns:1fr}}
 @media(max-width:640px){.settings-board-size-row{grid-template-columns:1fr}}

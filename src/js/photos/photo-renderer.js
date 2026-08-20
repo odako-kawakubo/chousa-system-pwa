@@ -60,7 +60,6 @@ function renderOtherPhotoRows(photos) {
       ${photoThumb(photo, { compact: true, extra: true })}
       <div class="photo-extra-actions">
         ${photo.isRepresentative ? '<span class="pill">代表</span>' : `<button class="btn small" type="button" data-photo-representative="${esc(photo.photoId)}">代表</button>`}
-        <button class="btn small danger" type="button" data-photo-delete="${esc(photo.photoId)}">削除</button>
       </div>
     </div>`).join('')}</div>`;
 }
@@ -86,8 +85,7 @@ function renderVisualTarget(target, openKeys) {
       ${target.representative
         ? `<div class="visual-representative">${photoThumb(target.representative)}</div>`
         : '<div class="photo-thumb-card photo-thumb-empty"><b>代表写真</b><span>未撮影</span></div>'}
-      <button class="btn visual-add-btn" type="button" data-photo-add-visual="${esc(target.key)}" title="写真を追加">＋</button>
-      <button class="btn small primary visual-camera-btn" type="button" data-photo-camera-visual="${esc(target.key)}">カメラ起動</button>
+      <button class="btn visual-add-btn" type="button" data-photo-camera-visual="${esc(target.key)}" title="この部位でカメラ起動" aria-label="${esc(target.part)}でカメラ起動">＋</button>
     </div>
 
     ${target.photoCount > 1 ? `<div class="visual-expand-row">
@@ -165,8 +163,8 @@ export function renderPhotoShell(container, mode) {
           <button class="photo-mode-tab ${mode === 'sampling' ? 'active' : ''}" type="button" data-photo-mode="sampling">建材採取</button>
         </div>
         <div class="right photo-top-actions">
-          <button class="btn small" type="button" data-photo-edit-mode>編集</button>
-          <button class="btn small" type="button" data-photo-edit-mode>編集</button>
+          <button class="btn small" type="button" data-photo-selection-mode="edit">編集</button>
+          <button class="btn small danger" type="button" data-photo-selection-mode="delete">削除</button>
           <button class="btn small" type="button" data-photo-picker>写真選択</button>
           <button class="btn small primary" type="button" data-photo-camera-global>カメラ起動</button>
         </div>
@@ -174,7 +172,7 @@ export function renderPhotoShell(container, mode) {
       <div class="photo-action-row photo-hint-row"><span class="hint" id="photoModeHint"></span></div>
     </div>
     <div class="photo-body" id="photoModeBody"></div>
-    <input id="photoFilePicker" type="file" accept="image/*" hidden />
+    <input id="photoFilePicker" type="file" accept="image/*" multiple hidden />
   </div>`;
 }
 
@@ -237,14 +235,13 @@ function renderStageColumn(point, stage, isOpen) {
   return `<div class="sample-stage-column">
     <div class="photo-stage-tile ${stage.count ? 'done' : 'missing'} ${point.nextStage === stage.label ? 'next' : ''}">
       ${stageContent}
-      <button class="photo-stage-add" type="button" data-photo-add-sampling="${esc(point.key)}" data-photo-stage="${esc(stage.shootingType)}" aria-label="${esc(stage.label)}へ写真追加">＋</button>
+      <button class="photo-stage-add" type="button" data-photo-camera-sampling-stage="${esc(point.key)}" data-photo-stage="${esc(stage.shootingType)}" aria-label="${esc(stage.label)}でカメラ起動">＋</button>
     </div>
     ${isOpen && extras.length ? `<div class="sample-extra-stack">${extras.map((photo) => `
       <div class="sample-extra-item">
         ${photoThumb(photo, { compact: true, extra: true })}
         <div class="sample-extra-actions">
           <button class="btn small" type="button" data-photo-representative="${esc(photo.photoId)}">代表</button>
-          <button class="btn small danger" type="button" data-photo-delete="${esc(photo.photoId)}">削除</button>
         </div>
       </div>`).join('')}</div>` : ''}
   </div>`;

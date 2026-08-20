@@ -13,6 +13,8 @@
 .photo-action-row .left,.photo-action-row .right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .photo-action-main{background:#fbfcff;border-radius:14px 14px 0 0}
 .photo-hint-row{padding-top:0}
+.photo-top-actions [data-photo-selection-mode].active{background:#dbeafe;border-color:#60a5fa;color:#1d4ed8;font-weight:800}
+.photo-top-actions [data-photo-selection-mode="delete"].active{background:#fee2e2;border-color:#f87171;color:#b91c1c}
 .photo-mode-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .photo-mode-tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer}
 .photo-mode-tab.active{background:var(--main);border-color:var(--main);color:#fff}
@@ -64,7 +66,6 @@
 .photo-expand-btn:hover{background:rgba(15,23,42,.88)}
 .photo-thumb-card.compact .photo-expand-btn,.photo-thumb-card.extra .photo-expand-btn{top:3px;right:3px;min-width:30px;height:19px;padding:0 5px;font-size:8px;line-height:17px}
 .visual-add-btn{width:36px;height:36px;flex:0 0 36px;border-radius:9px;font-size:22px;line-height:1;padding:0}
-.visual-camera-btn{white-space:nowrap}
 .visual-expand-row{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:34px}
 .visual-expand-toggle,.sample-expand-toggle{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:999px;background:#f8fafc;color:#475569;font-size:12px;font-weight:600;line-height:1.2;cursor:pointer;user-select:none;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .visual-expand-toggle:hover,.sample-expand-toggle:hover{background:#f1f5f9;border-color:#94a3b8}
@@ -154,17 +155,19 @@
    v0.1.5.4E 比較Viewer
    ============================================================ */
 .photo-viewer-tools{position:absolute;top:8px;left:8px;z-index:10;display:flex;gap:5px}
-.photo-compare-shell{width:100%;height:100%;background:#0f172a;color:#e2e8f0;padding:4px;box-sizing:border-box;overflow:auto}
-.photo-compare-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:3px;font-size:12px;color:#cbd5e1}
-.photo-compare-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 4px;align-items:start}
-.photo-compare-pane{display:flex;flex-direction:column;min-width:0;background:#111827;overflow:hidden;border-radius:5px}
+.photo-compare-shell{width:100%;height:100%;min-height:0;background:#0f172a;color:#e2e8f0;padding:4px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
+.photo-compare-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:3px;font-size:12px;color:#cbd5e1;flex:0 0 auto}
+.photo-compare-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 4px;min-height:0;flex:1 1 auto}
+.photo-compare-grid.count-2{grid-template-rows:minmax(0,1fr)}
+.photo-compare-grid.count-3,.photo-compare-grid.count-4{grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+.photo-compare-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:#111827;overflow:hidden;border-radius:5px}
 .photo-compare-controls{display:flex;align-items:center;gap:4px;padding:3px;background:#1e293b}
 .photo-compare-controls select{min-width:0;flex:1;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
 .photo-compare-photo-nav{display:flex;align-items:center;justify-content:flex-end;gap:3px;flex:0 0 auto;font-size:11px;white-space:nowrap}
 .photo-compare-photo-nav .btn{min-width:26px;padding:2px 6px}
 .photo-compare-remove{margin-left:1px}
-/* 写真の比率はDまでと同じ3:2を維持。余白だけを詰める。 */
-.photo-compare-stage{position:relative;width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;background:#020617}
+/* 比較時は画面の残り高さを優先し、写真本体だけobject-fit:containで比率を保つ。 */
+.photo-compare-stage{position:relative;width:100%;min-height:0;flex:1 1 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;background:#020617}
 .photo-compare-stage .photo-viewer-image{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;transform-origin:center;will-change:transform;pointer-events:none}
 .photo-compare-grid.count-3 .photo-compare-pane:nth-child(3){grid-column:1}
 @media(max-width:850px){
@@ -184,9 +187,15 @@
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
 
 
-/* v0.1.5.6A 写真タブ編集モード */
-.photo-panel.photo-edit-mode .photo-thumb-card[data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
-.photo-panel.photo-edit-mode .photo-thumb-card[data-photo-id]::after{content:'編集';position:absolute;left:6px;bottom:6px;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.9);color:#fff;font-size:10px;font-weight:800}
+/* v0.1.5.6F 写真の編集 / 削除 共通選択モード */
+.photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
+.photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]{outline-color:#dc2626}
+.photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
+.photo-panel.photo-selection-edit .photo-thumb-card[data-photo-id]::after{content:'編集対象'}
+.photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]::after{content:'削除対象';background:rgba(220,38,38,.92)}
+.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+.photo-panel.photo-selection-mode .photo-expand-btn,.photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
 .photo-thumb-card{position:relative}
 
 

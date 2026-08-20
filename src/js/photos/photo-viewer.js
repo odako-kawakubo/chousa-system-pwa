@@ -462,7 +462,8 @@ export function initializePhotoViewer(options = {}) {
 
 export function openPhotoViewer(photoId, context = {}) {
   if (!modal || !body) return;
-  const photos = getPhotosForPhoto(photoId) || [];
+  const contextPhotos = Array.isArray(context.photos) ? context.photos : null;
+  const photos = contextPhotos || getPhotosForPhoto(photoId) || [];
   const index = photos.findIndex((photo) => photo.photoId === photoId);
   if (!photos.length || index < 0) return;
   viewerState.photos = photos;

@@ -28,6 +28,7 @@ let root = null;
 let canvas = null;
 let optionsProvider = () => ({ visualRooms: [], samplingTargets: [] });
 let onSaved = null;
+let onClosed = null;
 let active = null;
 let originalImage = null;
 let originalUrl = '';
@@ -140,8 +141,8 @@ function ensureRoot() {
           <label>看板サイズ<select data-editor-size>${BOARD_SIZES.map((v)=>`<option value="${v}">${BOARD_SIZE_LABELS[v] || v}</option>`).join('')}</select></label>
         </div>
         <div class="photo-board-editor-history">
-          <button class="btn small" type="button" data-editor-undo>Undo</button>
-          <button class="btn small" type="button" data-editor-redo>Redo</button>
+          <button class="btn small" type="button" data-editor-undo>戻る</button>
+          <button class="btn small" type="button" data-editor-redo>進む</button>
           <button class="btn small" type="button" data-editor-reset>リセット</button>
         </div>
         <button class="btn primary" type="button" data-editor-save>保存</button>
@@ -291,8 +292,8 @@ async function saveEdit() {
   await savePhotoBlob(record.photoId,'original',originalBlob,{createdAt:record.capturedAt,fileName,uploadStatus:'pending'});
   await savePhotoBlob(record.photoId,'completed',completedBlob,{createdAt:now,fileName,uploadStatus:'pending'});
   await updateCameraPhotoRecord(record);
+  closePhotoBoardEditor('saved');
   await onSaved?.({ record, completedBlob });
-  closePhotoBoardEditor();
 }
 
 function bindEvents() {
@@ -310,6 +311,7 @@ function bindEvents() {
 export function initializePhotoBoardEditor(options={}) {
   optionsProvider = typeof options.getOptions === 'function' ? options.getOptions : optionsProvider;
   onSaved = typeof options.onSaved === 'function' ? options.onSaved : null;
+  onClosed = typeof options.onClosed === 'function' ? options.onClosed : null;
   ensureRoot();
 }
 
@@ -328,9 +330,10 @@ export async function openPhotoBoardEditor(photoId) {
   return true;
 }
 
-export function closePhotoBoardEditor() {
+export function closePhotoBoardEditor(reason = 'cancel') {
   if (!root) return;
   root.hidden=true; document.body.classList.remove('photo-board-edit-open');
   active=null; history=[]; historyIndex=-1; originalImage=null;
   if (originalUrl) { URL.revokeObjectURL(originalUrl); originalUrl=''; }
+  onClosed?.(reason);
 }

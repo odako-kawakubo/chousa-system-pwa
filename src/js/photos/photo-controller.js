@@ -20,8 +20,9 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, getCameraPhotoRecords } from './photo-local-store.js';
+import { getPhotoBlob, getCameraPhotoRecords, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor } from './photo-board-editor.js';
+import { getDeviceCode } from '../device-code.js';
 
 const state = {
   mode: 'visual',
@@ -30,9 +31,11 @@ const state = {
   openVisualKeys: new Set(),
   openSamplingKeys: new Set(),
   collapsedLocationGroups: new Set(),
-  pendingAdd: null,
+  pendingImportContext: null,
   listScrollTop: { visual: 0, sampling: 0 },
-  editMode: false
+  reviewScrollTop: { visual: 0, sampling: 0 },
+  selectionMode: null,
+  selectedPhotoIds: new Set()
 };
 
 const localPreviewUrls = new Map();
@@ -50,29 +53,63 @@ let unsubscribeMaterialStore = null;
 let unsubscribeFinishStore = null;
 let storeRenderQueued = false;
 let renderedMode = 'visual';
+let editQueue = [];
+let editQueueActive = false;
 
-function rememberPhotoListScroll(mode = renderedMode) {
+function rememberPhotoScroll(mode = renderedMode) {
   if (!body) return;
   const list = body.querySelector('.photo-target-list');
+  const review = body.querySelector('.photo-review-panel');
   if (list) state.listScrollTop[mode] = list.scrollTop;
+  if (review) state.reviewScrollTop[mode] = review.scrollTop;
 }
 
-function restorePhotoListScroll() {
+function restorePhotoScroll() {
   if (!body) return;
   const list = body.querySelector('.photo-target-list');
-  if (!list) return;
-  const top = Number(state.listScrollTop[state.mode] || 0);
-  requestAnimationFrame(() => { list.scrollTop = top; });
+  const review = body.querySelector('.photo-review-panel');
+  const listTop = Number(state.listScrollTop[state.mode] || 0);
+  const reviewTop = Number(state.reviewScrollTop[state.mode] || 0);
+  requestAnimationFrame(() => {
+    if (list) list.scrollTop = listTop;
+    if (review) review.scrollTop = reviewTop;
+  });
+}
+
+function applySelectionUi() {
+  if (!root) return;
+  const panel = root.querySelector('.photo-panel');
+  const mode = state.selectionMode;
+  panel?.classList.toggle('photo-selection-mode', Boolean(mode));
+  panel?.classList.toggle('photo-selection-edit', mode === 'edit');
+  panel?.classList.toggle('photo-selection-delete', mode === 'delete');
+
+  root.querySelectorAll('[data-photo-selection-mode]').forEach((button) => {
+    const buttonMode = button.dataset.photoSelectionMode;
+    const active = mode === buttonMode;
+    const count = state.selectedPhotoIds.size;
+    button.classList.toggle('active', active);
+    button.textContent = active && count
+      ? `${buttonMode === 'delete' ? '削除する' : '編集する'}（${count}）`
+      : (buttonMode === 'delete' ? '削除' : '編集');
+  });
+
+  root.querySelectorAll('.photo-thumb-card[data-photo-id]').forEach((card) => {
+    card.classList.toggle('photo-selected', state.selectedPhotoIds.has(card.dataset.photoId || ''));
+  });
+}
+
+function clearSelectionMode({ renderNow = false } = {}) {
+  state.selectionMode = null;
+  state.selectedPhotoIds.clear();
+  if (renderNow) render();
+  else applySelectionUi();
 }
 
 function render() {
   if (!root) return;
-  rememberPhotoListScroll(renderedMode);
+  rememberPhotoScroll(renderedMode);
   if (!body) body = root.querySelector('#photoModeBody');
-
-  root.querySelector('.photo-panel')?.classList.toggle('photo-edit-mode', state.editMode);
-  const editButton = root.querySelector('[data-photo-edit-mode]');
-  if (editButton) { editButton.classList.toggle('active', state.editMode); editButton.textContent = state.editMode ? '編集終了' : '編集'; }
 
   root.querySelectorAll('[data-photo-mode]').forEach((button) => {
     button.classList.toggle('active', button.dataset.photoMode === state.mode);
@@ -83,8 +120,9 @@ function render() {
     state.selectedMaterialId = view.activeMaterial?.materialId || '';
     renderSamplingView(body, view, state);
     hydrateThumbnailImages();
+    applySelectionUi();
     renderedMode = state.mode;
-    restorePhotoListScroll();
+    restorePhotoScroll();
     return;
   }
 
@@ -92,8 +130,9 @@ function render() {
   state.selectedRoomUid = view.activeRoom?.roomUid || '';
   renderVisualView(body, view, state);
   hydrateThumbnailImages();
+  applySelectionUi();
   renderedMode = state.mode;
-  restorePhotoListScroll();
+  restorePhotoScroll();
 }
 
 function photoById(photoId) {
@@ -148,54 +187,80 @@ function nextPhotoId() {
 
 function openFilePicker(context) {
   const picker = root.querySelector('#photoFilePicker');
-  if (!picker) return;
-  state.pendingAdd = context;
+  if (!picker || !context) return;
+  state.pendingImportContext = context;
   picker.value = '';
   picker.click();
 }
 
-function addPickedFile(file) {
-  const context = state.pendingAdd;
-  state.pendingAdd = null;
-  if (!file || !context) return;
+function externalImportContext() {
+  if (state.mode === 'sampling') {
+    const view = buildSamplingPhotoView(state.selectedMaterialId);
+    const material = view.activeMaterial;
+    if (!material) return null;
+    return {
+      photoType: PHOTO_TYPES.SAMPLING,
+      materialId: material.materialId
+    };
+  }
 
-  const photoId = nextPhotoId();
-  const common = {
-    photoId,
-    fileName: file.name,
-    capturedDevice: 'local-browser',
-    capturedAt: new Date().toISOString(),
-    syncStatus: '未同期'
+  const view = buildVisualPhotoView(state.selectedRoomUid);
+  if (!view.activeRoom) return null;
+  return {
+    photoType: PHOTO_TYPES.VISUAL,
+    roomPosition: view.activeRoom.roomPosition,
+    roomNo: view.activeRoom.roomNo || ''
   };
+}
 
-  // 実画像はphotoRecordへ入れず、レビュー用の一時URLだけController内に保持する。
-  // 後続版でOneDrive URLを解決する場合もPhotoViewerのsource resolverへ差し替えられる。
-  if (typeof URL.createObjectURL === 'function') {
-    localPreviewUrls.set(photoId, URL.createObjectURL(file));
+async function addPickedFiles(fileList) {
+  const context = state.pendingImportContext;
+  state.pendingImportContext = null;
+  const files = [...(fileList || [])].filter((file) => file instanceof Blob);
+  if (!context || !files.length) return;
+
+  for (const file of files) {
+    const photoId = nextPhotoId();
+    const capturedAt = new Date().toISOString();
+    const common = {
+      photoId,
+      fileName: String(file.name || `${photoId}.jpg`),
+      capturedDevice: getDeviceCode(),
+      capturedAt,
+      syncStatus: 'pending',
+      localOriginalStatus: 'saved',
+      localCompletedStatus: 'saved'
+    };
+
+    // 外部取込は未整理写真として保存する。
+    // original / completed は同じ生写真で開始し、必要な写真だけ後から看板編集でcompletedを再生成する。
+    const record = createPhotoRecord(context.photoType === PHOTO_TYPES.VISUAL
+      ? {
+          ...common,
+          photoType: PHOTO_TYPES.VISUAL,
+          roomPosition: context.roomPosition,
+          roomNo: context.roomNo,
+          part: ''
+        }
+      : {
+          ...common,
+          photoType: PHOTO_TYPES.SAMPLING,
+          materialId: context.materialId,
+          samplingPlace: '',
+          samplingBranch: 0,
+          sampleNo: '',
+          sampleBaseNo: '',
+          part: '',
+          shootingType: ''
+        });
+
+    await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
+    photoRecordStore.set(record);
+
+    const previous = localPreviewUrls.get(photoId);
+    if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
+    if (typeof URL.createObjectURL === 'function') localPreviewUrls.set(photoId, URL.createObjectURL(file));
   }
-
-  if (context.photoType === PHOTO_TYPES.VISUAL) {
-    photoRecordStore.set(createPhotoRecord({
-      ...common,
-      photoType: PHOTO_TYPES.VISUAL,
-      roomPosition: context.roomPosition,
-      roomNo: context.roomNo || '',
-      part: context.part
-    }));
-    return;
-  }
-
-  photoRecordStore.set(createPhotoRecord({
-    ...common,
-    photoType: PHOTO_TYPES.SAMPLING,
-    materialId: context.materialId,
-    samplingPlace: context.samplingPlace,
-    samplingBranch: context.branch,
-    sampleNo: context.sampleNo,
-    sampleBaseNo: String(context.sampleNo || '').split('-')[0],
-    part: context.part,
-    shootingType: context.shootingType
-  }));
 }
 
 function visualContextFromKey(key) {
@@ -352,16 +417,97 @@ function openViewerForThumb(photoId) {
   openPhotoViewer(photoId);
 }
 
+async function openNextQueuedEdit() {
+  if (!editQueueActive) return;
+  const nextId = editQueue.shift();
+  if (!nextId) {
+    editQueueActive = false;
+    render();
+    return;
+  }
+  const opened = await openPhotoBoardEditor(nextId);
+  if (!opened) await openNextQueuedEdit();
+}
+
+function startEditSequence(photoIds) {
+  editQueue = [...photoIds];
+  editQueueActive = editQueue.length > 0;
+  clearSelectionMode();
+  if (editQueueActive) openNextQueuedEdit();
+}
+
+async function deleteSelectedPhotos(photoIds) {
+  const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
+  if (!ids.length) return;
+  if (!window.confirm(`選択した${ids.length}枚を削除しますか？\n写真Recordは論理削除として残ります。`)) return;
+
+  photoRecordStore.batch(() => {
+    ids.forEach((photoId) => {
+      const localUrl = localPreviewUrls.get(photoId);
+      if (localUrl && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(localUrl);
+      localPreviewUrls.delete(photoId);
+      photoRecordStore.markDeleted(photoId);
+    });
+  });
+
+  await Promise.all(ids.map(async (photoId) => {
+    const record = photoById(photoId);
+    if (record) await updateCameraPhotoRecord(record);
+  }));
+  clearSelectionMode({ renderNow: true });
+}
+
+function togglePhotoSelection(photoId) {
+  if (!photoId || !state.selectionMode) return;
+  if (state.selectedPhotoIds.has(photoId)) state.selectedPhotoIds.delete(photoId);
+  else state.selectedPhotoIds.add(photoId);
+  applySelectionUi();
+}
+
+function bindPhotoTabExitReset() {
+  document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
+    tabButton.addEventListener('click', () => {
+      if (tabButton.dataset.tab !== 'photos' && state.selectionMode) clearSelectionMode();
+    });
+  });
+}
+
 function bindEvents() {
   root.addEventListener('click', (event) => {
-    if (event.target.closest('[data-photo-edit-mode]')) { state.editMode = !state.editMode; render(); return; }
+    const selectionButton = event.target.closest('[data-photo-selection-mode]');
+    if (selectionButton) {
+      const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
+      if (state.selectionMode === requestedMode) {
+        if (!state.selectedPhotoIds.size) {
+          clearSelectionMode();
+        } else if (requestedMode === 'delete') {
+          deleteSelectedPhotos(state.selectedPhotoIds).catch((error) => {
+            console.error(error);
+            window.alert(`写真の削除に失敗しました。\n${error.message || error}`);
+          });
+        } else {
+          startEditSequence(state.selectedPhotoIds);
+        }
+      } else {
+        state.selectionMode = requestedMode;
+        state.selectedPhotoIds.clear();
+        applySelectionUi();
+      }
+      return;
+    }
 
-    const editThumb = state.editMode ? event.target.closest('.photo-thumb-card[data-photo-id]') : null;
-    if (editThumb && !event.target.closest('button')) { openPhotoBoardEditor(editThumb.dataset.photoId || ''); return; }
+    if (state.selectionMode) {
+      const selectableThumb = event.target.closest('.photo-thumb-card[data-photo-id]');
+      if (selectableThumb) {
+        togglePhotoSelection(selectableThumb.dataset.photoId || '');
+        return;
+      }
+    }
 
     const mode = event.target.closest('[data-photo-mode]');
     if (mode) {
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
+      state.reviewScrollTop[state.mode] = 0;
       render();
       return;
     }
@@ -377,6 +523,7 @@ function bindEvents() {
     const room = event.target.closest('[data-photo-room]');
     if (room) {
       state.selectedRoomUid = room.dataset.photoRoom || '';
+      state.reviewScrollTop.visual = 0;
       render();
       return;
     }
@@ -384,6 +531,7 @@ function bindEvents() {
     const material = event.target.closest('[data-photo-material]');
     if (material) {
       state.selectedMaterialId = material.dataset.photoMaterial || '';
+      state.reviewScrollTop.sampling = 0;
       render();
       return;
     }
@@ -404,7 +552,6 @@ function bindEvents() {
       return;
     }
 
-    // v0.1.5.4B: Pencilのダブルタップ精度に依存せず、明示的な「拡大」ボタンでViewerを開く。
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
       openViewerForThumb(expandButton.dataset.photoExpand || '');
@@ -417,34 +564,6 @@ function bindEvents() {
       return;
     }
 
-    const deleteButton = event.target.closest('[data-photo-delete]');
-    if (deleteButton) {
-      const photo = photoById(deleteButton.dataset.photoDelete || '');
-      if (photo && confirm(`${photo.fileName || photo.photoId} を一覧から削除しますか？\n写真Recordは論理削除として残ります。`)) {
-        const localUrl = localPreviewUrls.get(photo.photoId);
-        if (localUrl) {
-          if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(localUrl);
-          localPreviewUrls.delete(photo.photoId);
-        }
-        photoRecordStore.markDeleted(photo.photoId);
-      }
-      return;
-    }
-
-    const addVisual = event.target.closest('[data-photo-add-visual]');
-    if (addVisual) {
-      const context = visualContextFromKey(addVisual.dataset.photoAddVisual || '');
-      if (context) openFilePicker(context);
-      return;
-    }
-
-    const addSampling = event.target.closest('[data-photo-add-sampling]');
-    if (addSampling) {
-      const context = samplingContextFromKey(addSampling.dataset.photoAddSampling || '', addSampling.dataset.photoStage || '');
-      if (context) openFilePicker(context);
-      return;
-    }
-
     const cameraVisual = event.target.closest('[data-photo-camera-visual]');
     if (cameraVisual) {
       const context = visualContextFromKey(cameraVisual.dataset.photoCameraVisual || '');
@@ -452,9 +571,22 @@ function bindEvents() {
       return;
     }
 
+    const cameraSamplingStage = event.target.closest('[data-photo-camera-sampling-stage]');
+    if (cameraSamplingStage) {
+      const context = samplingContextFromKey(
+        cameraSamplingStage.dataset.photoCameraSamplingStage || '',
+        cameraSamplingStage.dataset.photoStage || ''
+      );
+      if (context) openCamera(context);
+      return;
+    }
+
     const cameraSampling = event.target.closest('[data-photo-camera-sampling]');
     if (cameraSampling) {
-      const context = samplingContextFromKey(cameraSampling.dataset.photoCameraSampling || '', SHOOTING_TYPES.BEFORE);
+      const view = buildSamplingPhotoView(state.selectedMaterialId);
+      const point = view.activeMaterial?.points.find((item) => item.key === (cameraSampling.dataset.photoCameraSampling || ''));
+      const nextStage = point?.stages.find((stage) => stage.shootingType !== SHOOTING_TYPES.SECTION && stage.count === 0)?.shootingType || SHOOTING_TYPES.BEFORE;
+      const context = samplingContextFromKey(cameraSampling.dataset.photoCameraSampling || '', nextStage);
       if (context) openCamera(context);
       return;
     }
@@ -467,15 +599,20 @@ function bindEvents() {
     }
 
     if (event.target.closest('[data-photo-picker]')) {
-      alert('写真を追加したい部位・採取区分の「＋」を押してください。');
+      const context = externalImportContext();
+      if (context) openFilePicker(context);
+      else window.alert('写真の取込先がありません。');
     }
   });
 
-
   root.querySelector('#photoFilePicker')?.addEventListener('change', (event) => {
-    addPickedFile(event.target.files?.[0]);
+    addPickedFiles(event.target.files).catch((error) => {
+      console.error(error);
+      window.alert(`写真の取り込みに失敗しました。\n${error.message || error}`);
+    });
   });
 }
+
 
 
 /**
@@ -542,7 +679,7 @@ export function initializePhotoTab() {
   renderPhotoShell(root, state.mode);
   body = root.querySelector('#photoModeBody');
   bindEvents();
-
+  bindPhotoTabExitReset();
 
   initializePhotoViewer({
     getPhotosForPhoto: photosForViewer,
@@ -558,7 +695,17 @@ export function initializePhotoTab() {
 
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
-    onSaved: registerCameraPreview
+    onSaved: async (payload) => {
+      await registerCameraPreview(payload);
+      render();
+      if (editQueueActive) await openNextQueuedEdit();
+    },
+    onClosed: (reason) => {
+      if (reason === 'cancel' && editQueueActive) {
+        editQueue = [];
+        editQueueActive = false;
+      }
+    }
   });
 
   render();
