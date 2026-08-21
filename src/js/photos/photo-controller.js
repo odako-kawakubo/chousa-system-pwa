@@ -92,7 +92,7 @@ function applySelectionUi() {
       : (buttonMode === 'delete' ? '削除' : '編集');
   });
 
-  root.querySelectorAll('[data-photo-selectable][data-photo-id]').forEach((card) => {
+  root.querySelectorAll('.photo-thumb-card[data-photo-id]').forEach((card) => {
     card.classList.toggle('photo-selected', state.selectedPhotoIds.has(card.dataset.photoId || ''));
   });
 }
@@ -498,7 +498,7 @@ function bindEvents() {
     }
 
     if (state.selectionMode) {
-      const selectableThumb = event.target.closest('[data-photo-selectable][data-photo-id]');
+      const selectableThumb = event.target.closest('.photo-thumb-card[data-photo-id]');
       if (selectableThumb) {
         togglePhotoSelection(selectableThumb.dataset.photoId || '');
         return;

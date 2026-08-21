@@ -50,14 +50,13 @@ function photoThumb(photo, { compact = false, extra = false } = {}) {
       <span class="photo-thumb-file">${esc(photo.fileName || photo.photoId)}</span>
     </div>
     <button class="photo-expand-btn" type="button" data-photo-expand="${esc(photo.photoId)}" aria-label="写真を拡大">拡大</button>
-    <span class="photo-selection-badge" aria-hidden="true"></span>
   </div>`;
 }
 
 function renderOtherPhotoRows(photos) {
   if (!photos.length) return '';
   return `<div class="photo-extra-strip">${photos.map((photo) => `
-    <div class="photo-extra-item" data-photo-selectable data-photo-id="${esc(photo.photoId)}">
+    <div class="photo-extra-item">
       ${photoThumb(photo, { compact: true, extra: true })}
       <div class="photo-extra-actions">
         ${photo.isRepresentative ? '<span class="pill">代表</span>' : `<button class="btn small" type="button" data-photo-representative="${esc(photo.photoId)}">代表</button>`}
@@ -84,7 +83,7 @@ function renderVisualTarget(target, openKeys) {
 
     <div class="visual-compact-actions">
       ${target.representative
-        ? `<div class="visual-representative" data-photo-selectable data-photo-id="${esc(target.representative.photoId)}">${photoThumb(target.representative)}</div>`
+        ? `<div class="visual-representative">${photoThumb(target.representative)}</div>`
         : '<div class="photo-thumb-card photo-thumb-empty"><b>代表写真</b><span>未撮影</span></div>'}
       <button class="btn visual-add-btn" type="button" data-photo-camera-visual="${esc(target.key)}" title="この部位でカメラ起動" aria-label="${esc(target.part)}でカメラ起動">＋</button>
     </div>
@@ -186,7 +185,7 @@ function renderUnorganizedBlock(photos, kind) {
       <span>${items.length}枚</span>
     </div>
     ${items.length
-      ? `<div class="photo-unorganized-photos">${items.map((photo) => `<div class="photo-unorganized-item" data-photo-selectable data-photo-id="${esc(photo.photoId)}">${photoThumb(photo, { compact: true })}</div>`).join('')}</div>`
+      ? `<div class="photo-unorganized-photos">${items.map((photo) => `${photoThumb(photo, { compact: true })}`).join('')}</div>`
       : `<div class="photo-unorganized-empty">未整理写真はありません</div>`}
   </article>`;
 }
@@ -227,7 +226,7 @@ function renderStageColumn(point, stage, isOpen) {
   const extras = stage.photos.filter((photo) => photo.photoId !== representative?.photoId);
 
   const stageContent = representative
-    ? `<div class="sample-stage-representative" data-photo-selectable data-photo-id="${esc(representative.photoId)}">
+    ? `<div class="sample-stage-representative">
         ${photoThumb(representative)}
         <span class="sample-stage-overlay-label">${esc(stage.label)}</span>
       </div>`
@@ -239,7 +238,7 @@ function renderStageColumn(point, stage, isOpen) {
       <button class="photo-stage-add" type="button" data-photo-camera-sampling-stage="${esc(point.key)}" data-photo-stage="${esc(stage.shootingType)}" aria-label="${esc(stage.label)}でカメラ起動">＋</button>
     </div>
     ${isOpen && extras.length ? `<div class="sample-extra-stack">${extras.map((photo) => `
-      <div class="sample-extra-item" data-photo-selectable data-photo-id="${esc(photo.photoId)}">
+      <div class="sample-extra-item">
         ${photoThumb(photo, { compact: true, extra: true })}
         <div class="sample-extra-actions">
           <button class="btn small" type="button" data-photo-representative="${esc(photo.photoId)}">代表</button>

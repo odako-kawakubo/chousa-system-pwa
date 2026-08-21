@@ -95,7 +95,7 @@
 .sample-stage-empty-copy span{font-size:10.5px;color:#64748b}
 .sample-stage-representative{position:absolute;inset:0}
 .sample-stage-representative .photo-thumb-card{width:100%;height:100%;aspect-ratio:auto;flex:none;border:0;border-radius:9px;background:#eff6ff;padding:4px}
-.sample-stage-overlay-label{position:absolute;left:7px;bottom:6px;z-index:3;background:rgba(15,23,42,.68);color:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;font-weight:800;pointer-events:none}
+.sample-stage-overlay-label{position:absolute;left:7px;top:6px;bottom:auto;z-index:3;background:rgba(15,23,42,.68);color:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;font-weight:800;pointer-events:none}
 
 /* D: 左上の要素重なりを避けるため、写真追加＋は右下へ固定する。 */
 .photo-stage-add{position:absolute;right:5px;bottom:5px;width:24px;height:24px;border-radius:7px;border:1px solid #bfdbfe;background:rgba(255,255,255,.96);color:#2563eb;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;z-index:5;box-shadow:0 1px 2px rgba(15,23,42,.12)}
@@ -187,21 +187,18 @@
 .photo-unorganized-empty{min-height:48px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
 
 
-/* v0.1.5.6I 写真の編集 / 削除 共通選択モード
- * data-photo-selectable は「選択対象」の識別だけを担当する。
- * position / display / size など写真レイアウトの責務は変更しない。
- * 選択ラベルは photo-thumb-card 内の独立DOMで表示する。
+/* v0.1.5.6J 写真の編集 / 削除 共通選択モード
+ * 選択対象はGまでと同じ photo-thumb-card[data-photo-id] に一本化する。
+ * 目視 / 採取とも、写真が存在するサムネイルだけを選択候補として表示する。
+ * 採取枠の既存レイアウトや未撮影 / 次撮影の状態表示には触れない。
  */
-.photo-unorganized-item{display:inline-flex}
-.photo-panel.photo-selection-mode [data-photo-selectable][data-photo-id]{outline:2px dashed #2563eb;outline-offset:2px;cursor:pointer}
-.photo-panel.photo-selection-delete [data-photo-selectable][data-photo-id]{outline-color:#dc2626}
-.photo-panel.photo-selection-mode [data-photo-selectable].photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
-.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
-.photo-selection-badge{display:none;position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
-.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected .photo-selection-badge{display:block}
-.photo-panel.photo-selection-edit [data-photo-selectable].photo-selected .photo-selection-badge::before{content:'編集対象'}
-.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected .photo-selection-badge{display:block;background:rgba(220,38,38,.92)}
-.photo-panel.photo-selection-delete [data-photo-selectable].photo-selected .photo-selection-badge::before{content:'削除対象'}
+.photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]{outline:3px dashed #2563eb;outline-offset:-4px;cursor:pointer}
+.photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]{outline-color:#dc2626}
+.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:rgba(37,99,235,.92);color:#fff;font-size:10px;font-weight:800;pointer-events:none}
+.photo-panel.photo-selection-edit .photo-thumb-card.photo-selected::after{content:'編集対象'}
+.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected::after{content:'削除対象';background:rgba(220,38,38,.92)}
+.photo-panel.photo-selection-mode .photo-thumb-card.photo-selected{outline-style:solid;outline-width:3px;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.photo-panel.photo-selection-delete .photo-thumb-card.photo-selected{box-shadow:0 0 0 3px rgba(220,38,38,.18)}
 /* 選択モード中も拡大ボタンは残す。代表/追加写真操作だけは誤操作防止のため隠す。 */
 .photo-panel.photo-selection-mode .photo-extra-actions,.photo-panel.photo-selection-mode .sample-extra-actions{display:none!important}
 .photo-thumb-card{position:relative}

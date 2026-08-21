@@ -58,8 +58,10 @@ export function renderSettingsTab(root, viewModel) {
                     <label><span>案件番号</span><input value="${escapeHtml(viewModel.project.projectNo)}" data-setting-project-field="projectNo"></label>
                     <label><span>案件名</span><input value="${escapeHtml(viewModel.project.projectName)}" data-setting-project-field="projectName"></label>
                     <label class="settings-span-2"><span>住所</span><input value="${escapeHtml(viewModel.project.address)}" placeholder="住所" data-setting-project-field="address"></label>
-                    <label><span>調査日</span><input type="date" value="${escapeHtml(viewModel.project.surveyDate)}" data-setting-project-field="surveyDate"></label>
-                    <label><span>調査者</span><input value="${escapeHtml(viewModel.project.surveyor)}" placeholder="調査者" data-setting-project-field="surveyor"></label>
+                    <div class="settings-project-survey-row settings-span-2">
+                      <label><span>調査日</span><input type="date" value="${escapeHtml(viewModel.project.surveyDate)}" data-setting-project-field="surveyDate"></label>
+                      <label><span>調査者</span><input value="${escapeHtml(viewModel.project.surveyor)}" placeholder="調査者" data-setting-project-field="surveyor"></label>
+                    </div>
                   </div>
                 </section>
 
