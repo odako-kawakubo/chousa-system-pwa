@@ -165,7 +165,7 @@ export function mergeMaterials(targetId, sourceIds) {
   const sources = uniqueSourceIds
     .map((id) => materialRecordStore.get(id))
     .filter((record) => record && record.status === 'active');
-  if (!sources.length) throw new Error('統合する建材を選んでください。');
+  if (!sources.length) throw new Error('統合する建材を選択してください。');
 
   runRecordTransaction(() => {
     const updatedAt = nowIso();
@@ -228,7 +228,7 @@ export function deleteMaterials(materialIds) {
   const targets = uniqueIds
     .map((id) => materialRecordStore.get(id))
     .filter((record) => record && record.status === 'active');
-  if (!targets.length) throw new Error('削除する建材を選んでください。');
+  if (!targets.length) throw new Error('削除する建材を選択してください。');
 
   runRecordTransaction(() => {
     const updatedAt = nowIso();

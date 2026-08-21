@@ -5,7 +5,7 @@
  */
 
 .material-operations-box {
-  background: #fbfcff;
+  background: var(--surface-subtle);
 }
 
 .material-op-accordion {
@@ -13,7 +13,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
-  background: #fff;
+  background: var(--panel);
 }
 
 .material-op-accordion-head {
@@ -25,8 +25,8 @@
   gap: 8px;
   padding: 7px 9px;
   border: 0;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--surface-soft);
+  color: var(--text-strong);
   font: inherit;
   font-size: 12.5px;
   font-weight: 700;
@@ -66,10 +66,10 @@
   gap: 4px;
   min-height: 30px;
   padding: 5px 9px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: #fff;
-  color: #334155;
+  background: var(--panel);
+  color: var(--text-subtle);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -90,15 +90,15 @@
 }
 
 .material-picker-chips .empty {
-  color: #94a3b8;
+  color: var(--disabled);
   font-size: 11.5px;
 }
 
 .material-picker-chip {
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--main-border-pale);
   border-radius: 999px;
-  background: #eff6ff;
-  color: #1e3a8a;
+  background: var(--main-soft-alt);
+  color: var(--main-ink);
   padding: 3px 7px;
   font: inherit;
   font-size: 11px;
@@ -128,13 +128,13 @@
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   -webkit-overflow-scrolling: touch;
 }
 
 .material-pick-group {
   padding: 4px 0 6px;
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid var(--line-soft-alt);
 }
 
 .material-pick-group:last-child {
@@ -145,8 +145,8 @@
   margin: 2px 0 4px;
   padding: 4px 7px;
   border-radius: 7px;
-  background: #f8fafc;
-  color: #334155;
+  background: var(--surface-soft);
+  color: var(--text-subtle);
   font-size: 12px;
   font-weight: 700;
 }
@@ -163,7 +163,7 @@
 }
 
 .material-pick-row:hover {
-  background: #f8fafc;
+  background: var(--surface-soft);
 }
 
 .material-pick-row.excluded-by-target {
@@ -187,7 +187,7 @@
 }
 
 .material-pick-no {
-  color: #1e3a8a;
+  color: var(--main-ink);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -197,12 +197,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #0f172a;
+  color: var(--text-strong);
   font-weight: 700;
 }
 
 .material-pick-inputid {
-  color: #64748b;
+  color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -213,7 +213,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #b45309;
+  color: var(--warning-text-alt);
   font-size: 10.5px;
 }
 
@@ -226,14 +226,14 @@
 }
 
 .delete-section-title.unused {
-  background: #f0fdf4;
-  color: #166534;
+  background: var(--success-soft);
+  color: var(--success-strong);
 }
 
 .delete-section-title.used {
   margin-top: 8px;
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--warning-soft);
+  color: var(--warning-strong);
 }
 
 .material-picker-actions,
@@ -253,15 +253,15 @@
 .material-photo-defer-note {
   margin-top: 9px;
   padding-top: 7px;
-  border-top: 1px dashed #dbe2ea;
+  border-top: 1px dashed var(--line-divider);
 }
 
 .material-operations-box .btn.danger {
-  border-color: #dc2626;
-  background: #dc2626;
-  color: #fff;
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--text-on-accent);
 }
 
 .material-operations-box .btn.danger:hover {
-  background: #b91c1c;
+  background: var(--danger-strong);
 }

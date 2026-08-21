@@ -159,7 +159,7 @@ function handleClick(event) {
       return;
     }
     if (!surveyCandidateStore.addMaterialCandidate(part, baseName)) {
-      window.alert('同じ建材名称候補が登録済みか、入力内容が不正です。');
+      window.alert('同じ建材名称候補が登録済み、または入力内容が正しくありません。');
       return;
     }
     return;
@@ -186,7 +186,7 @@ function handleChange(event) {
       fields[input.dataset.settingMaterialField] = input.value;
     });
     if (!surveyCandidateStore.updateMaterialCandidate(candidateId, fields)) {
-      window.alert('同じ候補が登録済みか、入力内容が不正です。');
+      window.alert('同じ候補が登録済み、または入力内容が正しくありません。');
       render();
     }
     return;
@@ -196,7 +196,7 @@ function handleChange(event) {
   if (partRow && event.target.matches('[data-setting-part-field]')) {
     const candidateId = partRow.dataset.settingPartRow;
     if (!surveyCandidateStore.updatePartCandidate(candidateId, event.target.value)) {
-      window.alert('同じ候補が登録済みか、入力内容が不正です。');
+      window.alert('同じ候補が登録済み、または入力内容が正しくありません。');
       render();
     }
   }

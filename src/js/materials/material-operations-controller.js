@@ -191,11 +191,11 @@ function executeMerge() {
   const sources = activeMaterials.filter((m) => mergeSourceIds.has(m.materialId));
 
   if (!target) {
-    window.alert('統合先の建材を選んでください。');
+    window.alert('統合先の建材を選択してください。');
     return;
   }
   if (!sources.length) {
-    window.alert('統合する建材を選んでください。');
+    window.alert('統合する建材を選択してください。');
     return;
   }
 
@@ -226,7 +226,7 @@ function executeMerge() {
 function executeDelete() {
   const targets = getActiveMaterialsForOperations().filter((m) => deleteTargetIds.has(m.materialId));
   if (!targets.length) {
-    window.alert('削除する建材を選んでください。');
+    window.alert('削除する建材を選択してください。');
     return;
   }
 
@@ -234,12 +234,12 @@ function executeDelete() {
   targets.forEach((material) => {
     const places = getMaterialUsagePlaces(material.materialId);
     if (places.length) {
-      usedLines.push(`No.${material.materialNo} ${material.name} は ${places.join('、')} にあります。`);
+      usedLines.push(`No.${material.materialNo} ${material.name} は ${places.join('、')} で使用されています。`);
     }
   });
 
   const message = usedLines.length
-    ? `${usedLines.join('\n')}\n\n仕上表からも消しますか？`
+    ? `${usedLines.join('\n')}\n\n仕上表からも削除しますか？`
     : `${targets.map((m) => `No.${m.materialNo} ${m.name}`).join('、')} を削除しますか？`;
 
   if (!window.confirm(message)) return;

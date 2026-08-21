@@ -387,7 +387,9 @@ function photosForViewer(photoId) {
     });
 }
 
-/** デモ写真だけはRecord外でSVGプレビューを生成する。OneDrive保存先には入れない。 */
+/** デモ写真だけはRecord外でSVGプレビューを生成する。OneDrive保存先には入れない。
+ * v0.1.5.7A 固定デモ配色：SVG内の色はアプリテーマの対象外。
+ */
 function demoPreviewSource(photo) {
   if (!String(photo?.photoId || '').startsWith('DEMO-PHOTO-')) return '';
   const label = photo.photoType === PHOTO_TYPES.VISUAL
@@ -432,7 +434,7 @@ ${error.message || error}`);
 async function deleteSelectedPhotos(photoIds) {
   const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
   if (!ids.length) return;
-  if (!window.confirm(`選択した${ids.length}枚を削除しますか？\n写真Recordは論理削除として残ります。`)) return;
+  if (!window.confirm(`選択した${ids.length}枚の写真を削除しますか？`)) return;
 
   photoRecordStore.batch(() => {
     ids.forEach((photoId) => {
@@ -596,7 +598,7 @@ function bindEvents() {
     if (event.target.closest('[data-photo-picker]')) {
       const context = externalImportContext();
       if (context) openFilePicker(context);
-      else window.alert('写真の取込先がありません。');
+      else window.alert('写真の取り込み先がありません。');
     }
   });
 

@@ -189,39 +189,46 @@
     <button class="btn small" data-drawer-close>閉じる</button>
   </div>
   <div class="drawer-body">
-    <div class="drawer-box">
-      <h4>状態</h4>
-      <div class="hint" id="appVersionStatus"></div>
+    <div class="drawer-box" id="drawerDisplayTools">
+      <h4>表示</h4>
+      <div class="drawer-setting-row">
+        <div>
+          <b>ダークモード</b>
+          <div class="hint">この端末だけに保存されます。</div>
+        </div>
+        <button type="button" class="btn drawer-theme-toggle" id="drawerDarkModeToggle" aria-pressed="false">OFF</button>
+      </div>
     </div>
     <div id="materialOperationsMount"></div>
-    <!-- 仕上表の階・部屋操作。クリック処理はfinish-table-controller.jsが配線する。 -->
+    <!-- 仕上表操作。クリック処理はfinish-table-controller.jsが既存の正式処理へ配線する。 -->
     <div class="drawer-box" id="finishDrawerTools">
-      <h4>仕上表：階・部屋操作</h4>
+      <h4>仕上表操作</h4>
       <div class="hint">通常画面から移した操作です。＋B階は1-1ブロックの階セルからも実行できます。</div>
       <button type="button" class="btn" id="drawerAddBasementFloor">＋地下階（10部屋）</button>
+      <button type="button" class="btn" id="drawerAddNormalFloor">＋地上階（10部屋）</button>
       <button type="button" class="btn" id="drawerAddStairs">＋階段</button>
       <button type="button" class="btn" id="drawerAddRoof">＋屋上</button>
       <button type="button" class="btn" id="drawerInsertRoom" disabled>＋挿入（選択中の部屋の直後へ）</button>
     </div>
-    <div class="drawer-box">
-      <h4>保守</h4>
-      <div class="hint">最新版の確認と、アプリ本体キャッシュの再取得を行います。</div>
-      <button type="button" class="btn" id="showUpdatePromptButton">最新版に更新</button>
+    <div class="drawer-box" id="drawerMaintenanceTools">
+      <h4>アプリ情報</h4>
+      <div class="drawer-maintenance-version">現在：<b id="drawerMaintenanceVersion"></b></div>
+      <div class="hint">最新バージョンがあるか確認します。</div>
+      <button type="button" class="btn" id="showUpdatePromptButton">アップデートを確認</button>
     </div>
-    <div class="drawer-version" id="drawerVersion"></div>
   </div>
 </aside>
 
 <!-- ============================================================
-     最新版への更新確認モーダル
+     アップデート確認モーダル
      ============================================================ -->
 <div class="update-modal" id="updateModal" data-update-modal-close>
   <div class="update-card" data-modal-stop>
-    <h3>最新版に更新</h3>
-    <div class="hint" id="updateMessage">最新版を確認します。</div>
+    <h3>アップデート</h3>
+    <div class="hint" id="updateMessage">最新バージョンを確認します。</div>
     <div class="update-actions">
-      <button type="button" class="btn" data-update-modal-close>キャンセル</button>
-      <button type="button" class="btn primary" id="confirmAppUpdateButton">更新する</button>
+      <button type="button" class="btn" id="closeAppUpdateButton" data-update-modal-close>閉じる</button>
+      <button type="button" class="btn primary" id="confirmAppUpdateButton" hidden>アップデート</button>
     </div>
   </div>
 </div>

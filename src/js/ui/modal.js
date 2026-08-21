@@ -9,7 +9,7 @@
  *   src/js/app-init.js から bindModalEvents() が呼ばれる。
  *
  * 対象モーダル（HTML側で data-modal="モーダルid" を付与する想定）：
- *   #updateModal          最新版に更新の確認
+ *   #updateModal          アップデート確認
  *   #sharedProjectModal   既存案件を開く／正式案件に切替
  *   #photoPreviewModal    写真拡大プレビュー
  *

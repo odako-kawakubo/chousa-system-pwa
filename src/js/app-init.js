@@ -23,6 +23,7 @@ import { initializePhotoTab } from './photos/photo-controller.js';
 import * as photoRecordStore from './store/photo-record-store.js';
 import { seedInitialPhotoRecords } from './demo/sample-photos.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
+import { initializeTheme, bindThemeControls } from './ui/theme.js';
 
 
 /**
@@ -36,9 +37,12 @@ import { initializeSettingsTab } from './settings/settings-controller.js';
  * ・ここでは画面表示の準備だけを行う。案件データの読込や保存は行わない。
  */
 function initUiSkeleton() {
+  // 端末保存済みのテーマを最初に適用し、各タブ描画時の色を揃える。
+  initializeTheme();
   applyAppVersionDisplay();
   bindTabEvents();
   bindDrawerEvents();
+  bindThemeControls();
   bindProjectPanelEvents();
   bindModalEvents();
   bindAppUpdateEvents();

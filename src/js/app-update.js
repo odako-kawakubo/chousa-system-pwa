@@ -4,12 +4,18 @@
  * サーバー上の version.json と現在の appConfig.version を比較し、
  * 必要に応じてアプリ本体だけを再読み込みする。
  *
- * 更新時に扱うもの：
+ * v0.1.5.7:
+ * ・既存の version.json / appConfig.version 比較ロジックは変更しない。
+ * ・利用者向け表記を「現在 / 最新 / アップデート」に統一する。
+ * ・確認時点では再読み込みせず、差分がある場合だけ
+ *   「キャンセル / アップデート」を表示する。
+ *
+ * アップデート時に扱うもの：
  * ・過去バージョン由来の Service Worker 登録解除
  * ・Cache Storage の削除
  * ・通常の location.reload() によるページ再読み込み
  *
- * 更新時に扱わないもの：
+ * アップデート時に扱わないもの：
  * ・localStorage
  * ・IndexedDB
  * ・案件データ / 写真データ
@@ -25,11 +31,11 @@ const UPDATE_MODAL_ID = 'updateModal';
 const UPDATE_VERIFY_KEY = 'chousaAppExpectedVersionAfterReload';
 
 const UPDATE_FAILURE_MESSAGE = [
-  '最新版への更新を確認できませんでした。',
+  'アップデートを確認できませんでした。',
   '',
-  'Safariでこのアプリを直接開いて更新してください。',
-  'それでも更新されない場合は、',
-  'ホーム画面のアイコンを削除して追加し直してください。'
+  'Safariでこのアプリを直接開いて、もう一度アップデートしてください。',
+  'それでも切り替わらない場合は、',
+  'ホーム画面のアプリを削除して追加し直してください。'
 ].join('\n');
 
 /**
@@ -49,7 +55,7 @@ export async function fetchLatestVersionInfo() {
 
     return await response.json();
   } catch (error) {
-    console.warn('最新版情報を取得できませんでした', error);
+    console.warn('最新バージョンを取得できませんでした', error);
     return {
       version: appConfig.version,
       fetchFailed: true
@@ -58,20 +64,39 @@ export async function fetchLatestVersionInfo() {
 }
 
 /**
- * 更新確認モーダルを開き、サーバー上の最新版を確認する。
+ * 更新モーダルの操作ボタンを確認結果に合わせて整える。
+ * 比較判定は showUpdatePrompt() の既存 version 比較結果だけを受け取る。
+ *
+ * @param {{ canUpdate:boolean }} state
  */
-export async function showUpdatePrompt() {
-  const message = document.getElementById('updateMessage');
+function renderUpdateActions({ canUpdate }) {
+  const closeButton = document.getElementById('closeAppUpdateButton');
   const updateButton = document.getElementById('confirmAppUpdateButton');
 
-  if (message) {
-    message.innerHTML = `現在のバージョン：v${appConfig.version}<br>最新版を確認しています...`;
+  if (closeButton) {
+    closeButton.textContent = canUpdate ? 'キャンセル' : '閉じる';
   }
 
   if (updateButton) {
+    updateButton.hidden = !canUpdate;
     updateButton.disabled = false;
   }
+}
 
+/**
+ * アップデート確認モーダルを開き、サーバー上の最新バージョンを確認する。
+ * 判定基準は従来どおり version.json と appConfig.version の完全一致比較のみ。
+ */
+export async function showUpdatePrompt() {
+  const message = document.getElementById('updateMessage');
+
+  if (message) {
+    message.innerHTML =
+      `現在：v${appConfig.version}<br>` +
+      `最新バージョンを確認しています...`;
+  }
+
+  renderUpdateActions({ canUpdate: false });
   openModal(UPDATE_MODAL_ID);
 
   const info = await fetchLatestVersionInfo();
@@ -81,15 +106,30 @@ export async function showUpdatePrompt() {
 
   if (info.fetchFailed) {
     message.innerHTML =
-      `現在のバージョン：v${appConfig.version}<br>` +
-      `最新版情報を取得できませんでした。<br>` +
-      `アプリ本体を再読み込みしますか？`;
+      `現在：v${appConfig.version}<br><br>` +
+      `最新バージョンを確認できませんでした。<br>` +
+      `通信状態を確認して、もう一度お試しください。`;
+    renderUpdateActions({ canUpdate: false });
     return;
   }
 
-  message.innerHTML = latest === appConfig.version
-    ? `現在のバージョン：v${appConfig.version}<br>最新版：v${latest}<br><b>最新版です。</b><br>アプリ本体を再読み込みしますか？`
-    : `現在のバージョン：v${appConfig.version}<br>最新版：v${latest}<br><b>更新があります。</b><br>最新版へ更新しますか？`;
+  // v0.1.5.6Eからの判定ロジックをそのまま使用する。
+  const isLatest = latest === appConfig.version;
+
+  if (isLatest) {
+    message.innerHTML =
+      `現在：v${appConfig.version}<br>` +
+      `最新：v${latest}<br><br>` +
+      `<b>最新の状態です。</b>`;
+    renderUpdateActions({ canUpdate: false });
+    return;
+  }
+
+  message.innerHTML =
+    `現在：v${appConfig.version}<br>` +
+    `最新：v${latest}<br><br>` +
+    `<b>アップデートできます。</b>`;
+  renderUpdateActions({ canUpdate: true });
 }
 
 /**
@@ -120,11 +160,11 @@ async function clearLegacyAppCaches() {
 }
 
 /**
- * 最新版を確認したうえで、アプリ本体を通常の reload で再読み込みする。
+ * 最新バージョンを確認したうえで、アプリ本体を通常の reload で再読み込みする。
  *
- * 再読込前に期待する最新版を sessionStorage へ一時保存する。
+ * 再読込前に期待する最新バージョンを sessionStorage へ一時保存する。
  * 次の起動時に verifyPendingAppUpdate() が appConfig.version と照合する。
- * sessionStorage はこの更新確認用の一時キーだけを使用し、案件データ領域には触れない。
+ * sessionStorage はこのアップデート確認用の一時キーだけを使用し、案件データ領域には触れない。
  */
 export async function reloadLatestApp() {
   const latestInfo = await fetchLatestVersionInfo();
@@ -145,9 +185,9 @@ export async function reloadLatestApp() {
 }
 
 /**
- * 更新後の起動時に「本当に最新版へ切り替わったか」を自己検証する。
+ * アップデート後の起動時に「期待したバージョンへ切り替わったか」を自己検証する。
  *
- * ・期待版と現在版が一致：更新成功として一時キーを消す
+ * ・期待版と現在版が一致：成功として一時キーを消す
  * ・不一致：自動再試行せず、ユーザーへ次の行動を案内する
  */
 async function verifyPendingAppUpdate() {
@@ -166,7 +206,6 @@ async function verifyPendingAppUpdate() {
   }
 
   const message = document.getElementById('updateMessage');
-  const updateButton = document.getElementById('confirmAppUpdateButton');
 
   if (message) {
     message.innerHTML = UPDATE_FAILURE_MESSAGE
@@ -176,15 +215,12 @@ async function verifyPendingAppUpdate() {
   }
 
   // 失敗時は同じ画面から自動再試行させない。
-  if (updateButton) {
-    updateButton.disabled = true;
-  }
-
+  renderUpdateActions({ canUpdate: false });
   openModal(UPDATE_MODAL_ID);
 }
 
 /**
- * 「最新版に更新」ボタンと更新確定ボタンを配線する。
+ * 「アップデートを確認」ボタンとアップデート実行ボタンを配線する。
  */
 export function bindAppUpdateEvents() {
   const openButton = document.getElementById('showUpdatePromptButton');
@@ -203,6 +239,6 @@ export function bindAppUpdateEvents() {
     element.addEventListener('click', () => closeModal(UPDATE_MODAL_ID));
   });
 
-  // reload後だけ、前回更新の成否を1回だけ自己検証する。
+  // reload後だけ、前回アップデートの成否を1回だけ自己検証する。
   verifyPendingAppUpdate();
 }

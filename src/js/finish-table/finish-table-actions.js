@@ -225,6 +225,8 @@ export function addNormalFloor() {
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  // 表示側が「今追加した階」へ確実に移動できるよう、既存ViewModelの階識別子だけ返す。
+  return `floor-I-${next}`;
 }
 
 export function addBasementFloor() {
@@ -233,16 +235,19 @@ export function addBasementFloor() {
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  return `floor-B-${next}`;
 }
 
 export function addStairs() {
   const records = buildFlatRoomSeed('S', countFlatRooms('S') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  return 'stairs-group';
 }
 
 export function addRoof() {
   const records = buildFlatRoomSeed('R', countFlatRooms('R') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  return 'roof-group';
 }
 
 export function addExternalRoom() {

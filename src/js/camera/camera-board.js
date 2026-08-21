@@ -12,6 +12,8 @@
  * - プレビューと完成画像で同じ drawBoard() を使う。
  */
 
+// v0.1.5.7A 業務固定色：電子看板として写真へ焼き込む黒/白。
+// アプリのライト/ダークテーマでは変更しない。
 const BOARD_BASE = Object.freeze({ width: 390, height: 242 });
 const BOARD_SCALE = Object.freeze({ small: 0.8, medium: 1.0, large: 1.2 });
 const BOARD_STATUS_ITEMS = Object.freeze([

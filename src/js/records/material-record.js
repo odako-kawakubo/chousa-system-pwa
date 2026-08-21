@@ -41,7 +41,9 @@
  * @property {number} photoCount
  */
 
-/** 仕上表・建材リストで使用する淡い建材カラー（24色・確定パレット）。 */
+/** 仕上表・建材リストで使用する淡い建材カラー（24色・確定パレット）。
+ * v0.1.5.7A 業務固定色：テーマ変更時も建材ごとの色対応を維持するため変更しない。
+ */
 export const MATERIAL_COLOR_PALETTE = [
   '#dbeafe', '#dcfce7', '#fef3c7', '#fae8ff', '#ffe4e6', '#ccfbf1',
   '#ede9fe', '#ffedd5', '#ecfccb', '#fce7f3', '#e0f2fe', '#f1f5f9',

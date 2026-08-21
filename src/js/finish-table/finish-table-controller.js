@@ -453,19 +453,45 @@ function setupStickyMetrics(root) {
  */
 function bindDrawerFinishTools() {
   document.getElementById('drawerAddBasementFloor')?.addEventListener('click', () => {
-    withHistory(() => addBasementFloor());
+    scrollToAddedFloor(withHistory(() => addBasementFloor()));
+  });
+  document.getElementById('drawerAddNormalFloor')?.addEventListener('click', () => {
+    scrollToAddedFloor(withHistory(() => addNormalFloor()));
   });
   document.getElementById('drawerAddStairs')?.addEventListener('click', () => {
-    withHistory(() => addStairs());
+    scrollToAddedFloor(withHistory(() => addStairs()));
   });
   document.getElementById('drawerAddRoof')?.addEventListener('click', () => {
-    withHistory(() => addRoof());
+    scrollToAddedFloor(withHistory(() => addRoof()));
   });
   document.getElementById('drawerInsertRoom')?.addEventListener('click', () => {
     const key = getSelectedRoomKey();
     if (key) withHistory(() => addRoomAfter(key));
   });
   updateDrawerInsertButtonState();
+}
+
+/**
+ * 操作パネルから階を追加した直後、その階見出しまで仕上表の縦スクロールだけを移動する。
+ * ドロワー自体は閉じない。スクロール対象は既存の data-floor-key を使い、
+ * 新しい階識別DOMや一時ハイライトは追加しない。
+ */
+function scrollToAddedFloor(floorKey) {
+  if (!floorKey) return;
+
+  requestAnimationFrame(() => {
+    const scrollHost = document.getElementById('finishTableScroll');
+    if (!scrollHost) return;
+
+    const target = Array.from(scrollHost.querySelectorAll('.finish-floor-heading[data-floor-key]'))
+      .find((element) => element.dataset.floorKey === String(floorKey));
+    if (!target) return;
+
+    const hostRect = scrollHost.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const top = Math.max(0, scrollHost.scrollTop + targetRect.top - hostRect.top);
+    scrollHost.scrollTo({ top, behavior: 'smooth' });
+  });
 }
 
 /** ドロワーの「＋挿入」は、部屋が選択されていない間は無効化する。 */
@@ -528,15 +554,20 @@ function restoreUndoableSnapshot(snapshot) {
  * mutate自体はrunRecordTransaction()でくるみ、Store通知はbatch()でまとめる。
  * 実行後に仕上表自身はrefreshFromStores()を1回だけ呼ぶ。
  *
- * @param {() => void} mutate 実際にfinishRecordStore／materialRecordStoreを
+ * @param {() => any} mutate 実際にfinishRecordStore／materialRecordStoreを
  *   変更する処理（finish-table-actions.jsの関数を呼ぶ）
+ * @returns {any} mutateの戻り値。階追加時は追加した既存floorGroupKeyを表示処理へ渡す。
  */
 function withHistory(mutate) {
   const before = getUndoableSnapshot();
-  runRecordTransaction(mutate);
+  let result;
+  runRecordTransaction(() => {
+    result = mutate();
+  });
   recordHistory(before);
   updateUndoRedoButtons();
   refreshFromStores();
+  return result;
 }
 
 /**
@@ -983,7 +1014,7 @@ async function handleCopyRoomClick(roomKeyValue) {
 
   if (info.crossFamily) {
     const confirmed = await showFinishConfirm(
-      '内部・外部をまたいでコピーします。\nコピーしてよろしいですか？',
+      '内部・外部をまたいでコピーします。',
       'コピーする'
     );
     if (!confirmed) return;
@@ -991,7 +1022,7 @@ async function handleCopyRoomClick(roomKeyValue) {
 
   if (info.overwrite) {
     const confirmed = await showFinishConfirm(
-      'この部屋にはすでに入力があります。\n上書きコピーしますか？',
+      'この部屋にはすでに入力があります。\n現在の内容を上書きします。',
       '上書きする'
     );
     if (!confirmed) return;

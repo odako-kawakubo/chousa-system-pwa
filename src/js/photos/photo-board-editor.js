@@ -59,6 +59,8 @@ function createEmptySession_() {
   };
 }
 
+// v0.1.5.7A 業務固定色：完成写真へ合成する電子看板色。
+// アプリのライト/ダークテーマでは変更しない。
 function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function sameDraft_(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -496,7 +498,7 @@ function handleEditorSwipeEnd(event) {
 
 function requestClose_() {
   if (saving) return;
-  if (hasUnsavedChanges_() && !window.confirm('未保存の看板編集があります。変更を破棄して閉じますか？')) return;
+  if (hasUnsavedChanges_() && !window.confirm('未保存の看板編集があります。\n変更を破棄して閉じますか？')) return;
   closeEditorInternal_('cancel');
 }
 

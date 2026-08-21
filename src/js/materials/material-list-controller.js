@@ -376,7 +376,7 @@ function updateMaterialName(materialId, rawValue) {
 
   const normalized = normalizeMaterialName(rawValue);
   if (!normalized) {
-    window.alert('建材名称は空欄にできません。');
+    window.alert('建材名称を入力してください。');
     return refreshMaterialList();
   }
   if (normalized === record.name) return refreshMaterialList();

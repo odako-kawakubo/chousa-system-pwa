@@ -41,6 +41,233 @@
   --record: #f8fafc;
   --registered: #eefaf1;
   --edit: #fff7ed;
+
+  /* v0.1.5.7A 前半: ライト配色を変えず、用途単位で直書き色を集約する。 */
+  --surface-soft: #f8fafc;
+  --surface-subtle: #fbfcff;
+  --surface-muted: #f1f5f9;
+  --surface-muted-hover: #eef2f7;
+  --surface-table-head: #eef3f8;
+  --surface-disabled: #e9eef4;
+  --surface-empty: #f3f4f6;
+  --surface-empty-strong: #e5e7eb;
+
+  --text-strong: #0f172a;
+  --text-heading: #1e293b;
+  --text-subtle: #334155;
+  --text-secondary: #475569;
+  --text-placeholder: #bcc4ce;
+  --text-table: #253044;
+  --text-on-accent: #fff;
+
+  --line-strong: #cbd5e1;
+  --line-soft: #e2e8f0;
+  --line-muted: #d1d5db;
+  --line-table: #b7c2d0;
+  --line-section: #dbe3ee;
+  --line-disabled: #d8e0e9;
+  --line-soft-alt: #edf2f7;
+  --line-divider: #dbe2ea;
+  --line-table-soft: #e7ebf2;
+  --disabled: #94a3b8;
+
+  --main-strong: #1d4ed8;
+  --main-deep: #1e40af;
+  --main-ink: #1e3a8a;
+  --main-border: #60a5fa;
+  --main-border-strong: #3b82f6;
+  --main-border-soft: #93c5fd;
+  --main-border-pale: #bfdbfe;
+  --main-soft: #dbeafe;
+  --main-soft-alt: #eff6ff;
+  --main-soft-muted: #eef4ff;
+  --main-soft-open: #eaf2ff;
+  --main-soft-focus: #eaf4ff;
+
+  --danger-strong: #b91c1c;
+  --danger-border: #f87171;
+  --danger-border-soft: #fecaca;
+  --danger-soft: #fee2e2;
+  --danger-soft-alt: #fef2f2;
+
+  --success-strong: #166534;
+  --success-text: #15803d;
+  --success-border: #4ade80;
+  --success-soft: #f0fdf4;
+  --success-soft-alt: #dcfce7;
+
+  --warning-strong: #9a3412;
+  --warning-text: #92400e;
+  --warning-text-alt: #b45309;
+  --warning-border: #fb923c;
+  --warning-soft: #fff7ed;
+  --warning-soft-alt: #ffedd5;
+  --warning-pale: #fffbeb;
+  --warning-hover: #fef3c7;
+
+  /* 簡易リスト固有の淡い黄色系。値はv0.1.5.6から変更しない。 */
+  --simple-border: #f1e3a8;
+  --simple-bg: #fffdf5;
+  --simple-panel-border: #f0e8bd;
+  --simple-panel-bg: #fffefb;
+  --simple-head-border: #e9d98a;
+  --simple-head-bg: #fdf1b8;
+  --simple-text: #7c5b16;
+
+  /* 業務固定色：建材24色の淡色背景上で使う文字色。
+     ライト/ダークテーマに連動させず、建材色とセットで固定する。 */
+  --material-color-text: #334155;
+
+  /* 透過色も用途単位で保持。A前半では値を一切変更しない。 */
+  --shadow-panel: rgba(15, 23, 42, 0.03);
+  --shadow-line: rgba(15, 23, 42, 0.04);
+  --shadow-soft: rgba(15, 23, 42, 0.12);
+  --shadow-float: rgba(15, 23, 42, 0.16);
+  --shadow-menu: rgba(15, 23, 42, 0.18);
+  --shadow-dialog: rgba(15, 23, 42, 0.25);
+  --overlay-soft: rgba(15, 23, 42, 0.15);
+  --overlay: rgba(15, 23, 42, 0.22);
+  --overlay-modal: rgba(15, 23, 42, 0.28);
+  --focus-ring: rgba(37, 99, 235, 0.12);
+  --selected-wash: rgba(37, 99, 235, 0.075);
+  --main-border-alpha: rgba(59, 130, 246, 0.12);
+  --main-halo: rgba(37, 99, 235, 0.18);
+  --main-badge: rgba(37, 99, 235, 0.92);
+  --danger-badge: rgba(220, 38, 38, 0.92);
+  --border-muted-alpha: rgba(100, 116, 139, 0.28);
+  --surface-soft-transparent: rgba(248, 250, 252, 0);
+  --surface-panel-translucent: rgba(255, 255, 255, 0.72);
+  --focus-outline: rgba(37, 99, 235, 0.35);
+  --focus-shadow: rgba(37, 99, 235, 0.10);
+  --row-muted-wash: rgba(15, 23, 42, 0.025);
+  --overlay-confirm: rgba(15, 23, 42, 0.45);
+  --shadow-panel-black: rgba(0, 0, 0, 0.03);
+  --status-online: #22c55e;
+}
+
+
+/* ============================================================
+   v0.1.5.7 ダークテーマ
+   - OFF時は上の :root（v0.1.5.6相当ライト配色）をそのまま使用する。
+   - ON時だけ意味変数の値を差し替える。
+   - 建材24色、電子看板、カメラ、PhotoViewer / 比較Viewer、看板編集画面の
+     固定色は各担当CSS/JSに直書きのまま残し、このテーマ変数の対象外とする。
+   ============================================================ */
+[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111827;
+  --line: #334155;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --main: #3b82f6;
+  --main2: #172554;
+  --green: #4ade80;
+  --orange: #fbbf24;
+  --red: #f87171;
+  --head: #1e293b;
+  --section: #172554;
+  --simple: #2a2412;
+  --record: #0f172a;
+  --registered: #10251a;
+  --edit: #2a1a12;
+
+  --surface-soft: #0f172a;
+  --surface-subtle: #111b2e;
+  --surface-muted: #182235;
+  --surface-muted-hover: #1e293b;
+  --surface-table-head: #1e293b;
+  --surface-disabled: #202b3d;
+  --surface-empty: #172033;
+  --surface-empty-strong: #202a3a;
+
+  --text-strong: #f8fafc;
+  --text-heading: #f1f5f9;
+  --text-subtle: #cbd5e1;
+  --text-secondary: #b6c2d1;
+  --text-placeholder: #718096;
+  --text-table: #d8e0ea;
+  --text-on-accent: #fff;
+
+  --line-strong: #475569;
+  --line-soft: #293548;
+  --line-muted: #3b4759;
+  --line-table: #526176;
+  --line-section: #334155;
+  --line-disabled: #364152;
+  --line-soft-alt: #263244;
+  --line-divider: #334155;
+  --line-table-soft: #253246;
+  --disabled: #64748b;
+
+  --main-strong: #93c5fd;
+  --main-deep: #60a5fa;
+  --main-ink: #bfdbfe;
+  --main-border: #60a5fa;
+  --main-border-strong: #3b82f6;
+  --main-border-soft: #3b82f6;
+  --main-border-pale: #315f9f;
+  --main-soft: #172554;
+  --main-soft-alt: #14213d;
+  --main-soft-muted: #152340;
+  --main-soft-open: #172a4d;
+  --main-soft-focus: #172a4d;
+
+  --danger-strong: #fecaca;
+  --danger-border: #f87171;
+  --danger-border-soft: #7f3d45;
+  --danger-soft: #3a171b;
+  --danger-soft-alt: #2a1519;
+
+  --success-strong: #bbf7d0;
+  --success-text: #86efac;
+  --success-border: #4ade80;
+  --success-soft: #10251a;
+  --success-soft-alt: #163321;
+
+  --warning-strong: #fed7aa;
+  --warning-text: #fdba74;
+  --warning-text-alt: #fbbf24;
+  --warning-border: #fb923c;
+  --warning-soft: #2a1a12;
+  --warning-soft-alt: #362014;
+  --warning-pale: #2b2412;
+  --warning-hover: #3a2e13;
+
+  --simple-border: #6f5f28;
+  --simple-bg: #211d12;
+  --simple-panel-border: #554a26;
+  --simple-panel-bg: #17160f;
+  --simple-head-border: #7b6724;
+  --simple-head-bg: #3a3114;
+  --simple-text: #f1d77b;
+
+  /* 業務固定色：建材背景との組み合わせを保つためダーク時も同値。 */
+  --material-color-text: #334155;
+
+  --shadow-panel: rgba(0, 0, 0, 0.18);
+  --shadow-line: rgba(0, 0, 0, 0.22);
+  --shadow-soft: rgba(0, 0, 0, 0.32);
+  --shadow-float: rgba(0, 0, 0, 0.42);
+  --shadow-menu: rgba(0, 0, 0, 0.48);
+  --shadow-dialog: rgba(0, 0, 0, 0.58);
+  --overlay-soft: rgba(0, 0, 0, 0.28);
+  --overlay: rgba(0, 0, 0, 0.38);
+  --overlay-modal: rgba(0, 0, 0, 0.52);
+  --focus-ring: rgba(96, 165, 250, 0.22);
+  --selected-wash: rgba(59, 130, 246, 0.16);
+  --main-border-alpha: rgba(96, 165, 250, 0.22);
+  --main-halo: rgba(96, 165, 250, 0.28);
+  --main-badge: rgba(59, 130, 246, 0.94);
+  --danger-badge: rgba(239, 68, 68, 0.94);
+  --border-muted-alpha: rgba(148, 163, 184, 0.34);
+  --surface-soft-transparent: rgba(15, 23, 42, 0);
+  --surface-panel-translucent: rgba(17, 24, 39, 0.78);
+  --focus-outline: rgba(96, 165, 250, 0.48);
+  --focus-shadow: rgba(96, 165, 250, 0.18);
+  --row-muted-wash: rgba(255, 255, 255, 0.025);
+  --overlay-confirm: rgba(0, 0, 0, 0.62);
+  --shadow-panel-black: rgba(0, 0, 0, 0.22);
+  --status-online: #4ade80;
 }
 
 /* ============================================================
@@ -63,6 +290,11 @@ select {
   font-family: inherit;
 }
 
+/* フォーム部品の既定黒文字に依存せず、配置先のテーマ文字色を継承する。 */
+button {
+  color: inherit;
+}
+
 h1 {
   font-size: 15px;
   margin: 0;
@@ -78,7 +310,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 8px;
-  background: #fff;
+  background: var(--panel);
   white-space: nowrap;
 }
 .pill.ok,
@@ -101,7 +333,8 @@ h1 {
    ============================================================ */
 .btn {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
+  color: var(--text);
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 13px;
@@ -112,10 +345,10 @@ h1 {
 .btn.primary {
   background: var(--main);
   border-color: var(--main);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 .btn.ghost {
-  background: #f8fafc;
+  background: var(--surface-soft);
 }
 .btn.small {
   font-size: 11.5px;
@@ -136,11 +369,11 @@ h1 {
    汎用パネル（各タブ内のカード状コンテナで共通利用）
    ============================================================ */
 .panel {
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 2px var(--shadow-panel-black);
 }
 .panel-head {
   display: flex;
@@ -149,7 +382,7 @@ h1 {
   gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
-  background: #fbfcff;
+  background: var(--surface-subtle);
 }
 .panel-head h3 {
   margin: 0;
@@ -163,11 +396,11 @@ h1 {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #cbd5e1;
+  background: var(--status-online);
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--line-strong);
 }
 .connection-dot.offline {
-  background: #94a3b8;
+  background: var(--disabled);
 }
 .connection-dot.wait {
   background: var(--orange);

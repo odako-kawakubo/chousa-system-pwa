@@ -19,10 +19,10 @@
 .finish-project-banner {
   margin-bottom: 6px;
   padding: 5px 8px;
-  border: 1px solid #f1e3a8;
+  border: 1px solid var(--simple-border);
   border-radius: 7px;
-  background: #fffdf5;
-  color: #7c5b16;
+  background: var(--simple-bg);
+  color: var(--simple-text);
   font-size: 11px;
   font-weight: 700;
 }
@@ -61,7 +61,7 @@
 .finish-mode-btn.active {
   background: var(--main);
   border-color: var(--main);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 /* ============================================================
@@ -74,9 +74,9 @@
   box-sizing: border-box;
   margin-bottom: 6px;
   padding: 4px 6px 5px;
-  border: 1px solid #f0e8bd;
+  border: 1px solid var(--simple-panel-border);
   border-radius: 6px;
-  background: #fffefb;
+  background: var(--simple-panel-bg);
 }
 
 .finish-simple-list-items {
@@ -91,11 +91,11 @@
 .finish-simple-item {
   min-height: 20px;
   padding: 2px 7px;
-  border: 1px solid #e9d98a;
+  border: 1px solid var(--simple-head-border);
   border-radius: 999px;
-  /* パネル背景（#fffefb）より少し濃い黄色。カラー表示OFF時のみ使う。 */
-  background: #fdf1b8;
-  color: #334155;
+  /* パネル背景（var(--simple-panel-bg)）より少し濃い黄色。カラー表示OFF時のみ使う。 */
+  background: var(--simple-head-bg);
+  color: var(--text-subtle);
   font-size: 11px;
   line-height: 1.25;
   font-weight: 400;
@@ -106,16 +106,17 @@
 /* カラー表示ON時は、建材ごとの色をそのまま使う。 */
 .finish-simple-item.color-on {
   background: var(--chip-bg);
-  border-color: rgba(100, 116, 139, .28);
+  border-color: var(--border-muted-alpha);
+  color: var(--material-color-text);
 }
 
 .finish-simple-item:hover { filter: brightness(.98); }
 
 .finish-simple-item.selected {
   font-weight: 700;
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--main);
   outline-offset: -2px;
-  border-color: #2563eb;
+  border-color: var(--main);
 }
 
 .finish-selected-info {
@@ -127,34 +128,34 @@
   margin-top: 4px;
   padding: 4px 7px;
   box-sizing: border-box;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--line-section);
   border-radius: 7px;
-  background: #f8fafc;
+  background: var(--surface-soft);
   font-size: 11.5px;
-  color: #475569;
+  color: var(--text-secondary);
   overflow: hidden;
 }
 
-.finish-selected-info strong { color: #1f2937; white-space: nowrap; flex: 0 0 auto; }
+.finish-selected-info strong { color: var(--text); white-space: nowrap; flex: 0 0 auto; }
 .finish-selected-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finish-selected-photo-actions { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex: 0 0 auto; }
 .finish-selected-rooms-wrap { position: relative; min-width: 80px; max-width: min(340px, 32vw); flex: 0 1 340px; overflow: hidden; }
-.finish-selected-rooms { display: block; color: #334155; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-right: 12px; outline: none; }
+.finish-selected-rooms { display: block; color: var(--text-subtle); overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-right: 12px; outline: none; }
 .finish-selected-rooms::-webkit-scrollbar{display:none;width:0;height:0}
-.finish-selected-rooms-wrap.has-overflow .finish-selected-rooms-ellipsis { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 9px; background: linear-gradient(90deg, rgba(248,250,252,0), #f8fafc 45%); color: #334155; pointer-events: none; }
+.finish-selected-rooms-wrap.has-overflow .finish-selected-rooms-ellipsis { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 9px; background: linear-gradient(90deg, var(--surface-soft-transparent), var(--surface-soft) 45%); color: var(--text-subtle); pointer-events: none; }
 .finish-selected-rooms-wrap:focus-within .finish-selected-rooms-ellipsis { opacity: 0; }
 
 .finish-photo-link {
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--main-border-pale);
   border-radius: 999px;
-  background: #eff6ff;
+  background: var(--main-soft-alt);
   padding: 2px 8px;
-  color: #2563eb;
+  color: var(--main);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
-.finish-photo-link:disabled { color: #94a3b8; border-color: #d1d5db; background: #f1f5f9; cursor: default; }
+.finish-photo-link:disabled { color: var(--disabled); border-color: var(--line-muted); background: var(--surface-muted); cursor: default; }
 
 /* ============================================================
    仕上表 2Dスクロール / freeze pane
@@ -175,7 +176,7 @@
   padding-bottom: 4px;
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
-  background: #fff;
+  background: var(--panel);
 }
 
 .finish-table-host {
@@ -189,8 +190,8 @@
 .finish-table {
   position: relative;
   width: max-content;
-  background: #fff;
-  color: #253044;
+  background: var(--panel);
+  color: var(--text-table);
 }
 
 /* ============================================================
@@ -204,9 +205,9 @@
   z-index: 50;
   display: grid;
   height: 25px;
-  background: #eef3f8;
-  border-top: 1px solid #cbd5e1;
-  border-bottom: 1px solid #cbd5e1;
+  background: var(--surface-table-head);
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .finish-header-fixed {
@@ -215,8 +216,8 @@
   z-index: 52;
   display: grid;
   height: 25px;
-  background: #eef3f8;
-  box-shadow: inset -2px 0 #64748b;
+  background: var(--surface-table-head);
+  box-shadow: inset -2px 0 var(--muted);
 }
 
 .finish-header-fixed-cell {
@@ -225,7 +226,7 @@
   align-items: center;
   justify-content: center;
   height: 25px;
-  border-left: 1px solid #cbd5e1;
+  border-left: 1px solid var(--line-strong);
   white-space: nowrap;
   font-size: 9px;
   font-weight: 700;
@@ -236,18 +237,18 @@
   border-left: 0;
   border-right: 0;
 }
-.finish-header-fixed-cell:not(:last-child) { border-right: 1px solid #cbd5e1; }
+.finish-header-fixed-cell:not(:last-child) { border-right: 1px solid var(--line-strong); }
 
 .finish-header-materials {
   display: grid;
   height: 25px;
-  background: #eef3f8;
+  background: var(--surface-table-head);
 }
 
 .finish-head-material-group {
   box-sizing: border-box;
   height: 25px;
-  border-right: 1px solid #cbd5e1;
+  border-right: 1px solid var(--line-strong);
   overflow: hidden;
 }
 .finish-header-group-label {
@@ -256,7 +257,7 @@
   font-size: 10px;
   font-weight: 700;
   text-align: center;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--line-strong);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -273,7 +274,7 @@
   font-size: 8px;
   font-weight: 500;
   text-align: center;
-  border-right: 1px solid #cbd5e1;
+  border-right: 1px solid var(--line-strong);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -286,8 +287,8 @@
   position: relative;
   height: 15px;
   box-sizing: border-box;
-  background: #e2e8f0;
-  border-bottom: 1px solid #cbd5e1;
+  background: var(--line-soft);
+  border-bottom: 1px solid var(--line-strong);
   cursor: pointer;
   font-size: 10px;
   line-height: 15px;
@@ -302,20 +303,20 @@
   height: 15px;
   line-height: 15px;
   padding: 0 4px;
-  background: #e2e8f0;
+  background: var(--line-soft);
 }
 
 .finish-floor-toggle {
   display: inline-block;
   font-size: 7px;
   line-height: 1;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .finish-floor-heading-label {
   font-size: 8px;
   font-weight: 700;
-  color: #475569;
+  color: var(--text-secondary);
   margin-left: 3px;
   white-space: nowrap;
 }
@@ -328,7 +329,7 @@
   align-items: stretch;
   width: 100%;
   min-height: 56px; /* デフォルト2行 × 28px */
-  border-bottom: 1px solid #b7c2d0;
+  border-bottom: 1px solid var(--line-table);
 }
 
 .finish-room-fixed {
@@ -338,7 +339,7 @@
   display: grid;
   align-items: stretch;
   align-self: stretch;
-  background: #fff;
+  background: var(--panel);
 }
 
 /* 固定列と建材列の境界線。
@@ -353,7 +354,7 @@
   right: 0;
   bottom: 0;
   width: 2px;
-  background: #64748b;
+  background: var(--muted);
   pointer-events: none;
   z-index: 2;
 }
@@ -362,13 +363,13 @@
   box-sizing: border-box;
   min-width: 0;
   height: 100%;
-  border-left: 1px solid #cbd5e1;
-  background: #fff;
+  border-left: 1px solid var(--line-strong);
+  background: var(--panel);
   vertical-align: middle;
   text-align: center;
   overflow: hidden;
 }
-.finish-meta:not(:last-child) { border-right: 1px solid #cbd5e1; }
+.finish-meta:not(:last-child) { border-right: 1px solid var(--line-strong); }
 
 .floor-cell { font-size: 10px; font-weight: 700; }
 .room-no-cell { font-size: 12px; font-weight: 700; }
@@ -387,7 +388,7 @@
   box-sizing: border-box;
 }
 .finish-material-row:not(:last-child) .finish-data-cell {
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .room-control {
@@ -429,17 +430,17 @@
 .room-no-input:focus,
 .room-name-input:focus {
   outline: none;
-  border-color: #60a5fa;
-  background: #fff;
+  border-color: var(--main-border);
+  background: var(--panel);
 }
 
 /* ＋行／＋部屋／＋階／＋B階を同じ小型ボタン系へ統一。 */
 .room-copy-btn,
 .room-mini-btn {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: #f8fafc;
-  color: #475569;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
   padding: 1px 4px;
   min-height: 16px;
   font-size: 8px;
@@ -449,38 +450,38 @@
 }
 
 .room-copy-btn:hover,
-.room-mini-btn:hover { background: #eef2f7; }
+.room-mini-btn:hover { background: var(--surface-muted-hover); }
 
 /* ============================================================
    部屋コピーボタン：4状態＋通常
    ============================================================ */
 .room-copy-btn.state-idle {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
+  background: var(--surface-soft);
+  border-color: var(--line-strong);
+  color: var(--text-secondary);
 }
 .room-copy-btn.state-source {
-  background: #fee2e2;
-  border-color: #f87171;
-  color: #b91c1c;
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger-strong);
   font-weight: 700;
 }
 .room-copy-btn.state-target-empty {
-  background: #dbeafe;
-  border-color: #60a5fa;
-  color: #1d4ed8;
+  background: var(--main-soft);
+  border-color: var(--main-border);
+  color: var(--main-strong);
   font-weight: 700;
 }
 .room-copy-btn.state-target-overwrite {
-  background: #ffedd5;
-  border-color: #fb923c;
-  color: #9a3412;
+  background: var(--warning-soft-alt);
+  border-color: var(--warning-border);
+  color: var(--warning-strong);
   font-weight: 700;
 }
 .room-copy-btn.state-restore {
-  background: #dcfce7;
-  border-color: #4ade80;
-  color: #15803d;
+  background: var(--success-soft-alt);
+  border-color: var(--success-border);
+  color: var(--success-text);
   font-weight: 700;
 }
 
@@ -492,14 +493,21 @@
   box-sizing: border-box;
   height: 28px;
   min-width: 0;
-  background: #fff;
-  border-right: 1px solid #cbd5e1;
+  background: var(--panel);
+  border-right: 1px solid var(--line-strong);
   overflow: hidden;
 }
 
 /* カラーON時：建材が入っている入力グループは淡い建材色。 */
 .finish-table.color-mode .finish-data-cell[style*="--material-bg"] {
   background: var(--material-bg);
+}
+
+/* 業務固定色：建材24色の淡色背景上では、ダークテーマの明色文字を使わない。 */
+.finish-table.color-mode .finish-data-cell[style*="--material-bg"],
+.finish-table.color-mode .finish-data-cell[style*="--material-bg"] .finish-cell-input,
+.finish-table.color-mode .finish-data-cell[style*="--material-bg"] .finish-cell-display {
+  color: var(--material-color-text);
 }
 
 .finish-cell-input {
@@ -512,7 +520,7 @@
   outline: none;
   background: transparent;
   padding: 1px 3px;
-  color: #1f2937;
+  color: var(--text);
   /*
    * Apple PencilがiPad Safariの「Scribble（手書き入力）」として反応し、
    * 縦スクロールが描画動作のように奪われる不具合への対応。manipulationは
@@ -533,7 +541,7 @@
 
 /* 未入力セルの補助文字だけ小さく・薄くする。 */
 .finish-cell-input::placeholder {
-  color: #bcc4ce;
+  color: var(--text-placeholder);
   font-size: 8px;
   font-weight: 400;
   opacity: 1;
@@ -545,9 +553,9 @@
  */
 .finish-cell-input.is-focused-input,
 .finish-cell-input:focus {
-  background: #fff;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, .12);
+  background: var(--panel);
+  border-color: var(--main-border-strong);
+  box-shadow: 0 0 0 1px var(--main-border-alpha);
 }
 
 /* ============================================================
@@ -575,7 +583,7 @@
   border-radius: 4px;
   padding: 1px 3px;
   line-height: 18px;
-  color: #1f2937;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -584,7 +592,7 @@
 
 /* 未入力セルの補助文字（旧::placeholderに相当）だけ小さく・薄くする。 */
 .finish-cell-display.is-placeholder {
-  color: #bcc4ce;
+  color: var(--text-placeholder);
   font-size: 8px;
   font-weight: 400;
 }
@@ -597,10 +605,10 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  border: 1px solid #f59e0b;
+  border: 1px solid var(--orange);
   border-radius: 0;
-  background: #fffbeb;
-  color: #92400e;
+  background: var(--warning-pale);
+  color: var(--warning-text);
   font-size: 8px;
   font-weight: 700;
   line-height: 1;
@@ -609,7 +617,7 @@
   white-space: nowrap;
   touch-action: manipulation;
 }
-.finish-register-btn:hover { background: #fef3c7; }
+.finish-register-btn:hover { background: var(--warning-hover); }
 
 /* 入力セル追従型候補ポップ。native datalistを使わないため、iPadで画面中央へ
  * 大きな候補UIが出ず、入力中のセルを見ながら自由入力できる。 */
@@ -623,10 +631,10 @@
   -webkit-overflow-scrolling: touch;
   padding: 4px;
   box-sizing: border-box;
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--disabled);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(15,23,42,.18);
+  background: var(--panel);
+  box-shadow: 0 8px 24px var(--shadow-menu);
 }
 .finish-candidate-popup[hidden] { display: none; }
 .finish-candidate-item {
@@ -635,9 +643,9 @@
   min-height: 34px;
   padding: 7px 9px;
   border: 0;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
-  color: #1f2937;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+  color: var(--text);
   font-size: 12px;
   line-height: 1.35;
   text-align: left;
@@ -646,7 +654,7 @@
 }
 .finish-candidate-item:last-child { border-bottom: 0; }
 .finish-candidate-item:hover,
-.finish-candidate-item:focus-visible { background: #eff6ff; outline: none; }
+.finish-candidate-item:focus-visible { background: var(--main-soft-alt); outline: none; }
 
 /* ============================================================
    選択表示
@@ -654,12 +662,12 @@
 /* 部屋選択時は左固定ブロックと右入力行群を同時に薄い水色にする。 */
 .finish-room-block.is-room-selected .finish-meta,
 .finish-room-block.is-room-selected .finish-data-cell:not([style*="--material-bg"]) {
-  background: #eaf4ff;
+  background: var(--main-soft-focus);
 }
 
 /* カラーOFF時は建材色が無いので、部屋選択色を全入力セルへ適用。 */
 .finish-table:not(.color-mode) .finish-room-block.is-room-selected .finish-data-cell {
-  background: #eaf4ff;
+  background: var(--main-soft-focus);
 }
 
 /* グループ強調：通常罫線とは別レイヤーで内側へ描画する。
@@ -667,38 +675,38 @@
  */
 .finish-data-cell.is-material-match {
   box-shadow:
-    inset 0 2px 0 #2563eb,
-    inset 0 -2px 0 #2563eb;
+    inset 0 2px 0 var(--main),
+    inset 0 -2px 0 var(--main);
 }
 .finish-data-cell.group-first.is-material-match {
   box-shadow:
-    inset 2px 0 0 #2563eb,
-    inset 0 2px 0 #2563eb,
-    inset 0 -2px 0 #2563eb;
+    inset 2px 0 0 var(--main),
+    inset 0 2px 0 var(--main),
+    inset 0 -2px 0 var(--main);
 }
 .finish-data-cell.group-last.is-material-match {
   box-shadow:
-    inset -2px 0 0 #2563eb,
-    inset 0 2px 0 #2563eb,
-    inset 0 -2px 0 #2563eb;
+    inset -2px 0 0 var(--main),
+    inset 0 2px 0 var(--main),
+    inset 0 -2px 0 var(--main);
 }
 
 .finish-data-cell.is-group-selected {
   box-shadow:
-    inset 0 2px 0 #1d4ed8,
-    inset 0 -2px 0 #1d4ed8;
+    inset 0 2px 0 var(--main-strong),
+    inset 0 -2px 0 var(--main-strong);
 }
 .finish-data-cell.group-first.is-group-selected {
   box-shadow:
-    inset 2px 0 0 #1d4ed8,
-    inset 0 2px 0 #1d4ed8,
-    inset 0 -2px 0 #1d4ed8;
+    inset 2px 0 0 var(--main-strong),
+    inset 0 2px 0 var(--main-strong),
+    inset 0 -2px 0 var(--main-strong);
 }
 .finish-data-cell.group-last.is-group-selected {
   box-shadow:
-    inset -2px 0 0 #1d4ed8,
-    inset 0 2px 0 #1d4ed8,
-    inset 0 -2px 0 #1d4ed8;
+    inset -2px 0 0 var(--main-strong),
+    inset 0 2px 0 var(--main-strong),
+    inset 0 -2px 0 var(--main-strong);
 }
 
 /* ============================================================
@@ -710,7 +718,7 @@
   position: fixed;
   inset: 0;
   z-index: 1700;
-  background: rgba(15, 23, 42, .45);
+  background: var(--overlay-confirm);
   align-items: center;
   justify-content: center;
   padding: 16px;
@@ -718,12 +726,12 @@
 .finish-confirm-modal.open { display: flex; }
 .finish-confirm-card {
   width: min(360px, 100%);
-  background: #fff;
+  background: var(--panel);
   border-radius: 10px;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, .25);
+  box-shadow: 0 20px 50px var(--shadow-dialog);
   padding: 16px;
 }
-.finish-confirm-body { font-size: 13px; color: #1f2937; line-height: 1.6; }
+.finish-confirm-body { font-size: 13px; color: var(--text); line-height: 1.6; }
 .finish-confirm-body p { margin: 0 0 4px; }
 .finish-confirm-actions {
   display: flex;

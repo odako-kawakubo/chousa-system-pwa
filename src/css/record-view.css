@@ -17,11 +17,11 @@
   flex-wrap: wrap;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
 }
 
 .record-view-subtab {
-  background: #fff;
+  background: var(--panel);
   border-color: var(--line);
   color: var(--text);
 }
@@ -29,7 +29,7 @@
 .record-view-subtab.active {
   background: var(--main);
   border-color: var(--main);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .record-view-toolbar .record-view-hint {
@@ -59,7 +59,7 @@
   padding: 5px 7px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -78,7 +78,7 @@
   left: 0;
   z-index: 11;
   min-width: 88px;
-  background: #f8fafc;
+  background: var(--surface-soft);
   box-shadow: 1px 0 0 var(--line);
   font-weight: 700;
 }
@@ -108,7 +108,7 @@
   padding: 28px 16px !important;
   text-align: center;
   color: var(--muted);
-  background: #fff !important;
+  background: var(--panel) !important;
 }
 
 @media (max-width: 850px) {
