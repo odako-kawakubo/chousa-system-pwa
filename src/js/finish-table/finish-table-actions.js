@@ -32,6 +32,7 @@ import {
 } from '../records/material-record.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
 import {
   INITIAL_ROW_COUNT,
   INITIAL_STRUCTURE_SEED,
@@ -185,7 +186,6 @@ function rekeyRecordToRoomPosition(record, newRoomPosition) {
     ...record,
     roomPosition: newRoomPosition,
     finishId: nextId,
-    systemMemo: appendSystemMemo(record.systemMemo, `部屋挿入等により仕上表ID変更 旧:${oldId} 新:${nextId}`),
     updatedAt: nowIso()
   };
 }
@@ -288,8 +288,7 @@ export function addInputRow(roomKey) {
       roomName: anchor.roomName,
       position: computeCellPosition(partIndex, nextRow),
       part: defaultPartName(anchor.areaCode, partIndex),
-      roomUid: anchor.roomUid,
-      systemMemo: `入力行追加: ${nextRow}行目`
+      roomUid: anchor.roomUid
     }));
   }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
@@ -716,10 +715,12 @@ export function seedInitialFinishRecords() {
 
 export function runRecordTransaction(mutate) {
   // Store更新通知は各Storeのbatch()へ一本化する。
-  // transaction専用DOMイベントや通知完全抑制は使わず、変更されたStoreが
-  // batch終了時に通常のsubscribe通知を1回だけ発火する。
+  // 仕上表・建材・写真をまたぐ業務操作も同じtransaction入口を使い、
+  // 変更されたStoreだけがbatch終了時に通常のsubscribe通知を1回発火する。
   finishRecordStore.batch(() => {
-    materialRecordStore.batch(() => mutate());
+    materialRecordStore.batch(() => {
+      photoRecordStore.batch(() => mutate());
+    });
   });
 }
 

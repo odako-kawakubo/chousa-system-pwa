@@ -214,6 +214,7 @@ function createCaptureSnapshot() {
     roomNo: room.roomNo || '',
     roomName: room.roomName || '',
     areaCode: room.areaCode || '',
+    partSlot: Number(target.partSlot || 0),
     part: target.part || ''
   };
 }
@@ -794,7 +795,9 @@ async function takePhoto() {
       syncStatus: 'pending',
       capturedDevice: getDeviceCode(),
       capturedAt: snapshot.capturedAt,
+      areaCode: snapshot.areaCode,
       roomPosition: snapshot.roomPosition,
+      partSlot: snapshot.partSlot,
       roomNo: snapshot.roomNo,
       materialId: snapshot.materialId,
       samplingPlace: snapshot.samplingPlace,
@@ -839,10 +842,13 @@ function locateInitialState(initialContext, options) {
   };
 
   if (next.photoType === PHOTO_TYPES.VISUAL) {
-    const roomIndex = next.visualRooms.findIndex((room) => room.roomPosition === initialContext.roomPosition);
+    const roomIndex = next.visualRooms.findIndex((room) => (
+      room.areaCode === initialContext.areaCode
+      && room.roomPosition === initialContext.roomPosition
+    ));
     next.visualRoomIndex = Math.max(0, roomIndex);
     const room = next.visualRooms[next.visualRoomIndex];
-    const partIndex = room?.targets?.findIndex((target) => target.part === initialContext.part) ?? -1;
+    const partIndex = room?.targets?.findIndex((target) => Number(target.partSlot || 0) === Number(initialContext.partSlot || 0)) ?? -1;
     next.visualPartIndex = Math.max(0, partIndex);
   } else {
     const samplingIndex = next.samplingTargets.findIndex((target) => (

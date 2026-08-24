@@ -25,6 +25,7 @@ import { applyMaterialMatchHighlight } from '../finish-table/finish-table-render
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { openPhotoViewer } from '../photos/photo-viewer.js';
+import { getVisualPhotoTargetKey } from '../records/photo-record.js';
 
 function findMaterialByInputId(inputId) {
   return materialRecordStore.findByInputId(inputId);
@@ -146,11 +147,13 @@ function visualPhotosForMaterial(material) {
   const keys = new Set();
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || String(record.materialId || '') !== String(material.materialId || '')) return;
-    const part = String(record.part || '').trim();
-    if (record.roomPosition && part) keys.add(`${record.roomPosition}|${part}`);
+    const partSlot = Math.floor(Number(record.position || 0) / 100);
+    if (record.areaCode && record.roomPosition && partSlot) {
+      keys.add(getVisualPhotoTargetKey({ areaCode: record.areaCode, roomPosition: record.roomPosition, partSlot }));
+    }
   });
   return photoRecordStore.getActive()
-    .filter((photo) => photo.photoType === 'visual' && keys.has(`${photo.roomPosition}|${photo.part}`))
+    .filter((photo) => photo.photoType === 'visual' && keys.has(getVisualPhotoTargetKey(photo)))
     .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')));
 }
 

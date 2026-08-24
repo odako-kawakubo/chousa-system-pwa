@@ -12,8 +12,8 @@
  * - 統合元／削除元レコードは物理削除せず履歴として保持する。
  * - 処理後は active 建材の建材No.と同一ベース名の末尾英字を整理する。
  *
- * 写真レコードは v0.1.5.2 時点でStore未実装のため、このモジュールでは触らない。
- * 写真Store実装時に materialId 引継ぎ処理を同じtransactionへ接続する。
+ * v0.1.5.8: 建材統合時は統合元の採取写真を統合先の未整理写真へ引き継ぐ。
+ * 画像Blob・焼き込み済み看板・ファイル名はこの処理では変更しない。
  */
 
 import {
@@ -22,6 +22,8 @@ import {
   runRecordTransaction,
   refreshMaterialUsageDerivedFields
 } from '../finish-table/finish-table-actions.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 
 function nowIso() {
   return new Date().toISOString();
@@ -103,6 +105,28 @@ function mergeSurveyNotes(targetNote, sourceNote) {
   return lines.join('\n');
 }
 
+
+/**
+ * 建材統合で採取写真を未整理へ戻す前に、失われる採取情報をシステムメモへ残す。
+ * 未整理判定は既存仕様どおり samplingBranch=0 または shootingType='' を使う。
+ */
+function buildMergedPhotoMemo(photo, sourceMaterialId, targetMaterialId) {
+  const shootingCode = ({
+    [SHOOTING_TYPES.BEFORE]: '1',
+    [SHOOTING_TYPES.DURING]: '2',
+    [SHOOTING_TYPES.AFTER]: '3',
+    [SHOOTING_TYPES.SECTION]: '4'
+  })[photo.shootingType] || '-';
+  const sampleBaseNo = String(photo.sampleBaseNo || photo.sampleNo || '').trim().split('-')[0] || '-';
+  const branch = Number(photo.samplingBranch) || '-';
+  const place = String(photo.samplingPlace || '').trim() || '-';
+  return [
+    `建材統合：${sourceMaterialId} → ${targetMaterialId}`,
+    `元情報：${sampleBaseNo}-${branch}-${shootingCode} / ${place}`,
+    '未整理へ移動'
+  ].join('\n');
+}
+
 /**
  * active建材の現在位置に合わせて建材No.を1..Nへ振り直し、
  * 同一baseName内の末尾英字を A..Z,AA,AB... で整理する。
@@ -181,9 +205,30 @@ export function mergeMaterials(targetId, sourceIds) {
           inputId: String(target.inputId),
           systemMemo: appendSystemMemo(
             finish.systemMemo,
-            `建材統合により建材ID変更：${source.materialId} → ${target.materialId}`
+            `建材統合：${source.materialId} → ${target.materialId}`
           ),
           updatedAt
+        });
+      });
+
+      // 統合元の採取写真は、統合先建材の既存「未整理写真」へ移す。
+      // 採取場所等を自動で統合先へ割り当てると看板整理ロジックと衝突するため、
+      // 元情報をsystemMemoへ退避してから、既存未整理条件になる最小項目を空にする。
+      photoRecordStore.getAll().forEach((photo) => {
+        if (photo.photoType !== PHOTO_TYPES.SAMPLING || photo.deleted || photo.materialId !== source.materialId) return;
+        photoRecordStore.set({
+          ...photo,
+          materialId: target.materialId,
+          samplingPlace: '',
+          samplingBranch: 0,
+          sampleNo: '',
+          sampleBaseNo: '',
+          part: '',
+          shootingType: '',
+          systemMemo: appendSystemMemo(
+            photo.systemMemo,
+            buildMergedPhotoMemo(photo, source.materialId, target.materialId)
+          )
         });
       });
 
@@ -191,7 +236,7 @@ export function mergeMaterials(targetId, sourceIds) {
       nextTarget.note = mergeSurveyNotes(nextTarget.note, source.note);
       nextTarget.systemMemo = appendSystemMemo(
         nextTarget.systemMemo,
-        `統合受入：${source.name}（${source.materialId}）を統合`
+        `建材統合受入：${source.materialId} ${source.name}`
       );
 
       // 統合元は物理削除せず、統合済みの履歴レコードとして保持する。
@@ -200,7 +245,7 @@ export function mergeMaterials(targetId, sourceIds) {
         status: 'merged',
         systemMemo: appendSystemMemo(
           source.systemMemo,
-          `統合：${source.name}（${source.materialId}）→ ${target.name}（${target.materialId}）`
+          `建材統合：${source.materialId} ${source.name} → ${target.materialId} ${target.name}`
         ),
         updatedAt
       });
@@ -243,7 +288,7 @@ export function deleteMaterials(materialIds) {
           inputId: '',
           systemMemo: appendSystemMemo(
             finish.systemMemo,
-            `建材削除により入力解除：${target.materialId} ${target.name}`
+            `建材削除：${target.materialId} ${target.name}`
           ),
           updatedAt
         });

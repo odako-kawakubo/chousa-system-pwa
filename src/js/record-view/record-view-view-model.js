@@ -72,7 +72,10 @@ export function buildFinishRecordView() {
 
 function photoRoomNo(record) {
   if (record.roomNo) return record.roomNo;
-  const finish = finishRecordStore.getAll().find((item) => item.roomPosition === record.roomPosition);
+  const finish = finishRecordStore.getAll().find((item) => (
+    item.areaCode === record.areaCode
+    && item.roomPosition === record.roomPosition
+  ));
   return finish?.roomNo || '';
 }
 
@@ -116,7 +119,7 @@ export function buildPhotoRecordView() {
     totalCount: records.length,
     activeCount: records.filter((record) => !record.deleted).length,
     representativeCount: records.filter((record) => !record.deleted && record.isRepresentative).length,
-    hint: 'photoRecordStore の実データです。目視写真は部屋No.＋部位、採取写真は建材ID＋採取枝番＋撮影区分で管理します。',
+    hint: 'photoRecordStore の実データです。目視写真は区分＋部屋位置＋部位枠、採取写真は建材ID＋採取枝番＋撮影区分で管理します。',
     records
   };
 }

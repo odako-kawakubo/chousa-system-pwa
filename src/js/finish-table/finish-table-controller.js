@@ -494,10 +494,13 @@ function scrollToAddedFloor(floorKey) {
   });
 }
 
-/** ドロワーの「＋挿入」は、部屋が選択されていない間は無効化する。 */
+/**
+ * ドロワーの「＋挿入」は当面の保留機能。
+ * 挿入ロジック本体は残すが、現行運用では常時押せない状態に固定する。
+ */
 function updateDrawerInsertButtonState() {
   const button = document.getElementById('drawerInsertRoom');
-  if (button) button.disabled = !getSelectedRoomKey();
+  if (button) button.disabled = true;
 }
 
 /** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴。 */

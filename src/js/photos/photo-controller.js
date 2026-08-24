@@ -15,7 +15,7 @@
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
-import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { createPhotoRecord, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
@@ -206,6 +206,7 @@ function externalImportContext() {
   if (!view.activeRoom) return null;
   return {
     photoType: PHOTO_TYPES.VISUAL,
+    areaCode: view.activeRoom.areaCode,
     roomPosition: view.activeRoom.roomPosition,
     roomNo: view.activeRoom.roomNo || ''
   };
@@ -236,7 +237,9 @@ async function addPickedFiles(fileList) {
       ? {
           ...common,
           photoType: PHOTO_TYPES.VISUAL,
+          areaCode: context.areaCode,
           roomPosition: context.roomPosition,
+          partSlot: 0,
           roomNo: context.roomNo,
           part: ''
         }
@@ -265,7 +268,7 @@ function visualContextFromKey(key) {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   const target = view.targets.find((item) => item.key === key);
   if (!target) return null;
-  return { photoType: PHOTO_TYPES.VISUAL, roomPosition: target.roomPosition, roomNo: view.activeRoom?.roomNo || '', part: target.part };
+  return { photoType: PHOTO_TYPES.VISUAL, areaCode: target.areaCode, roomPosition: target.roomPosition, partSlot: target.partSlot, roomNo: view.activeRoom?.roomNo || '', part: target.part };
 }
 
 function samplingContextFromKey(key, shootingType) {
@@ -302,7 +305,7 @@ function buildCameraOptions() {
       roomPosition: room.roomPosition,
       roomNo: room.roomNo,
       roomName: room.roomName,
-      targets: roomView.targets.map((target) => ({ part: target.part }))
+      targets: roomView.targets.map((target) => ({ partSlot: target.partSlot, part: target.part }))
     };
   });
 
@@ -362,12 +365,12 @@ function globalCameraContext() {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   const target = view.targets?.[0];
   if (!view.activeRoom || !target) return null;
-  return { photoType: PHOTO_TYPES.VISUAL, roomPosition: view.activeRoom.roomPosition, part: target.part };
+  return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
 }
 
 /**
  * PhotoViewerで横送りする写真集合を返す。
- * 目視：同じ部屋位置 + 部位。
+ * 目視：同じ区分 + 部屋位置 + 部位枠。
  * 採取：同じ建材 + 同じ採取枝番（施工前/中/後/断面をまとめる）。
  */
 function photosForViewer(photoId) {
@@ -375,11 +378,32 @@ function photosForViewer(photoId) {
   if (!photo || photo.deleted) return [];
 
   if (photo.photoType === PHOTO_TYPES.VISUAL) {
-    return photoRecordStore.findVisual({ roomPosition: photo.roomPosition, part: photo.part })
+    // 未整理目視写真は正式な部位キー(partSlot=1..6)を持たない。
+    // 同じ部屋に属する未整理写真だけをViewerの横送り対象にする。
+    const photos = isVisualPhotoUnorganized(photo)
+      ? photoRecordStore.getActive().filter((item) => (
+          item.photoType === PHOTO_TYPES.VISUAL
+          && item.areaCode === photo.areaCode
+          && item.roomPosition === photo.roomPosition
+          && isVisualPhotoUnorganized(item)
+        ))
+      : photoRecordStore.findVisual({ areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot });
+
+    return photos
       .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
   }
 
-  return photoRecordStore.findSampling({ materialId: photo.materialId, samplingBranch: photo.samplingBranch })
+  // 採取の未整理写真も「検体(materialId)までは確定、箇所以降は未確定」として
+  // 同じ検体の未整理写真だけをViewerの横送り対象にする。
+  const samplingPhotos = isSamplingPhotoUnorganized(photo)
+    ? photoRecordStore.getActive().filter((item) => (
+        item.photoType === PHOTO_TYPES.SAMPLING
+        && item.materialId === photo.materialId
+        && isSamplingPhotoUnorganized(item)
+      ))
+    : photoRecordStore.findSampling({ materialId: photo.materialId, samplingBranch: photo.samplingBranch });
+
+  return samplingPhotos
     .sort((a, b) => {
       const stageDiff = SAMPLE_STAGE_ORDER.indexOf(a.shootingType) - SAMPLE_STAGE_ORDER.indexOf(b.shootingType);
       if (stageDiff) return stageDiff;
@@ -621,16 +645,18 @@ function compareTargetsForViewer(context = {}) {
   const materialsById = new Map(materialRecordStore.getAll().map((item) => [String(item.materialId || ''), item]));
   const roomInfo = new Map();
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || !record.roomPosition) return;
-    if (!roomInfo.has(record.roomPosition)) {
-      roomInfo.set(record.roomPosition, { roomPosition: record.roomPosition, roomNo: record.roomNo, roomName: record.roomName });
+    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
+    const roomKey = getVisualPhotoRoomKey(record);
+    if (!roomInfo.has(roomKey)) {
+      roomInfo.set(roomKey, { areaCode: record.areaCode, roomPosition: record.roomPosition, roomNo: record.roomNo, roomName: record.roomName });
     }
   });
 
   const groups = new Map();
   photoRecordStore.getActive().filter((photo) => photo.photoType === PHOTO_TYPES.VISUAL).forEach((photo) => {
-    const key = `${photo.roomPosition}|${photo.part}`;
-    if (!groups.has(key)) groups.set(key, { key, roomPosition: photo.roomPosition, part: photo.part, photos: [] });
+    const key = getVisualPhotoTargetKey(photo);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, { key, areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot, part: photo.part, photos: [] });
     groups.get(key).photos.push(photo);
   });
 
@@ -638,13 +664,13 @@ function compareTargetsForViewer(context = {}) {
   if (preferredMaterialId) {
     finishRecordStore.getAll().forEach((record) => {
       if (record.status !== 'active' || String(record.materialId || '') !== preferredMaterialId) return;
-      const part = String(record.part || '').trim();
-      if (record.roomPosition && part) usedByPreferred.add(`${record.roomPosition}|${part}`);
+      const partSlot = Math.floor(Number(record.position || 0) / 100);
+      if (record.areaCode && record.roomPosition && partSlot) usedByPreferred.add(getVisualPhotoTargetKey({ areaCode: record.areaCode, roomPosition: record.roomPosition, partSlot }));
     });
   }
 
   return [...groups.values()].map((group) => {
-    const room = roomInfo.get(group.roomPosition) || {};
+    const room = roomInfo.get(getVisualPhotoRoomKey(group)) || {};
     const no = String(room.roomNo || group.roomPosition || '-').trim();
     const name = String(room.roomName || '').trim();
     const roomLabel = name && name !== no ? `${no} ${name}` : no;

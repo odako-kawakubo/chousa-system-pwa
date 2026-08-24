@@ -6,6 +6,8 @@
  * 写真本体はRecordへ重複保持せず、getPhotoSource()で表示URLを解決する。
  */
 
+import { getVisualPhotoTargetKey } from '../records/photo-record.js';
+
 let getPhotosForPhoto = () => [];
 let getPhotoSource = () => '';
 let getCompareTargets = () => [];
@@ -258,7 +260,7 @@ function renderNormal() {
   resetTransform(viewerState.normalTransform);
   title.textContent = photo.fileName || photo.photoId || '写真プレビュー';
   const hasMultiple = viewerState.photos.length > 1;
-  const canCompare = photo.photoType === 'visual' && getCompareTargets(viewerState.context).length >= 2;
+  const canCompare = photo.photoType === 'visual' && Boolean(getVisualPhotoTargetKey(photo)) && getCompareTargets(viewerState.context).length >= 2;
   body.innerHTML = `<div class="photo-viewer-shell">
     <div class="photo-viewer-tools">
       <button type="button" class="btn small" data-photo-edit>看板編集</button>
@@ -394,7 +396,7 @@ function openCompare() {
   if (targets.length < 2) return;
   viewerState.compare.targets = targets;
   const current = currentPhoto();
-  const currentKey = current?.photoType === 'visual' ? `${current.roomPosition}|${current.part}` : '';
+  const currentKey = current?.photoType === 'visual' ? getVisualPhotoTargetKey(current) : '';
   const firstKey = targets.find((item) => item.key === currentKey)?.key || targets[0].key;
   const secondKey = targets.find((item) => item.key !== firstKey)?.key || '';
   if (!secondKey) return;

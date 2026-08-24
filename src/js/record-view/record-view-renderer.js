@@ -47,14 +47,17 @@ const PHOTO_COLUMNS = [
   ['lastEditedDevice', '最終編集端末'],
   ['lastEditedAt', '最終編集日時'],
   ['deleted', '削除状態'],
-  ['roomNo', '部屋No.'],
+  ['areaCode', '区分コード'],
+  ['roomPosition', '部屋位置'],
+  ['partSlot', '部位枠'],
   ['roomNo', '部屋No.'],
   ['materialId', '建材ID'],
   ['samplingPlace', '採取場所'],
   ['samplingBranch', '採取枝番'],
   ['sampleNo', '試料No.'],
   ['part', '部位'],
-  ['shootingTypeLabel', '撮影区分']
+  ['shootingTypeLabel', '撮影区分'],
+  ['systemMemo', 'システムメモ']
 ];
 
 const FINISH_COLUMNS = [
@@ -91,6 +94,62 @@ function setText(id, text) {
   if (element) element.textContent = text;
 }
 
+function ensureSystemMemoModal_() {
+  let modal = document.getElementById('recordSystemMemoModal');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'recordSystemMemoModal';
+  modal.className = 'record-system-memo-modal';
+  modal.hidden = true;
+  modal.innerHTML = `
+    <div class="record-system-memo-card" role="dialog" aria-modal="true" aria-labelledby="recordSystemMemoTitle">
+      <div class="record-system-memo-head">
+        <h3 id="recordSystemMemoTitle">システムメモ</h3>
+        <button type="button" class="btn small" data-system-memo-close>閉じる</button>
+      </div>
+      <pre class="record-system-memo-body" data-system-memo-body></pre>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const close = () => {
+    modal.hidden = true;
+    modal.classList.remove('open');
+  };
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal || event.target.closest('[data-system-memo-close]')) close();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+  return modal;
+}
+
+function openSystemMemoModal_(memo) {
+  const modal = ensureSystemMemoModal_();
+  const body = modal.querySelector('[data-system-memo-body]');
+  if (body) body.textContent = String(memo || '').trim();
+  modal.hidden = false;
+  modal.classList.add('open');
+}
+
+function renderSystemMemoCell_(td, memo) {
+  const value = String(memo || '').trim();
+  td.classList.add('record-view-system-memo');
+  if (!value) {
+    td.textContent = '-';
+    td.title = '-';
+    return;
+  }
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn small record-view-memo-button';
+  button.textContent = '表示';
+  button.addEventListener('click', () => openSystemMemoModal_(value));
+  td.replaceChildren(button);
+  td.title = '';
+}
+
 function renderTable(columns, records, emptyMessage, options = {}) {
   const table = document.getElementById('recordViewTable');
   if (!table) return;
@@ -123,10 +182,14 @@ function renderTable(columns, records, emptyMessage, options = {}) {
       columns.forEach(([key], index) => {
         const td = document.createElement('td');
         const formatted = formatValue(key, record[key]);
-        td.textContent = options.emptyAsDash && formatted === '' ? '-' : formatted;
-        td.title = td.textContent;
+        if (key === 'systemMemo') {
+          renderSystemMemoCell_(td, record[key]);
+        } else {
+          td.textContent = options.emptyAsDash && formatted === '' ? '-' : formatted;
+          td.title = td.textContent;
+        }
         if (index === 0) td.classList.add('record-view-sticky-first');
-        if (key === 'systemMemo' || key === 'note' || key === 'remarks' || key === 'usageLocation') {
+        if (key === 'note' || key === 'remarks' || key === 'usageLocation') {
           td.classList.add('record-view-wrap');
         }
         if (key === 'finishId' || key === 'roomUid' || key === 'roomPosition' || key === 'position' || key === 'materialId') {

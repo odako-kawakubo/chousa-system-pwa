@@ -19,7 +19,7 @@
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { getShootingTypeLabel, SHOOTING_TYPES } from '../records/photo-record.js';
+import { getShootingTypeLabel, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
 import { samplePartsToText } from '../records/material-record.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
@@ -80,7 +80,9 @@ function buildRoomList() {
 
   return [...byRoom.values()].sort(compareRoom).map((room) => {
     const count = photoRecordStore.getActive().filter((photo) => (
-      photo.photoType === 'visual' && photo.roomPosition === room.roomPosition
+      photo.photoType === 'visual'
+      && photo.areaCode === room.areaCode
+      && photo.roomPosition === room.roomPosition
     )).length;
     return { ...room, photoCount: count };
   });
@@ -118,27 +120,31 @@ function buildVisualTargets(room) {
   const targets = [];
 
   // 基本4部位は仕上表の物理枠に対応するため、入力の有無に関係なく必ず表示する。
-  for (let index = 1; index <= 4; index += 1) {
-    const partRecords = records.filter((record) => partIndex(record) === index);
-    const label = String(partRecords[0]?.part || '').trim() || `部位${index}`;
-    targets.push(buildVisualTarget(room, label, partRecords));
+  for (let partSlot = 1; partSlot <= 4; partSlot += 1) {
+    const partRecords = records.filter((record) => partIndex(record) === partSlot);
+    const label = String(partRecords[0]?.part || '').trim() || `部位${partSlot}`;
+    targets.push(buildVisualTarget(room, partSlot, label, partRecords));
   }
 
-  // その他は実際に入力された部位名単位で分ける。
-  // 何も入力されていない場合でも「その他」枠を1つ表示する。
-  const otherRecords = records.filter((record) => partIndex(record) >= 5);
-  const otherLabels = [...new Set(otherRecords.map((record) => String(record.part || '').trim() || 'その他'))];
-  if (!otherLabels.length) otherLabels.push('その他');
-
-  otherLabels.forEach((label) => {
-    const matching = otherRecords.filter((record) => (String(record.part || '').trim() || 'その他') === label);
-    targets.push(buildVisualTarget(room, label, matching));
-  });
+  // その他1/2は表示名称が同じでも別の物理枠なので、partSlot=5/6を混ぜない。
+  // 両方未入力の場合だけ、従来どおり「その他」枠を1つ表示する。
+  let hasOtherTarget = false;
+  for (let partSlot = 5; partSlot <= 6; partSlot += 1) {
+    const partRecords = records.filter((record) => partIndex(record) === partSlot);
+    const label = String(partRecords.find((record) => String(record.part || '').trim())?.part || '').trim();
+    if (!label) continue;
+    targets.push(buildVisualTarget(room, partSlot, label, partRecords));
+    hasOtherTarget = true;
+  }
+  if (!hasOtherTarget) {
+    const fallbackRecords = records.filter((record) => partIndex(record) === 5);
+    targets.push(buildVisualTarget(room, 5, 'その他', fallbackRecords));
+  }
 
   return targets;
 }
 
-function buildVisualTarget(room, part, finishRecords) {
+function buildVisualTarget(room, partSlot, part, finishRecords) {
   const materials = [];
   const seen = new Set();
 
@@ -153,11 +159,14 @@ function buildVisualTarget(room, part, finishRecords) {
     materials.push(display);
   });
 
-  const photos = representativeFirst(photoRecordStore.findVisual({ roomPosition: room.roomPosition, part }));
+  const targetIdentity = { areaCode: room.areaCode, roomPosition: room.roomPosition, partSlot };
+  const photos = representativeFirst(photoRecordStore.findVisual(targetIdentity));
 
   return {
-    key: `visual|${room.roomPosition}|${part}`,
+    key: getVisualPhotoTargetKey(targetIdentity),
+    areaCode: room.areaCode,
     roomPosition: room.roomPosition,
+    partSlot,
     part,
     materials,
     // v0.1.5.3D: 入力済みの場合だけ簡易リストと同じ【入力ID】建材名称表記を返す。
@@ -175,8 +184,9 @@ export function buildVisualPhotoView(selectedRoomUid = '') {
   const unorganizedPhotos = activeRoom
     ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
         photo.photoType === 'visual'
+        && photo.areaCode === activeRoom.areaCode
         && photo.roomPosition === activeRoom.roomPosition
-        && !String(photo.part || '').trim()
+        && isVisualPhotoUnorganized(photo)
       )))
     : [];
   return {
@@ -275,7 +285,7 @@ export function buildSamplingPhotoView(selectedMaterialId = '') {
     ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
         photo.photoType === 'sampling'
         && photo.materialId === activeMaterial.materialId
-        && (!Number(photo.samplingBranch) || !String(photo.shootingType || '').trim())
+        && isSamplingPhotoUnorganized(photo)
       )))
     : [];
   return { mode: 'sampling', materials, activeMaterial, unorganizedPhotos };

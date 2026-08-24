@@ -14,7 +14,7 @@
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { PHOTO_TYPES, SHOOTING_TYPES, getShootingTypeLabel, getVisualPhotoRoomKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
 import { getPhotoBlob, savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
 import {
   BOARD_POSITION_LABELS,
@@ -70,11 +70,68 @@ function dateText(value) {
 }
 function sampleDisplay(base, branch) { return `${base || ''}${MARKS[branch] ? `-${MARKS[branch]}` : ''}`; }
 
+function memoValue_(value) {
+  const text = String(value ?? '').trim();
+  return text || '-';
+}
+
+function appendSystemMemo_(currentMemo, message) {
+  const current = String(currentMemo || '').trim();
+  const stamp = new Date().toLocaleString('ja-JP');
+  const line = `${stamp} ${message}`;
+  return current ? `${current}\n${line}` : line;
+}
+
+/**
+ * 保存確定時に、Editor上で利用者が認識できる変更だけを1イベントへまとめる。
+ * 内部で連動する materialId / samplingPlace / part 等は個別履歴に展開しない。
+ */
+function buildBoardEditMemo_(entry) {
+  const before = entry.initialDraft || {};
+  const after = entry.draft || {};
+  const lines = [];
+
+  if (entry.record.photoType === PHOTO_TYPES.VISUAL) {
+    const roomChanged = before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
+    if (roomChanged) {
+      lines.push(`部屋：${memoValue_(before.roomNo || before.roomPosition)} → ${memoValue_(after.roomNo || after.roomPosition)}`);
+    }
+
+    const partChanged = Number(before.partSlot || 0) !== Number(after.partSlot || 0) || before.part !== after.part;
+    if (partChanged) {
+      lines.push(`部位：${before.part ? memoValue_(before.part) : '未整理'} → ${after.part ? memoValue_(after.part) : '未整理'}`);
+    }
+  } else {
+    const materialChanged = before.materialId !== after.materialId || before.sampleBaseNo !== after.sampleBaseNo;
+    if (materialChanged) {
+      lines.push(`検体No.：${memoValue_(before.sampleBaseNo)} → ${memoValue_(after.sampleBaseNo)}`);
+    }
+
+    const branchChanged = Number(before.samplingBranch || 0) !== Number(after.samplingBranch || 0);
+    if (branchChanged) {
+      lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue_(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue_(after.samplingBranch) : '未整理'}`);
+    }
+
+    if (before.shootingType !== after.shootingType) {
+      lines.push(`撮影区分：${before.shootingType ? memoValue_(getShootingTypeLabel(before.shootingType)) : '未整理'} → ${after.shootingType ? memoValue_(getShootingTypeLabel(after.shootingType)) : '未整理'}`);
+    }
+  }
+
+  if (before.boardPosition !== after.boardPosition) {
+    lines.push(`看板位置：${memoValue_(BOARD_POSITION_LABELS[before.boardPosition])} → ${memoValue_(BOARD_POSITION_LABELS[after.boardPosition])}`);
+  }
+  if (before.boardSize !== after.boardSize) {
+    lines.push(`看板サイズ：${memoValue_(BOARD_SIZE_LABELS[before.boardSize])} → ${memoValue_(BOARD_SIZE_LABELS[after.boardSize])}`);
+  }
+
+  return lines.length ? ['看板編集', ...lines].join('\n') : '';
+}
+
 function currentStatusCode(entry = active) {
   if (!entry) return '1';
   if (entry.record.photoType === PHOTO_TYPES.VISUAL) return '5';
   if (entry.draft.shootingType === SHOOTING_TYPES.SECTION) return '4';
-  return ({ before:'1', during:'2', after:'3' })[entry.draft.shootingType] || '1';
+  return ({ before:'1', during:'2', after:'3' })[entry.draft.shootingType] || '';
 }
 
 function boardData(entry = active) {
@@ -96,7 +153,10 @@ function boardData(entry = active) {
 
 function visualRooms() { return optionsProvider()?.visualRooms || []; }
 function samplingTargets() { return optionsProvider()?.samplingTargets || []; }
-function visualRoomByPosition(position) { return visualRooms().find((r) => r.roomPosition === position) || visualRooms()[0] || null; }
+function visualRoomByIdentity(identity = {}) {
+  const key = getVisualPhotoRoomKey(identity);
+  return visualRooms().find((room) => getVisualPhotoRoomKey(room) === key) || null;
+}
 function samplingMaterialTargets(materialId) { return samplingTargets().filter((t) => t.materialId === materialId); }
 function samplingMaterials() {
   const map = new Map();
@@ -107,29 +167,52 @@ function samplingMaterials() {
   return [...map.values()];
 }
 
-function snapshotFromRecord(record) {
-  if (record.photoType === PHOTO_TYPES.VISUAL) {
-    const room = visualRoomByPosition(record.roomPosition);
-    return {
-      roomPosition: room?.roomPosition || record.roomPosition || '',
-      roomNo: room?.roomNo || record.roomNo || '',
-      part: record.part || room?.targets?.[0]?.part || '',
-      boardPosition: record.boardPosition || 'bottom-left',
-      boardSize: record.boardSize || 'medium'
-    };
-  }
-  const targets = samplingMaterialTargets(record.materialId);
-  const target = targets.find((t) => Number(t.branch) === Number(record.samplingBranch)) || targets[0] || {};
+function snapshotVisualFromRecord_(record) {
+  const room = visualRoomByIdentity(record);
+  const unorganized = isVisualPhotoUnorganized(record);
+  const target = unorganized
+    ? null
+    : room?.targets?.find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0)) || null;
+
   return {
-    materialId: record.materialId || target.materialId || '',
-    sampleBaseNo: record.sampleBaseNo || target.sampleBaseNo || String(record.sampleNo || '').split('-')[0] || '',
-    samplingBranch: Number(record.samplingBranch || target.branch || 1),
-    samplingPlace: record.samplingPlace || target.samplingPlace || '',
-    part: record.part || target.part || '',
-    shootingType: record.shootingType || SHOOTING_TYPES.BEFORE,
+    // 未整理でも「どの部屋の写真か」は保持する。候補一覧から別の部屋へ勝手に補完しない。
+    areaCode: record.areaCode || room?.areaCode || '',
+    roomPosition: record.roomPosition || room?.roomPosition || '',
+    partSlot: Number(record.partSlot || 0),
+    roomNo: record.roomNo || room?.roomNo || '',
+    part: record.part || target?.part || '',
     boardPosition: record.boardPosition || 'bottom-left',
     boardSize: record.boardSize || 'medium'
   };
+}
+
+function snapshotSamplingFromRecord_(record) {
+  const materials = samplingMaterials();
+  const material = materials.find((item) => item.materialId === record.materialId) || null;
+  const targets = samplingMaterialTargets(record.materialId);
+  const unorganized = isSamplingPhotoUnorganized(record);
+  const target = unorganized
+    ? null
+    : targets.find((item) => Number(item.branch) === Number(record.samplingBranch)) || null;
+
+  return {
+    // 未整理でも「どの検体の写真か」はmaterialIdで確定している。
+    // sampleBaseNoはそのmaterialIdに対応する表示用検体No.だけを解決し、箇所・撮影区分は補完しない。
+    materialId: record.materialId || material?.materialId || '',
+    sampleBaseNo: record.sampleBaseNo || String(record.sampleNo || '').split('-')[0] || material?.sampleBaseNo || '',
+    samplingBranch: Number(record.samplingBranch || 0),
+    samplingPlace: record.samplingPlace || target?.samplingPlace || '',
+    part: record.part || target?.part || '',
+    shootingType: record.shootingType || '',
+    boardPosition: record.boardPosition || 'bottom-left',
+    boardSize: record.boardSize || 'medium'
+  };
+}
+
+function snapshotFromRecord(record) {
+  return record.photoType === PHOTO_TYPES.VISUAL
+    ? snapshotVisualFromRecord_(record)
+    : snapshotSamplingFromRecord_(record);
 }
 
 function createEntry_(record) {
@@ -223,22 +306,39 @@ function ensureRoot() {
 
 function visualFields() {
   const rooms = visualRooms();
-  const room = rooms.find((r) => r.roomPosition === active.draft.roomPosition) || rooms[0];
+  const room = visualRoomByIdentity(active.draft);
   const parts = room?.targets || [];
+  const activeRoomKey = getVisualPhotoRoomKey(active.draft);
+  const hasActiveRoom = rooms.some((item) => getVisualPhotoRoomKey(item) === activeRoomKey);
   return `<div class="photo-board-editor-fields">
-    <label>部屋No.<select data-editor-room>${rooms.map((r)=>`<option value="${esc(r.roomPosition)}" ${r.roomPosition===active.draft.roomPosition?'selected':''}>${esc(r.roomNo || r.roomPosition)}</option>`).join('')}</select></label>
-    <label>部位<select data-editor-part>${parts.map((p)=>`<option value="${esc(p.part)}" ${p.part===active.draft.part?'selected':''}>${esc(p.part)}</option>`).join('')}</select></label>
+    <label>部屋No.<select data-editor-room>
+      ${hasActiveRoom ? '' : '<option value="" selected>選択してください</option>'}
+      ${rooms.map((r)=>{ const key=getVisualPhotoRoomKey(r); return `<option value="${esc(key)}" ${key===activeRoomKey?'selected':''}>${esc(r.roomNo || r.roomPosition)}</option>`; }).join('')}
+    </select></label>
+    <label>部位<select data-editor-part>
+      <option value="" ${Number(active.draft.partSlot || 0)===0?'selected':''}>選択してください</option>
+      ${parts.map((p)=>`<option value="${Number(p.partSlot || 0)}" ${Number(p.partSlot || 0)===Number(active.draft.partSlot || 0)?'selected':''}>${esc(p.part)}</option>`).join('')}
+    </select></label>
   </div>`;
 }
 
 function samplingFields() {
   const materials = samplingMaterials();
-  const targets = samplingMaterialTargets(active.draft.materialId || active.record.materialId);
+  const selectedMaterialId = active.draft.materialId || active.record.materialId || '';
+  const targets = samplingMaterialTargets(selectedMaterialId);
   const branches = [...new Set(targets.map((t)=>Number(t.branch)).filter(Boolean))];
+  const hasMaterial = materials.some((item) => item.materialId === selectedMaterialId);
   return `<div class="photo-board-editor-fields">
-    <label>検体No.<select data-editor-sample>${materials.map((m)=>`<option value="${esc(m.materialId)}" ${m.materialId===(active.draft.materialId || active.record.materialId)?'selected':''}>${esc(m.sampleBaseNo)}</option>`).join('')}</select></label>
-    <label>箇所<select data-editor-branch>${branches.map((b)=>`<option value="${b}" ${b===Number(active.draft.samplingBranch)?'selected':''}>${MARKS[b] || b}</option>`).join('')}</select></label>
+    <label>検体No.<select data-editor-sample>
+      ${hasMaterial ? '' : '<option value="" selected>選択してください</option>'}
+      ${materials.map((m)=>`<option value="${esc(m.materialId)}" ${m.materialId===selectedMaterialId?'selected':''}>${esc(m.sampleBaseNo)}</option>`).join('')}
+    </select></label>
+    <label>箇所<select data-editor-branch>
+      <option value="" ${Number(active.draft.samplingBranch || 0)===0?'selected':''}>選択してください</option>
+      ${branches.map((b)=>`<option value="${b}" ${b===Number(active.draft.samplingBranch)?'selected':''}>${MARKS[b] || b}</option>`).join('')}
+    </select></label>
     <label>撮影区分<select data-editor-stage>
+      <option value="" ${!active.draft.shootingType?'selected':''}>選択してください</option>
       ${STAGES.map((v)=>`<option value="${v}" ${v===active.draft.shootingType?'selected':''}>${({before:'施工前',during:'施工中',after:'施工後'})[v]}</option>`).join('')}
       <option value="section" ${active.draft.shootingType==='section'?'selected':''}>断面</option>
     </select></label>
@@ -308,23 +408,37 @@ function syncSamplingPlace() {
 function updateDraftFromEvent(target) {
   if (!active) return;
   if (target.matches('[data-editor-room]')) {
-    const room = visualRooms().find((r)=>r.roomPosition===target.value);
+    const room = visualRooms().find((item) => getVisualPhotoRoomKey(item) === target.value);
+    active.draft.areaCode = room?.areaCode || '';
     active.draft.roomPosition = room?.roomPosition || '';
     active.draft.roomNo = room?.roomNo || '';
-    active.draft.part = room?.targets?.[0]?.part || '';
+    // 部屋変更時に先頭部位へ自動整理しない。部位は利用者が明示選択する。
+    active.draft.partSlot = 0;
+    active.draft.part = '';
     renderControls();
-  } else if (target.matches('[data-editor-part]')) active.draft.part = target.value;
+  } else if (target.matches('[data-editor-part]')) {
+    const room = visualRoomByIdentity(active.draft);
+    const partTarget = target.value
+      ? room?.targets?.find((item) => Number(item.partSlot || 0) === Number(target.value)) || null
+      : null;
+    active.draft.partSlot = Number(partTarget?.partSlot || 0);
+    active.draft.part = partTarget?.part || '';
+  }
   else if (target.matches('[data-editor-sample]')) {
     const material = samplingMaterials().find((m)=>m.materialId===target.value);
     active.draft.materialId = material?.materialId || target.value;
     active.draft.sampleBaseNo = material?.sampleBaseNo || '';
-    const first = material?.targets?.[0];
-    active.draft.samplingBranch = Number(first?.branch || 1);
-    active.draft.samplingPlace = first?.samplingPlace || '';
-    active.draft.part = first?.part || '';
+    // 検体変更時に箇所1へ自動整理しない。箇所は利用者が明示選択する。
+    active.draft.samplingBranch = 0;
+    active.draft.samplingPlace = '';
+    active.draft.part = '';
     renderControls();
   }
-  else if (target.matches('[data-editor-branch]')) { active.draft.samplingBranch = Number(target.value); syncSamplingPlace(); }
+  else if (target.matches('[data-editor-branch]')) {
+    active.draft.samplingBranch = Number(target.value || 0);
+    if (active.draft.samplingBranch) syncSamplingPlace();
+    else { active.draft.samplingPlace = ''; active.draft.part = ''; }
+  }
   else if (target.matches('[data-editor-stage]')) active.draft.shootingType = target.value;
   else if (target.matches('[data-editor-position]')) active.draft.boardPosition = target.value;
   else if (target.matches('[data-editor-size]')) active.draft.boardSize = target.value;
@@ -360,7 +474,7 @@ async function persistEntry_(entry) {
   const completedBlob = await composeCompletedBlob_(entry);
   const now = new Date().toISOString();
   const nextFields = entry.record.photoType === PHOTO_TYPES.VISUAL
-    ? { roomPosition:entry.draft.roomPosition, roomNo:entry.draft.roomNo, part:entry.draft.part }
+    ? { areaCode:entry.draft.areaCode, roomPosition:entry.draft.roomPosition, partSlot:entry.draft.partSlot, roomNo:entry.draft.roomNo, part:entry.draft.part }
     : {
         materialId:entry.draft.materialId || entry.record.materialId,
         samplingPlace:entry.draft.samplingPlace,
@@ -376,11 +490,13 @@ async function persistEntry_(entry) {
     photoRecordStore.getAll(),
     entry.record.photoId
   );
+  const editMemo = buildBoardEditMemo_(entry);
 
   const record = photoRecordStore.set({
     ...entry.record,
     ...nextFields,
     fileName,
+    systemMemo: editMemo ? appendSystemMemo_(entry.record.systemMemo, editMemo) : entry.record.systemMemo,
     boardPosition:entry.draft.boardPosition,
     boardSize:entry.draft.boardSize,
     isEdited:true,

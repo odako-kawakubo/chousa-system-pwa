@@ -14,6 +14,7 @@
 import {
   createPhotoRecord,
   getPhotoRepresentativeGroupKey,
+  getVisualPhotoTargetKey,
   isActivePhotoRecord
 } from '../records/photo-record.js';
 
@@ -150,13 +151,21 @@ export function markDeleted(photoId) {
   return true;
 }
 
-/** @param {{roomPosition:string, part:string, includeDeleted?:boolean}} criteria */
+/**
+ * 目視写真は areaCode + roomPosition + partSlot の共通キーだけで検索する。
+ *
+ * 注意:
+ * この方式はroomPositionが不変である現在運用を前提にしている。
+ * ＋挿入機能を将来UIから再度有効化する場合は、roomUid基準へ再設計すること。
+ * @param {{areaCode:string, roomPosition:string, partSlot:number, includeDeleted?:boolean}} criteria
+ */
 export function findVisual(criteria) {
+  const targetKey = getVisualPhotoTargetKey(criteria);
+  if (!targetKey) return [];
   return getAll().filter((record) => {
     if (record.photoType !== 'visual') return false;
     if (!criteria.includeDeleted && record.deleted) return false;
-    return record.roomPosition === String(criteria.roomPosition ?? '')
-      && record.part === String(criteria.part ?? '');
+    return getVisualPhotoTargetKey(record) === targetKey;
   });
 }
 
