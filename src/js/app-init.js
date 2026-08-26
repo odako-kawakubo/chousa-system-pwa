@@ -13,6 +13,7 @@ import { bindAppUpdateEvents } from './app-update.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
+import { initializeProjectManagement, captureInitialProjectSession } from './projects/project-controller.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
@@ -45,6 +46,7 @@ function initUiSkeleton() {
   bindThemeControls();
   bindProjectPanelEvents();
   bindModalEvents();
+  initializeProjectManagement();
   bindAppUpdateEvents();
   bindAuthUiEvents();
   initializeFinishTable();
@@ -59,6 +61,13 @@ function initUiSkeleton() {
   initializeRecordView();
   initializePhotoTab();
   initializeSettingsTab();
+
+  // finish/material/photoのデモ初期投入がすべて終わった時点で、
+  // サンプル案件の完全スナップショットを案件一覧Storeへ登録する。
+  captureInitialProjectSession();
+
+  // ページ離脱時も現在案件のローカル確認用スナップショットを退避する。
+  window.addEventListener('pagehide', captureInitialProjectSession);
 
   // 起動時は仕上表タブを既定表示する。
   showTab('finish');

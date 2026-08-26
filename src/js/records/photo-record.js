@@ -50,6 +50,10 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {string} localOriginalStatus
  * @property {string} localCompletedStatus
  * @property {string} systemMemo
+ * @property {string} originalPath
+ * @property {string} completedPath
+ * @property {string} updatedAt Firestore最終反映時刻（同期用）
+ * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
  */
 
 /**
@@ -184,7 +188,11 @@ export function createPhotoRecord(fields) {
     boardSize: asText(fields.boardSize),
     localOriginalStatus: asText(fields.localOriginalStatus),
     localCompletedStatus: asText(fields.localCompletedStatus),
-    systemMemo: String(fields.systemMemo ?? '').trim()
+    systemMemo: String(fields.systemMemo ?? '').trim(),
+    originalPath: asText(fields.originalPath),
+    completedPath: asText(fields.completedPath),
+    updatedAt: fields.updatedAt || '',
+    fieldEditedAt: { ...(fields.fieldEditedAt || {}) }
   };
 
   if (photoType === PHOTO_TYPES.VISUAL) {

@@ -121,6 +121,12 @@
   position: relative;
   padding-right: 46px;
 }
+.project-side-list .project-card {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
 .project-card.active {
   background: var(--main2);
   border-color: var(--main);
@@ -479,4 +485,37 @@
     z-index: 30;
     padding-top: 5px;
   }
+}
+
+/* v0.1.6.1A 新規案件作成 */
+.new-project-card {
+  width: min(560px, 100%);
+}
+.new-project-form {
+  display: grid;
+  gap: 12px;
+}
+.new-project-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.new-project-form input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+.new-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.project-list-note {
+  padding: 10px 2px;
+  line-height: 1.5;
 }

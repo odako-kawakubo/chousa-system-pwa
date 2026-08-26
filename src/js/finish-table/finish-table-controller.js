@@ -32,8 +32,11 @@
  * Apple Pencilは単純タップを通常操作として扱い、ドラッグ時だけ編集開始を抑止する。
  */
 
+import { formatProjectLabel } from '../projects/project-store.js';
+
 import {
   initFinishTableState,
+  getState,
   subscribe,
   setAreaMode,
   getSelectedRoomKey,
@@ -411,6 +414,8 @@ export function initializeFinishTable() {
  * ここで個別に呼ぶ必要はない。
  */
 function refreshFromStores() {
+  const banner = document.getElementById('finishProjectBanner');
+  if (banner) banner.textContent = formatProjectLabel(getState().project);
   renderToolbarState();
   renderRooms();
   renderSimpleList();
@@ -425,6 +430,15 @@ function refreshFromStores() {
  */
 export function refreshFinishTableFromStores() {
   refreshFromStores();
+}
+
+/** 案件切替時にUndo/Redoと編集中状態を新案件向けに初期化する。 */
+export function resetFinishTableForProject() {
+  pendingEditSnapshot = null;
+  pendingEditBeforeValue = null;
+  explicitlyCommittedInputKey = null;
+  resetHistory();
+  updateUndoRedoButtons();
 }
 
 /**

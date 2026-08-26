@@ -31,6 +31,7 @@
  * @property {string} systemMemo
  * @property {string} updatedDevice
  * @property {string} updatedAt
+ * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
  * @property {string} roomUid 内部補助ID
  */
 
@@ -98,6 +99,7 @@ export function createFinishRecord(fields) {
     systemMemo: String(fields.systemMemo ?? ''),
     updatedDevice: fields.updatedDevice || 'local',
     updatedAt: fields.updatedAt || new Date().toISOString(),
+    fieldEditedAt: { ...(fields.fieldEditedAt || {}) },
     roomUid: fields.roomUid || nextRoomUid()
   };
 }

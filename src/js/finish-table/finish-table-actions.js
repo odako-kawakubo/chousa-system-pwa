@@ -35,10 +35,10 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import {
   INITIAL_ROW_COUNT,
-  INITIAL_STRUCTURE_SEED,
   INTERNAL_PARTS,
   EXTERNAL_PARTS
-} from '../demo/sample-finish-data.js';
+} from './finish-table-constants.js';
+import { INITIAL_STRUCTURE_SEED } from '../demo/sample-finish-data.js';
 import { SAMPLE_MATERIALS_SEED } from '../demo/sample-materials.js';
 
 const ROOMS_PER_FLOOR = 10;
@@ -54,22 +54,10 @@ function partsForArea(areaCode) {
 function defaultPartName(areaCode, partIndex) {
   const raw = partsForArea(areaCode)[partIndex - 1] || '';
 
-  // その他1/2は、建材が未入力の段階では実部位も空欄のままにする。
-  // 建材登録時に実部位が空ならnormalizeOtherPartName()で「その他」へ確定する。
+  // その他1/2は、建材の有無に関係なく実部位が未入力なら空欄のまま保持する。
+  // 業務上の「その他」扱いはmaterialRecordの部位集計時だけ行う。
   return partIndex >= 5 ? '' : raw;
 }
-
-/**
- * その他1/2の業務上の部位名を正規化する。
- * 入力が空、またはスロット名そのもの（その他1/その他2）の場合は
- * 正式な部位名「その他」として保持する。実部位が入力されていればその値を使う。
- */
-function normalizeOtherPartName(value) {
-  const text = String(value ?? '').trim();
-  if (!text || text === 'その他1' || text === 'その他2') return 'その他';
-  return text;
-}
-
 
 function normalizeCandidateMaterialInput(rawValue) {
   const normalized = normalizeMaterialName(rawValue);
@@ -324,11 +312,9 @@ function writeCellPatch(anchor, partIndex, row, patch) {
   if (!existing) {
     throw new Error(`仕上表レコードが存在しません: ${finishId}`);
   }
-  const normalizedPatch = { ...patch };
-  if (Object.prototype.hasOwnProperty.call(normalizedPatch, 'part') && partIndex >= 5) {
-    normalizedPatch.part = normalizeOtherPartName(normalizedPatch.part);
-  }
-  finishRecordStore.set({ ...existing, ...normalizedPatch, updatedAt: nowIso() });
+  // その他1/2のpartも入力値をそのまま保持する。
+  // 空欄をタップしただけ・空欄のまま編集終了しただけで「その他」を実データ化しない。
+  finishRecordStore.set({ ...existing, ...patch, updatedAt: nowIso() });
   refreshMaterialUsageDerivedFields();
 }
 
@@ -428,16 +414,12 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
         materialRecordStore.set(material);
       }
     }
-    const patch = {
+    // 建材を登録しても、その他1/2の実部位が未入力ならpartは空欄のまま保持する。
+    // materialRecordの部位集計時だけ空欄を業務上「その他」として解決する。
+    writeCellPatch(anchor, partIndex, row, {
       inputId: String(material.inputId),
       materialId: material.materialId
-    };
-    // その他1/2は実部位未入力なら、業務上の部位名を「その他」として保持する。
-    if (partIndex >= 5) {
-      const current = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
-      patch.part = normalizeOtherPartName(current?.part);
-    }
-    writeCellPatch(anchor, partIndex, row, patch);
+    });
     refreshMaterialUsageDerivedFields();
   });
   return material;
@@ -564,7 +546,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
 
     sourceRecords.forEach((source) => {
       const partIndex = partIndexFromPosition(source.position);
-      const part = partIndex >= 5 ? (String(source.part || '').trim() || 'その他') : defaultPartName(target.areaCode, partIndex);
+      const part = partIndex >= 5 ? String(source.part || '').trim() : defaultPartName(target.areaCode, partIndex);
       const existing = targetByPosition.get(source.position);
 
       if (existing) {

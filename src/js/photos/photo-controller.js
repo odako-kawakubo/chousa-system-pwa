@@ -695,6 +695,10 @@ function scheduleStoreRender() {
   });
 }
 
+export function refreshPhotoTab() {
+  render();
+}
+
 export function initializePhotoTab() {
   root = document.getElementById('photos');
   if (!root) return;

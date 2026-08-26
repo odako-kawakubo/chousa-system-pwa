@@ -37,6 +37,7 @@
  * @property {string} systemMemo
  * @property {string} updatedDevice
  * @property {string} updatedAt
+ * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
  * @property {string} color
  * @property {number} photoCount
  */
@@ -184,6 +185,7 @@ export function createMaterialRecord(fields) {
     systemMemo: String(fields.systemMemo ?? ''),
     updatedDevice: fields.updatedDevice || 'local',
     updatedAt: fields.updatedAt || new Date().toISOString(),
+    fieldEditedAt: { ...(fields.fieldEditedAt || {}) },
     color: fields.color || colorForInputId(inputId),
     photoCount: Number(fields.photoCount) || 0
   };

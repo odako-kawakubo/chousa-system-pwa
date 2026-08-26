@@ -9,7 +9,7 @@
 
   現在の方針：
     ・バージョン番号は app-config.js を正本とし、HTMLへ直書きしない。
-    ・仕上表はサンプル案件でUIと基本操作を確認できる。
+    ・サンプル案件に加え、v0.1.6.1Aでは現場新規案件を正式初期仕上表で生成できる。
     ・他タブの業務機能、正式レコード、保存・同期は段階的に実装する。
     ・インラインonclickは使わず、各JSモジュールからイベントを配線する。
 -->
@@ -59,7 +59,7 @@
   </div>
   <div class="project-side-tools">
     <input id="projectSearchInput" placeholder="端末内の案件を検索" disabled />
-    <button class="btn primary" disabled>＋ 現場で新規作成</button>
+    <button class="btn primary" data-modal-open data-modal-target="newProjectModal">＋ 現場で新規作成</button>
     <button class="btn" id="restoreProjectButton" data-modal-open data-modal-target="sharedProjectModal">
       既存案件を開く
     </button>
@@ -71,6 +71,35 @@
     </div>
   </div>
 </aside>
+
+<!-- ============================================================
+     新規案件作成モーダル
+     v0.1.6.1Aでは案件名・住所から仮案件を生成し、正式初期仕上表で開く。
+     ============================================================ -->
+<div class="shared-project-modal" id="newProjectModal" data-modal-close data-modal-target="newProjectModal">
+  <div class="shared-project-card new-project-card" data-modal-stop>
+    <div class="shared-project-head">
+      <b>現場で新規作成</b>
+      <button class="btn small" data-modal-close data-modal-target="newProjectModal">閉じる</button>
+    </div>
+    <div class="new-project-form">
+      <label>
+        <span>案件名</span>
+        <input id="newProjectNameInput" autocomplete="off" placeholder="案件名を入力" />
+      </label>
+      <label>
+        <span>住所</span>
+        <input id="newProjectAddressInput" autocomplete="off" placeholder="住所を入力" />
+      </label>
+      <div class="hint">案件番号は作成時に yymmdd-連番 で自動発番します。</div>
+      <div class="project-restore-status" id="newProjectStatus"></div>
+    </div>
+    <div class="new-project-actions">
+      <button class="btn" data-modal-close data-modal-target="newProjectModal">キャンセル</button>
+      <button class="btn primary" id="createNewProjectButton">作成して開く</button>
+    </div>
+  </div>
+</div>
 
 <!-- ============================================================
      既存案件を開くモーダル（中身は未実装。開閉のみ確認用）

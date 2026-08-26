@@ -7,7 +7,7 @@
  * - 削除仕様は未確定のため、この版では追加・編集のみ実装する。
  */
 
-import { sampleProject } from '../demo/sample-project.js';
+import { getCurrentProject } from '../projects/project-store.js';
 import * as surveyCandidateStore from '../store/survey-candidate-store.js';
 import { renderSettingsTab } from './settings-renderer.js';
 import * as boardSettingsStore from './board-settings-store.js';
@@ -18,11 +18,12 @@ let unsubscribe = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
+  const currentProject = getCurrentProject() || {};
   return {
     project: {
-      projectNo: board.projectNo || sampleProject.projectNo || '',
-      projectName: board.projectName || sampleProject.projectName || '',
-      address: board.address || '',
+      projectNo: board.projectNo || currentProject.projectNo || '',
+      projectName: board.projectName || currentProject.projectName || '',
+      address: board.address || currentProject.address || '',
       surveyDate: board.surveyDate || '',
       surveyor: board.surveyor || ''
     },
@@ -200,6 +201,10 @@ function handleChange(event) {
       render();
     }
   }
+}
+
+export function refreshSettingsTab() {
+  render();
 }
 
 export function initializeSettingsTab() {

@@ -24,7 +24,7 @@
  *   getUndoableSnapshot()を参照）。
  */
 
-import { sampleProject } from '../demo/sample-project.js';
+import { getCurrentProject } from '../projects/project-store.js';
 
 let state = null;
 const listeners = [];
@@ -52,7 +52,7 @@ export function subscribe(callback) {
 
 export function initFinishTableState() {
   state = {
-    project: sampleProject,
+    project: getCurrentProject(),
 
     activeAreaMode: 'internal',
     colorMode: false,
@@ -90,6 +90,22 @@ export function initFinishTableState() {
 export function getState() {
   return state;
 }
+
+
+export function setProject(project) {
+  if (!state) return;
+  state.project = project ? { ...project } : null;
+  state.activeAreaMode = 'internal';
+  state.activeRoomKey = null;
+  state.activeGroupKey = null;
+  state.focusedInputKey = null;
+  state.selectedMaterialInputId = null;
+  state.roomCopy = { sourceRoomKey: null, backups: {}, done: {} };
+  state.collapsedFloors = new Set();
+  state.pendingCellNames = new Map();
+  notify();
+}
+
 
 /* ============================================================
    表示モード

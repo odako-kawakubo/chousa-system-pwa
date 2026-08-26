@@ -1,14 +1,12 @@
 /**
  * src/js/demo/sample-finish-data.js
  *
- * 本開発版の初期仕上表構成を定義する種データ。
- * 実際の正本はfinishRecordStoreで、seedInitialFinishRecords()が
+ * 値入りデモ案件の仕上表構成を定義する種データ。
+ * デモ表示時の正本はfinishRecordStoreで、seedInitialFinishRecords()が
  * 「1入力枠 = 1finishRecord」として未入力枠を含む全レコードを生成する。
  */
 
-export const INITIAL_ROW_COUNT = 2;
-export const INTERNAL_PARTS = ['床', '巾木', '壁', '天井', 'その他1', 'その他2'];
-export const EXTERNAL_PARTS = ['床・犬走', '外壁', '屋根', '軒裏', 'その他1', 'その他2'];
+export { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from '../finish-table/finish-table-constants.js';
 
 /**
  * 初期構成の種データ。内部階（floors）・階段・屋上・外部の部屋数／名称だけを

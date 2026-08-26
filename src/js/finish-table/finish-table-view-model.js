@@ -20,7 +20,7 @@ import {
   describeRoomCopyClick as computeDescribeCopyClick
 } from './finish-table-actions.js';
 import { getState, getPendingCellName } from './finish-table-state.js';
-import { INTERNAL_PARTS, EXTERNAL_PARTS } from '../demo/sample-finish-data.js';
+import { INTERNAL_PARTS, EXTERNAL_PARTS } from './finish-table-constants.js';
 
 export { INTERNAL_PARTS, EXTERNAL_PARTS };
 
