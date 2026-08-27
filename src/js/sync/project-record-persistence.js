@@ -1,14 +1,15 @@
 /**
  * src/js/sync/project-record-persistence.js
  *
- * v0.1.6.2A 仕上表＋建材の1端末保存・復元をつなぐ共通入口。
+ * v0.1.6.2B 仕上表＋建材＋写真の1端末保存・復元をつなぐ共通入口。
  * UI側はFirestore Repositoryを直接呼ばず、このモジュール経由で保存する。
  * 保存要求は1本のPromiseチェーンへ積み、同一端末内で確定順が逆転しないようにする。
  */
 
-import { saveFinishRecord, saveMaterialRecord, readProjectRecords } from '../firestore/firestore-repository.js';
+import { saveFinishRecord, saveMaterialRecord, savePhotoRecord, readProjectRecords } from '../firestore/firestore-repository.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
+import { createPhotoRecord } from '../records/photo-record.js';
 import { listUnsent } from './unsent-queue.js';
 
 let writeChain = Promise.resolve();
@@ -46,6 +47,15 @@ export function persistMaterialForProject(project, record) {
   }));
 }
 
+export function persistPhotoForProject(project, record) {
+  if (!shouldSyncProject(project) || !record?.photoId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueue(() => savePhotoRecord({
+    projectId: project.projectId,
+    environment: projectEnvironment(project),
+    record
+  }));
+}
+
 /** 現在までにこの端末で積まれた書込要求が終わるまで待つ。 */
 export async function flushPendingWrites() {
   await writeChain;
@@ -76,12 +86,26 @@ function hydrateMaterialRecords(rawRecords = []) {
     });
 }
 
+
+function hydratePhotoRecords(rawRecords = []) {
+  return rawRecords
+    .slice()
+    .sort((a, b) => String(a.photoId || a.id || '').localeCompare(String(b.photoId || b.id || ''), 'ja', { numeric: true }))
+    .map((raw) => createPhotoRecord({
+      ...raw,
+      photoId: String(raw.photoId || raw.id || ''),
+      syncStatus: raw.syncStatus || 'synced',
+      updatedAt: raw.updatedAt || '',
+      fieldEditedAt: raw.fieldEditedAt || {}
+    }));
+}
+
 /**
- * バックアップなし案件のA段階復元。
+ * バックアップなし案件のB段階復元。
  * default仕上表を土台に、Firestoreに現在存在するfinish差分を上書きする。
  * materialはFirestore一式から再構築する。
  */
-export async function loadFinishAndMaterialsFromFirestore(project) {
+export async function loadProjectRecordsFromFirestore(project) {
   if (!shouldSyncProject(project)) return null;
 
   // 切替直前の編集確定writeが残っている場合、先に完了させてから読み戻す。
@@ -140,8 +164,14 @@ export async function loadFinishAndMaterialsFromFirestore(project) {
     });
   });
 
+  const unsentPhotos = unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record);
+  const photoRawMap = new Map(remote.photoRecords.map((record) => [String(record.photoId || record.id || ''), record]));
+  unsentPhotos.forEach((item) => photoRawMap.set(String(item.recordId), item.record));
+  const photos = hydratePhotoRecords(Array.from(photoRawMap.values()));
+
   return {
     finishRecords: Array.from(finishMap.values()),
-    materialRecords: materials
+    materialRecords: materials,
+    photoRecords: photos
   };
 }

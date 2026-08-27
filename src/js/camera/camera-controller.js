@@ -17,6 +17,7 @@ import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { getAvailablePhotoFileName } from '../photos/photo-filename.js';
 import { getDeviceCode } from '../device-code.js';
 import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { saveCapturedPhoto } from '../photos/photo-local-store.js';
 import {
@@ -809,12 +810,18 @@ async function takePhoto() {
       boardPosition: snapshot.boardPosition,
       boardSize: snapshot.boardSize,
       localOriginalStatus: 'saved',
-      localCompletedStatus: 'saved'
+      localCompletedStatus: 'saved',
+      fieldEditedAt: touchFieldEditedAt({}, [
+        'photoType', 'fileName', 'capturedDevice', 'capturedAt', 'boardPosition', 'boardSize',
+        ...(snapshot.photoType === PHOTO_TYPES.VISUAL
+          ? ['areaCode', 'roomPosition', 'partSlot']
+          : ['materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'])
+      ])
     });
 
     await saveCapturedPhoto({ record, originalBlob, completedBlob });
-    await onPhotoSaved?.({ record, originalBlob, completedBlob });
-    photoRecordStore.set(record);
+    const stored = photoRecordStore.set(record);
+    await onPhotoSaved?.({ record: stored, originalBlob, completedBlob });
     updatePhotoCount();
   } catch (error) {
     console.error('Capture save failed:', error);

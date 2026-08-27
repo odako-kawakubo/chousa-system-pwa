@@ -76,6 +76,7 @@ import {
   commitCellActualPart,
   applyMaterialToCell,
   registerMaterialForCell,
+  getMaterialPartOptions,
   describeRoomCopyClick,
   executeRoomCopy,
   restoreRoomCopy,
@@ -156,7 +157,21 @@ function getCandidateOptionsForInput(input) {
   const partIndex = Number(input.dataset.partIndex);
 
   if (kind === 'part') {
-    return getOtherPartOptions().map((value) => ({
+    // その他1/2で既存建材が複数部位を持つ場合は、その建材が実際に持つ部位だけを候補にする。
+    // 未紐付け時は従来どおり案件内の「その他」用候補を表示する。
+    const roomKeyValue = String(input.dataset.roomKey || '');
+    const row = Number(input.dataset.inputRow);
+    const position = partIndex * 100 + row;
+    const finishRecord = finishRecordStore.getAll().find((record) =>
+      record.status === 'active'
+      && String(record.roomUid || '') === roomKeyValue
+      && Number(record.position) === position
+    ) || null;
+    const material = finishRecord?.materialId ? materialRecordStore.get(finishRecord.materialId) : null;
+    const materialParts = getMaterialPartOptions(material);
+    const values = materialParts.length > 1 ? materialParts : getOtherPartOptions();
+
+    return values.map((value) => ({
       kind: 'part',
       value,
       name: value,
@@ -726,7 +741,8 @@ function bindEvents(root) {
           registerMaterialForCell(roomKeyValue, partIndex, row, pendingName);
           clearPendingCellName(pendingKey);
         });
-        focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
+        // 「登録」ボタンは新規建材登録の完了操作。部位が未入力なら登録処理内で
+        // 「その他」まで確定するため、ここでは部位へ自動移動しない。
       }
       return;
     }
@@ -1041,11 +1057,18 @@ function bindEvents(root) {
     const pendingKey = cellPendingKey(roomKeyValue, partIndex, row);
 
     if (input.dataset.kind === 'id') {
+      let material = null;
       commitAndRefresh(() => {
-        const material = commitCellId(roomKeyValue, partIndex, row, input.value);
+        material = commitCellId(roomKeyValue, partIndex, row, input.value);
         if (material) clearPendingCellName(pendingKey);
         else if (input.value.trim()) input.title = '登録済みの入力IDではありません';
       });
+
+      // その他1/2で、入力IDから解決した建材が複数部位を持つ場合だけ、
+      // 建材名は確定したまま部位欄へ移動してユーザーに実部位を選ばせる。
+      if (partIndex >= 5 && material && getMaterialPartOptions(material).length > 1) {
+        focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
+      }
     } else if (input.dataset.kind === 'name') {
       commitAndRefresh(() => {
         // 未登録名は自動登録しない。未登録のままならID欄に「登録」ボタンが出る

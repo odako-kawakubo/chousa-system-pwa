@@ -25,11 +25,19 @@ import {
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { getAvailablePhotoFileName } from './photo-filename.js';
 import { getDeviceCode } from '../device-code.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 
 const BOARD_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 const BOARD_SIZES = ['small', 'medium', 'large'];
 const STAGES = [SHOOTING_TYPES.BEFORE, SHOOTING_TYPES.DURING, SHOOTING_TYPES.AFTER];
 const MARKS = { 1: '①', 2: '②', 3: '③' };
+
+const PHOTO_SYNC_EDIT_FIELDS = new Set([
+  'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
+  'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'originalPath', 'completedPath',
+  'areaCode', 'roomPosition', 'partSlot',
+  'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
+]);
 
 let root = null;
 let canvas = null;
@@ -492,16 +500,26 @@ async function persistEntry_(entry) {
   );
   const editMemo = buildBoardEditMemo_(entry);
 
-  const record = photoRecordStore.set({
-    ...entry.record,
+  const nextSystemMemo = editMemo ? appendSystemMemo_(entry.record.systemMemo, editMemo) : entry.record.systemMemo;
+  const nextRecordFields = {
     ...nextFields,
     fileName,
-    systemMemo: editMemo ? appendSystemMemo_(entry.record.systemMemo, editMemo) : entry.record.systemMemo,
+    systemMemo: nextSystemMemo,
     boardPosition:entry.draft.boardPosition,
     boardSize:entry.draft.boardSize,
     isEdited:true,
     lastEditedDevice:getDeviceCode(),
-    lastEditedAt:now,
+    lastEditedAt:now
+  };
+  const editedFields = Object.keys(nextRecordFields).filter((field) =>
+    PHOTO_SYNC_EDIT_FIELDS.has(field)
+    && String(entry.record?.[field] ?? '') !== String(nextRecordFields[field] ?? '')
+  );
+
+  const record = photoRecordStore.set({
+    ...entry.record,
+    ...nextRecordFields,
+    fieldEditedAt: touchFieldEditedAt(entry.record.fieldEditedAt, editedFields),
     syncStatus:'pending',
     localOriginalStatus:'saved',
     localCompletedStatus:'saved'

@@ -24,6 +24,9 @@ import {
 } from '../finish-table/finish-table-actions.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 
 function nowIso() {
   return new Date().toISOString();
@@ -216,7 +219,7 @@ export function mergeMaterials(targetId, sourceIds) {
       // 元情報をsystemMemoへ退避してから、既存未整理条件になる最小項目を空にする。
       photoRecordStore.getAll().forEach((photo) => {
         if (photo.photoType !== PHOTO_TYPES.SAMPLING || photo.deleted || photo.materialId !== source.materialId) return;
-        photoRecordStore.set({
+        const nextPhoto = photoRecordStore.set({
           ...photo,
           materialId: target.materialId,
           samplingPlace: '',
@@ -228,8 +231,12 @@ export function mergeMaterials(targetId, sourceIds) {
           systemMemo: appendSystemMemo(
             photo.systemMemo,
             buildMergedPhotoMemo(photo, source.materialId, target.materialId)
-          )
+          ),
+          fieldEditedAt: touchFieldEditedAt(photo.fieldEditedAt, [
+            'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType', 'systemMemo'
+          ])
         });
+        persistPhotoForProject(getCurrentProject(), nextPhoto);
       });
 
       // 調査備考だけは統合元から重複を除いて統合先へ引き継ぐ。

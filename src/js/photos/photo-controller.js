@@ -1,7 +1,7 @@
 /**
  * src/js/photos/photo-controller.js
  *
- * v0.1.5.3D 写真タブの状態・イベント・photoRecordStore更新を担当する。
+ * v0.1.6.2B 写真タブの状態・イベント・photoRecordStore更新を担当する。
  *
  * Dでの主な変更：
  * - 採取表示はmaterialRecordStoreの変更へ追従する。
@@ -9,7 +9,7 @@
  * - 写真サムネイルはダブルタップ／ダブルクリックで共通PhotoViewerを開く。
  * - ローカル写真選択時のObject URLはController内だけに保持し、photoRecordへ重複保存しない。
  *
- * カメラアプリ・OneDrive・Firestore同期はまだ接続しない。
+ * photoRecordはFirestore保存・再読込へ接続する。画像本体のOneDrive保存は後続段階。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -20,9 +20,12 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, getCameraPhotoRecords, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
+import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 
 const state = {
   mode: 'visual',
@@ -45,6 +48,29 @@ const SAMPLE_STAGE_ORDER = [
   SHOOTING_TYPES.AFTER,
   SHOOTING_TYPES.SECTION
 ];
+
+const PHOTO_COMMON_CREATE_EDIT_FIELDS = Object.freeze([
+  'photoType', 'fileName', 'isRepresentative', 'capturedDevice', 'capturedAt',
+  'isEdited', 'lastEditedDevice', 'lastEditedAt', 'deleted', 'systemMemo',
+  'boardPosition', 'boardSize', 'originalPath', 'completedPath'
+]);
+
+function photoCreateEditFields(record) {
+  return record?.photoType === PHOTO_TYPES.VISUAL
+    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'areaCode', 'roomPosition', 'partSlot']
+    : [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'];
+}
+
+function photoWithEditedFields(record, fields = null, confirmedAt = Date.now()) {
+  return createPhotoRecord({
+    ...record,
+    fieldEditedAt: touchFieldEditedAt(record?.fieldEditedAt, fields || photoCreateEditFields(record), confirmedAt)
+  });
+}
+
+function persistPhoto(record) {
+  return persistPhotoForProject(getCurrentProject(), record);
+}
 
 let root = null;
 let body = null;
@@ -176,11 +202,9 @@ function hydrateThumbnailImages() {
 }
 
 function nextPhotoId() {
-  const max = photoRecordStore.getAll().reduce((current, photo) => {
-    const match = /^LOCAL-PHOTO-(\d+)$/.exec(photo.photoId || '');
-    return match ? Math.max(current, Number(match[1])) : current;
-  }, 0);
-  return `LOCAL-PHOTO-${String(max + 1).padStart(3, '0')}`;
+  // 案件ごとの連番だけでは端末内画像キャッシュで別案件と衝突するため、
+  // 端末コード＋時刻で一意になるIDを使う。
+  return `I-${getDeviceCode()}-${Date.now()}`;
 }
 
 function openFilePicker(context) {
@@ -233,7 +257,7 @@ async function addPickedFiles(fileList) {
 
     // 外部取込は未整理写真として保存する。
     // original / completed は同じ生写真で開始し、必要な写真だけ後から看板編集でcompletedを再生成する。
-    const record = createPhotoRecord(context.photoType === PHOTO_TYPES.VISUAL
+    const record = photoWithEditedFields(createPhotoRecord(context.photoType === PHOTO_TYPES.VISUAL
       ? {
           ...common,
           photoType: PHOTO_TYPES.VISUAL,
@@ -253,10 +277,12 @@ async function addPickedFiles(fileList) {
           sampleBaseNo: '',
           part: '',
           shootingType: ''
-        });
+        }));
 
     await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
-    photoRecordStore.set(record);
+    const stored = photoRecordStore.set(record);
+    await updateCameraPhotoRecord(stored);
+    await persistPhoto(stored);
 
     const previous = localPreviewUrls.get(photoId);
     if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
@@ -324,6 +350,10 @@ function buildCameraOptions() {
 }
 
 async function registerCameraPreview({ record, completedBlob }) {
+  if (record?.photoId) {
+    await updateCameraPhotoRecord(record);
+    await persistPhoto(record);
+  }
   const previous = localPreviewUrls.get(record.photoId);
   if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
   if (completedBlob && typeof URL.createObjectURL === 'function') {
@@ -331,23 +361,29 @@ async function registerCameraPreview({ record, completedBlob }) {
   }
 }
 
-async function hydrateLocalCameraPhotos() {
+async function hydrateCurrentPhotoPreviews() {
+  // photoRecordの正本は現在案件Store。IndexedDBの全案件レコードをStoreへ戻さず、
+  // 現在Storeに存在するphotoIdのBlobだけを表示用に復元する。
   try {
-    const records = await getCameraPhotoRecords();
-    for (const record of records) {
-      photoRecordStore.set(record);
+    const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
+    for (const [photoId, url] of [...localPreviewUrls.entries()]) {
+      if (activeIds.has(photoId)) continue;
+      if (url && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+      localPreviewUrls.delete(photoId);
+    }
+
+    for (const record of photoRecordStore.getAll()) {
+      if (localPreviewUrls.has(record.photoId)) continue;
       const blob = await getPhotoBlob(record.photoId, 'completed');
-      if (blob && typeof URL.createObjectURL === 'function') {
-        const previous = localPreviewUrls.get(record.photoId);
-        if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
-        localPreviewUrls.set(record.photoId, URL.createObjectURL(blob));
-      }
+      if (!blob || typeof URL.createObjectURL !== 'function') continue;
+      const previous = localPreviewUrls.get(record.photoId);
+      if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
+      localPreviewUrls.set(record.photoId, URL.createObjectURL(blob));
     }
   } catch (error) {
-    console.warn('ローカル撮影写真の復元に失敗しました', error);
+    console.warn('現在案件のローカル写真プレビュー復元に失敗しました', error);
   }
 }
-
 function globalCameraContext() {
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
@@ -460,6 +496,7 @@ async function deleteSelectedPhotos(photoIds) {
   if (!ids.length) return;
   if (!window.confirm(`選択した${ids.length}枚の写真を削除しますか？`)) return;
 
+  const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
   photoRecordStore.batch(() => {
     ids.forEach((photoId) => {
       const localUrl = localPreviewUrls.get(photoId);
@@ -469,9 +506,23 @@ async function deleteSelectedPhotos(photoIds) {
     });
   });
 
-  await Promise.all(ids.map(async (photoId) => {
-    const record = photoById(photoId);
-    if (record) await updateCameraPhotoRecord(record);
+  const changed = [];
+  photoRecordStore.getAll().forEach((record) => {
+    const previous = before.get(record.photoId);
+    const fields = [];
+    if (Boolean(previous?.deleted) !== Boolean(record.deleted)) fields.push('deleted');
+    if (Boolean(previous?.isRepresentative) !== Boolean(record.isRepresentative)) fields.push('isRepresentative');
+    if (!fields.length) return;
+    const next = photoRecordStore.set({
+      ...record,
+      fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields)
+    });
+    changed.push(next);
+  });
+
+  await Promise.all(changed.map(async (record) => {
+    await updateCameraPhotoRecord(record);
+    await persistPhoto(record);
   }));
   clearSelectionMode({ renderNow: true });
 }
@@ -581,7 +632,23 @@ function bindEvents() {
 
     const representative = event.target.closest('[data-photo-representative]');
     if (representative) {
-      photoRecordStore.setRepresentative(representative.dataset.photoRepresentative || '');
+      const photoId = representative.dataset.photoRepresentative || '';
+      const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
+      if (!photoRecordStore.setRepresentative(photoId)) return;
+
+      const changed = [];
+      photoRecordStore.getAll().forEach((record) => {
+        const previous = before.get(record.photoId);
+        if (Boolean(previous?.isRepresentative) === Boolean(record.isRepresentative)) return;
+        const next = photoRecordStore.set({
+          ...record,
+          fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative')
+        });
+        changed.push(next);
+      });
+      Promise.all(changed.map((record) => persistPhoto(record))).catch((error) => {
+        console.error('代表写真のFirestore保存に失敗しました', error);
+      });
       return;
     }
 
@@ -697,6 +764,7 @@ function scheduleStoreRender() {
 
 export function refreshPhotoTab() {
   render();
+  hydrateCurrentPhotoPreviews().then(render);
 }
 
 export function initializePhotoTab() {
@@ -736,7 +804,7 @@ export function initializePhotoTab() {
   });
 
   render();
-  hydrateLocalCameraPhotos().then(render);
+  hydrateCurrentPhotoPreviews().then(render);
 
   if (unsubscribePhotoStore) unsubscribePhotoStore();
   if (unsubscribeMaterialStore) unsubscribeMaterialStore();

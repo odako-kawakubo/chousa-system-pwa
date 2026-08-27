@@ -1,7 +1,7 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2Aの案件管理入口。
+ * v0.1.6.2Bの案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
@@ -19,7 +19,7 @@ import {
 } from './project-store.js';
 import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
-import { loadFinishAndMaterialsFromFirestore } from '../sync/project-record-persistence.js';
+import { loadProjectRecordsFromFirestore } from '../sync/project-record-persistence.js';
 
 function showStatus(message, type = '') {
   const status = document.getElementById('newProjectStatus');
@@ -96,22 +96,21 @@ async function switchProject(projectId) {
     if (target.project?.isSample) {
       openProjectSession(target);
     } else {
-      // v0.1.6.2Aでは「ローカルに残っていたから戻った」を避けるため、
-      // 仕上表＋建材を実際にFirestoreから再読込して案件を開く。
-      const remote = await loadFinishAndMaterialsFromFirestore(target.project);
+      // v0.1.6.2Bでは「ローカルに残っていたから戻った」を避けるため、
+      // 仕上表＋建材＋写真レコードを実際にFirestoreから再読込して案件を開く。
+      const remote = await loadProjectRecordsFromFirestore(target.project);
       const restored = {
         project: target.project,
         finishRecords: remote?.finishRecords || target.finishRecords,
         materialRecords: remote?.materialRecords || target.materialRecords,
-        // 写真のFirestore復元は0.1.6.2B。Aでは既存ローカル状態を維持する。
-        photoRecords: target.photoRecords || []
+        photoRecords: remote?.photoRecords || target.photoRecords || []
       };
       saveProjectSnapshot(restored);
       openProjectSession(restored);
     }
     closeProjectPanel();
   } catch (error) {
-    console.error('[v0.1.6.2A] Firestore案件読込失敗', error);
+    console.error('[v0.1.6.2B] Firestore案件読込失敗', error);
     window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
   }
 }

@@ -72,6 +72,33 @@ function normalizeCandidateMaterialInput(rawValue) {
   return normalized.replace(/^【\d+】\s*/, '');
 }
 
+
+/** materialRecord.part を仕上表で選択できる実部位一覧へ分解する。 */
+export function getMaterialPartOptions(materialRecord) {
+  return [...new Set(
+    String(materialRecord?.part || '')
+      .split(/[、,，]/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )];
+}
+
+/**
+ * その他1/2へ既存建材を紐付けるときの部位反映。
+ * 1部位なら自動反映、複数部位なら既存の有効選択だけを維持し、
+ * 未選択・不一致なら空欄にしてUI側で選択させる。
+ */
+function partPatchForExistingMaterial(currentCell, partIndex, materialRecord) {
+  if (partIndex < 5) return {};
+  const parts = getMaterialPartOptions(materialRecord);
+  if (parts.length === 1) return { part: parts[0] };
+  if (parts.length > 1) {
+    const currentPart = String(currentCell?.part || '').trim();
+    return parts.includes(currentPart) ? {} : { part: '' };
+  }
+  return {};
+}
+
 function appendSystemMemo(existing, message) {
   const text = String(existing || '').trim();
   const line = `${new Date().toISOString().slice(0, 10)} ${message}`;
@@ -349,16 +376,30 @@ export function commitCellId(roomKey, partIndex, row, rawInputId) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor) return null;
   const inputId = String(rawInputId ?? '').trim();
+  const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
+
   if (!inputId) {
-    writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '' });
+    // その他1/2は建材ID解除を「この入力枠を初期状態へ戻す」操作として扱い、
+    // 建材紐付けだけでなく実部位も同時に空欄へ戻す。
+    writeCellPatch(anchor, partIndex, row, {
+      inputId: '',
+      materialId: '',
+      ...(partIndex >= 5 ? { part: '' } : {})
+    });
     return null;
   }
+
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) {
     writeCellPatch(anchor, partIndex, row, { inputId, materialId: '' });
     return null;
   }
-  writeCellPatch(anchor, partIndex, row, { inputId: String(material.inputId), materialId: material.materialId });
+
+  writeCellPatch(anchor, partIndex, row, {
+    inputId: String(material.inputId),
+    materialId: material.materialId,
+    ...partPatchForExistingMaterial(currentCell, partIndex, material)
+  });
   return material;
 }
 
@@ -400,9 +441,11 @@ export function isCellPendingRegistration(roomKey, partIndex, row) {
 export function applyMaterialToCell(roomKey, partIndex, row, materialRecord) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor || !materialRecord) return;
+  const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
   writeCellPatch(anchor, partIndex, row, {
     inputId: String(materialRecord.inputId),
-    materialId: materialRecord.materialId
+    materialId: materialRecord.materialId,
+    ...partPatchForExistingMaterial(currentCell, partIndex, materialRecord)
   });
 }
 
@@ -475,7 +518,10 @@ export function refreshMaterialUsageDerivedFields() {
   finishRecords.forEach((record) => {
     if (!byMaterial.has(record.materialId)) byMaterial.set(record.materialId, { parts: [], places: [] });
     const item = byMaterial.get(record.materialId);
-    const part = String(record.part || '').trim() || 'その他';
+    // その他1/2の部位未選択（空欄）は、複数部位建材の選択途中を表すことがある。
+    // 新規登録時の「その他」は登録確定処理で明示的に入るため、ここで空欄を
+    // 勝手に「その他」へ変換せず、確定済みの実部位だけを建材Recordへ集計する。
+    const part = String(record.part || '').trim();
     const place = String(record.roomNo || record.roomName || '').trim();
     if (part && !item.parts.includes(part)) item.parts.push(part);
     if (place && !item.places.includes(place)) item.places.push(place);
