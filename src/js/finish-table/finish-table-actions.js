@@ -43,7 +43,9 @@ import { SAMPLE_MATERIALS_SEED } from '../demo/sample-materials.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
+  deleteFinishForProject,
   persistFinishForProject,
+  persistFinishStructureForProject,
   persistMaterialForProject
 } from '../sync/project-record-persistence.js';
 
@@ -187,7 +189,7 @@ function buildFloorRoomSeed(areaCode, floor, index) {
   const roomPosition = buildFloorRoomPosition(floor, index);
   const prefix = areaCode === 'B' ? `B${floor}` : String(floor);
   const label = `${prefix}-${index}`;
-  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: label });
+  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: '' });
 }
 
 function buildFlatRoomSeed(areaCode, index, customName = '') {
@@ -196,7 +198,7 @@ function buildFlatRoomSeed(areaCode, index, customName = '') {
   let roomName = customName;
   if (!customName && areaCode === 'S') { roomNo = `S-${index}`; roomName = `階段${index}`; }
   if (!customName && areaCode === 'R') { roomNo = `R-${index}`; roomName = index === 1 ? '屋上' : `屋上${index}`; }
-  if (!customName && areaCode === 'E') { roomNo = `面${index}`; roomName = `面${index}`; }
+  if (!customName && areaCode === 'E') { roomNo = `面${index}`; roomName = ''; }
   return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName });
 }
 
@@ -216,6 +218,37 @@ function rekeyRecordToRoomPosition(record, newRoomPosition) {
    構造変更
    ============================================================ */
 
+const STRUCTURE_COMPARE_FIELDS = Object.freeze([
+  'finishId', 'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName',
+  'position', 'part', 'materialId'
+]);
+
+function sameStructureRecord(a, b) {
+  if (!a || !b) return false;
+  return STRUCTURE_COMPARE_FIELDS.every((field) => String(a[field] ?? '') === String(b[field] ?? ''));
+}
+
+/**
+ * ＋階／＋部屋／＋行／コピーなど、複数finishRecordを一度に変える操作の共通保存。
+ * 新規・変更Recordはset、構造から消えたRecordだけdeleteする。
+ */
+function persistFinishStructureChange(beforeRecords, afterRecords) {
+  const project = getCurrentProject();
+  if (!project?.projectId || project.isSample) return;
+
+  const beforeMap = new Map(beforeRecords.map((record) => [record.finishId, record]));
+  const afterMap = new Map(afterRecords.map((record) => [record.finishId, record]));
+
+  const removed = beforeRecords.filter((record) => !afterMap.has(record.finishId));
+  const changed = afterRecords.filter((record) => {
+    const previous = beforeMap.get(record.finishId);
+    return !previous || !sameStructureRecord(previous, record);
+  });
+
+  if (changed.length) persistFinishStructureForProject(project, changed);
+  removed.forEach((record) => deleteFinishForProject(project, record));
+}
+
 function listFloorNumbers(areaCode) {
   return [...new Set(uniqueRoomAnchors(areaCode).map((record) => Number(record.floor)))];
 }
@@ -224,57 +257,70 @@ function countRoomsInFloor(areaCode, floor) { return uniqueRoomAnchors(areaCode,
 function countFlatRooms(areaCode) { return uniqueRoomAnchors(areaCode).length; }
 
 function insertFloorRoomAt(areaCode, floor, insertIndex) {
-  const shifted = finishRecordStore.getAll().map((record) => {
+  const before = finishRecordStore.getAll();
+  const shifted = before.map((record) => {
     if (record.areaCode !== areaCode || Number(record.floor) !== floor) return record;
     const idx = roomIndexFromRoomPosition(record.roomPosition);
     return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, buildFloorRoomPosition(floor, idx + 1));
   });
   finishRecordStore.replaceAll([...shifted, ...buildFloorRoomSeed(areaCode, floor, insertIndex)]);
+  persistFinishStructureChange(before, finishRecordStore.getAll());
 }
 
 function insertFlatRoomAt(areaCode, insertIndex) {
-  const shifted = finishRecordStore.getAll().map((record) => {
+  const before = finishRecordStore.getAll();
+  const shifted = before.map((record) => {
     if (record.areaCode !== areaCode) return record;
     const idx = Number(record.roomPosition);
     return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, pad(idx + 1, 3));
   });
   finishRecordStore.replaceAll([...shifted, ...buildFlatRoomSeed(areaCode, insertIndex)]);
+  persistFinishStructureChange(before, finishRecordStore.getAll());
 }
 
 export function addNormalFloor() {
+  const before = finishRecordStore.getAll();
   const floors = listFloorNumbers('I');
   const next = floors.length ? Math.max(...floors) + 1 : 1;
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  // 表示側が「今追加した階」へ確実に移動できるよう、既存ViewModelの階識別子だけ返す。
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   return `floor-I-${next}`;
 }
 
 export function addBasementFloor() {
+  const before = finishRecordStore.getAll();
   const floors = listFloorNumbers('B');
   const next = floors.length ? Math.max(...floors) + 1 : 1;
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   return `floor-B-${next}`;
 }
 
 export function addStairs() {
+  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('S', countFlatRooms('S') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   return 'stairs-group';
 }
 
 export function addRoof() {
+  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('R', countFlatRooms('R') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   return 'roof-group';
 }
 
 export function addExternalRoom() {
+  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('E', countFlatRooms('E') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistFinishStructureChange(before, finishRecordStore.getAll());
 }
 
 export function addRoomToFloor(floorKey) {
@@ -295,6 +341,7 @@ export function addRoomAfter(roomKey) {
 
 /** 6部位すべてに「次の入力行」の空レコードを1件ずつ生成する。 */
 export function addInputRow(roomKey) {
+  const before = finishRecordStore.getAll();
   const roomRecords = getRoomRecords(roomKey);
   const anchor = roomRecords[0];
   if (!anchor) return;
@@ -314,6 +361,7 @@ export function addInputRow(roomKey) {
     }));
   }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistFinishStructureChange(before, finishRecordStore.getAll());
 }
 
 /* ============================================================
@@ -619,6 +667,7 @@ export function describeRoomCopyClick(roomCopyState, roomKey) {
 }
 
 export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
+  const before = finishRecordStore.getAll();
   const sourceRecords = getRoomRecords(sourceRoomKey);
   const targetRecords = getRoomRecords(targetRoomKey);
   const target = targetRecords[0];
@@ -629,6 +678,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
   // コピー元の方が少ない場合は余分な入力枠を除いて行構成を一致させる。
   const sourcePositions = new Set(sourceRecords.map((record) => record.position));
   const targetByPosition = new Map(targetRecords.map((record) => [record.position, record]));
+  const confirmedAt = Date.now();
 
   finishRecordStore.batch(() => {
     // コピー元に存在しない余分な行は、コピー後の行構成から外す。
@@ -643,11 +693,17 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
 
       if (existing) {
         // 既存のコピー先レコードはID・位置情報を維持し、入力内容だけ上書きする。
+        const changedFields = [];
+        if (String(existing.part || '') !== String(part || '')) changedFields.push('part');
+        if (String(existing.materialId || '') !== String(source.materialId || '')) changedFields.push('materialId');
         finishRecordStore.set({
           ...existing,
           part,
           materialId: source.materialId,
           inputId: source.inputId,
+          fieldEditedAt: changedFields.length
+            ? touchFieldEditedAt(existing.fieldEditedAt, changedFields, confirmedAt)
+            : { ...(existing.fieldEditedAt || {}) },
           updatedAt: nowIso()
         });
         return;
@@ -664,20 +720,24 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         part,
         materialId: source.materialId,
         inputId: source.inputId,
+        fieldEditedAt: touchFieldEditedAt({}, ['part', 'materialId'], confirmedAt),
         roomUid: target.roomUid
       }));
     });
   });
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   refreshMaterialUsageDerivedFields();
 }
 
 export function restoreRoomCopy(roomKey, backupRecords) {
   if (!backupRecords?.length) return;
+  const before = finishRecordStore.getAll();
   const current = getRoomRecords(roomKey);
   finishRecordStore.batch(() => {
     current.forEach((record) => finishRecordStore.remove(record.finishId));
     backupRecords.forEach((record) => finishRecordStore.set({ ...record }));
   });
+  persistFinishStructureChange(before, finishRecordStore.getAll());
   refreshMaterialUsageDerivedFields();
 }
 

@@ -1,12 +1,12 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2Bの案件管理入口。
+ * v0.1.6.2Cの案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
 
-import { createTemporaryProject } from './project-factory.js';
+import { createTemporaryProject, temporaryDateCode } from './project-factory.js';
 import { openProjectSession, saveCurrentProjectSession } from './project-session.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import {
@@ -19,7 +19,14 @@ import {
 } from './project-store.js';
 import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
-import { loadProjectRecordsFromFirestore } from '../sync/project-record-persistence.js';
+import {
+  getRemoteTemporaryProjectNos,
+  loadProjectRecordsFromFirestore,
+  persistFinishStructureForProject,
+  persistProjectMetadataForProject
+} from '../sync/project-record-persistence.js';
+import { refreshMaterialUsageDerivedFields } from '../finish-table/finish-table-actions.js';
+import { refreshMaterialList } from '../materials/material-list-controller.js';
 
 function showStatus(message, type = '') {
   const status = document.getElementById('newProjectStatus');
@@ -96,40 +103,53 @@ async function switchProject(projectId) {
     if (target.project?.isSample) {
       openProjectSession(target);
     } else {
-      // v0.1.6.2Bでは「ローカルに残っていたから戻った」を避けるため、
-      // 仕上表＋建材＋写真レコードを実際にFirestoreから再読込して案件を開く。
+      // CではFirestoreのfinishRecords全件を案件の現在形として再読込する。
       const remote = await loadProjectRecordsFromFirestore(target.project);
       const restored = {
         project: target.project,
-        finishRecords: remote?.finishRecords || target.finishRecords,
+        finishRecords: remote?.finishRecords?.length ? remote.finishRecords : target.finishRecords,
         materialRecords: remote?.materialRecords || target.materialRecords,
         photoRecords: remote?.photoRecords || target.photoRecords || []
       };
       saveProjectSnapshot(restored);
       openProjectSession(restored);
+      // 建材使用箇所・部位は保存済み文字列を正本にせず、復元済み仕上表から再計算する。
+      refreshMaterialUsageDerivedFields();
+      refreshMaterialList();
     }
     closeProjectPanel();
   } catch (error) {
-    console.error('[v0.1.6.2B] Firestore案件読込失敗', error);
+    console.error('[v0.1.6.2C] Firestore案件読込失敗', error);
     window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
   }
 }
 
-function createProjectFromForm() {
+async function createProjectFromForm() {
   const button = document.getElementById('createNewProjectButton');
   const projectName = document.getElementById('newProjectNameInput')?.value || '';
   const address = document.getElementById('newProjectAddressInput')?.value || '';
 
   try {
     if (button) button.disabled = true;
+    showStatus('案件番号と初期仕上表を準備しています…');
 
     // 現在案件を先に退避。最初のデモ案件もここで初めて完全スナップショットになる。
     saveCurrentProjectSession();
 
+    // PC/iPadなど別端末で作成済みの当日仮番号もFirestoreで確認する。
+    const dateCode = temporaryDateCode();
+    let remoteProjectNos = [];
+    try {
+      remoteProjectNos = await getRemoteTemporaryProjectNos(dateCode, 'production');
+    } catch (error) {
+      console.warn('[v0.1.6.2C] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
+    }
+
     const project = createTemporaryProject({
       projectName,
       address,
-      existingProjects: getProjectList()
+      existingProjects: getProjectList(),
+      existingProjectNos: remoteProjectNos
     });
     const finishRecords = createDefaultFinishRecords();
 
@@ -146,6 +166,14 @@ function createProjectFromForm() {
       materialRecords: [],
       photoRecords: []
     });
+
+    // 案件作成時点の空欄を含む仕上表全件をFirestoreへ登録する。
+    // 以後の編集は従来どおり変更Recordだけ差分更新する。
+    await persistProjectMetadataForProject(project);
+    const saved = await persistFinishStructureForProject(project, finishRecords);
+    if (saved?.queued) {
+      showStatus('案件は作成しましたが、一部の仕上表レコードは未送信です。', 'warn');
+    }
 
     closeModal('newProjectModal');
     closeProjectPanel();
