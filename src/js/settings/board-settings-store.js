@@ -106,6 +106,15 @@ export function resetFormatting() {
   return get();
 }
 
+
+/** 案件を端末から削除するとき、その案件専用の看板設定も破棄する。 */
+export function clearProjectBoardSettings(projectId) {
+  const id = String(projectId || '');
+  if (!id) return false;
+  localStorage.removeItem(`${STORAGE_PREFIX}${id}`);
+  return true;
+}
+
 export function subscribe(callback) {
   listeners.push(callback);
   return () => {

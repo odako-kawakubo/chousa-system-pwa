@@ -13,7 +13,8 @@ import {
   savePhotoRecord,
   saveProjectMetadata,
   readTemporaryProjectNos,
-  readProjectRecords
+  readProjectRecords,
+  deleteTestProjectCompletely
 } from '../firestore/firestore-repository.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
@@ -87,6 +88,16 @@ export function persistPhotoForProject(project, record) {
 export function persistProjectMetadataForProject(project) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveProjectMetadata(project));
+}
+
+
+
+/** テスト案件だけFirestoreから完全削除する。 */
+export function deleteTestProjectFromFirestore(project) {
+  if (!project?.projectId || project.isSample || projectEnvironment(project) !== 'test') {
+    return Promise.resolve({ ok: true, skipped: true });
+  }
+  return enqueue(() => deleteTestProjectCompletely(project.projectId));
 }
 
 export async function getRemoteTemporaryProjectNos(dateCode, environment = 'production') {

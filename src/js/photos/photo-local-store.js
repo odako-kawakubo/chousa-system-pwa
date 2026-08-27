@@ -132,3 +132,46 @@ export async function updateCameraPhotoRecord(record) {
 }
 
 
+
+
+/**
+ * 案件を端末から削除するとき、指定photoId群の画像Blobとカメラ写真Recordを消す。
+ * photoRecord自体は案件Store/Firestore側で管理するため、ここではIndexedDBだけを担当する。
+ */
+export async function deleteLocalPhotoData(photoIds = []) {
+  const ids = new Set((Array.isArray(photoIds) ? photoIds : [])
+    .map((value) => String(value || ''))
+    .filter(Boolean));
+  if (!ids.size) return { deletedRecords: 0, deletedBlobs: 0 };
+
+  const db = await openDb();
+  let deletedRecords = 0;
+  let deletedBlobs = 0;
+
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction([RECORD_STORE, BLOB_STORE], 'readwrite');
+    const recordStore = tx.objectStore(RECORD_STORE);
+    const blobStore = tx.objectStore(BLOB_STORE);
+
+    ids.forEach((photoId) => {
+      recordStore.delete(photoId);
+      deletedRecords += 1;
+    });
+
+    const request = blobStore.getAll();
+    request.onsuccess = () => {
+      const rows = Array.isArray(request.result) ? request.result : [];
+      rows.forEach((row) => {
+        if (!ids.has(String(row?.photoId || ''))) return;
+        blobStore.delete(row.key);
+        deletedBlobs += 1;
+      });
+    };
+    request.onerror = () => reject(request.error || new Error('写真キャッシュの削除に失敗しました。'));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('写真キャッシュの削除に失敗しました。'));
+    tx.onabort = () => reject(tx.error || new Error('写真キャッシュの削除に失敗しました。'));
+  });
+
+  return { deletedRecords, deletedBlobs };
+}

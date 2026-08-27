@@ -198,6 +198,32 @@ export async function saveProjectMetadata(project) {
   return { ok: true };
 }
 
+
+
+/**
+ * テスト案件専用の完全削除。
+ * Firestore Web SDKには親Document削除だけでsubcollectionを再帰削除する機能がないため、
+ * 3 Record collectionを先に削除してから案件親Documentを削除する。
+ */
+export async function deleteTestProjectCompletely(projectId) {
+  const id = String(projectId || '');
+  if (!id) throw new Error('削除対象の案件IDがありません。');
+  const environment = 'test';
+
+  for (const recordType of Object.keys(RECORD_COLLECTIONS)) {
+    const snapshot = await getDocs(collectionRef(id, environment, recordType));
+    const docs = snapshot.docs;
+    for (let start = 0; start < docs.length; start += FINISH_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      docs.slice(start, start + FINISH_BATCH_SIZE).forEach((item) => batch.delete(item.ref));
+      await batch.commit();
+    }
+  }
+
+  await deleteDoc(projectDocRef(id, environment));
+  return { ok: true };
+}
+
 /** 指定日の仮案件番号をFirestore親Documentから取得する。 */
 export async function readTemporaryProjectNos(dateCode, environment = 'production') {
   const prefix = `${String(dateCode)}-`;

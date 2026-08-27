@@ -114,22 +114,27 @@
 .project-card {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px;
   background: var(--panel);
   margin-top: 9px;
-  cursor: pointer;
   position: relative;
-  padding-right: 46px;
+  overflow: hidden;
 }
 .project-side-list .project-card {
   width: 100%;
-  text-align: left;
-  font: inherit;
-  color: inherit;
 }
 .project-card.active {
   background: var(--main2);
   border-color: var(--main);
+}
+.project-card-open {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 10px 46px 10px 10px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 .project-card strong {
   font-size: 13px;

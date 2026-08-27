@@ -105,6 +105,17 @@ export function saveProjectSnapshot({ project, finishRecords = [], materialRecor
   return getProject(project.projectId);
 }
 
+export function removeProject(projectId) {
+  const id = String(projectId || '');
+  if (!id || id === sampleProject.projectId) return false;
+  const deleted = projects.delete(id);
+  if (deleted) {
+    persistLocalProjects();
+    notify();
+  }
+  return deleted;
+}
+
 export function ensureProject(project) {
   if (!project?.projectId) return null;
   if (!projects.has(project.projectId)) {
