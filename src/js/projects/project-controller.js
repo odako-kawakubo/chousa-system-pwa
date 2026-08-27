@@ -1,7 +1,7 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.1Bの案件管理入口。
+ * v0.1.6.2Aの案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
@@ -19,6 +19,7 @@ import {
 } from './project-store.js';
 import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
+import { loadFinishAndMaterialsFromFirestore } from '../sync/project-record-persistence.js';
 
 function showStatus(message, type = '') {
   const status = document.getElementById('newProjectStatus');
@@ -77,7 +78,7 @@ function renderProjectList() {
   }).join('');
 }
 
-function switchProject(projectId) {
+async function switchProject(projectId) {
   const targetId = String(projectId || '');
   const current = getCurrentProject();
   if (!targetId || targetId === current?.projectId) {
@@ -85,15 +86,34 @@ function switchProject(projectId) {
     return;
   }
 
-  // 切替前の案件状態を退避。デモ案件も同じ入口で保存するため、
-  // 新規案件を開いた後でもデモへ戻れる。
+  // 切替前の案件状態を退避。Firestore書込失敗時の端末側保険としても残す。
   saveCurrentProjectSession();
 
   const target = getProject(targetId);
   if (!target) return;
 
-  openProjectSession(target);
-  closeProjectPanel();
+  try {
+    if (target.project?.isSample) {
+      openProjectSession(target);
+    } else {
+      // v0.1.6.2Aでは「ローカルに残っていたから戻った」を避けるため、
+      // 仕上表＋建材を実際にFirestoreから再読込して案件を開く。
+      const remote = await loadFinishAndMaterialsFromFirestore(target.project);
+      const restored = {
+        project: target.project,
+        finishRecords: remote?.finishRecords || target.finishRecords,
+        materialRecords: remote?.materialRecords || target.materialRecords,
+        // 写真のFirestore復元は0.1.6.2B。Aでは既存ローカル状態を維持する。
+        photoRecords: target.photoRecords || []
+      };
+      saveProjectSnapshot(restored);
+      openProjectSession(restored);
+    }
+    closeProjectPanel();
+  } catch (error) {
+    console.error('[v0.1.6.2A] Firestore案件読込失敗', error);
+    window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
+  }
 }
 
 function createProjectFromForm() {

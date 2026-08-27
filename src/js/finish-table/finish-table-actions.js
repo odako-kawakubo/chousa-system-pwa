@@ -40,9 +40,16 @@ import {
 } from './finish-table-constants.js';
 import { INITIAL_STRUCTURE_SEED } from '../demo/sample-finish-data.js';
 import { SAMPLE_MATERIALS_SEED } from '../demo/sample-materials.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import {
+  persistFinishForProject,
+  persistMaterialForProject
+} from '../sync/project-record-persistence.js';
 
 const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
+const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'part', 'materialId']);
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
 function nowIso() { return new Date().toISOString(); }
@@ -290,11 +297,18 @@ export function commitRoomField(roomKey, field, rawValue) {
   const records = getRoomRecords(roomKey);
   if (!records.length) return;
   const value = field === 'room-no' ? String(rawValue ?? '').trim() : String(rawValue ?? '');
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set({
+  const dataField = field === 'room-no' ? 'roomNo' : 'roomName';
+  const changed = records.filter((record) => String(record[dataField] ?? '') !== value);
+  if (!changed.length) return;
+  const confirmedAt = Date.now();
+  const nextRecords = changed.map((record) => ({
     ...record,
-    ...(field === 'room-no' ? { roomNo: value } : { roomName: value }),
-    updatedAt: nowIso()
-  })));
+    [dataField]: value,
+    fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, dataField, confirmedAt)
+  }));
+  finishRecordStore.batch(() => nextRecords.forEach((record) => finishRecordStore.set(record)));
+  const project = getCurrentProject();
+  nextRecords.forEach((record) => persistFinishForProject(project, record));
   refreshMaterialUsageDerivedFields();
 }
 
@@ -312,10 +326,23 @@ function writeCellPatch(anchor, partIndex, row, patch) {
   if (!existing) {
     throw new Error(`仕上表レコードが存在しません: ${finishId}`);
   }
+  const changedFields = Object.keys(patch).filter((field) => String(existing[field] ?? '') !== String(patch[field] ?? ''));
+  if (!changedFields.length) return existing;
+  const syncFields = changedFields.filter((field) => PERSISTED_FINISH_EDIT_FIELDS.has(field));
+
   // その他1/2のpartも入力値をそのまま保持する。
   // 空欄をタップしただけ・空欄のまま編集終了しただけで「その他」を実データ化しない。
-  finishRecordStore.set({ ...existing, ...patch, updatedAt: nowIso() });
+  const next = {
+    ...existing,
+    ...patch,
+    fieldEditedAt: syncFields.length
+      ? touchFieldEditedAt(existing.fieldEditedAt, syncFields)
+      : { ...(existing.fieldEditedAt || {}) }
+  };
+  finishRecordStore.set(next);
+  if (syncFields.length) persistFinishForProject(getCurrentProject(), next);
   refreshMaterialUsageDerivedFields();
+  return next;
 }
 
 export function commitCellId(roomKey, partIndex, row, rawInputId) {
@@ -411,15 +438,27 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
           baseName: parsed.baseName,
           suffixLetter: suffix
         });
+        material = {
+          ...material,
+          fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['name', 'analysisRequired', 'sampleCount'])
+        };
         materialRecordStore.set(material);
+        // 新規建材を先にFirestoreへ積み、その後にfinishRecordの紐付け保存が続く。
+        persistMaterialForProject(getCurrentProject(), material);
       }
     }
-    // 建材を登録しても、その他1/2の実部位が未入力ならpartは空欄のまま保持する。
-    // materialRecordの部位集計時だけ空欄を業務上「その他」として解決する。
-    writeCellPatch(anchor, partIndex, row, {
+    // その他1/2では、建材を正式登録する時点で実部位が未入力なら
+    // 業務上の部位として「その他」を確定する。
+    // タップしただけ／空欄のまま編集終了／部屋コピーでは補完しない。
+    const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
+    const finishPatch = {
       inputId: String(material.inputId),
       materialId: material.materialId
-    });
+    };
+    if (partIndex >= 5 && !String(currentCell?.part || '').trim()) {
+      finishPatch.part = 'その他';
+    }
+    writeCellPatch(anchor, partIndex, row, finishPatch);
     refreshMaterialUsageDerivedFields();
   });
   return material;
@@ -448,7 +487,14 @@ export function refreshMaterialUsageDerivedFields() {
       const part = derived.parts.join('、');
       const usageLocation = derived.places.join('、');
       if (material.part === part && material.usageLocation === usageLocation) return;
-      materialRecordStore.set({ ...material, part, usageLocation, updatedAt: nowIso() });
+      const next = {
+        ...material,
+        part,
+        usageLocation,
+        fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['part', 'usageLocation'])
+      };
+      materialRecordStore.set(next);
+      persistMaterialForProject(getCurrentProject(), next);
     });
   });
 }

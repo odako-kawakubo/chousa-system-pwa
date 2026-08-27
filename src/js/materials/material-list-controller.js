@@ -17,10 +17,38 @@ import { refreshFinishTableFromStores } from '../finish-table/finish-table-contr
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows, splitDerivedList } from './material-list-view-model.js';
 import { renderMaterialList } from './material-list-renderer.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
 let outsideMultiSelectBound = false;
+
+const MATERIAL_META_FIELDS = new Set(['updatedAt', 'updatedDevice', 'fieldEditedAt', 'color', 'photoCount', 'materialNo', 'inputId', 'baseName', 'suffixLetter', 'systemMemo']);
+
+function changedBusinessFields(previous, next) {
+  const keys = new Set([...Object.keys(previous || {}), ...Object.keys(next || {})]);
+  return [...keys].filter((field) => {
+    if (MATERIAL_META_FIELDS.has(field)) return false;
+    const a = previous?.[field];
+    const b = next?.[field];
+    if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a || []) !== JSON.stringify(b || []);
+    return String(a ?? '') !== String(b ?? '');
+  });
+}
+
+function setAndPersistMaterial(previous, candidate) {
+  const fields = changedBusinessFields(previous, candidate);
+  if (!fields.length) return previous;
+  const next = {
+    ...candidate,
+    fieldEditedAt: touchFieldEditedAt(previous?.fieldEditedAt, fields)
+  };
+  materialRecordStore.set(next);
+  persistMaterialForProject(getCurrentProject(), next);
+  return next;
+}
 
 // 建材リスト専用のカラー表示状態。仕上表／簡易リストとは独立して切り替える。
 // 初期状態は色なし（OFF）。
@@ -332,7 +360,7 @@ function updateMaterialControl(control) {
       return;
   }
 
-  materialRecordStore.set(next);
+  setAndPersistMaterial(record, next);
   refreshMaterialList();
   refreshRecordView();
 }
@@ -352,10 +380,9 @@ function updateSamplePartsFromChecklist(materialId) {
   const current = normalizeSampleParts(record.samplePart);
   if (JSON.stringify(current) === JSON.stringify(selected)) return;
 
-  materialRecordStore.set({
+  setAndPersistMaterial(record, {
     ...record,
-    samplePart: selected,
-    updatedAt: new Date().toISOString()
+    samplePart: selected
   });
 
   // 複数選択中に一覧全体を再描画するとdetailsが閉じてしまうため、
@@ -392,13 +419,12 @@ function updateMaterialName(materialId, rawValue) {
   }
 
   const parsed = splitBaseNameAndSuffix(normalized);
-  materialRecordStore.set({
+  setAndPersistMaterial(record, {
     ...record,
     name: normalized,
     baseName: parsed.baseName,
     suffixLetter: parsed.suffixLetter,
-    systemMemo: appendSystemMemo(record.systemMemo, `建材名称変更：${record.name} → ${normalized}`),
-    updatedAt: new Date().toISOString()
+    systemMemo: appendSystemMemo(record.systemMemo, `建材名称変更：${record.name} → ${normalized}`)
   });
 
   refreshConnectedViews();
@@ -411,10 +437,9 @@ function updateMaterialNote(materialId, rawValue) {
   const note = String(rawValue ?? '').trim();
   if (note === record.note) return refreshMaterialList();
 
-  materialRecordStore.set({
+  setAndPersistMaterial(record, {
     ...record,
-    note,
-    updatedAt: new Date().toISOString()
+    note
   });
   refreshConnectedViews();
 }
@@ -427,13 +452,12 @@ function applySamplingAutofill() {
     if (record.status !== 'active') return;
     const next = { ...record };
     if (applySingleRecordSamplingAutofill(next)) {
-      next.updatedAt = new Date().toISOString();
-      updates.push(next);
+      updates.push({ previous: record, next });
     }
   });
 
   if (!updates.length) return;
-  materialRecordStore.batch(() => updates.forEach((record) => materialRecordStore.set(record)));
+  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterial(previous, next)));
 }
 
 /**

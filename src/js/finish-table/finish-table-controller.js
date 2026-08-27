@@ -289,6 +289,7 @@ function commitCandidateSelection(option, input) {
     completeCellEdit(input, () => {
       commitCellActualPart(roomKeyValue, partIndex, row, option.part || option.value);
     });
+    focusOtherCompanionField(roomKeyValue, partIndex, row, 'name');
     return;
   }
 
@@ -304,6 +305,7 @@ function commitCandidateSelection(option, input) {
       clearPendingCellName(pendingKey);
       refreshMaterialUsageDerivedFields();
     });
+    focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
     return;
   }
 
@@ -374,6 +376,29 @@ function completeCellEdit(input, mutate) {
   pendingEditSnapshot = null;
   pendingEditBeforeValue = null;
   refreshFromStores();
+}
+
+/**
+ * その他1/2の「建材名 <-> 部位」入力を往復しやすくする。
+ * 明示確定（候補選択／登録／Enter）の後だけ相手セルへ移動し、
+ * 単なるblurや別セルタップではユーザーの移動先を奪わない。
+ */
+function focusOtherCompanionField(roomKeyValue, partIndex, row, targetKind) {
+  if (partIndex < 5 || !['name', 'part'].includes(targetKind)) return;
+
+  requestAnimationFrame(() => {
+    const root = document.getElementById('finish');
+    if (!root) return;
+    const field = [...root.querySelectorAll(`[data-kind="${targetKind}"]`)].find((candidate) =>
+      String(candidate.dataset.roomKey || '') === String(roomKeyValue || '')
+      && Number(candidate.dataset.partIndex) === Number(partIndex)
+      && Number(candidate.dataset.inputRow) === Number(row)
+    );
+    if (!field) return;
+
+    const input = field.classList.contains('finish-cell-input') ? field : swapDisplayToInput(field);
+    if (input) input.focus();
+  });
 }
 
 export function initializeFinishTable() {
@@ -701,6 +726,7 @@ function bindEvents(root) {
           registerMaterialForCell(roomKeyValue, partIndex, row, pendingName);
           clearPendingCellName(pendingKey);
         });
+        focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
       }
       return;
     }
@@ -947,6 +973,37 @@ function bindEvents(root) {
     if (event.target?.closest?.('#finishCandidatePopup')) return;
     closeCandidatePopup();
   }, true);
+
+  // その他1/2ではEnter確定でも「建材名 <-> 部位」を往復できるようにする。
+  // 通常のfocusoutでは移動させず、明示的にEnterを押した場合だけ適用する。
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const input = event.target.closest('.finish-cell-input');
+    if (!input || !['name', 'part'].includes(input.dataset.kind)) return;
+
+    const partIndex = Number(input.dataset.partIndex);
+    if (partIndex < 5) return;
+
+    event.preventDefault();
+    const roomKeyValue = input.dataset.roomKey;
+    const row = Number(input.dataset.inputRow);
+    const pendingKey = cellPendingKey(roomKeyValue, partIndex, row);
+
+    if (input.dataset.kind === 'name') {
+      const value = input.value;
+      completeCellEdit(input, () => {
+        const material = commitCellName(roomKeyValue, partIndex, row, value);
+        if (material) clearPendingCellName(pendingKey);
+        else setPendingCellName(pendingKey, value.trim());
+      });
+      focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
+      return;
+    }
+
+    const value = input.value;
+    completeCellEdit(input, () => commitCellActualPart(roomKeyValue, partIndex, row, value));
+    focusOtherCompanionField(roomKeyValue, partIndex, row, 'name');
+  });
 
   root.addEventListener('focusout', (event) => {
     const roomNoInput = event.target.closest('.room-no-input');

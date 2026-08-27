@@ -326,12 +326,25 @@ export function getOtherMaterialOptions() {
  * 案件内で実際に使用中の部位を先頭に置き、その後に設定候補を続ける。
  */
 export function getOtherPartOptions() {
+  // その他1/2は「通常列にすでに存在する部位」を候補から外す。
+  // 「その他」は実部位として使用できるため候補に残す。
+  const standardParts = new Set([
+    '床', '巾木', '壁', '天井',
+    '床・犬走', '床 犬走', '外壁', '屋根', '軒裏',
+    'その他1', 'その他2'
+  ]);
+  const isOtherCandidate = (value) => Boolean(value) && !standardParts.has(value);
+
   const usedParts = finishRecordStore.getAll()
     .filter((record) => record.status === 'active')
     .filter((record) => Number(record.position) >= 500)
     .map((record) => normalizeText(record.part))
-    .filter((value) => value && value !== 'その他' && value !== 'その他1' && value !== 'その他2');
+    .filter(isOtherCandidate);
 
-  const configured = partCandidates.map((item) => normalizeText(item.name)).filter(Boolean);
-  return uniqueBy([...usedParts, ...configured], (value) => value);
+  const configured = partCandidates
+    .map((item) => normalizeText(item.name))
+    .filter(isOtherCandidate);
+
+  // 「その他」は初回から選べる基本候補として必ず含める。
+  return uniqueBy([...usedParts, 'その他', ...configured], (value) => value);
 }
