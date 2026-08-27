@@ -31,6 +31,15 @@ export function saveCurrentProjectSession() {
   });
 }
 
+export function refreshOpenProjectSessionViews() {
+  refreshFinishTableFromStores();
+  refreshMaterialList();
+  refreshMaterialOperations();
+  refreshRecordView();
+  refreshPhotoTab();
+  refreshSettingsTab();
+}
+
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
@@ -43,12 +52,7 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   setProject(project);
 
   resetFinishTableForProject();
-  refreshFinishTableFromStores();
-  refreshMaterialList();
-  refreshMaterialOperations();
-  refreshRecordView();
-  refreshPhotoTab();
-  refreshSettingsTab();
+  refreshOpenProjectSessionViews();
 
   const header = document.getElementById('caseHeaderTitle');
   if (header) {

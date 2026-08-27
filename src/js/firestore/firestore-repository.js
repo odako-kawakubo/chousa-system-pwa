@@ -1,7 +1,7 @@
 /**
  * src/js/firestore/firestore-repository.js
  *
- * v0.1.6.2C Firestore Repository。
+ * v0.1.6.2E Firestore Repository。
  * finishRecordは「案件の仕上表構造そのもの」を全件保持する。
  * 案件作成時は初期構造を一括登録し、その後は変更Recordだけ差分更新する。
  */
@@ -12,6 +12,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -236,6 +237,77 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
   return snapshot.docs
     .map((item) => String(item.data()?.projectNo || item.id || ''))
     .filter((value) => value.startsWith(prefix));
+}
+
+
+
+/**
+ * 開いている案件の3Record collectionをリアルタイム購読する。
+ * 各collectionの最初のsnapshotを1回の初期状態としてまとめ、
+ * 以後はdocChanges()だけを通知する。
+ */
+export function subscribeProjectRecords({
+  projectId,
+  environment = 'production',
+  onInitial,
+  onChanges,
+  onError
+}) {
+  const initialByType = { finish: null, material: null, photo: null };
+  const bufferedChanges = [];
+  let ready = false;
+  let closed = false;
+
+  const emitInitialIfReady = () => {
+    if (closed || ready) return;
+    if (Object.values(initialByType).some((value) => value === null)) return;
+    ready = true;
+    onInitial?.({
+      finishRecords: initialByType.finish,
+      materialRecords: initialByType.material,
+      photoRecords: initialByType.photo
+    });
+    if (bufferedChanges.length) {
+      const pending = bufferedChanges.splice(0, bufferedChanges.length);
+      onChanges?.(pending);
+    }
+  };
+
+  const handleSnapshot = (recordType, snapshot) => {
+    if (closed) return;
+
+    if (initialByType[recordType] === null) {
+      initialByType[recordType] = deserializeSnapshot(snapshot);
+      emitInitialIfReady();
+      return;
+    }
+
+    const changes = snapshot.docChanges().map((change) => ({
+      recordType,
+      changeType: change.type,
+      id: change.doc.id,
+      record: change.type === 'removed' ? null : { id: change.doc.id, ...change.doc.data() },
+      hasPendingWrites: Boolean(change.doc.metadata?.hasPendingWrites)
+    }));
+
+    // 同じFirebase clientからの未確定ローカルechoはStoreへ戻さない。
+    const remoteChanges = changes.filter((change) => !change.hasPendingWrites);
+    if (!remoteChanges.length) return;
+    if (!ready) bufferedChanges.push(...remoteChanges);
+    else onChanges?.(remoteChanges);
+  };
+
+  const unsubscribers = Object.keys(RECORD_COLLECTIONS).map((recordType) => onSnapshot(
+    collectionRef(projectId, environment, recordType),
+    (snapshot) => handleSnapshot(recordType, snapshot),
+    (error) => onError?.(error)
+  ));
+
+  return () => {
+    closed = true;
+    bufferedChanges.length = 0;
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
+  };
 }
 
 async function readCollection({ projectId, environment, recordType, since = null }) {

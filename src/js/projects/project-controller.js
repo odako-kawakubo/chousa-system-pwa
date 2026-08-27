@@ -1,13 +1,13 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2Dの案件管理入口。
+ * v0.1.6.2Eの案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
 
 import { createTemporaryProject, temporaryDateCode } from './project-factory.js';
-import { openProjectSession, saveCurrentProjectSession } from './project-session.js';
+import { openProjectSession, saveCurrentProjectSession, refreshOpenProjectSessionViews } from './project-session.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import {
   getCurrentProject,
@@ -22,7 +22,10 @@ import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
 import {
   getRemoteTemporaryProjectNos,
-  loadProjectRecordsFromFirestore,
+  subscribeProjectRecordsForProject,
+  hydrateIncomingMaterialRecord,
+  hydrateIncomingFinishRecord,
+  hydrateIncomingPhotoRecord,
   persistFinishStructureForProject,
   persistProjectMetadataForProject,
   deleteTestProjectFromFirestore
@@ -33,6 +36,130 @@ import { listUnsent, clearUnsentForProject } from '../sync/unsent-queue.js';
 import { deleteLocalPhotoData } from '../photos/photo-local-store.js';
 import { sampleProject } from '../demo/sample-project.js';
 import { clearProjectBoardSettings } from '../settings/board-settings-store.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+
+
+let stopActiveProjectRecords = null;
+let activeProjectStreamToken = 0;
+
+function stopProjectRecordStream() {
+  activeProjectStreamToken += 1;
+  if (stopActiveProjectRecords) {
+    stopActiveProjectRecords();
+    stopActiveProjectRecords = null;
+  }
+}
+
+function sameFieldEditedAt(a, b) {
+  return JSON.stringify(a || {}) === JSON.stringify(b || {});
+}
+
+function applyProjectRecordChanges(project, changes = []) {
+  if (!project?.projectId || getCurrentProject()?.projectId !== project.projectId) return;
+  let changed = false;
+
+  // materialを先に反映し、その後finishのinputId解決に使う。
+  const materialChanges = changes.filter((item) => item.recordType === 'material');
+  if (materialChanges.length) {
+    let rawMaterials = materialRecordStore.exportSnapshot();
+    materialChanges.forEach((change) => {
+      const id = String(change.id || change.record?.materialId || '');
+      if (!id) return;
+      const current = materialRecordStore.get(id);
+      if (change.changeType !== 'removed' && current && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) return;
+      rawMaterials = rawMaterials.filter((record) => String(record.materialId) !== id);
+      if (change.changeType !== 'removed' && change.record) rawMaterials.push(change.record);
+      changed = true;
+    });
+    if (changed) {
+      const normalized = hydrateIncomingMaterialRecord(null, rawMaterials);
+      materialRecordStore.replaceAll(normalized, { notify: false });
+    }
+  }
+
+  changes.filter((item) => item.recordType === 'finish').forEach((change) => {
+    const id = String(change.id || change.record?.finishId || '');
+    if (!id) return;
+    const current = finishRecordStore.get(id);
+    if (change.changeType !== 'removed' && current && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) return;
+    if (change.changeType === 'removed') {
+      finishRecordStore.remove(id);
+      changed = true;
+      return;
+    }
+    const normalized = hydrateIncomingFinishRecord(
+      change.record,
+      finishRecordStore.exportSnapshot(),
+      materialRecordStore.exportSnapshot()
+    );
+    if (normalized) {
+      finishRecordStore.set(normalized);
+      changed = true;
+    }
+  });
+
+  changes.filter((item) => item.recordType === 'photo').forEach((change) => {
+    const id = String(change.id || change.record?.photoId || '');
+    if (!id) return;
+    const current = photoRecordStore.get(id);
+    if (change.changeType !== 'removed' && current && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) return;
+    if (change.changeType === 'removed') {
+      // photoRecordは通常論理削除だが、Firestoreから物理削除された場合だけStoreから外す。
+      photoRecordStore.replaceAll(photoRecordStore.exportSnapshot().filter((record) => record.photoId !== id), { notify: false });
+      changed = true;
+      return;
+    }
+    const normalized = hydrateIncomingPhotoRecord(change.record);
+    if (normalized) {
+      photoRecordStore.set(normalized);
+      changed = true;
+    }
+  });
+
+  if (!changed) return;
+  saveProjectSnapshot({
+    project,
+    finishRecords: finishRecordStore.exportSnapshot(),
+    materialRecords: materialRecordStore.exportSnapshot(),
+    photoRecords: photoRecordStore.exportSnapshot()
+  });
+  refreshOpenProjectSessionViews();
+}
+
+function openFirestoreProjectSession(target) {
+  const project = target.project;
+  const token = ++activeProjectStreamToken;
+
+  return new Promise((resolve, reject) => {
+    const stop = subscribeProjectRecordsForProject(project, {
+      onInitial: (remote) => {
+        if (token !== activeProjectStreamToken) return;
+        const restored = {
+          project,
+          finishRecords: remote?.finishRecords?.length ? remote.finishRecords : target.finishRecords,
+          materialRecords: remote?.materialRecords || target.materialRecords,
+          photoRecords: remote?.photoRecords || target.photoRecords || []
+        };
+        saveProjectSnapshot(restored);
+        openProjectSession(restored);
+        refreshMaterialUsageDerivedFields();
+        refreshMaterialList();
+        stopActiveProjectRecords = stop;
+        resolve(restored);
+      },
+      onChanges: (changes) => {
+        if (token !== activeProjectStreamToken) return;
+        applyProjectRecordChanges(project, changes);
+      },
+      onError: (error) => {
+        if (token !== activeProjectStreamToken) return;
+        reject(error);
+      }
+    });
+  });
+}
 
 function showStatus(message, type = '') {
   const status = document.getElementById('newProjectStatus');
@@ -110,7 +237,10 @@ async function deleteProject(projectId) {
   if (!id || id === sampleProject.projectId) return;
 
   const current = getCurrentProject();
-  if (current?.projectId === id) saveCurrentProjectSession();
+  if (current?.projectId === id) {
+    saveCurrentProjectSession();
+    stopProjectRecordStream();
+  }
 
   const entry = getProject(id);
   const project = entry?.project;
@@ -135,7 +265,7 @@ async function deleteProject(projectId) {
     try {
       await deleteLocalPhotoData(photoIds);
     } catch (error) {
-      console.warn('[v0.1.6.2D] 写真キャッシュ削除失敗', error);
+      console.warn('[v0.1.6.2E] 写真キャッシュ削除失敗', error);
     }
 
     clearUnsentForProject(id);
@@ -149,7 +279,7 @@ async function deleteProject(projectId) {
 
     renderProjectList();
   } catch (error) {
-    console.error('[v0.1.6.2D] 案件削除失敗', error);
+    console.error('[v0.1.6.2E] 案件削除失敗', error);
     window.alert(testProject
       ? 'テスト案件をFirestoreから削除できませんでした。端末内の案件は残しています。'
       : '案件を端末から削除できませんでした。');
@@ -164,8 +294,9 @@ async function switchProject(projectId) {
     return;
   }
 
-  // 切替前の案件状態を退避。Firestore書込失敗時の端末側保険としても残す。
+  // 切替前の案件状態を退避し、旧案件のFirestore監視を必ず解除する。
   saveCurrentProjectSession();
+  stopProjectRecordStream();
 
   const target = getProject(targetId);
   if (!target) return;
@@ -174,23 +305,13 @@ async function switchProject(projectId) {
     if (target.project?.isSample) {
       openProjectSession(target);
     } else {
-      // CではFirestoreのfinishRecords全件を案件の現在形として再読込する。
-      const remote = await loadProjectRecordsFromFirestore(target.project);
-      const restored = {
-        project: target.project,
-        finishRecords: remote?.finishRecords?.length ? remote.finishRecords : target.finishRecords,
-        materialRecords: remote?.materialRecords || target.materialRecords,
-        photoRecords: remote?.photoRecords || target.photoRecords || []
-      };
-      saveProjectSnapshot(restored);
-      openProjectSession(restored);
-      // 建材使用箇所・部位は保存済み文字列を正本にせず、復元済み仕上表から再計算する。
-      refreshMaterialUsageDerivedFields();
-      refreshMaterialList();
+      // Eでは初回snapshotで現在形を受け取り、そのlistenerを差分受信用に維持する。
+      await openFirestoreProjectSession(target);
     }
     closeProjectPanel();
   } catch (error) {
-    console.error('[v0.1.6.2C] Firestore案件読込失敗', error);
+    stopProjectRecordStream();
+    console.error('[v0.1.6.2E] Firestore案件購読失敗', error);
     window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
   }
 }
@@ -204,8 +325,9 @@ async function createProjectFromForm() {
     if (button) button.disabled = true;
     showStatus('案件番号と初期仕上表を準備しています…');
 
-    // 現在案件を先に退避。最初のデモ案件もここで初めて完全スナップショットになる。
+    // 現在案件を先に退避し、旧案件のFirestore監視を解除する。
     saveCurrentProjectSession();
+    stopProjectRecordStream();
 
     // PC/iPadなど別端末で作成済みの当日仮番号もFirestoreで確認する。
     const dateCode = temporaryDateCode();
@@ -213,7 +335,7 @@ async function createProjectFromForm() {
     try {
       remoteProjectNos = await getRemoteTemporaryProjectNos(dateCode, 'production');
     } catch (error) {
-      console.warn('[v0.1.6.2C] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
+      console.warn('[v0.1.6.2E] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
     }
 
     const project = createTemporaryProject({
@@ -245,6 +367,11 @@ async function createProjectFromForm() {
     if (saved?.queued) {
       showStatus('案件は作成しましたが、一部の仕上表レコードは未送信です。', 'warn');
     }
+
+    // 初期登録後は新規案件にもlistenerを張り、以後の変更を差分受信する。
+    stopProjectRecordStream();
+    const createdTarget = getProject(project.projectId);
+    if (createdTarget) await openFirestoreProjectSession(createdTarget);
 
     closeModal('newProjectModal');
     closeProjectPanel();

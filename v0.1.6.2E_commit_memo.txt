@@ -1,0 +1,8 @@
+v0.1.6.2E Firestoreリアルタイム読込基盤
+
+- 案件読込をonSnapshot初期snapshot + docChanges差分受信へ変更
+- finish/material/photoの3Record listenerを開いている案件だけに接続
+- 案件切替・削除・新規作成時に旧案件listenerを解除
+- 未送信Recordの初期復元オーバーレイを維持
+- fieldEditedAt一致時は自端末書込の再反映を抑制
+- Dまでの全finishRecord保持・差分書込・案件削除仕様を維持
