@@ -38,13 +38,17 @@
   <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
   <h1 id="caseHeaderTitle">案件未選択</h1>
   <span class="pill header-version" id="headerVersion"></span>
-  <span class="connection-dot offline" id="onlinePill" title="通信機能は未実装です"></span>
+  <span class="connection-dot neutral" id="onlinePill" title="Firestore：未接続" aria-label="Firestore 未接続"></span>
   <span class="pill header-sync-state" id="firebasePill">未接続</span>
   <span class="pill header-device" id="devicePill">端末未設定</span>
-  <button class="btn small header-auth-btn" id="msAuthBtn">Microsoftログイン</button>
-  <span class="pill header-account" id="msPill">未ログイン</span>
-  <span class="pill header-graph-state" id="graphTokenPill">Graphトークン：未取得</span>
-  <span class="hint" id="appDevelopmentHint">仕上表機能実装中</span>
+  <button class="header-ms-signin" id="msAuthBtn" type="button" aria-label="Sign in with Microsoft">
+    <img class="ms-signin-light" src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_signin_light.svg" alt="Sign in with Microsoft">
+    <img class="ms-signin-dark" src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_signin_dark.svg" alt="Sign in with Microsoft">
+  </button>
+  <button class="pill header-account header-account-button" id="msPill" type="button" hidden>
+    <img src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.svg" alt="">
+    <span data-ms-account-name></span>
+  </button>
 </header>
 
 <!-- ============================================================

@@ -29,7 +29,8 @@ function cloneEntry(entry) {
     project: { ...entry.project },
     finishRecords: cloneRecords(entry.finishRecords),
     materialRecords: cloneRecords(entry.materialRecords),
-    photoRecords: cloneRecords(entry.photoRecords)
+    photoRecords: cloneRecords(entry.photoRecords),
+    syncMeta: { ...(entry.syncMeta || {}) }
   };
 }
 
@@ -66,7 +67,8 @@ projects.set(sampleProject.projectId, {
   project: { ...sampleProject },
   finishRecords: [],
   materialRecords: [],
-  photoRecords: []
+  photoRecords: [],
+  syncMeta: {}
 });
 
 export function getCurrentProject() {
@@ -92,17 +94,34 @@ export function getProjectList() {
   });
 }
 
-export function saveProjectSnapshot({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
+export function saveProjectSnapshot({ project, finishRecords = [], materialRecords = [], photoRecords = [], syncMeta = null }) {
   if (!project?.projectId) return null;
+  const previous = projects.get(project.projectId);
   projects.set(project.projectId, {
     project: { ...project },
     finishRecords: cloneRecords(finishRecords),
     materialRecords: cloneRecords(materialRecords),
-    photoRecords: cloneRecords(photoRecords)
+    photoRecords: cloneRecords(photoRecords),
+    syncMeta: { ...(previous?.syncMeta || {}), ...(syncMeta || {}) }
   });
   if (!project.isSample) persistLocalProjects();
   notify();
   return getProject(project.projectId);
+}
+
+export function getProjectSyncMeta(projectId) {
+  return { ...(projects.get(String(projectId || ''))?.syncMeta || {}) };
+}
+
+export function updateProjectSyncMeta(projectId, patch = {}) {
+  const id = String(projectId || '');
+  const entry = projects.get(id);
+  if (!entry) return null;
+  entry.syncMeta = { ...(entry.syncMeta || {}), ...(patch || {}) };
+  projects.set(id, entry);
+  if (!entry.project?.isSample) persistLocalProjects();
+  notify();
+  return { ...entry.syncMeta };
 }
 
 export function removeProject(projectId) {

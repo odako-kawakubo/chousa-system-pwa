@@ -13,7 +13,6 @@ import {
   savePhotoRecord,
   saveProjectMetadata,
   readTemporaryProjectNos,
-  readProjectRecords,
   subscribeProjectRecords,
   deleteTestProjectCompletely
 } from '../firestore/firestore-repository.js';
@@ -171,96 +170,69 @@ function hydratePhotoRecords(rawRecords = []) {
     }));
 }
 
-/**
- * v0.1.6.2C案件復元。
- * C以降はFirestoreのfinishRecords全件を現在の仕上表構造として扱う。
- * 旧A/B案件の差分保存データは、456件未満ならdefaultへ重ねて一度だけ全件化する。
- */
-export async function loadProjectRecordsFromFirestore(project) {
-  if (!shouldSyncProject(project)) return null;
-
-  await flushPendingWrites();
-
-  const remote = await readProjectRecords({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    backupAt: null
-  });
-
-  const unsent = listUnsent({ projectId: project.projectId });
-
-  const unsentMaterials = unsent.filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record);
-  const materialRawMap = new Map(remote.materialRecords.map((record) => [String(record.materialId || record.id || ''), record]));
-  unsentMaterials.forEach((item) => materialRawMap.set(String(item.recordId), item.record));
-  const materials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
-  const materialById = new Map(materials.map((record) => [record.materialId, record]));
-
-  const defaultRecords = createDefaultFinishRecords();
-  const isLegacySparse = remote.finishRecords.length > 0 && remote.finishRecords.length < defaultRecords.length;
-  let finishRaw;
-
-  if (!remote.finishRecords.length) {
-    // Firestore未登録の旧ローカル案件。ローカル保険は呼び出し側で利用する。
-    finishRaw = [];
-  } else if (isLegacySparse) {
-    const merged = new Map(defaultRecords.map((record) => [record.finishId, record]));
-    remote.finishRecords.forEach((raw) => merged.set(String(raw.finishId || raw.id || ''), raw));
-    finishRaw = Array.from(merged.values());
-  } else {
-    finishRaw = remote.finishRecords;
+/** Firestore Timestamp / Date / ISO文字列を比較用ミリ秒へ揃える。 */
+export function firestoreTimeToMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return Number(value.toMillis()) || 0;
+  if (typeof value.seconds === 'number') {
+    return (Number(value.seconds) * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1e6);
   }
-
-  const finishRawMap = new Map(finishRaw.map((record) => [String(record.finishId || record.id || ''), record]));
-
-  // 未送信の最新ローカル状態をFirestore読込後に重ねる。
-  // 最後に全件まとめてhydrateし、同じ部屋のroomUidを必ず共有させる。
-  unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
-    const finishId = String(item.recordId || '');
-    if (!finishId) return;
-    if (item.operation === 'delete') {
-      finishRawMap.delete(finishId);
-      return;
-    }
-    if (item.record) finishRawMap.set(finishId, item.record);
-  });
-
-  const finishes = hydrateFinishRecords(Array.from(finishRawMap.values()), materialById);
-
-  // A/Bの差分方式案件は、Cで開いた時点で現在形を全件Firestoreへ移行する。
-  if (isLegacySparse && finishes.length) {
-    persistFinishStructureForProject(project, finishes);
-  }
-
-  const unsentPhotos = unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record);
-  const photoRawMap = new Map(remote.photoRecords.map((record) => [String(record.photoId || record.id || ''), record]));
-  unsentPhotos.forEach((item) => photoRawMap.set(String(item.recordId), item.record));
-  const photos = hydratePhotoRecords(Array.from(photoRawMap.values()));
-
-  return {
-    finishRecords: finishes,
-    materialRecords: materials,
-    photoRecords: photos
-  };
+  if (value instanceof Date) return value.getTime();
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function newestRecordUpdatedAt(records = []) {
+  return records.reduce((max, record) => Math.max(max, firestoreTimeToMillis(record?.updatedAt)), 0);
+}
+
+function newestSnapshotUpdatedAt(raw = {}) {
+  return Math.max(
+    newestRecordUpdatedAt(raw.finishRecords || []),
+    newestRecordUpdatedAt(raw.materialRecords || []),
+    newestRecordUpdatedAt(raw.photoRecords || [])
+  );
+}
+
+function rawSnapshotToChanges(raw = {}) {
+  return [
+    ...(raw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record })),
+    ...(raw.finishRecords || []).map((record) => ({ recordType: 'finish', changeType: 'modified', id: String(record.finishId || record.id || ''), record })),
+    ...(raw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
+  ];
+}
 
 /**
- * 案件を開いたままFirestoreの変更を受け取るための購読入口。
- * 初回snapshotは3Recordをまとめてhydrateし、以後は差分changeだけ返す。
+ * 案件を開いたままFirestoreの変更を受け取る購読入口。
+ * - sinceなし: 初回だけ3Record全件を受け取り、その後は差分change。
+ * - sinceあり: ローカル保存済み案件のため、sinceより新しいRecordだけ初回差分として受け取り、その後も同じlistenerで差分監視。
  */
-export function subscribeProjectRecordsForProject(project, { onInitial, onChanges, onError } = {}) {
+export function subscribeProjectRecordsForProject(project, { since = 0, onInitial, onChanges, onState, onError } = {}) {
   if (!shouldSyncProject(project)) {
-    onInitial?.({ finishRecords: [], materialRecords: [], photoRecords: [] });
+    onInitial?.({ mode: 'local', finishRecords: [], materialRecords: [], photoRecords: [], changes: [], lastSyncedAt: 0 });
     return () => {};
   }
 
   const projectId = String(project.projectId);
   const environment = projectEnvironment(project);
+  const deltaMode = Number(since || 0) > 0;
 
   return subscribeProjectRecords({
     projectId,
     environment,
+    since: deltaMode ? new Date(Number(since)) : null,
     onInitial: (raw) => {
+      const remoteLastSyncedAt = newestSnapshotUpdatedAt(raw);
+
+      if (deltaMode) {
+        onInitial?.({
+          mode: 'delta',
+          changes: rawSnapshotToChanges(raw),
+          lastSyncedAt: Math.max(Number(since || 0), remoteLastSyncedAt)
+        });
+        return;
+      }
+
       const unsent = listUnsent({ projectId });
 
       const materialRawMap = new Map((raw.materialRecords || []).map((record) => [String(record.materialId || record.id || ''), record]));
@@ -298,9 +270,17 @@ export function subscribeProjectRecordsForProject(project, { onInitial, onChange
         .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
       const photos = hydratePhotoRecords(Array.from(photoRawMap.values()));
 
-      onInitial?.({ finishRecords: finishes, materialRecords: materials, photoRecords: photos });
+      onInitial?.({
+        mode: 'full',
+        finishRecords: finishes,
+        materialRecords: materials,
+        photoRecords: photos,
+        changes: [],
+        lastSyncedAt: remoteLastSyncedAt
+      });
     },
     onChanges,
+    onState,
     onError
   });
 }

@@ -25,6 +25,10 @@ import * as photoRecordStore from './store/photo-record-store.js';
 import { seedInitialPhotoRecords } from './demo/sample-photos.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
+import { bindSyncStatusUi } from './ui/sync-ui.js';
+import { bindDeviceUi } from './ui/device-ui.js';
+import { initializeDeviceIdentity } from './device-code.js';
+import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 
 
 /**
@@ -40,7 +44,11 @@ import { initializeTheme, bindThemeControls } from './ui/theme.js';
 function initUiSkeleton() {
   // 端末保存済みのテーマを最初に適用し、各タブ描画時の色を揃える。
   initializeTheme();
+  initializeDeviceIdentity();
   applyAppVersionDisplay();
+  initializeNetworkStatusEvents();
+  bindSyncStatusUi();
+  bindDeviceUi();
   bindTabEvents();
   bindDrawerEvents();
   bindThemeControls();

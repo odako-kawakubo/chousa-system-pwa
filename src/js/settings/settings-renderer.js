@@ -14,6 +14,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
+
+function formatSyncTime(value) {
+  const time = Number(value || 0);
+  if (!time) return '未同期';
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return '未同期';
+  return new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).format(date);
+}
+
 function renderMaterialRows(rows) {
   return rows.map((item) => `
     <tr data-setting-material-row="${escapeHtml(item.candidateId)}">
@@ -147,21 +158,78 @@ export function renderSettingsTab(root, viewModel) {
       </section>
 
       <section class="settings-section" data-settings-panel="sync" hidden>
-        <div class="settings-grid">
+        <div class="settings-grid settings-sync-grid">
           <section class="settings-card">
             <div class="settings-card-head">
               <div>
-                <h3>同期システム設定</h3>
-                <div class="hint">Firebase設計時に保存先・同期状態・端末・バックアップ仕様を確定します。</div>
+                <h3>同期状態</h3>
+                <div class="hint">現在開いている案件のFirestore同期状態です。</div>
               </div>
-              <span class="pill">UIのみ</span>
+              <span class="pill settings-sync-state-pill" data-settings-sync-status>${escapeHtml(viewModel.sync.text)}</span>
             </div>
-            <div class="settings-sync-placeholder-grid">
-              <div class="settings-placeholder-box"><b>Firebase</b><span>接続先・案件正本・差分同期</span></div>
-              <div class="settings-placeholder-box"><b>OneDrive</b><span>案件フォルダ・写真・分析結果連携</span></div>
-              <div class="settings-placeholder-box"><b>端末</b><span>端末名・端末コード・更新端末管理</span></div>
-              <div class="settings-placeholder-box"><b>バックアップ</b><span>手動／自動バックアップ・復元</span></div>
-              <div class="settings-placeholder-box"><b>Excel／分析結果</b><span>出力・取込仕様は後続フェーズで接続</span></div>
+            <div class="settings-status-list">
+              <div><span>Firestore</span><b data-settings-sync-firestore>${escapeHtml(viewModel.sync.text)}</b></div>
+              <div><span>最終同期</span><b data-settings-sync-time>${escapeHtml(formatSyncTime(viewModel.sync.lastSyncedAt))}</b></div>
+              <div><span>未送信</span><b data-settings-sync-unsent>${escapeHtml(viewModel.sync.unsentCount)}件</b></div>
+            </div>
+            <div class="settings-action-row">
+              <button type="button" class="btn" disabled title="後続フェーズで接続">今すぐ同期</button>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-card-head">
+              <div>
+                <h3>オフラインモード</h3>
+                <div class="hint">ONの間はFirestoreとの送受信を停止し、端末内へ保存します。</div>
+              </div>
+              <button type="button" class="btn small${viewModel.sync.manualOffline ? ' active' : ''}" data-action="toggle-manual-offline" data-settings-offline-toggle aria-pressed="${viewModel.sync.manualOffline ? 'true' : 'false'}">${viewModel.sync.manualOffline ? 'ON' : 'OFF'}</button>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-card-head">
+              <div>
+                <h3>端末</h3>
+                <div class="hint">この端末の表示名はここから変更できます。</div>
+              </div>
+              <span class="pill">${escapeHtml(viewModel.device.code)}</span>
+            </div>
+            <div class="settings-device-editor">
+              <label><span>端末名</span><input value="${escapeHtml(viewModel.device.name)}" data-setting-device-name></label>
+              <button type="button" class="btn" data-action="save-device-name">変更</button>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-card-head">
+              <div>
+                <h3>Microsoft / OneDrive</h3>
+                <div class="hint">Microsoft認証とOneDrive接続に必要な状態を確認します。</div>
+              </div>
+              <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}">${viewModel.auth.loggedIn ? 'ログイン済み' : '未ログイン'}</span>
+            </div>
+            <div class="settings-status-list">
+              <div><span>ユーザー</span><b data-settings-auth-user>${escapeHtml(viewModel.auth.displayName || '未ログイン')}</b></div>
+              <div><span>Graphトークン</span><b data-settings-graph-state>${viewModel.auth.graphTokenReady ? '取得済み' : '未取得'}</b></div>
+              <div><span>OneDrive</span><b>未接続</b></div>
+            </div>
+          </section>
+
+          <section class="settings-card settings-sync-wide">
+            <div class="settings-card-head">
+              <div>
+                <h3>バックアップ</h3>
+                <div class="hint">OneDriveへの写真保存・完全バックアップは後続フェーズで接続します。</div>
+              </div>
+              <span class="pill">未接続</span>
+            </div>
+            <div class="settings-status-list">
+              <div><span>最終バックアップ</span><b>未実行</b></div>
+              <div><span>自動バックアップ</span><b>30分ごと（後続接続）</b></div>
+            </div>
+            <div class="settings-action-row">
+              <button type="button" class="btn" disabled title="OneDrive接続後に有効化">今すぐバックアップ</button>
             </div>
           </section>
         </div>

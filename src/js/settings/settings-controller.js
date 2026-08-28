@@ -12,9 +12,16 @@ import * as surveyCandidateStore from '../store/survey-candidate-store.js';
 import { renderSettingsTab } from './settings-renderer.js';
 import * as boardSettingsStore from './board-settings-store.js';
 import { renderBoardSample } from '../camera/camera-board.js';
+import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
+import { listUnsent } from '../sync/unsent-queue.js';
+import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
+import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 
 let root = null;
 let unsubscribe = null;
+let unsubscribeSync = null;
+let unsubscribeAuth = null;
+let unsubscribeDevice = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -29,8 +36,57 @@ function buildViewModel() {
     },
     materialCandidates: surveyCandidateStore.getConfiguredMaterialCandidates(),
     partCandidates: surveyCandidateStore.getConfiguredPartCandidates(),
-    board
+    board,
+    sync: {
+      ...getSyncStatus(),
+      unsentCount: currentProject.projectId ? listUnsent({ projectId: currentProject.projectId }).length : 0
+    },
+    auth: getAuthUiState(),
+    device: {
+      code: getDeviceCode(),
+      name: getDeviceDisplayName()
+    }
   };
+}
+
+function formatSyncTime(value) {
+  const time = Number(value || 0);
+  if (!time) return '未同期';
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return '未同期';
+  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+}
+
+function refreshSyncStatusFields(status = getSyncStatus()) {
+  if (!root) return;
+  const statusPill = root.querySelector('[data-settings-sync-status]');
+  const firestore = root.querySelector('[data-settings-sync-firestore]');
+  const time = root.querySelector('[data-settings-sync-time]');
+  const unsent = root.querySelector('[data-settings-sync-unsent]');
+  const toggle = root.querySelector('[data-settings-offline-toggle]');
+  if (statusPill) statusPill.textContent = status.text;
+  if (firestore) firestore.textContent = status.text;
+  if (time) time.textContent = formatSyncTime(status.lastSyncedAt);
+  if (unsent) unsent.textContent = `${status.unsentCount || 0}件`;
+  if (toggle) {
+    toggle.textContent = status.manualOffline ? 'ON' : 'OFF';
+    toggle.classList.toggle('active', status.manualOffline);
+    toggle.setAttribute('aria-pressed', status.manualOffline ? 'true' : 'false');
+  }
+}
+
+function refreshAuthStatusFields(auth = getAuthUiState()) {
+  if (!root) return;
+  const user = root.querySelector('[data-settings-auth-user]');
+  const graph = root.querySelector('[data-settings-graph-state]');
+  if (user) user.textContent = auth.displayName || '未ログイン';
+  if (graph) graph.textContent = auth.graphTokenReady ? '取得済み' : '未取得';
+}
+
+function refreshDeviceFields(name = getDeviceDisplayName()) {
+  if (!root) return;
+  const input = root.querySelector('[data-setting-device-name]');
+  if (input && document.activeElement !== input) input.value = name;
 }
 
 function render() {
@@ -137,6 +193,23 @@ function handleClick(event) {
     return;
   }
 
+  if (event.target.closest('[data-action="toggle-manual-offline"]')) {
+    const next = !getSyncStatus().manualOffline;
+    window.dispatchEvent(new CustomEvent('chousa:manual-offline-change', { detail: { enabled: next } }));
+    window.setTimeout(render, 0);
+    return;
+  }
+
+  if (event.target.closest('[data-action="save-device-name"]')) {
+    const value = root.querySelector('[data-setting-device-name]')?.value || '';
+    if (!setDeviceName(value)) {
+      window.alert('端末名を入力してください。');
+      return;
+    }
+    render();
+    return;
+  }
+
   const fontAdjust = event.target.closest('[data-board-font-adjust]');
   if (fontAdjust) {
     adjustBoardFontSize(
@@ -227,4 +300,10 @@ export function initializeSettingsTab() {
 
   if (unsubscribe) unsubscribe();
   unsubscribe = surveyCandidateStore.subscribe(render);
+  if (unsubscribeSync) unsubscribeSync();
+  unsubscribeSync = subscribeSyncStatus(refreshSyncStatusFields);
+  if (unsubscribeAuth) unsubscribeAuth();
+  unsubscribeAuth = subscribeAuthUiState(refreshAuthStatusFields);
+  if (unsubscribeDevice) unsubscribeDevice();
+  unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
 }

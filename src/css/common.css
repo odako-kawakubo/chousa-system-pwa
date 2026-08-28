@@ -399,12 +399,3 @@ h1 {
   background: var(--status-online);
   box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--line-strong);
 }
-.connection-dot.offline {
-  background: var(--disabled);
-}
-.connection-dot.wait {
-  background: var(--orange);
-}
-.connection-dot.error {
-  background: var(--red);
-}

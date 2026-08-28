@@ -27,6 +27,12 @@ import {
   serializePhotoRecord
 } from './record-serializer.js';
 import { putUnsent, removeUnsent } from '../sync/unsent-queue.js';
+import {
+  isManualOffline,
+  beginFirestoreActivity,
+  endFirestoreActivity,
+  markError
+} from '../sync/sync-status.js';
 
 const db = getFirestore(firebaseApp);
 const RECORD_COLLECTIONS = Object.freeze({
@@ -66,9 +72,23 @@ function toTimestamp(value) {
 }
 
 async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, run }) {
+  if (isManualOffline()) {
+    putUnsent({
+      projectId,
+      environment,
+      recordType,
+      recordId,
+      operation,
+      record: localRecord
+    });
+    return { ok: false, queued: true, operation, offline: true };
+  }
+
+  beginFirestoreActivity();
   try {
     await run();
     removeUnsent(projectId, recordType, recordId);
+    endFirestoreActivity();
     return { ok: true, queued: false, operation };
   } catch (error) {
     putUnsent({
@@ -79,6 +99,8 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       operation,
       record: localRecord
     });
+    markError(error);
+    endFirestoreActivity();
     return { ok: false, queued: true, operation, error };
   }
 }
@@ -118,6 +140,19 @@ export async function saveFinishRecordsBatch({ projectId, environment = 'product
   const valid = records.filter((record) => record?.finishId);
   const results = [];
 
+  if (isManualOffline()) {
+    valid.forEach((record) => putUnsent({
+      projectId,
+      environment,
+      recordType: 'finish',
+      recordId: record.finishId,
+      operation: 'set',
+      record
+    }));
+    return { ok: false, queued: true, offline: true, count: valid.length, results: [] };
+  }
+
+  beginFirestoreActivity();
   for (let start = 0; start < valid.length; start += FINISH_BATCH_SIZE) {
     const chunk = valid.slice(start, start + FINISH_BATCH_SIZE);
     try {
@@ -144,12 +179,15 @@ export async function saveFinishRecordsBatch({ projectId, environment = 'product
     }
   }
 
-  return {
+  const response = {
     ok: results.every((item) => item.ok),
     queued: results.some((item) => !item.ok),
     count: valid.length,
     results
   };
+  if (!response.ok) markError(results.find((item) => !item.ok)?.error);
+  endFirestoreActivity();
+  return response;
 }
 
 export async function saveMaterialRecord({ projectId, environment = 'production', record }) {
@@ -185,8 +223,11 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
 /** 仮案件番号の他端末重複を避けるため、案件メタ情報を親Documentにも保持する。 */
 export async function saveProjectMetadata(project) {
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
+  if (isManualOffline()) return { ok: false, queued: true, offline: true };
   const environment = project.environment === 'test' ? 'test' : 'production';
-  await setDoc(projectDocRef(project.projectId, environment), {
+  beginFirestoreActivity();
+  try {
+    await setDoc(projectDocRef(project.projectId, environment), {
     projectId: String(project.projectId),
     projectNo: String(project.projectNo || project.projectId),
     projectName: String(project.projectName || ''),
@@ -194,9 +235,15 @@ export async function saveProjectMetadata(project) {
     projectType: String(project.projectType || ''),
     isTemporary: Boolean(project.isTemporary),
     createdAt: String(project.createdAt || ''),
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-  return { ok: true };
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    endFirestoreActivity();
+    return { ok: true };
+  } catch (error) {
+    markError(error);
+    endFirestoreActivity();
+    throw error;
+  }
 }
 
 
@@ -249,14 +296,21 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
 export function subscribeProjectRecords({
   projectId,
   environment = 'production',
+  since = null,
   onInitial,
   onChanges,
+  onState,
   onError
 }) {
+  if (isManualOffline()) {
+    return () => {};
+  }
+
   const initialByType = { finish: null, material: null, photo: null };
   const bufferedChanges = [];
   let ready = false;
   let closed = false;
+  const sinceTimestamp = toTimestamp(since);
 
   const emitInitialIfReady = () => {
     if (closed || ready) return;
@@ -290,50 +344,33 @@ export function subscribeProjectRecords({
       hasPendingWrites: Boolean(change.doc.metadata?.hasPendingWrites)
     }));
 
-    // 同じFirebase clientからの未確定ローカルechoはStoreへ戻さない。
     const remoteChanges = changes.filter((change) => !change.hasPendingWrites);
     if (!remoteChanges.length) return;
     if (!ready) bufferedChanges.push(...remoteChanges);
     else onChanges?.(remoteChanges);
   };
 
-  const unsubscribers = Object.keys(RECORD_COLLECTIONS).map((recordType) => onSnapshot(
-    collectionRef(projectId, environment, recordType),
-    (snapshot) => handleSnapshot(recordType, snapshot),
-    (error) => onError?.(error)
-  ));
+  const unsubscribers = Object.keys(RECORD_COLLECTIONS).map((recordType) => {
+    const ref = collectionRef(projectId, environment, recordType);
+    const source = sinceTimestamp ? query(ref, where('updatedAt', '>', sinceTimestamp)) : ref;
+    return onSnapshot(
+      source,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        onState?.({
+          recordType,
+          fromCache: Boolean(snapshot.metadata?.fromCache),
+          hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites)
+        });
+        handleSnapshot(recordType, snapshot);
+      },
+      (error) => onError?.(error)
+    );
+  });
 
   return () => {
     closed = true;
     bufferedChanges.length = 0;
     unsubscribers.forEach((unsubscribe) => unsubscribe());
-  };
-}
-
-async function readCollection({ projectId, environment, recordType, since = null }) {
-  const ref = collectionRef(projectId, environment, recordType);
-  const timestamp = toTimestamp(since);
-  const source = timestamp ? query(ref, where('updatedAt', '>', timestamp)) : ref;
-  return deserializeSnapshot(await getDocs(source));
-}
-
-/**
- * 案件を開く際のFirestore取得基盤。
- * finishRecordは案件構造そのものなので常に全件取得する。
- * material/photoはバックアップ復元時のみbackupAt後の差分取得を許容する。
- */
-export async function readProjectRecords({ projectId, environment = 'production', backupAt = null }) {
-  const hasBackup = Boolean(toTimestamp(backupAt));
-  const [finishRecords, materialRecords, photoRecords] = await Promise.all([
-    readCollection({ projectId, environment, recordType: 'finish' }),
-    readCollection({ projectId, environment, recordType: 'material', since: hasBackup ? backupAt : null }),
-    readCollection({ projectId, environment, recordType: 'photo', since: hasBackup ? backupAt : null })
-  ]);
-
-  return {
-    mode: hasBackup ? 'backup-plus-firestore' : 'firestore-full',
-    finishRecords,
-    materialRecords,
-    photoRecords
   };
 }

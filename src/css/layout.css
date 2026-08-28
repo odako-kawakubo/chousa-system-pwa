@@ -524,3 +524,38 @@
   padding: 10px 2px;
   line-height: 1.5;
 }
+
+/* v0.1.6.2F: Firestore同期状態 / Microsoft認証 */
+.header-ms-signin{
+  flex:0 0 auto;
+  height:28px;
+  padding:0;
+  border:0;
+  background:transparent;
+  display:inline-flex;
+  align-items:center;
+  cursor:pointer;
+}
+.header-ms-signin img{display:block;height:28px;width:auto}
+.header-ms-signin .ms-signin-dark{display:none}
+[data-theme="dark"] .header-ms-signin .ms-signin-light{display:none}
+[data-theme="dark"] .header-ms-signin .ms-signin-dark{display:block}
+.header-ms-signin:disabled{opacity:.55;cursor:wait}
+.header-account-button{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  cursor:pointer;
+  font:inherit;
+}
+.header-account-button img{width:16px;height:16px;display:block}
+.header-account-button[hidden]{display:none}
+
+.connection-dot.neutral{background:var(--disabled)}
+.connection-dot.connected{background:#22c55e}
+.connection-dot.unstable{background:#eab308}
+.connection-dot.network-offline{background:#f97316}
+.connection-dot.error{background:#ef4444}
+.connection-dot.offline-mode{background:#3b82f6}
+.connection-dot.blinking{animation:firestore-status-pulse .85s ease-in-out infinite alternate}
+@keyframes firestore-status-pulse{from{opacity:1;transform:scale(1)}to{opacity:.35;transform:scale(.82)}}

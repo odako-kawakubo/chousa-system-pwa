@@ -21,10 +21,7 @@
 .settings-table-input{border-color:transparent;background:transparent;padding:5px 6px}
 .settings-table-input:focus{border-color:var(--main-border-soft);background:var(--panel);outline:2px solid var(--focus-ring)}
 .settings-part-table-wrap{max-height:360px}
-.settings-sync-placeholder-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px}
-.settings-placeholder-box{display:grid;gap:5px;padding:14px;border:1px dashed var(--line-strong);border-radius:10px;background:var(--surface-soft)}
-.settings-placeholder-box b{font-size:13px}.settings-placeholder-box span{font-size:12px;color:var(--muted);line-height:1.5}
-@media(max-width:900px){.settings-grid{grid-template-columns:1fr}.settings-project-card{grid-column:auto}.settings-form-grid{grid-template-columns:1fr}.settings-span-2{grid-column:auto}.settings-sync-placeholder-grid{grid-template-columns:1fr}.settings-project-survey-row{grid-template-columns:1fr}.settings-project-survey-row input[type="date"]{width:100%;max-width:100%}}
+@media(max-width:900px){.settings-grid{grid-template-columns:1fr}.settings-project-card{grid-column:auto}.settings-form-grid{grid-template-columns:1fr}.settings-span-2{grid-column:auto}.settings-project-survey-row{grid-template-columns:1fr}.settings-project-survey-row input[type="date"]{width:100%;max-width:100%}}
 @media(max-width:640px){.settings-add-material{grid-template-columns:1fr}.settings-add-part{grid-template-columns:1fr}.settings-subtabs{top:104px}}
 
 /* v0.1.5.6 案件情報 + 看板調整 + 実電子看板 */
@@ -61,3 +58,17 @@
 @media(max-width:640px){.settings-board-size-row{grid-template-columns:1fr}}
 
 
+
+/* v0.1.6.2F 同期システム設定 */
+.settings-sync-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.settings-sync-wide{grid-column:1/-1}
+.settings-status-list{display:grid;padding:8px 14px}
+.settings-status-list>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line)}
+.settings-status-list>div:last-child{border-bottom:0}
+.settings-status-list span{font-size:12px;color:var(--muted)}
+.settings-status-list b{font-size:12px;text-align:right;overflow-wrap:anywhere}
+.settings-action-row{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
+.settings-device-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;padding:14px}
+.settings-device-editor label{display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--text-secondary)}
+.settings-device-editor input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:7px 8px;font-size:13px;color:var(--text)}
+@media(max-width:900px){.settings-sync-grid{grid-template-columns:1fr}.settings-sync-wide{grid-column:auto}}
