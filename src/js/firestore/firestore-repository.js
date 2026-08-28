@@ -1,7 +1,7 @@
 /**
  * src/js/firestore/firestore-repository.js
  *
- * v0.1.6.2E Firestore Repository。
+ * v0.1.6.2G Firestore Repository。
  * finishRecordは「案件の仕上表構造そのもの」を全件保持する。
  * 案件作成時は初期構造を一括登録し、その後は変更Recordだけ差分更新する。
  */
@@ -288,81 +288,80 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
 
 
 
-/**
- * 開いている案件の3Record collectionをリアルタイム購読する。
- * 各collectionの最初のsnapshotを1回の初期状態としてまとめ、
- * 以後はdocChanges()だけを通知する。
- */
-export function subscribeProjectRecords({
+/** 3Recordそれぞれの基準時刻以降を1回だけ取得する。 */
+export async function readProjectRecordsOnce({
   projectId,
   environment = 'production',
-  since = null,
-  onInitial,
+  sinceByType = null
+}) {
+  if (isManualOffline()) {
+    return { finishRecords: [], materialRecords: [], photoRecords: [] };
+  }
+
+  const entries = await Promise.all(Object.keys(RECORD_COLLECTIONS).map(async (recordType) => {
+    const ref = collectionRef(projectId, environment, recordType);
+    const since = Number(sinceByType?.[recordType] || 0);
+    const source = since > 0
+      ? query(ref, where('updatedAt', '>', Timestamp.fromMillis(since)))
+      : ref;
+    const snapshot = await getDocs(source);
+    return [recordType, deserializeSnapshot(snapshot)];
+  }));
+
+  const byType = Object.fromEntries(entries);
+  return {
+    finishRecords: byType.finish || [],
+    materialRecords: byType.material || [],
+    photoRecords: byType.photo || []
+  };
+}
+
+/**
+ * 1回の取りこぼし回収が終わった後だけ使うリアルタイム監視。
+ * afterByTypeは「今回の監視開始時点で各Recordがどこまで揃っているか」を表す。
+ * 前回案件切替時の古いlastSyncedAtを長時間listener条件として使い続けない。
+ */
+export function subscribeProjectRecordChanges({
+  projectId,
+  environment = 'production',
+  afterByType = {},
   onChanges,
   onState,
   onError
 }) {
-  if (isManualOffline()) {
-    return () => {};
-  }
+  if (isManualOffline()) return () => {};
 
-  const initialByType = { finish: null, material: null, photo: null };
-  const bufferedChanges = [];
-  let ready = false;
   let closed = false;
-  const sinceTimestamp = toTimestamp(since);
-
-  const emitInitialIfReady = () => {
-    if (closed || ready) return;
-    if (Object.values(initialByType).some((value) => value === null)) return;
-    ready = true;
-    onInitial?.({
-      finishRecords: initialByType.finish,
-      materialRecords: initialByType.material,
-      photoRecords: initialByType.photo
-    });
-    if (bufferedChanges.length) {
-      const pending = bufferedChanges.splice(0, bufferedChanges.length);
-      onChanges?.(pending);
-    }
-  };
-
-  const handleSnapshot = (recordType, snapshot) => {
-    if (closed) return;
-
-    if (initialByType[recordType] === null) {
-      initialByType[recordType] = deserializeSnapshot(snapshot);
-      emitInitialIfReady();
-      return;
-    }
-
-    const changes = snapshot.docChanges().map((change) => ({
-      recordType,
-      changeType: change.type,
-      id: change.doc.id,
-      record: change.type === 'removed' ? null : { id: change.doc.id, ...change.doc.data() },
-      hasPendingWrites: Boolean(change.doc.metadata?.hasPendingWrites)
-    }));
-
-    const remoteChanges = changes.filter((change) => !change.hasPendingWrites);
-    if (!remoteChanges.length) return;
-    if (!ready) bufferedChanges.push(...remoteChanges);
-    else onChanges?.(remoteChanges);
-  };
-
   const unsubscribers = Object.keys(RECORD_COLLECTIONS).map((recordType) => {
     const ref = collectionRef(projectId, environment, recordType);
-    const source = sinceTimestamp ? query(ref, where('updatedAt', '>', sinceTimestamp)) : ref;
+    const after = Number(afterByType?.[recordType] || 0);
+    const source = after > 0
+      ? query(ref, where('updatedAt', '>', Timestamp.fromMillis(after)))
+      : ref;
+
     return onSnapshot(
       source,
       { includeMetadataChanges: true },
       (snapshot) => {
+        if (closed) return;
         onState?.({
           recordType,
           fromCache: Boolean(snapshot.metadata?.fromCache),
           hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites)
         });
-        handleSnapshot(recordType, snapshot);
+
+        const changes = snapshot.docChanges().map((change) => ({
+          recordType,
+          changeType: change.type,
+          id: change.doc.id,
+          record: change.type === 'removed' ? null : { id: change.doc.id, ...change.doc.data() },
+          hasPendingWrites: Boolean(change.doc.metadata?.hasPendingWrites)
+        }));
+
+        // 自端末のローカルpending writeはStoreへ戻さない。server ack後は
+        // fieldEditedAt比較で同一変更として除外される。
+        const remoteChanges = changes.filter((change) => !change.hasPendingWrites);
+        if (remoteChanges.length) onChanges?.(remoteChanges);
       },
       (error) => onError?.(error)
     );
@@ -370,7 +369,7 @@ export function subscribeProjectRecords({
 
   return () => {
     closed = true;
-    bufferedChanges.length = 0;
     unsubscribers.forEach((unsubscribe) => unsubscribe());
   };
 }
+

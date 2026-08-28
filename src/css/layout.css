@@ -525,30 +525,38 @@
   line-height: 1.5;
 }
 
-/* v0.1.6.2F: Firestore同期状態 / Microsoft認証 */
+/* v0.1.6.2G: Firestore同期状態 / Microsoft認証 */
 .header-ms-signin{
   flex:0 0 auto;
-  height:28px;
-  padding:0;
-  border:0;
-  background:transparent;
+  height:26px;
+  padding:0 8px 0 6px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:var(--panel);
+  color:var(--text);
   display:inline-flex;
   align-items:center;
+  gap:5px;
   cursor:pointer;
+  font:600 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;
+  white-space:nowrap;
 }
-.header-ms-signin img{display:block;height:28px;width:auto}
-.header-ms-signin .ms-signin-dark{display:none}
-[data-theme="dark"] .header-ms-signin .ms-signin-light{display:none}
-[data-theme="dark"] .header-ms-signin .ms-signin-dark{display:block}
+.header-ms-signin img{display:block;width:15px;height:15px}
 .header-ms-signin:disabled{opacity:.55;cursor:wait}
+.header-ms-signin[hidden]{display:none}
 .header-account-button{
+  min-height:26px;
+  padding:3px 7px;
   display:inline-flex;
   align-items:center;
-  gap:6px;
+  gap:5px;
   cursor:pointer;
-  font:inherit;
+  font:600 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;
+  white-space:nowrap;
+  max-width:180px;
 }
-.header-account-button img{width:16px;height:16px;display:block}
+.header-account-button img{width:14px;height:14px;display:block;flex:0 0 auto}
+.header-account-button [data-ms-account-name]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header-account-button[hidden]{display:none}
 
 .connection-dot.neutral{background:var(--disabled)}

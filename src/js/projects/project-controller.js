@@ -1,7 +1,7 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2Fの案件管理入口。
+ * v0.1.6.2Gの案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
@@ -24,7 +24,10 @@ import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
 import {
   getRemoteTemporaryProjectNos,
-  subscribeProjectRecordsForProject,
+  readProjectRecordsForProject,
+  subscribeRealtimeProjectRecordsForProject,
+  newestCursorsFromChanges,
+  latestCursorValue,
   hydrateIncomingMaterialRecord,
   hydrateIncomingFinishRecord,
   hydrateIncomingPhotoRecord,
@@ -76,20 +79,38 @@ function newestChangeUpdatedAt(changes = []) {
   return changes.reduce((max, change) => Math.max(max, firestoreTimeToMillis(change?.record?.updatedAt)), 0);
 }
 
-function updateProjectSyncCursor(projectId, value) {
-  const next = Number(value || 0);
-  if (!projectId || !next) return;
-  const current = Number(getProjectSyncMeta(projectId)?.lastSyncedAt || 0);
-  if (next <= current) return;
-  updateProjectSyncMeta(projectId, { lastSyncedAt: next });
-  if (getCurrentProject()?.projectId === projectId) setLastSyncedAt(next);
+function normalizeRecordCursors(value = {}) {
+  return {
+    finish: Number(value.finish || 0),
+    material: Number(value.material || 0),
+    photo: Number(value.photo || 0)
+  };
+}
+
+function getProjectRecordCursors(projectId) {
+  return normalizeRecordCursors(getProjectSyncMeta(projectId)?.recordCursors || {});
+}
+
+function updateProjectSyncCursors(projectId, cursors = {}, { completed = false } = {}) {
+  if (!projectId) return;
+  const current = getProjectRecordCursors(projectId);
+  const next = {
+    finish: Math.max(current.finish, Number(cursors.finish || 0)),
+    material: Math.max(current.material, Number(cursors.material || 0)),
+    photo: Math.max(current.photo, Number(cursors.photo || 0))
+  };
+  const lastSyncedAt = latestCursorValue(next);
+  updateProjectSyncMeta(projectId, {
+    recordCursors: next,
+    lastSyncedAt,
+    hasSyncedOnce: true,
+    ...(completed ? { lastSyncCompletedAt: Date.now() } : {})
+  });
+  if (getCurrentProject()?.projectId === projectId) setLastSyncedAt(lastSyncedAt);
 }
 
 function applyProjectRecordChanges(project, changes = []) {
   if (!project?.projectId || getCurrentProject()?.projectId !== project.projectId) return;
-
-  const remoteCursor = newestChangeUpdatedAt(changes);
-  if (remoteCursor) updateProjectSyncCursor(project.projectId, remoteCursor);
 
   const unsentKeys = new Set(listUnsent({ projectId: project.projectId }).map((item) => `${item.recordType}|${item.recordId}`));
   const safeChanges = changes.filter((change) => !unsentKeys.has(`${change.recordType}|${change.id}`));
@@ -163,62 +184,71 @@ function applyProjectRecordChanges(project, changes = []) {
   refreshOpenProjectSessionViews();
 }
 
-function openFirestoreProjectSession(target) {
+async function openFirestoreProjectSession(target) {
   const project = target.project;
   const token = ++activeProjectStreamToken;
-  const lastSyncedAt = Number(target.syncMeta?.lastSyncedAt || getProjectSyncMeta(project.projectId)?.lastSyncedAt || 0);
-  const useLocalSnapshot = lastSyncedAt > 0 && Array.isArray(target.finishRecords) && target.finishRecords.length > 0;
-  setSyncBaseline(lastSyncedAt);
+  const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
+  const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
+  const legacyLastSyncedAt = Number(syncMeta.lastSyncedAt || 0);
+  const hasPerTypeCursors = Object.values(storedCursors).some((value) => value > 0);
+  // G以前の単一lastSyncedAtはRecord種別ごとの境界を保証できない。
+  // 既存F案件はGで最初に開く1回だけ全件取得し、正しい3種cursorへ移行する。
+  const cursors = storedCursors;
+  const useLocalSnapshot = Boolean(syncMeta.hasSyncedOnce || legacyLastSyncedAt > 0)
+    && Array.isArray(target.finishRecords)
+    && target.finishRecords.length > 0;
+  const canDeltaCatchUp = useLocalSnapshot && hasPerTypeCursors;
 
-  // 一度同期済みの案件はローカル3Recordを先に表示し、Firestoreは前回同期後の差分だけ読む。
-  if (useLocalSnapshot) {
-    // ローカル保存済みの現在形を即表示する。ここでは派生値を書き戻さず、Firestore差分受信後に整合させる。
-    openProjectSession(target);
-  }
+  setSyncBaseline(latestCursorValue(cursors));
+
+  // 一度取得済みならまず端末内の現在形を即表示する。
+  if (useLocalSnapshot) openProjectSession(target);
 
   if (isManualOffline()) {
     if (!useLocalSnapshot) openProjectSession(target);
     markLocalOnly();
-    return Promise.resolve(target);
+    return target;
   }
 
   markConnecting();
+  beginFirestoreActivity();
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const serverReadyTypes = new Set();
-    const stop = subscribeProjectRecordsForProject(project, {
-      since: useLocalSnapshot ? lastSyncedAt : 0,
-      onInitial: (remote) => {
-        if (token !== activeProjectStreamToken) return;
-        beginFirestoreActivity();
-        try {
-          if (remote?.mode === 'delta') {
-            if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
-          } else {
-            const restored = {
-              project,
-              finishRecords: remote?.finishRecords?.length ? remote.finishRecords : target.finishRecords,
-              materialRecords: remote?.materialRecords || target.materialRecords,
-              photoRecords: remote?.photoRecords || target.photoRecords || [],
-              syncMeta: { ...(target.syncMeta || {}), lastSyncedAt: Number(remote?.lastSyncedAt || 0) }
-            };
-            saveProjectSnapshot(restored);
-            openProjectSession(restored);
-            refreshMaterialUsageDerivedFields();
-            refreshMaterialList();
-          }
+  try {
+    // G: 過去の取りこぼし回収は1回のgetDocsだけ。listenerとは役割を分離する。
+    const remote = await readProjectRecordsForProject(project, {
+      cursors: canDeltaCatchUp ? cursors : null
+    });
+    if (token !== activeProjectStreamToken) return target;
 
-          const cursor = Math.max(lastSyncedAt, Number(remote?.lastSyncedAt || 0));
-          if (cursor) updateProjectSyncCursor(project.projectId, cursor);
-          if (!settled) {
-            settled = true;
-            resolve(getProject(project.projectId) || target);
-          }
-        } finally {
-          endFirestoreActivity(Number(remote?.lastSyncedAt || 0));
+    if (remote.mode === 'delta') {
+      if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
+    } else {
+      const restored = {
+        project,
+        finishRecords: remote.finishRecords?.length ? remote.finishRecords : target.finishRecords,
+        materialRecords: remote.materialRecords || target.materialRecords,
+        photoRecords: remote.photoRecords || target.photoRecords || [],
+        syncMeta: {
+          ...(target.syncMeta || {}),
+          recordCursors: normalizeRecordCursors(remote.cursors),
+          lastSyncedAt: Number(remote.lastSyncedAt || 0),
+          hasSyncedOnce: true,
+          lastSyncCompletedAt: Date.now()
         }
-      },
+      };
+      saveProjectSnapshot(restored);
+      openProjectSession(restored);
+      refreshMaterialUsageDerivedFields();
+      refreshMaterialList();
+    }
+
+    const caughtUpCursors = normalizeRecordCursors(remote.cursors || cursors);
+    updateProjectSyncCursors(project.projectId, caughtUpCursors, { completed: true });
+
+    // 取りこぼし回収が完了した地点を、この案件を開いている間だけの監視基準にする。
+    const serverReadyTypes = new Set();
+    const stop = subscribeRealtimeProjectRecordsForProject(project, {
+      afterByType: caughtUpCursors,
       onState: ({ recordType, fromCache }) => {
         if (token !== activeProjectStreamToken || isManualOffline()) return;
         if (fromCache) {
@@ -228,7 +258,7 @@ function openFirestoreProjectSession(target) {
         }
         serverReadyTypes.add(recordType);
         if (serverReadyTypes.size === 3) {
-          markReady(Number(getProjectSyncMeta(project.projectId)?.lastSyncedAt || lastSyncedAt || 0));
+          markReady(latestCursorValue(getProjectRecordCursors(project.projectId)));
         }
       },
       onChanges: (changes) => {
@@ -236,8 +266,8 @@ function openFirestoreProjectSession(target) {
         beginFirestoreActivity();
         try {
           applyProjectRecordChanges(project, changes);
-          const cursor = newestChangeUpdatedAt(changes);
-          if (cursor) updateProjectSyncCursor(project.projectId, cursor);
+          const nextCursors = newestCursorsFromChanges(changes, getProjectRecordCursors(project.projectId));
+          updateProjectSyncCursors(project.projectId, nextCursors);
         } finally {
           endFirestoreActivity(newestChangeUpdatedAt(changes));
         }
@@ -245,16 +275,20 @@ function openFirestoreProjectSession(target) {
       onError: (error) => {
         if (token !== activeProjectStreamToken) return;
         markError(error);
-        if (!settled) {
-          settled = true;
-          reject(error);
-        }
       }
     });
 
-    // 初回snapshot受信前でも切替時に確実に解除できるよう、購読直後に保持する。
+    // 初回listener snapshotより前でも、案件切替・通信断時に確実に解除できる。
     stopActiveProjectRecords = stop;
-  });
+    return getProject(project.projectId) || target;
+  } catch (error) {
+    if (token === activeProjectStreamToken) markError(error);
+    throw error;
+  } finally {
+    if (token === activeProjectStreamToken) {
+      endFirestoreActivity(latestCursorValue(getProjectRecordCursors(project.projectId)));
+    }
+  }
 }
 
 function showStatus(message, type = '') {
@@ -361,7 +395,7 @@ async function deleteProject(projectId) {
     try {
       await deleteLocalPhotoData(photoIds);
     } catch (error) {
-      console.warn('[v0.1.6.2F] 写真キャッシュ削除失敗', error);
+      console.warn('[v0.1.6.2G] 写真キャッシュ削除失敗', error);
     }
 
     clearUnsentForProject(id);
@@ -375,7 +409,7 @@ async function deleteProject(projectId) {
 
     renderProjectList();
   } catch (error) {
-    console.error('[v0.1.6.2F] 案件削除失敗', error);
+    console.error('[v0.1.6.2G] 案件削除失敗', error);
     window.alert(testProject
       ? 'テスト案件をFirestoreから削除できませんでした。端末内の案件は残しています。'
       : '案件を端末から削除できませんでした。');
@@ -409,7 +443,7 @@ async function switchProject(projectId) {
   } catch (error) {
     stopProjectRecordStream();
     markError(error);
-    console.error('[v0.1.6.2F] Firestore案件購読失敗', error);
+    console.error('[v0.1.6.2G] Firestore案件購読失敗', error);
     window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
   }
 }
@@ -433,7 +467,7 @@ async function createProjectFromForm() {
     try {
       remoteProjectNos = await getRemoteTemporaryProjectNos(dateCode, 'production');
     } catch (error) {
-      console.warn('[v0.1.6.2F] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
+      console.warn('[v0.1.6.2G] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
     }
 
     const project = createTemporaryProject({
@@ -482,6 +516,21 @@ async function createProjectFromForm() {
 }
 
 
+async function recoverCurrentProjectAfterNetworkReturn() {
+  if (isManualOffline()) return;
+  const current = getCurrentProject();
+  if (!current?.projectId || current.isSample) return;
+  const target = getProject(current.projectId);
+  if (!target) return;
+  stopProjectRecordStream();
+  try {
+    await openFirestoreProjectSession(target);
+  } catch (error) {
+    console.error('[v0.1.6.2G] 通信復帰後の差分回収失敗', error);
+    markError(error);
+  }
+}
+
 export async function setProjectManualOfflineMode(enabled) {
   const next = Boolean(enabled);
   const current = getCurrentProject();
@@ -517,9 +566,21 @@ export function initializeProjectManagement() {
     document.documentElement.dataset.manualOfflineEventBound = '1';
     window.addEventListener('chousa:manual-offline-change', (event) => {
       setProjectManualOfflineMode(Boolean(event.detail?.enabled)).catch((error) => {
-        console.error('[v0.1.6.2F] オフラインモード切替失敗', error);
+        console.error('[v0.1.6.2G] オフラインモード切替失敗', error);
         window.alert('オフラインモードを切り替えられませんでした。');
       });
+    });
+  }
+
+  if (document.documentElement.dataset.firestoreNetworkRecoveryBound !== '1') {
+    document.documentElement.dataset.firestoreNetworkRecoveryBound = '1';
+    window.addEventListener('offline', () => {
+      if (isManualOffline()) return;
+      saveCurrentProjectSession();
+      stopProjectRecordStream();
+    });
+    window.addEventListener('online', () => {
+      recoverCurrentProjectAfterNetworkReturn();
     });
   }
 
