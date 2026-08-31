@@ -1,7 +1,7 @@
 /**
  * src/js/firestore/firestore-repository.js
  *
- * v0.1.6.2I Firestore Repository。
+ * v0.1.6.2 Firestore Repository。
  * finishRecordは疎保存し、set/deleteを短期変更履歴にも同一batchで記録する。
  */
 

@@ -1,7 +1,7 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2Iの案件管理入口。
+ * v0.1.6.2の案件管理入口。
  * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
  * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
  */
@@ -132,7 +132,7 @@ async function cleanupFinishChangeLogIfDue(project) {
     syncDiagnosticLog('CHANGELOG_CLEANUP_DONE', { projectId: project.projectId, cleanupResult });
     updateProjectSyncMeta(project.projectId, { finishChangeLogCleanedAt: Date.now() });
   } catch (error) {
-    console.warn('[v0.1.6.2I] finish変更履歴の整理に失敗', error);
+    console.warn('[v0.1.6.2] finish変更履歴の整理に失敗', error);
   }
 }
 
@@ -520,7 +520,7 @@ async function deleteProject(projectId) {
     try {
       await deleteLocalPhotoData(photoIds);
     } catch (error) {
-      console.warn('[v0.1.6.2I] 写真キャッシュ削除失敗', error);
+      console.warn('[v0.1.6.2] 写真キャッシュ削除失敗', error);
     }
 
     clearUnsentForProject(id);
@@ -534,7 +534,7 @@ async function deleteProject(projectId) {
 
     renderProjectList();
   } catch (error) {
-    console.error('[v0.1.6.2I] 案件削除失敗', error);
+    console.error('[v0.1.6.2] 案件削除失敗', error);
     window.alert(testProject
       ? 'テスト案件をFirestoreから削除できませんでした。端末内の案件は残しています。'
       : '案件を端末から削除できませんでした。');
@@ -568,7 +568,7 @@ async function switchProject(projectId) {
   } catch (error) {
     stopProjectRecordStream();
     markError(error);
-    console.error('[v0.1.6.2I] Firestore案件購読失敗', error);
+    console.error('[v0.1.6.2] Firestore案件購読失敗', error);
     window.alert('Firestoreから案件を読み込めませんでした。通信状態を確認してください。端末内の状態は保持されています。');
   }
 }
@@ -592,7 +592,7 @@ async function createProjectFromForm() {
     try {
       remoteProjectNos = await getRemoteTemporaryProjectNos(dateCode, 'production');
     } catch (error) {
-      console.warn('[v0.1.6.2I] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
+      console.warn('[v0.1.6.2] Firestore仮番号確認失敗。端末内番号だけで採番します。', error);
     }
 
     const project = createTemporaryProject({
@@ -647,7 +647,7 @@ async function recoverCurrentProjectAfterNetworkReturn() {
   try {
     await openFirestoreProjectSession(target);
   } catch (error) {
-    console.error('[v0.1.6.2I] 通信復帰後の差分回収失敗', error);
+    console.error('[v0.1.6.2] 通信復帰後の差分回収失敗', error);
     markError(error);
   }
 }
@@ -687,7 +687,7 @@ export function initializeProjectManagement() {
     document.documentElement.dataset.manualOfflineEventBound = '1';
     window.addEventListener('chousa:manual-offline-change', (event) => {
       setProjectManualOfflineMode(Boolean(event.detail?.enabled)).catch((error) => {
-        console.error('[v0.1.6.2I] オフラインモード切替失敗', error);
+        console.error('[v0.1.6.2] オフラインモード切替失敗', error);
         window.alert('オフラインモードを切り替えられませんでした。');
       });
     });

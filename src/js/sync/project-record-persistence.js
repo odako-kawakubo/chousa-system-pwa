@@ -1,7 +1,7 @@
 /**
  * src/js/sync/project-record-persistence.js
  *
- * v0.1.6.2I 3レコードの保存・復元共通入口。
+ * v0.1.6.2 3レコードの保存・復元共通入口。
  * finishRecordは初期構造を端末で生成し、入力差分と追加構造の最小レコードだけをFirestoreへ保持する。
  */
 

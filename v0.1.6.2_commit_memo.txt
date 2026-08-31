@@ -1,0 +1,10 @@
+v0.1.6.2 Firestore疎保存・同期安定化・写真未整理判定修正
+
+- finishRecord初期456件の一括保存を廃止し、必要な疎レコードのみ保存
+- material新規登録時の3重保存を統合し、material 1回 + finish 1回へ整理
+- finish / material / photo のcatch-up判定をRecord種別ごとに独立化
+- mixed同期（例: finish delta / material delta / photo full）へ対応
+- 目視写真の未整理判定を areaCode + roomPosition + partSlot の物理キー基準へ統一
+- 看板編集後の写真が部位ブロックと未整理写真へ重複表示される不具合を修正
+- 同期診断ログは安定化確認用として継続搭載
+- README / Iレビュー文書を現行内容へ更新
