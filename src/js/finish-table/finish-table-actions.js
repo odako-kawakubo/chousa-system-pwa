@@ -3,7 +3,7 @@
  *
  * 仕上表・建材の業務ロジック。
  *
- * v0.1.5.1D 方針：
+ * v0.1.6.2H 方針：
  * - 1入力枠 = 1 finishRecord。未入力枠も実レコードとして保持する。
  * - 独立した部屋レコード／代表レコード／rowCountsは持たない。
  * - 同一部屋のfinishRecordは内部補助ID roomUid で束ねる。
@@ -45,9 +45,14 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
   deleteFinishForProject,
   persistFinishForProject,
-  persistFinishStructureForProject,
-  persistMaterialForProject
+  persistMaterialForProject,
+  hasKnownFinishRecord
 } from '../sync/project-record-persistence.js';
+import {
+  getRequiredStructureRecordIds,
+  defaultPartForRecord,
+  defaultRoomFieldsForRecord
+} from '../sync/finish-sparse-structure.js';
 
 const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
@@ -215,6 +220,56 @@ function rekeyRecordToRoomPosition(record, newRoomPosition) {
 }
 
 /* ============================================================
+   Firestore疎保存
+   ============================================================ */
+
+function roomCarrierRecord(roomRecords = []) {
+  // 部屋No. / 部屋名と、＋階／＋部屋の構造保持は標準末尾602へ集約する。
+  // ＋行の603以降は行構造専用であり、部屋共通情報のcarrierにはしない。
+  const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
+  return roomRecords.find((record) => Number(record.position) === standardCarrierPosition) || null;
+}
+
+function isFinishCellAtDefault(record) {
+  if (!record) return true;
+  return !String(record.materialId || '') && String(record.part || '') === String(defaultPartForRecord(record) || '');
+}
+
+function hasRoomCommonDifference(record) {
+  if (!record) return false;
+  const defaults = defaultRoomFieldsForRecord(record);
+  return String(record.roomNo || '') !== String(defaults.roomNo || '')
+    || String(record.roomName || '') !== String(defaults.roomName || '');
+}
+
+function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.getAll()) {
+  if (!record?.finishId) return false;
+  if (getRequiredStructureRecordIds(allRecords).has(record.finishId)) return true;
+  if (!isFinishCellAtDefault(record)) return true;
+  const carrier = roomCarrierRecord(allRecords.filter((item) => item.roomUid === record.roomUid && item.status === 'active'));
+  if (carrier?.finishId === record.finishId && hasRoomCommonDifference(record)) return true;
+  if (String(record.systemMemo || '').trim()) return true;
+  return false;
+}
+
+function persistSparseFinishRecord(project, record, allRecords = finishRecordStore.getAll()) {
+  if (!project?.projectId || project.isSample || !record?.finishId) return;
+  if (shouldKeepSparseFinishRecord(record, allRecords)) {
+    persistFinishForProject(project, record);
+    return;
+  }
+  // Firestoreに存在しない初期レコードはdelete自体を送らない。
+  if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record);
+}
+
+function persistAddedStructureMarker(records = []) {
+  const project = getCurrentProject();
+  if (!project?.projectId || project.isSample || !records.length) return;
+  const marker = roomCarrierRecord(records);
+  if (marker) persistFinishForProject(project, marker);
+}
+
+/* ============================================================
    構造変更
    ============================================================ */
 
@@ -245,8 +300,12 @@ function persistFinishStructureChange(beforeRecords, afterRecords) {
     return !previous || !sameStructureRecord(previous, record);
   });
 
-  if (changed.length) persistFinishStructureForProject(project, changed);
-  removed.forEach((record) => deleteFinishForProject(project, record));
+  // H: ローカルの完全構造をそのままFirestoreへ複製しない。
+  // 入力差分または復元に必要な構造保持レコードだけを残す。
+  changed.forEach((record) => persistSparseFinishRecord(project, record, afterRecords));
+  removed.forEach((record) => {
+    if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record);
+  });
 }
 
 function listFloorNumbers(areaCode) {
@@ -279,54 +338,52 @@ function insertFlatRoomAt(areaCode, insertIndex) {
 }
 
 export function addNormalFloor() {
-  const before = finishRecordStore.getAll();
   const floors = listFloorNumbers('I');
   const next = floors.length ? Math.max(...floors) + 1 : 1;
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
   return `floor-I-${next}`;
 }
 
 export function addBasementFloor() {
-  const before = finishRecordStore.getAll();
   const floors = listFloorNumbers('B');
   const next = floors.length ? Math.max(...floors) + 1 : 1;
   const records = [];
   for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
   return `floor-B-${next}`;
 }
 
 export function addStairs() {
-  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('S', countFlatRooms('S') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  persistAddedStructureMarker(records);
   return 'stairs-group';
 }
 
 export function addRoof() {
-  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('R', countFlatRooms('R') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  persistAddedStructureMarker(records);
   return 'roof-group';
 }
 
 export function addExternalRoom() {
-  const before = finishRecordStore.getAll();
   const records = buildFlatRoomSeed('E', countFlatRooms('E') + 1);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  persistAddedStructureMarker(records);
 }
 
 export function addRoomToFloor(floorKey) {
   const parsed = parseFloorKey(floorKey);
   if (!parsed) return;
-  insertFloorRoomAt(parsed.areaCode, parsed.floor, countRoomsInFloor(parsed.areaCode, parsed.floor) + 1);
+  const index = countRoomsInFloor(parsed.areaCode, parsed.floor) + 1;
+  const records = buildFloorRoomSeed(parsed.areaCode, parsed.floor, index);
+  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
+  persistAddedStructureMarker(records);
 }
 
 export function addRoomAfter(roomKey) {
@@ -361,7 +418,8 @@ export function addInputRow(roomKey) {
     }));
   }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistFinishStructureChange(before, finishRecordStore.getAll());
+  const marker = records.find((record) => partIndexFromPosition(record.position) === PART_COUNT);
+  if (marker) persistFinishForProject(getCurrentProject(), marker);
 }
 
 /* ============================================================
@@ -383,7 +441,9 @@ export function commitRoomField(roomKey, field, rawValue) {
   }));
   finishRecordStore.batch(() => nextRecords.forEach((record) => finishRecordStore.set(record)));
   const project = getCurrentProject();
-  nextRecords.forEach((record) => persistFinishForProject(project, record));
+  const currentRoomRecords = getRoomRecords(roomKey);
+  const carrier = roomCarrierRecord(currentRoomRecords);
+  if (carrier) persistSparseFinishRecord(project, carrier, finishRecordStore.getAll());
   refreshMaterialUsageDerivedFields();
 }
 
@@ -415,7 +475,7 @@ function writeCellPatch(anchor, partIndex, row, patch) {
       : { ...(existing.fieldEditedAt || {}) }
   };
   finishRecordStore.set(next);
-  if (syncFields.length) persistFinishForProject(getCurrentProject(), next);
+  if (syncFields.length) persistSparseFinishRecord(getCurrentProject(), next, finishRecordStore.getAll());
   refreshMaterialUsageDerivedFields();
   return next;
 }

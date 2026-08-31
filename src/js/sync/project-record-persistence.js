@@ -1,29 +1,38 @@
 /**
  * src/js/sync/project-record-persistence.js
  *
- * v0.1.6.2G 3レコードの保存・復元共通入口。
- * finishRecordは案件の仕上表構造として全件保持する。
+ * v0.1.6.2H 3レコードの保存・復元共通入口。
+ * finishRecordは初期構造を端末で生成し、入力差分と追加構造の最小レコードだけをFirestoreへ保持する。
  */
 
 import {
   saveFinishRecord,
   deleteFinishRecord,
-  saveFinishRecordsBatch,
   saveMaterialRecord,
   savePhotoRecord,
   saveProjectMetadata,
   readTemporaryProjectNos,
   readProjectRecordsOnce,
   subscribeProjectRecordChanges,
+  readFinishChangeLog,
+  readLatestFinishChangeCursor,
+  createFinishChangeLogCheckpoint,
+  isFinishChangeCursorAvailable,
+  touchProjectSyncDevice,
+  cleanupExpiredFinishChangeLogs,
+  subscribeFinishChangeLog,
   deleteTestProjectCompletely
 } from '../firestore/firestore-repository.js';
-import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
 import { listUnsent } from './unsent-queue.js';
+import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 
 let writeChain = Promise.resolve();
+const knownFinishRecordsByProject = new Map();
+const FINISH_CHANGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const FINISH_SPARSE_CACHE_KEY = 'chousa-finish-sparse-cache-v0162h';
 
 function projectEnvironment(project) {
   return project?.environment === 'test' ? 'test' : 'production';
@@ -39,34 +48,101 @@ function enqueue(run) {
   return next;
 }
 
+function loadSparseCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FINISH_SPARSE_CACHE_KEY) || '{}');
+    Object.entries(raw || {}).forEach(([projectId, records]) => {
+      const map = new Map();
+      (Array.isArray(records) ? records : []).forEach((record) => {
+        const finishId = String(record?.finishId || record?.id || '');
+        if (finishId) map.set(finishId, { ...record, finishId });
+      });
+      knownFinishRecordsByProject.set(projectId, map);
+    });
+  } catch {
+    // 壊れたローカル補助キャッシュで案件を開けなくしない。
+  }
+}
+
+function persistSparseCache() {
+  try {
+    const payload = {};
+    knownFinishRecordsByProject.forEach((map, projectId) => {
+      payload[projectId] = [...map.values()];
+    });
+    localStorage.setItem(FINISH_SPARSE_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Firestore正本があるため、補助キャッシュ保存失敗は操作を止めない。
+  }
+}
+
+loadSparseCache();
+
+function knownFinishMap(projectId) {
+  const id = String(projectId || '');
+  if (!knownFinishRecordsByProject.has(id)) knownFinishRecordsByProject.set(id, new Map());
+  return knownFinishRecordsByProject.get(id);
+}
+
+export function setKnownFinishRecords(projectId, records = []) {
+  const map = new Map();
+  records.forEach((record) => {
+    const finishId = String(record?.finishId || record?.id || '');
+    if (finishId) map.set(finishId, { ...record, finishId });
+  });
+  knownFinishRecordsByProject.set(String(projectId || ''), map);
+  persistSparseCache();
+}
+
+export function getKnownFinishRecords(projectId) {
+  return [...knownFinishMap(projectId).values()].map((record) => ({ ...record }));
+}
+
+export function hasKnownFinishRecord(projectId, finishId) {
+  return knownFinishMap(projectId).has(String(finishId || ''));
+}
+
+export function applyKnownFinishChange(projectId, change) {
+  const map = knownFinishMap(projectId);
+  const id = String(change?.id || change?.record?.finishId || '');
+  if (!id) return;
+  if (change.changeType === 'removed' || change.operation === 'delete') map.delete(id);
+  else if (change.record) map.set(id, { ...change.record, finishId: id });
+  persistSparseCache();
+}
+
 export function persistFinishForProject(project, record) {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
-  return enqueue(() => saveFinishRecord({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    record
-  }));
+  return enqueue(async () => {
+    const result = await saveFinishRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record
+    });
+    if (result?.ok) {
+      knownFinishMap(project.projectId).set(String(record.finishId), { ...record });
+      persistSparseCache();
+    }
+    return result;
+  });
 }
 
 export function deleteFinishForProject(project, record) {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
-  return enqueue(() => deleteFinishRecord({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    record
-  }));
+  return enqueue(async () => {
+    const result = await deleteFinishRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record
+    });
+    if (result?.ok) {
+      knownFinishMap(project.projectId).delete(String(record.finishId));
+      persistSparseCache();
+    }
+    return result;
+  });
 }
 
-export function persistFinishStructureForProject(project, records) {
-  if (!shouldSyncProject(project) || !Array.isArray(records) || !records.length) {
-    return Promise.resolve({ ok: true, skipped: true, count: 0 });
-  }
-  return enqueue(() => saveFinishRecordsBatch({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    records
-  }));
-}
 
 export function persistMaterialForProject(project, record) {
   if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
@@ -86,9 +162,28 @@ export function persistPhotoForProject(project, record) {
   }));
 }
 
-export function persistProjectMetadataForProject(project) {
+export function persistProjectMetadataForProject(project, options = {}) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
-  return enqueue(() => saveProjectMetadata(project));
+  return enqueue(() => saveProjectMetadata(project, options));
+}
+
+export function touchProjectSyncDeviceForProject(project, device) {
+  if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
+  return touchProjectSyncDevice({
+    projectId: project.projectId,
+    environment: projectEnvironment(project),
+    deviceCode: device?.deviceCode,
+    deviceName: device?.deviceName,
+    finishChangeCursor: device?.finishChangeCursor || null
+  });
+}
+
+export function cleanupFinishChangeLogsForProject(project) {
+  if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true, deleted: 0 });
+  return cleanupExpiredFinishChangeLogs({
+    projectId: project.projectId,
+    environment: projectEnvironment(project)
+  });
 }
 
 
@@ -221,83 +316,91 @@ function maxCursor(cursors = {}) {
  * - cursorsあり: Record種別ごとに前回cursorより新しいRecordだけ1回取得する。
  * listenerはここでは張らない。
  */
-export async function readProjectRecordsForProject(project, { cursors = null } = {}) {
+export function isFinishChangeCursorFresh(cursor) {
+  if (!cursor || typeof cursor.seconds !== 'number') return false;
+  const millis = (Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6);
+  return millis >= (Date.now() - FINISH_CHANGE_RETENTION_MS);
+}
+
+/**
+ * 案件を開く/復帰する時の取りこぼし回収。
+ * finishRecordは変更履歴カーソルを使う。履歴が古い/未移行なら疎finishRecordを全件取得して再構築する。
+ * material/photoは従来どおりupdatedAt差分取得。
+ */
+export async function readProjectRecordsForProject(project, { cursors = null, finishChangeCursor = null } = {}) {
   if (!shouldSyncProject(project)) {
     return {
-      mode: 'local',
-      finishRecords: [],
-      materialRecords: [],
-      photoRecords: [],
-      changes: [],
-      cursors: { finish: 0, material: 0, photo: 0 },
-      lastSyncedAt: 0
+      mode: 'local', finishRecords: [], materialRecords: [], photoRecords: [], changes: [],
+      cursors: { finish: 0, material: 0, photo: 0 }, finishChangeCursor: null, lastSyncedAt: 0
     };
   }
 
   const projectId = String(project.projectId);
   const environment = projectEnvironment(project);
-  const deltaMode = Boolean(cursors && Object.values(cursors).some((value) => Number(value || 0) > 0));
-  const raw = await readProjectRecordsOnce({
-    projectId,
-    environment,
-    sinceByType: deltaMode ? cursors : null
-  });
-  const nextCursors = newestByType(raw, cursors || {});
+  const numericCursors = cursors || {};
+  const canOtherDelta = Boolean(cursors && (Number(cursors.material || 0) > 0 || Number(cursors.photo || 0) > 0));
 
-  if (deltaMode) {
+  // finishは「30日以内らしい」という時刻推測だけで差分同期へ進まない。
+  // 保存しているchangeId自身がFirestoreに残っていることを確認できた場合だけ、
+  // そのカーソル以降のset/delete履歴を安全に追跡する。
+  let canFinishDelta = false;
+  if (finishChangeCursor && isFinishChangeCursorFresh(finishChangeCursor)) {
+    canFinishDelta = await isFinishChangeCursorAvailable({ projectId, environment, cursor: finishChangeCursor });
+  }
+
+  if (canFinishDelta && canOtherDelta) {
+    const [finishLog, otherRaw] = await Promise.all([
+      readFinishChangeLog({ projectId, environment, cursor: finishChangeCursor }),
+      readProjectRecordsOnce({ projectId, environment, sinceByType: numericCursors, recordTypes: ['material', 'photo'] })
+    ]);
+    const nextCursors = newestByType(otherRaw, numericCursors);
+    const changes = [
+      ...(finishLog.changes || []),
+      ...(otherRaw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record })),
+      ...(otherRaw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
+    ];
     return {
-      mode: 'delta',
-      changes: rawSnapshotToChanges(raw),
-      cursors: nextCursors,
-      lastSyncedAt: maxCursor(nextCursors)
+      mode: 'delta', changes, cursors: nextCursors, finishChangeCursor: finishLog.cursor || finishChangeCursor,
+      finishHistoryMode: 'delta', lastSyncedAt: maxCursor(nextCursors)
     };
   }
 
+  // 初回・旧版カーソル・30日以上未接触は現在形から再構築する。
+  const [raw, latestCursorRead] = await Promise.all([
+    readProjectRecordsOnce({ projectId, environment, sinceByType: null }),
+    readLatestFinishChangeCursor({ projectId, environment })
+  ]);
+  const latestFinishCursor = isFinishChangeCursorFresh(latestCursorRead)
+    ? latestCursorRead
+    : await createFinishChangeLogCheckpoint({ projectId, environment });
+  const nextCursors = newestByType(raw, numericCursors);
   const unsent = listUnsent({ projectId });
 
   const materialRawMap = new Map((raw.materialRecords || []).map((record) => [String(record.materialId || record.id || ''), record]));
-  unsent
-    .filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record)
+  unsent.filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record)
     .forEach((item) => materialRawMap.set(String(item.recordId), item.record));
   const materials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
   const materialById = new Map(materials.map((record) => [record.materialId, record]));
 
-  const defaultRecords = createDefaultFinishRecords();
-  const remoteFinish = raw.finishRecords || [];
-  const isLegacySparse = remoteFinish.length > 0 && remoteFinish.length < defaultRecords.length;
-  const finishRawMap = new Map(
-    (isLegacySparse
-      ? (() => {
-          const merged = new Map(defaultRecords.map((record) => [record.finishId, record]));
-          remoteFinish.forEach((record) => merged.set(String(record.finishId || record.id || ''), record));
-          return Array.from(merged.values());
-        })()
-      : remoteFinish
-    ).map((record) => [String(record.finishId || record.id || ''), record])
-  );
+  const sparseFinishMap = new Map((raw.finishRecords || []).map((record) => [String(record.finishId || record.id || ''), record]));
+  setKnownFinishRecords(projectId, sparseFinishMap.values());
   unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
     const finishId = String(item.recordId || '');
     if (!finishId) return;
-    if (item.operation === 'delete') finishRawMap.delete(finishId);
-    else if (item.record) finishRawMap.set(finishId, item.record);
+    if (item.operation === 'delete') sparseFinishMap.delete(finishId);
+    else if (item.record) sparseFinishMap.set(finishId, item.record);
   });
-  const finishes = hydrateFinishRecords(Array.from(finishRawMap.values()), materialById);
-  if (isLegacySparse && finishes.length) persistFinishStructureForProject(project, finishes);
+  const restoredRaw = restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values()));
+  const finishes = hydrateFinishRecords(restoredRaw, materialById);
 
   const photoRawMap = new Map((raw.photoRecords || []).map((record) => [String(record.photoId || record.id || ''), record]));
-  unsent
-    .filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
+  unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
     .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
   const photos = hydratePhotoRecords(Array.from(photoRawMap.values()));
 
   return {
-    mode: 'full',
-    finishRecords: finishes,
-    materialRecords: materials,
-    photoRecords: photos,
-    changes: [],
-    cursors: nextCursors,
-    lastSyncedAt: maxCursor(nextCursors)
+    mode: 'full', finishRecords: finishes, materialRecords: materials, photoRecords: photos, changes: [],
+    cursors: nextCursors, finishChangeCursor: latestFinishCursor, finishHistoryMode: 'rebuilt', lastSyncedAt: maxCursor(nextCursors)
   };
 }
 
@@ -305,16 +408,34 @@ export async function readProjectRecordsForProject(project, { cursors = null } =
  * 取りこぼし回収後の「今ここから先」だけを監視する。
  * afterByTypeは案件を開いた時点の3Record別cursorを固定して使う。
  */
-export function subscribeRealtimeProjectRecordsForProject(project, { afterByType = {}, onChanges, onState, onError } = {}) {
+export function subscribeRealtimeProjectRecordsForProject(project, { afterByType = {}, finishChangeCursor = null, onChanges, onState, onFinishCursor, onError } = {}) {
   if (!shouldSyncProject(project)) return () => {};
-  return subscribeProjectRecordChanges({
-    projectId: String(project.projectId),
-    environment: projectEnvironment(project),
-    afterByType,
+  const projectId = String(project.projectId);
+  const environment = projectEnvironment(project);
+
+  const stopFinish = subscribeFinishChangeLog({
+    projectId, environment, afterCursor: finishChangeCursor,
+    onChanges: (changes, cursor) => {
+      changes.forEach((change) => {
+        applyKnownFinishChange(projectId, change);
+      });
+      onChanges?.(changes);
+      if (cursor) onFinishCursor?.(cursor);
+    },
+    onState,
+    onError
+  });
+
+  // material/photoだけは従来のupdatedAt listenerを継続する。finish本体listenerは張らない。
+  const stopOther = subscribeProjectRecordChanges({
+    projectId, environment, afterByType,
+    recordTypes: ['material', 'photo'],
     onChanges,
     onState,
     onError
   });
+
+  return () => { stopFinish(); stopOther(); };
 }
 
 export function newestCursorsFromChanges(changes = [], fallback = {}) {
@@ -333,6 +454,23 @@ export function newestCursorsFromChanges(changes = [], fallback = {}) {
 
 export function latestCursorValue(cursors = {}) {
   return maxCursor(cursors);
+}
+
+/** 保存済み疎finishRecordキャッシュから画面用の完全な仕上表を復元する。 */
+export function restoreKnownFinishRecords(projectId, currentMaterialRecords = []) {
+  const materialById = new Map(currentMaterialRecords.map((record) => [String(record.materialId || ''), record]));
+  const sparseMap = new Map(getKnownFinishRecords(projectId).map((record) => [String(record.finishId || ''), record]));
+
+  // 送信失敗・手動オフライン中でも、端末で確定済みの変更を受信差分で巻き戻さない。
+  // knownFinishRecordsは「Firestoreで確認済み」のみを表し、画面復元時だけ未送信を上書きする。
+  listUnsent({ projectId }).filter((item) => item.recordType === 'finish').forEach((item) => {
+    const id = String(item.recordId || '');
+    if (!id) return;
+    if (item.operation === 'delete') sparseMap.delete(id);
+    else if (item.record) sparseMap.set(id, item.record);
+  });
+
+  return hydrateFinishRecords(restoreFinishRecordsFromSparse([...sparseMap.values()]), materialById);
 }
 
 /** 受信したmaterialRecord 1件を現在Storeへ入れられる形へ正規化する。 */

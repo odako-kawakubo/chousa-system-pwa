@@ -2,7 +2,7 @@
  * src/js/firestore/record-serializer.js
  *
  * Firestoreへ書き込む3レコードの形を一元化する純粋モジュール。
- * finishRecordは空欄を含め案件構造として全件保持する。
+ * finishRecordは疎保存し、入力差分と追加構造の復元に必要な最小レコードだけを送る。
  */
 
 import { normalizeFieldEditedAt } from '../sync/field-edit-meta.js';
