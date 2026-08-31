@@ -237,24 +237,15 @@ async function openFirestoreProjectSession(target) {
   const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
   const finishChangeCursor = normalizeFinishChangeCursor(syncMeta.finishChangeCursor);
   const legacyLastSyncedAt = Number(syncMeta.lastSyncedAt || 0);
-  // H.log2: finish/material/photoを一括でfull/delta判定しない。
-  // ローカル復元済みなら各Record種別が自分の同期位置だけを見て独立判断する。
+  const hasPerTypeCursors = Number(storedCursors.material || 0) > 0 || Number(storedCursors.photo || 0) > 0;
+  // G以前の単一lastSyncedAtはRecord種別ごとの境界を保証できない。
+  // 既存F案件はGで最初に開く1回だけ全件取得し、正しい3種cursorへ移行する。
   const cursors = storedCursors;
   const useLocalSnapshot = Boolean(syncMeta.hasSyncedOnce || legacyLastSyncedAt > 0)
     && Array.isArray(target.finishRecords)
     && target.finishRecords.length > 0;
-  hlog('SYNC_OPEN_PLAN', {
-    projectId: project.projectId,
-    token,
-    useLocalSnapshot,
-    storedCursors,
-    finishChangeCursor,
-    typePlan: {
-      finish: useLocalSnapshot && finishChangeCursor ? 'cursor-check' : 'full',
-      material: useLocalSnapshot && Number(storedCursors.material || 0) > 0 ? 'delta' : 'full',
-      photo: useLocalSnapshot && Number(storedCursors.photo || 0) > 0 ? 'delta' : 'full'
-    }
-  });
+  const canDeltaCatchUp = useLocalSnapshot && hasPerTypeCursors && Boolean(finishChangeCursor);
+  hlog('SYNC_OPEN_PLAN', { projectId: project.projectId, token, useLocalSnapshot, hasPerTypeCursors, canDeltaCatchUp, storedCursors, finishChangeCursor });
 
   setSyncBaseline(latestCursorValue(cursors));
 
@@ -272,12 +263,10 @@ async function openFirestoreProjectSession(target) {
 
   try {
     // G: 過去の取りこぼし回収は1回のgetDocsだけ。listenerとは役割を分離する。
-    hlog('SYNC_CATCHUP_START', { projectId: project.projectId, useLocalSnapshot });
+    hlog('SYNC_CATCHUP_START', { projectId: project.projectId, canDeltaCatchUp });
     const remote = await readProjectRecordsForProject(project, {
-      cursors: useLocalSnapshot ? cursors : null,
-      finishChangeCursor: useLocalSnapshot ? finishChangeCursor : null,
-      baseMaterialRecords: useLocalSnapshot ? (target.materialRecords || []) : [],
-      basePhotoRecords: useLocalSnapshot ? (target.photoRecords || []) : []
+      cursors: canDeltaCatchUp ? cursors : null,
+      finishChangeCursor: canDeltaCatchUp ? finishChangeCursor : null
     });
     hlog('SYNC_CATCHUP_RESULT', { projectId: project.projectId, mode: remote.mode, changes: remote.changes?.length || 0, finishRecords: remote.finishRecords?.length || 0, materialRecords: remote.materialRecords?.length || 0, photoRecords: remote.photoRecords?.length || 0, finishHistoryMode: remote.finishHistoryMode || '' });
     if (token !== activeProjectStreamToken) {
@@ -285,26 +274,28 @@ async function openFirestoreProjectSession(target) {
       return target;
     }
 
-    // 取りこぼし回収結果は、タイプごとのfull/deltaをローカルで合成済みの「現在形」。
-    // 一括delta/full分岐を廃止し、常にこの現在形へ置き換える。
-    const restored = {
-      project,
-      finishRecords: remote.finishRecords || target.finishRecords || [],
-      materialRecords: remote.materialRecords || target.materialRecords || [],
-      photoRecords: remote.photoRecords || target.photoRecords || [],
-      syncMeta: {
-        ...(target.syncMeta || {}),
-        recordCursors: normalizeRecordCursors(remote.cursors),
-        finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor),
-        lastSyncedAt: Number(remote.lastSyncedAt || 0),
-        hasSyncedOnce: true,
-        lastSyncCompletedAt: Date.now()
-      }
-    };
-    saveProjectSnapshot(restored);
-    openProjectSession(restored);
-    refreshMaterialUsageDerivedFields();
-    refreshMaterialList();
+    if (remote.mode === 'delta') {
+      if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
+    } else {
+      const restored = {
+        project,
+        finishRecords: remote.finishRecords?.length ? remote.finishRecords : target.finishRecords,
+        materialRecords: remote.materialRecords || target.materialRecords,
+        photoRecords: remote.photoRecords || target.photoRecords || [],
+        syncMeta: {
+          ...(target.syncMeta || {}),
+          recordCursors: normalizeRecordCursors(remote.cursors),
+          finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor),
+          lastSyncedAt: Number(remote.lastSyncedAt || 0),
+          hasSyncedOnce: true,
+          lastSyncCompletedAt: Date.now()
+        }
+      };
+      saveProjectSnapshot(restored);
+      openProjectSession(restored);
+      refreshMaterialUsageDerivedFields();
+      refreshMaterialList();
+    }
 
     const caughtUpCursors = normalizeRecordCursors(remote.cursors || cursors);
     updateProjectSyncCursors(project.projectId, caughtUpCursors, { completed: true });
