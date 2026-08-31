@@ -15,11 +15,12 @@ import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } f
 import { materialRecordStore } from '../finish-table/finish-table-actions.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
-import { buildMaterialListRows, splitDerivedList } from './material-list-view-model.js';
+import { buildMaterialListRows } from './material-list-view-model.js';
 import { renderMaterialList } from './material-list-renderer.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
+import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -451,7 +452,7 @@ function applySamplingAutofill() {
   records.forEach((record) => {
     if (record.status !== 'active') return;
     const next = { ...record };
-    if (applySingleRecordSamplingAutofill(next)) {
+    if (applySingleRecordSamplingAutofill(next).length) {
       updates.push({ previous: record, next });
     }
   });
@@ -465,51 +466,6 @@ function applySamplingAutofill() {
  * 使用部位が1つなら採取部位の空欄へ自動入力する。
  * 既存値は上書きしない。
  */
-function applySingleRecordSamplingAutofill(record) {
-  let changed = false;
-
-  // 採取・分析以外では採取関連値を保持するだけで、自動補完は行わない。
-  if (String(record.analysisRequired || '採取・分析') !== '採取・分析') {
-    return false;
-  }
-
-  // 採取・分析では採取数1が最低条件。旧Recordの0/未設定もここで1へ正規化する。
-  let count = Number(record.sampleCount);
-  if (!Number.isFinite(count) || count < 1) {
-    count = 1;
-    record.sampleCount = 1;
-    changed = true;
-  } else if (count > 3) {
-    count = 3;
-    record.sampleCount = 3;
-    changed = true;
-  }
-
-  const places = splitDerivedList(record.usageLocation);
-  const parts = splitDerivedList(record.part);
-
-  if (places.length === 1) {
-    for (let index = 1; index <= count; index += 1) {
-      const field = `sampleLocation${index}`;
-      if (!record[field]) {
-        record[field] = places[0];
-        changed = true;
-      }
-    }
-  }
-
-  const selectedParts = normalizeSampleParts(record.samplePart);
-  if (parts.length === 1 && selectedParts.length === 0) {
-    record.samplePart = [parts[0]];
-    changed = true;
-  } else if (!Array.isArray(record.samplePart)) {
-    record.samplePart = selectedParts;
-    changed = true;
-  }
-
-  return changed;
-}
-
 function refreshConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();

@@ -48,6 +48,7 @@ import {
   persistMaterialForProject,
   hasKnownFinishRecord
 } from '../sync/project-record-persistence.js';
+import { applySingleRecordSamplingAutofill } from '../materials/material-sampling-autofill.js';
 import {
   getRequiredStructureRecordIds,
   defaultPartForRecord,
@@ -455,7 +456,7 @@ function cellFinishId(anchor, partIndex, row) {
   return computeFinishId(anchor.areaCode, anchor.roomPosition, computeCellPosition(partIndex, row));
 }
 
-function writeCellPatch(anchor, partIndex, row, patch) {
+function writeCellPatch(anchor, partIndex, row, patch, options = {}) {
   const finishId = cellFinishId(anchor, partIndex, row);
   const existing = finishRecordStore.get(finishId);
   if (!existing) {
@@ -476,7 +477,7 @@ function writeCellPatch(anchor, partIndex, row, patch) {
   };
   finishRecordStore.set(next);
   if (syncFields.length) persistSparseFinishRecord(getCurrentProject(), next, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields('finish-cell-patch');
+  refreshMaterialUsageDerivedFields('finish-cell-patch', { persist: options.persistMaterialDerived !== false });
   return next;
 }
 
@@ -572,6 +573,9 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
   if (!anchor || !normalized) return null;
 
   let material = materialRecordStore.findByName(normalized);
+  let createdNewMaterial = false;
+  let beforeMaterial = material ? { ...material } : null;
+
   runRecordTransaction(() => {
     if (!material) {
       const parsed = splitBaseNameAndSuffix(normalized);
@@ -579,6 +583,7 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
       const finalName = parsed.suffixLetter ? normalized : `${parsed.baseName}${suffix}`;
 
       material = materialRecordStore.findByName(finalName);
+      if (material && !beforeMaterial) beforeMaterial = { ...material };
       if (!material) {
         const inputId = nextInputIdForMaterials();
         material = createMaterialRecord({
@@ -594,10 +599,10 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
           fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['name', 'analysisRequired', 'sampleCount'])
         };
         materialRecordStore.set(material);
-        // 新規建材を先にFirestoreへ積み、その後にfinishRecordの紐付け保存が続く。
-        persistMaterialForProject(getCurrentProject(), material, 'material-register');
+        createdNewMaterial = true;
       }
     }
+
     // その他1/2では、建材を正式登録する時点で実部位が未入力なら
     // 業務上の部位として「その他」を確定する。
     // タップしただけ／空欄のまま編集終了／部屋コピーでは補完しない。
@@ -609,8 +614,33 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
     if (partIndex >= 5 && !String(currentCell?.part || '').trim()) {
       finishPatch.part = 'その他';
     }
-    writeCellPatch(anchor, partIndex, row, finishPatch);
-    refreshMaterialUsageDerivedFields('material-register-post-link');
+
+    // 登録操作中はfinishRecord自体は通常どおり保存するが、
+    // そこから派生するmaterialの途中状態はFirestoreへ送らない。
+    writeCellPatch(anchor, partIndex, row, finishPatch, { persistMaterialDerived: false });
+
+    // finishRecordを正として更新済みの最新materialへ、採取設定の自動補完も
+    // ローカルで完了させる。ここでもFirestoreへはまだ送らない。
+    const derivedMaterial = materialRecordStore.get(material.materialId) || material;
+    const finalMaterial = { ...derivedMaterial };
+    const autofillFields = applySingleRecordSamplingAutofill(finalMaterial);
+    if (autofillFields.length) {
+      finalMaterial.fieldEditedAt = touchFieldEditedAt(derivedMaterial.fieldEditedAt, autofillFields);
+      materialRecordStore.set(finalMaterial);
+    }
+
+    material = materialRecordStore.get(material.materialId) || finalMaterial;
+
+    // 新規建材、または既存建材でも今回の紐付けで派生値が変わった場合だけ、
+    // 完成したmaterialRecordを既存の1レコード保存経路から1回だけ送る。
+    const materialChanged = createdNewMaterial
+      || !beforeMaterial
+      || String(beforeMaterial.part ?? '') !== String(material.part ?? '')
+      || String(beforeMaterial.usageLocation ?? '') !== String(material.usageLocation ?? '')
+      || autofillFields.length > 0;
+    if (materialChanged) {
+      persistMaterialForProject(getCurrentProject(), material, 'material-register-final');
+    }
   });
   return material;
 }
@@ -620,7 +650,8 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
    ============================================================ */
 
 /** finishRecordStoreを正として、全建材の部位・使用箇所を再計算する。 */
-export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc') {
+export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
+  const shouldPersist = options.persist !== false;
   const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active' && record.materialId);
   const byMaterial = new Map();
   finishRecords.forEach((record) => {
@@ -648,7 +679,7 @@ export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc
         fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['part', 'usageLocation'])
       };
       materialRecordStore.set(next);
-      persistMaterialForProject(getCurrentProject(), next, source);
+      if (shouldPersist) persistMaterialForProject(getCurrentProject(), next, source);
     });
   });
 }
