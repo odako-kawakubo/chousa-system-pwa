@@ -136,13 +136,15 @@ export function getVisualPhotoTargetKey({ areaCode, roomPosition, partSlot } = {
 
 /**
  * 目視写真が未整理かを一元判定する。
- * 部屋までは確定していてよく、部位枠または部位名称が未確定なら未整理とする。
+ * 整理先の正本は areaCode + roomPosition + partSlot の物理キー。
+ * part は表示用の部位名称であり、空欄でも有効なpartSlotへ紐付いていれば未整理には戻さない。
+ * これにより、同じphotoRecordが「部位ブロック」と「未整理写真」の両方へ重複表示される状態を防ぐ。
  * Viewer / Editor / 写真タブで同じ定義を使い、判定式を重複させない。
  * @param {Partial<PhotoRecord>} record
  */
 export function isVisualPhotoUnorganized(record = {}) {
   if (record.photoType && record.photoType !== PHOTO_TYPES.VISUAL) return false;
-  return normalizeVisualPartSlot(record.partSlot) === 0 || !asText(record.part);
+  return !getVisualPhotoTargetKey(record);
 }
 
 /**

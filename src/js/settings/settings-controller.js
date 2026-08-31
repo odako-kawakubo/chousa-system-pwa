@@ -16,14 +16,14 @@ import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
 import { listUnsent } from '../sync/unsent-queue.js';
 import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
-import { formatHLog, clearHLog, subscribeHLog } from '../debug/h-log.js';
+import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
 let root = null;
 let unsubscribe = null;
 let unsubscribeSync = null;
 let unsubscribeAuth = null;
 let unsubscribeDevice = null;
-let unsubscribeHLog = null;
+let unsubscribeSyncDiagnosticLog = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -86,21 +86,21 @@ function refreshAuthStatusFields(auth = getAuthUiState()) {
 }
 
 
-function refreshHLogView() {
+function refreshSyncDiagnosticLogView() {
   if (!root) return;
-  const output = root.querySelector('[data-settings-hlog]');
+  const output = root.querySelector('[data-settings-sync-diagnostic-log]');
   if (output) {
-    output.value = formatHLog();
+    output.value = formatSyncDiagnosticLog();
     output.scrollTop = output.scrollHeight;
   }
 }
 
-function downloadHLog() {
-  const blob = new Blob([formatHLog() || '(ログなし)'], { type: 'text/plain;charset=utf-8' });
+function downloadSyncDiagnosticLog() {
+  const blob = new Blob([formatSyncDiagnosticLog() || '(ログなし)'], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'H.log';
+  anchor.download = 'sync-diagnostic.log';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -119,7 +119,7 @@ function render() {
   renderSettingsTab(root, buildViewModel());
   showInnerSection(activeSection);
   renderBoardPreview();
-  refreshHLogView();
+  refreshSyncDiagnosticLogView();
 }
 
 function showInnerSection(section) {
@@ -235,23 +235,23 @@ function handleClick(event) {
     return;
   }
 
-  if (event.target.closest('[data-action="copy-hlog"]')) {
-    navigator.clipboard?.writeText(formatHLog()).then(() => {
+  if (event.target.closest('[data-action="copy-sync-diagnostic-log"]')) {
+    navigator.clipboard?.writeText(formatSyncDiagnosticLog()).then(() => {
       window.alert('同期ログをコピーしました。');
     }).catch(() => {
-      window.alert('コピーできませんでした。H.log保存を使用してください。');
+      window.alert('コピーできませんでした。診断ログ保存を使用してください。');
     });
     return;
   }
 
-  if (event.target.closest('[data-action="download-hlog"]')) {
-    downloadHLog();
+  if (event.target.closest('[data-action="download-sync-diagnostic-log"]')) {
+    downloadSyncDiagnosticLog();
     return;
   }
 
-  if (event.target.closest('[data-action="clear-hlog"]')) {
-    clearHLog();
-    refreshHLogView();
+  if (event.target.closest('[data-action="clear-sync-diagnostic-log"]')) {
+    clearSyncDiagnosticLog();
+    refreshSyncDiagnosticLogView();
     return;
   }
 
@@ -351,7 +351,7 @@ export function initializeSettingsTab() {
   unsubscribeAuth = subscribeAuthUiState(refreshAuthStatusFields);
   if (unsubscribeDevice) unsubscribeDevice();
   unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
-  if (unsubscribeHLog) unsubscribeHLog();
-  unsubscribeHLog = subscribeHLog(refreshHLogView);
-  refreshHLogView();
+  if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();
+  unsubscribeSyncDiagnosticLog = subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);
+  refreshSyncDiagnosticLogView();
 }

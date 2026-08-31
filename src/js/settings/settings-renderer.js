@@ -216,19 +216,19 @@ export function renderSettingsTab(root, viewModel) {
             </div>
           </section>
 
-          <section class="settings-card settings-sync-wide settings-hlog-card">
+          <section class="settings-card settings-sync-wide settings-sync-diagnostic-log-card">
             <div class="settings-card-head">
               <div>
-                <h3>同期診断ログ（H.log）</h3>
-                <div class="hint">H.log確認版だけの診断表示です。Firestoreの読み書きを発生させたアプリ処理とlistenerの発火を記録します。</div>
+                <h3>同期診断ログ</h3>
+                <div class="hint">Firestoreの読み書きに関係するアプリ処理とlistenerの発火を端末内へ記録します。診断用ログ自体はFirestore通信を行いません。</div>
               </div>
               <span class="pill">診断用</span>
             </div>
-            <textarea class="settings-hlog-output" data-settings-hlog readonly spellcheck="false" aria-label="同期診断ログ"></textarea>
+            <textarea class="settings-sync-diagnostic-log-output" data-settings-sync-diagnostic-log readonly spellcheck="false" aria-label="同期診断ログ"></textarea>
             <div class="settings-action-row">
-              <button type="button" class="btn small" data-action="copy-hlog">ログをコピー</button>
-              <button type="button" class="btn small" data-action="download-hlog">H.logを保存</button>
-              <button type="button" class="btn small" data-action="clear-hlog">ログをクリア</button>
+              <button type="button" class="btn small" data-action="copy-sync-diagnostic-log">ログをコピー</button>
+              <button type="button" class="btn small" data-action="download-sync-diagnostic-log">診断ログを保存</button>
+              <button type="button" class="btn small" data-action="clear-sync-diagnostic-log">ログをクリア</button>
             </div>
           </section>
 

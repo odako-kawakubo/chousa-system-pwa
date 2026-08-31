@@ -74,8 +74,8 @@
 @media(max-width:900px){.settings-sync-grid{grid-template-columns:1fr}.settings-sync-wide{grid-column:auto}}
 
 
-/* v0.1.6.2H.log 同期診断ログ */
-.settings-hlog-output {
+/* 同期診断ログ */
+.settings-sync-diagnostic-log-output {
   width: 100%;
   min-height: 240px;
   max-height: 420px;

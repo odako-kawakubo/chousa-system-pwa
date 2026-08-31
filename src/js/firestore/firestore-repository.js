@@ -1,7 +1,7 @@
 /**
  * src/js/firestore/firestore-repository.js
  *
- * v0.1.6.2H Firestore Repository。
+ * v0.1.6.2I Firestore Repository。
  * finishRecordは疎保存し、set/deleteを短期変更履歴にも同一batchで記録する。
  */
 
@@ -37,7 +37,7 @@ import {
   endFirestoreActivity,
   markError
 } from '../sync/sync-status.js';
-import { hlog } from '../debug/h-log.js';
+import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
 const db = getFirestore(firebaseApp);
 const RECORD_COLLECTIONS = Object.freeze({
@@ -143,7 +143,7 @@ function toTimestamp(value) {
 }
 
 async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified', run }) {
-  hlog('WRITE_REQUEST', { projectId, environment, recordType, recordId, operation, source, manualOffline: isManualOffline() });
+  syncDiagnosticLog('WRITE_REQUEST', { projectId, environment, recordType, recordId, operation, source, manualOffline: isManualOffline() });
   if (isManualOffline()) {
     putUnsent({
       projectId,
@@ -153,14 +153,14 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       operation,
       record: localRecord
     });
-    hlog('WRITE_QUEUED_OFFLINE', { projectId, recordType, recordId, operation, source });
+    syncDiagnosticLog('WRITE_QUEUED_OFFLINE', { projectId, recordType, recordId, operation, source });
     return { ok: false, queued: true, operation, offline: true };
   }
 
   beginFirestoreActivity();
   try {
     await run();
-    hlog('WRITE_OK', { projectId, recordType, recordId, operation, source });
+    syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
     removeUnsent(projectId, recordType, recordId);
     endFirestoreActivity();
     return { ok: true, queued: false, operation };
@@ -173,7 +173,7 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       operation,
       record: localRecord
     });
-    hlog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
+    syncDiagnosticLog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
     markError(error);
     endFirestoreActivity();
     return { ok: false, queued: true, operation, error };
@@ -256,7 +256,7 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
 
 /** 仮案件番号の他端末重複を避けるため、案件メタ情報を親Documentにも保持する。 */
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
-  hlog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
+  syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
   if (isManualOffline()) return { ok: false, queued: true, offline: true };
   const environment = project.environment === 'test' ? 'test' : 'production';
@@ -273,7 +273,7 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
       ...(initializeChangeLog ? { finishChangeLogStartedAt: serverTimestamp() } : {}),
       updatedAt: serverTimestamp()
     }, { merge: true });
-    hlog('PROJECT_METADATA_WRITE_OK', { projectId: project.projectId, initializeChangeLog });
+    syncDiagnosticLog('PROJECT_METADATA_WRITE_OK', { projectId: project.projectId, initializeChangeLog });
     endFirestoreActivity();
     return { ok: true };
   } catch (error) {
@@ -345,13 +345,13 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
  * カーソル自身のchangeLog Documentが存在することを確認する。
  */
 export async function isFinishChangeCursorAvailable({ projectId, environment = 'production', cursor = null }) {
-  hlog('CURSOR_CHECK_START', { projectId, cursor });
+  syncDiagnosticLog('CURSOR_CHECK_START', { projectId, cursor });
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
   const ageMs = Date.now() - ((Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6));
   if (ageMs > CHANGE_LOG_RETENTION_MS) return false;
   if (isManualOffline()) return true;
   const snapshot = await getDoc(doc(finishChangeLogCollectionRef(projectId, environment), String(cursor.changeId)));
-  hlog('CURSOR_CHECK_READ', { projectId, changeId: String(cursor.changeId), exists: snapshot.exists() });
+  syncDiagnosticLog('CURSOR_CHECK_READ', { projectId, changeId: String(cursor.changeId), exists: snapshot.exists() });
   if (!snapshot.exists()) return false;
   const stored = serializeChangeCursor(snapshot);
   return Boolean(stored
@@ -364,7 +364,7 @@ export async function isFinishChangeCursorAvailable({ projectId, environment = '
 export async function touchProjectSyncDevice({
   projectId, environment = 'production', deviceCode, deviceName, finishChangeCursor = null
 }) {
-  hlog('DEVICE_TOUCH_REQUEST', { projectId, deviceCode, deviceName, finishChangeCursor });
+  syncDiagnosticLog('DEVICE_TOUCH_REQUEST', { projectId, deviceCode, deviceName, finishChangeCursor });
   const code = String(deviceCode || '').trim();
   if (!projectId || !code || isManualOffline()) return { ok: true, skipped: true };
   try {
@@ -374,10 +374,10 @@ export async function touchProjectSyncDevice({
       lastSeenAt: serverTimestamp(),
       finishChangeCursor: finishChangeCursor || null
     }, { merge: true });
-    hlog('DEVICE_TOUCH_OK', { projectId, deviceCode: code });
+    syncDiagnosticLog('DEVICE_TOUCH_OK', { projectId, deviceCode: code });
     return { ok: true };
   } catch (error) {
-    hlog('DEVICE_TOUCH_ERROR', { projectId, deviceCode: code, message: error?.message || String(error) });
+    syncDiagnosticLog('DEVICE_TOUCH_ERROR', { projectId, deviceCode: code, message: error?.message || String(error) });
     markError(error);
     return { ok: false, error };
   }
@@ -388,7 +388,7 @@ export async function touchProjectSyncDevice({
  * Firestore TTLへ依存せず無料枠内でも運用できるよう、案件同期時の低頻度清掃用とする。
  */
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
-  hlog('CHANGELOG_CLEANUP_START', { projectId });
+  syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
   if (!projectId || isManualOffline()) return { ok: true, skipped: true, deleted: 0 };
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
@@ -397,18 +397,18 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
     orderBy('expiresAt'),
     limit(CHANGE_LOG_CLEANUP_LIMIT)
   ));
-  hlog('CHANGELOG_CLEANUP_READ', { projectId, expiredCount: snapshot.docs.length });
+  syncDiagnosticLog('CHANGELOG_CLEANUP_READ', { projectId, expiredCount: snapshot.docs.length });
   if (!snapshot.docs.length) return { ok: true, deleted: 0 };
   const batch = writeBatch(db);
   snapshot.docs.forEach((item) => batch.delete(item.ref));
   await batch.commit();
-  hlog('CHANGELOG_CLEANUP_DELETE_OK', { projectId, deleted: snapshot.docs.length });
+  syncDiagnosticLog('CHANGELOG_CLEANUP_DELETE_OK', { projectId, deleted: snapshot.docs.length });
   return { ok: true, deleted: snapshot.docs.length };
 }
 
 /** 変更履歴がまだ無い案件に、同期開始点となるcheckpointを1件だけ作る。 */
 export async function createFinishChangeLogCheckpoint({ projectId, environment = 'production' }) {
-  hlog('CHECKPOINT_CREATE_START', { projectId });
+  syncDiagnosticLog('CHECKPOINT_CREATE_START', { projectId });
   if (isManualOffline()) return null;
   const logRef = doc(finishChangeLogCollectionRef(projectId, environment));
   const batch = writeBatch(db);
@@ -425,18 +425,18 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
     finishChangeLogEpochCheckpointId: logRef.id
   }, { merge: true });
   await batch.commit();
-  hlog('CHECKPOINT_CREATE_WRITE_OK', { projectId, changeId: logRef.id });
+  syncDiagnosticLog('CHECKPOINT_CREATE_WRITE_OK', { projectId, changeId: logRef.id });
   const snapshot = await getDocs(query(
     finishChangeLogCollectionRef(projectId, environment),
     orderBy('committedAt', 'desc'), orderBy(documentId(), 'desc'), limit(1)
   ));
-  hlog('CHECKPOINT_CURSOR_READ', { projectId, docs: snapshot.docs.length });
+  syncDiagnosticLog('CHECKPOINT_CURSOR_READ', { projectId, docs: snapshot.docs.length });
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
 /** finishRecordの変更履歴をカーソル以降だけ取得する。 */
 export async function readFinishChangeLog({ projectId, environment = 'production', cursor = null }) {
-  hlog('CHANGELOG_READ_START', { projectId, cursor });
+  syncDiagnosticLog('CHANGELOG_READ_START', { projectId, cursor });
   if (isManualOffline()) return { changes: [], cursor };
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const ts = cursorTimestamp(cursor);
@@ -445,7 +445,7 @@ export async function readFinishChangeLog({ projectId, environment = 'production
     : query(ref, orderBy('committedAt'), orderBy(documentId()));
   const snapshot = await getDocs(source);
   const docs = snapshot.docs;
-  hlog('CHANGELOG_READ_RESULT', { projectId, count: docs.length, fromCursor: cursor?.changeId || null });
+  syncDiagnosticLog('CHANGELOG_READ_RESULT', { projectId, count: docs.length, fromCursor: cursor?.changeId || null });
   return {
     changes: docs.map(deserializeFinishChangeDoc),
     cursor: docs.length ? serializeChangeCursor(docs[docs.length - 1]) : cursor
@@ -454,7 +454,7 @@ export async function readFinishChangeLog({ projectId, environment = 'production
 
 /** 現在のfinish変更履歴の末尾だけ取得し、全件復元後の開始カーソルにする。 */
 export async function readLatestFinishChangeCursor({ projectId, environment = 'production' }) {
-  hlog('CHANGELOG_LATEST_CURSOR_READ_START', { projectId });
+  syncDiagnosticLog('CHANGELOG_LATEST_CURSOR_READ_START', { projectId });
   if (isManualOffline()) return null;
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
@@ -463,13 +463,13 @@ export async function readLatestFinishChangeCursor({ projectId, environment = 'p
     orderBy(documentId(), 'desc'),
     limit(1)
   ));
-  hlog('CHANGELOG_LATEST_CURSOR_READ_RESULT', { projectId, count: snapshot.docs.length });
+  syncDiagnosticLog('CHANGELOG_LATEST_CURSOR_READ_RESULT', { projectId, count: snapshot.docs.length });
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
 /** finish変更履歴だけをリアルタイム監視する。 */
 export function subscribeFinishChangeLog({ projectId, environment = 'production', afterCursor = null, onChanges, onState, onError }) {
-  hlog('CHANGELOG_LISTENER_START', { projectId, afterCursor });
+  syncDiagnosticLog('CHANGELOG_LISTENER_START', { projectId, afterCursor });
   if (isManualOffline()) return () => {};
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const ts = cursorTimestamp(afterCursor);
@@ -478,18 +478,18 @@ export function subscribeFinishChangeLog({ projectId, environment = 'production'
     : query(ref, orderBy('committedAt'), orderBy(documentId()));
 
   const unsubscribe = onSnapshot(source, { includeMetadataChanges: true }, (snapshot) => {
-    hlog('CHANGELOG_LISTENER_SNAPSHOT', { projectId, size: snapshot.size, changes: snapshot.docChanges().length, fromCache: Boolean(snapshot.metadata?.fromCache), pending: Boolean(snapshot.metadata?.hasPendingWrites) });
+    syncDiagnosticLog('CHANGELOG_LISTENER_SNAPSHOT', { projectId, size: snapshot.size, changes: snapshot.docChanges().length, fromCache: Boolean(snapshot.metadata?.fromCache), pending: Boolean(snapshot.metadata?.hasPendingWrites) });
     onState?.({ recordType: 'finish', fromCache: Boolean(snapshot.metadata?.fromCache), hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites) });
     const docs = snapshot.docChanges()
       .filter((change) => change.type !== 'removed' && !change.doc.metadata?.hasPendingWrites)
       .map((change) => deserializeFinishChangeDoc(change.doc));
     if (docs.length) onChanges?.(docs, serializeChangeCursor(snapshot.docs[snapshot.docs.length - 1] || null));
   }, (error) => {
-    hlog('CHANGELOG_LISTENER_ERROR', { projectId, message: error?.message || String(error) });
+    syncDiagnosticLog('CHANGELOG_LISTENER_ERROR', { projectId, message: error?.message || String(error) });
     onError?.(error);
   });
   return () => {
-    hlog('CHANGELOG_LISTENER_STOP', { projectId });
+    syncDiagnosticLog('CHANGELOG_LISTENER_STOP', { projectId });
     unsubscribe();
   };
 }
@@ -501,9 +501,9 @@ export async function readProjectRecordsOnce({
   sinceByType = null,
   recordTypes = Object.keys(RECORD_COLLECTIONS)
 }) {
-  hlog('RECORD_READ_START', { projectId, recordTypes, sinceByType });
+  syncDiagnosticLog('RECORD_READ_START', { projectId, recordTypes, sinceByType });
   if (isManualOffline()) {
-    hlog('RECORD_READ_SKIPPED_OFFLINE', { projectId, recordTypes });
+    syncDiagnosticLog('RECORD_READ_SKIPPED_OFFLINE', { projectId, recordTypes });
     return { finishRecords: [], materialRecords: [], photoRecords: [] };
   }
 
@@ -514,7 +514,7 @@ export async function readProjectRecordsOnce({
       ? query(ref, where('updatedAt', '>', Timestamp.fromMillis(since)))
       : ref;
     const snapshot = await getDocs(source);
-    hlog('RECORD_READ_RESULT', { projectId, recordType, count: snapshot.docs.length, since });
+    syncDiagnosticLog('RECORD_READ_RESULT', { projectId, recordType, count: snapshot.docs.length, since });
     return [recordType, deserializeSnapshot(snapshot)];
   }));
 
@@ -540,7 +540,7 @@ export function subscribeProjectRecordChanges({
   onState,
   onError
 }) {
-  hlog('RECORD_LISTENER_GROUP_START', { projectId, recordTypes, afterByType });
+  syncDiagnosticLog('RECORD_LISTENER_GROUP_START', { projectId, recordTypes, afterByType });
   if (isManualOffline()) return () => {};
 
   let closed = false;
@@ -556,7 +556,7 @@ export function subscribeProjectRecordChanges({
       { includeMetadataChanges: true },
       (snapshot) => {
         if (closed) return;
-        hlog('RECORD_LISTENER_SNAPSHOT', { projectId, recordType, size: snapshot.size, changes: snapshot.docChanges().length, fromCache: Boolean(snapshot.metadata?.fromCache), pending: Boolean(snapshot.metadata?.hasPendingWrites) });
+        syncDiagnosticLog('RECORD_LISTENER_SNAPSHOT', { projectId, recordType, size: snapshot.size, changes: snapshot.docChanges().length, fromCache: Boolean(snapshot.metadata?.fromCache), pending: Boolean(snapshot.metadata?.hasPendingWrites) });
         onState?.({
           recordType,
           fromCache: Boolean(snapshot.metadata?.fromCache),
@@ -581,7 +581,7 @@ export function subscribeProjectRecordChanges({
   });
 
   return () => {
-    hlog('RECORD_LISTENER_GROUP_STOP', { projectId, recordTypes });
+    syncDiagnosticLog('RECORD_LISTENER_GROUP_STOP', { projectId, recordTypes });
     closed = true;
     unsubscribers.forEach((unsubscribe) => unsubscribe());
   };
