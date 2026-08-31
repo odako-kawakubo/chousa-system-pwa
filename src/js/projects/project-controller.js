@@ -61,12 +61,14 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getDeviceCode, getDeviceDisplayName } from '../device-code.js';
+import { hlog } from '../debug/h-log.js';
 
 
 let stopActiveProjectRecords = null;
 let activeProjectStreamToken = 0;
 
 function stopProjectRecordStream() {
+  hlog('SYNC_STREAM_STOP_REQUEST', { hadActiveStream: Boolean(stopActiveProjectRecords), nextToken: activeProjectStreamToken + 1 });
   activeProjectStreamToken += 1;
   if (stopActiveProjectRecords) {
     stopActiveProjectRecords();
@@ -107,20 +109,27 @@ function updateFinishChangeCursor(projectId, cursor) {
 
 async function recordProjectDeviceContact(project, finishChangeCursor) {
   if (!project?.projectId || project.isSample) return;
+  hlog('DEVICE_CONTACT_START', { projectId: project.projectId, finishChangeCursor });
   await touchProjectSyncDeviceForProject(project, {
     deviceCode: getDeviceCode(),
     deviceName: getDeviceDisplayName(),
     finishChangeCursor: normalizeFinishChangeCursor(finishChangeCursor)
   });
+  hlog('DEVICE_CONTACT_END', { projectId: project.projectId });
 }
 
 async function cleanupFinishChangeLogIfDue(project) {
   if (!project?.projectId || project.isSample) return;
+  hlog('CHANGELOG_CLEANUP_DUE_CHECK', { projectId: project.projectId });
   const meta = getProjectSyncMeta(project.projectId) || {};
   const last = Number(meta.finishChangeLogCleanedAt || 0);
-  if (last && (Date.now() - last) < (24 * 60 * 60 * 1000)) return;
+  if (last && (Date.now() - last) < (24 * 60 * 60 * 1000)) {
+    hlog('CHANGELOG_CLEANUP_SKIP_RECENT', { projectId: project.projectId, last });
+    return;
+  }
   try {
-    await cleanupFinishChangeLogsForProject(project);
+    const cleanupResult = await cleanupFinishChangeLogsForProject(project);
+    hlog('CHANGELOG_CLEANUP_DONE', { projectId: project.projectId, cleanupResult });
     updateProjectSyncMeta(project.projectId, { finishChangeLogCleanedAt: Date.now() });
   } catch (error) {
     console.warn('[v0.1.6.2H] finish変更履歴の整理に失敗', error);
@@ -222,6 +231,7 @@ function applyProjectRecordChanges(project, changes = []) {
 
 async function openFirestoreProjectSession(target) {
   const project = target.project;
+  hlog('SYNC_OPEN_START', { projectId: project?.projectId || '', projectName: project?.projectName || '' });
   const token = ++activeProjectStreamToken;
   const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
   const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
@@ -235,6 +245,7 @@ async function openFirestoreProjectSession(target) {
     && Array.isArray(target.finishRecords)
     && target.finishRecords.length > 0;
   const canDeltaCatchUp = useLocalSnapshot && hasPerTypeCursors && Boolean(finishChangeCursor);
+  hlog('SYNC_OPEN_PLAN', { projectId: project.projectId, token, useLocalSnapshot, hasPerTypeCursors, canDeltaCatchUp, storedCursors, finishChangeCursor });
 
   setSyncBaseline(latestCursorValue(cursors));
 
@@ -252,11 +263,16 @@ async function openFirestoreProjectSession(target) {
 
   try {
     // G: 過去の取りこぼし回収は1回のgetDocsだけ。listenerとは役割を分離する。
+    hlog('SYNC_CATCHUP_START', { projectId: project.projectId, canDeltaCatchUp });
     const remote = await readProjectRecordsForProject(project, {
       cursors: canDeltaCatchUp ? cursors : null,
       finishChangeCursor: canDeltaCatchUp ? finishChangeCursor : null
     });
-    if (token !== activeProjectStreamToken) return target;
+    hlog('SYNC_CATCHUP_RESULT', { projectId: project.projectId, mode: remote.mode, changes: remote.changes?.length || 0, finishRecords: remote.finishRecords?.length || 0, materialRecords: remote.materialRecords?.length || 0, photoRecords: remote.photoRecords?.length || 0, finishHistoryMode: remote.finishHistoryMode || '' });
+    if (token !== activeProjectStreamToken) {
+      hlog('SYNC_CATCHUP_DISCARDED_TOKEN', { projectId: project.projectId, token, activeProjectStreamToken });
+      return target;
+    }
 
     if (remote.mode === 'delta') {
       if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
@@ -292,14 +308,17 @@ async function openFirestoreProjectSession(target) {
 
     // 取りこぼし回収が完了した地点を、この案件を開いている間だけの監視基準にする。
     const serverReadyTypes = new Set();
+    hlog('SYNC_LISTENER_START', { projectId: project.projectId, caughtUpCursors, finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor) });
     const stop = subscribeRealtimeProjectRecordsForProject(project, {
       afterByType: caughtUpCursors,
       finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor),
       onFinishCursor: (cursor) => {
+        hlog('SYNC_FINISH_CURSOR_ADVANCE', { projectId: project.projectId, cursor });
         if (token !== activeProjectStreamToken) return;
         updateFinishChangeCursor(project.projectId, cursor);
       },
       onState: ({ recordType, fromCache }) => {
+        hlog('SYNC_LISTENER_STATE', { projectId: project.projectId, recordType, fromCache });
         if (token !== activeProjectStreamToken || isManualOffline()) return;
         if (fromCache) {
           serverReadyTypes.delete(recordType);
@@ -312,6 +331,7 @@ async function openFirestoreProjectSession(target) {
         }
       },
       onChanges: (changes) => {
+        hlog('SYNC_LISTENER_CHANGES', { projectId: project.projectId, count: changes?.length || 0, types: (changes || []).map((c) => `${c.recordType}:${c.changeType}`) });
         if (token !== activeProjectStreamToken) return;
         beginFirestoreActivity();
         try {
@@ -323,15 +343,21 @@ async function openFirestoreProjectSession(target) {
         }
       },
       onError: (error) => {
+        hlog('SYNC_LISTENER_ERROR', { projectId: project.projectId, message: error?.message || String(error) });
         if (token !== activeProjectStreamToken) return;
         markError(error);
       }
     });
 
     // 初回listener snapshotより前でも、案件切替・通信断時に確実に解除できる。
-    stopActiveProjectRecords = stop;
+    stopActiveProjectRecords = () => {
+      hlog('SYNC_LISTENER_STOP', { projectId: project.projectId });
+      stop();
+    };
+    hlog('SYNC_OPEN_READY', { projectId: project.projectId });
     return getProject(project.projectId) || target;
   } catch (error) {
+    hlog('SYNC_OPEN_ERROR', { projectId: project.projectId, message: error?.message || String(error) });
     if (token === activeProjectStreamToken) markError(error);
     throw error;
   } finally {
@@ -621,11 +647,13 @@ export function initializeProjectManagement() {
   if (document.documentElement.dataset.firestoreNetworkRecoveryBound !== '1') {
     document.documentElement.dataset.firestoreNetworkRecoveryBound = '1';
     window.addEventListener('offline', () => {
+      hlog('BROWSER_OFFLINE_EVENT', { projectId: getCurrentProject()?.projectId || '' });
       if (isManualOffline()) return;
       saveCurrentProjectSession();
       stopProjectRecordStream();
     });
     window.addEventListener('online', () => {
+      hlog('BROWSER_ONLINE_EVENT', { projectId: getCurrentProject()?.projectId || '' });
       recoverCurrentProjectAfterNetworkReturn();
     });
   }

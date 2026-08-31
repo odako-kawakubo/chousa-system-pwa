@@ -4,6 +4,6 @@
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.6.2H',
+  version: '0.1.6.2H.log',
   mode: 'camera-local-review'
 };

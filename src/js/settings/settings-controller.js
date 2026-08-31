@@ -16,12 +16,14 @@ import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
 import { listUnsent } from '../sync/unsent-queue.js';
 import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
+import { formatHLog, clearHLog, subscribeHLog } from '../debug/h-log.js';
 
 let root = null;
 let unsubscribe = null;
 let unsubscribeSync = null;
 let unsubscribeAuth = null;
 let unsubscribeDevice = null;
+let unsubscribeHLog = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -83,6 +85,28 @@ function refreshAuthStatusFields(auth = getAuthUiState()) {
   if (graph) graph.textContent = auth.graphTokenReady ? '取得済み' : '未取得';
 }
 
+
+function refreshHLogView() {
+  if (!root) return;
+  const output = root.querySelector('[data-settings-hlog]');
+  if (output) {
+    output.value = formatHLog();
+    output.scrollTop = output.scrollHeight;
+  }
+}
+
+function downloadHLog() {
+  const blob = new Blob([formatHLog() || '(ログなし)'], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'H.log';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function refreshDeviceFields(name = getDeviceDisplayName()) {
   if (!root) return;
   const input = root.querySelector('[data-setting-device-name]');
@@ -95,6 +119,7 @@ function render() {
   renderSettingsTab(root, buildViewModel());
   showInnerSection(activeSection);
   renderBoardPreview();
+  refreshHLogView();
 }
 
 function showInnerSection(section) {
@@ -210,6 +235,26 @@ function handleClick(event) {
     return;
   }
 
+  if (event.target.closest('[data-action="copy-hlog"]')) {
+    navigator.clipboard?.writeText(formatHLog()).then(() => {
+      window.alert('同期ログをコピーしました。');
+    }).catch(() => {
+      window.alert('コピーできませんでした。H.log保存を使用してください。');
+    });
+    return;
+  }
+
+  if (event.target.closest('[data-action="download-hlog"]')) {
+    downloadHLog();
+    return;
+  }
+
+  if (event.target.closest('[data-action="clear-hlog"]')) {
+    clearHLog();
+    refreshHLogView();
+    return;
+  }
+
   const fontAdjust = event.target.closest('[data-board-font-adjust]');
   if (fontAdjust) {
     adjustBoardFontSize(
@@ -306,4 +351,7 @@ export function initializeSettingsTab() {
   unsubscribeAuth = subscribeAuthUiState(refreshAuthStatusFields);
   if (unsubscribeDevice) unsubscribeDevice();
   unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
+  if (unsubscribeHLog) unsubscribeHLog();
+  unsubscribeHLog = subscribeHLog(refreshHLogView);
+  refreshHLogView();
 }

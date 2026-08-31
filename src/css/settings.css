@@ -72,3 +72,23 @@
 .settings-device-editor label{display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--text-secondary)}
 .settings-device-editor input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:7px 8px;font-size:13px;color:var(--text)}
 @media(max-width:900px){.settings-sync-grid{grid-template-columns:1fr}.settings-sync-wide{grid-column:auto}}
+
+
+/* v0.1.6.2H.log 同期診断ログ */
+.settings-hlog-output {
+  width: 100%;
+  min-height: 240px;
+  max-height: 420px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  background: var(--panel, #fff);
+  color: var(--text, #111827);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
+}
