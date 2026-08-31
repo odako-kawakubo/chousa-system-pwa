@@ -293,7 +293,7 @@ async function openFirestoreProjectSession(target) {
       };
       saveProjectSnapshot(restored);
       openProjectSession(restored);
-      refreshMaterialUsageDerivedFields();
+      refreshMaterialUsageDerivedFields('remote-rebuild');
       refreshMaterialList();
     }
 

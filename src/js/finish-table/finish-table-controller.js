@@ -318,7 +318,7 @@ function commitCandidateSelection(option, input) {
       }
       applyMaterialToCell(roomKeyValue, partIndex, row, material);
       clearPendingCellName(pendingKey);
-      refreshMaterialUsageDerivedFields();
+      refreshMaterialUsageDerivedFields('existing-material-select');
     });
     focusOtherCompanionField(roomKeyValue, partIndex, row, 'part');
     return;

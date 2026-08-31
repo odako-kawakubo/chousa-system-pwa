@@ -111,13 +111,14 @@ export function applyKnownFinishChange(projectId, change) {
   persistSparseCache();
 }
 
-export function persistFinishForProject(project, record) {
+export function persistFinishForProject(project, record, source = 'finish-unspecified') {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
     const result = await saveFinishRecord({
       projectId: project.projectId,
       environment: projectEnvironment(project),
-      record
+      record,
+      source
     });
     if (result?.ok) {
       knownFinishMap(project.projectId).set(String(record.finishId), { ...record });
@@ -127,13 +128,14 @@ export function persistFinishForProject(project, record) {
   });
 }
 
-export function deleteFinishForProject(project, record) {
+export function deleteFinishForProject(project, record, source = 'finish-delete-unspecified') {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
     const result = await deleteFinishRecord({
       projectId: project.projectId,
       environment: projectEnvironment(project),
-      record
+      record,
+      source
     });
     if (result?.ok) {
       knownFinishMap(project.projectId).delete(String(record.finishId));
@@ -144,21 +146,23 @@ export function deleteFinishForProject(project, record) {
 }
 
 
-export function persistMaterialForProject(project, record) {
+export function persistMaterialForProject(project, record, source = 'material-unspecified') {
   if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveMaterialRecord({
     projectId: project.projectId,
     environment: projectEnvironment(project),
-    record
+    record,
+    source
   }));
 }
 
-export function persistPhotoForProject(project, record) {
+export function persistPhotoForProject(project, record, source = 'photo-unspecified') {
   if (!shouldSyncProject(project) || !record?.photoId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => savePhotoRecord({
     projectId: project.projectId,
     environment: projectEnvironment(project),
-    record
+    record,
+    source
   }));
 }
 

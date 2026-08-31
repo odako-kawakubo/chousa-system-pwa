@@ -255,18 +255,18 @@ function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.get
 function persistSparseFinishRecord(project, record, allRecords = finishRecordStore.getAll()) {
   if (!project?.projectId || project.isSample || !record?.finishId) return;
   if (shouldKeepSparseFinishRecord(record, allRecords)) {
-    persistFinishForProject(project, record);
+    persistFinishForProject(project, record, 'finish-sparse-cell');
     return;
   }
   // Firestoreに存在しない初期レコードはdelete自体を送らない。
-  if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record);
+  if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
 }
 
 function persistAddedStructureMarker(records = []) {
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample || !records.length) return;
   const marker = roomCarrierRecord(records);
-  if (marker) persistFinishForProject(project, marker);
+  if (marker) persistFinishForProject(project, marker, 'finish-structure-marker');
 }
 
 /* ============================================================
@@ -304,7 +304,7 @@ function persistFinishStructureChange(beforeRecords, afterRecords) {
   // 入力差分または復元に必要な構造保持レコードだけを残す。
   changed.forEach((record) => persistSparseFinishRecord(project, record, afterRecords));
   removed.forEach((record) => {
-    if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record);
+    if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
   });
 }
 
@@ -419,7 +419,7 @@ export function addInputRow(roomKey) {
   }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
   const marker = records.find((record) => partIndexFromPosition(record.position) === PART_COUNT);
-  if (marker) persistFinishForProject(getCurrentProject(), marker);
+  if (marker) persistFinishForProject(getCurrentProject(), marker, 'finish-structure-marker');
 }
 
 /* ============================================================
@@ -444,7 +444,7 @@ export function commitRoomField(roomKey, field, rawValue) {
   const currentRoomRecords = getRoomRecords(roomKey);
   const carrier = roomCarrierRecord(currentRoomRecords);
   if (carrier) persistSparseFinishRecord(project, carrier, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('room-common-edit');
 }
 
 /* ============================================================
@@ -476,7 +476,7 @@ function writeCellPatch(anchor, partIndex, row, patch) {
   };
   finishRecordStore.set(next);
   if (syncFields.length) persistSparseFinishRecord(getCurrentProject(), next, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('finish-cell-patch');
   return next;
 }
 
@@ -536,7 +536,7 @@ export function commitCellActualPart(roomKey, partIndex, row, rawValue) {
 
   // その他部位を変更したら建材Recordの使用部位も同時に再集計する。
   // これにより次に開く建材候補の優先1/2が最新部位へ追従する。
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('actual-part-edit');
 }
 
 export function isCellPendingRegistration(roomKey, partIndex, row) {
@@ -595,7 +595,7 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
         };
         materialRecordStore.set(material);
         // 新規建材を先にFirestoreへ積み、その後にfinishRecordの紐付け保存が続く。
-        persistMaterialForProject(getCurrentProject(), material);
+        persistMaterialForProject(getCurrentProject(), material, 'material-register');
       }
     }
     // その他1/2では、建材を正式登録する時点で実部位が未入力なら
@@ -610,7 +610,7 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
       finishPatch.part = 'その他';
     }
     writeCellPatch(anchor, partIndex, row, finishPatch);
-    refreshMaterialUsageDerivedFields();
+    refreshMaterialUsageDerivedFields('material-register-post-link');
   });
   return material;
 }
@@ -620,7 +620,7 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
    ============================================================ */
 
 /** finishRecordStoreを正として、全建材の部位・使用箇所を再計算する。 */
-export function refreshMaterialUsageDerivedFields() {
+export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc') {
   const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active' && record.materialId);
   const byMaterial = new Map();
   finishRecords.forEach((record) => {
@@ -648,7 +648,7 @@ export function refreshMaterialUsageDerivedFields() {
         fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['part', 'usageLocation'])
       };
       materialRecordStore.set(next);
-      persistMaterialForProject(getCurrentProject(), next);
+      persistMaterialForProject(getCurrentProject(), next, source);
     });
   });
 }
@@ -786,7 +786,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
     });
   });
   persistFinishStructureChange(before, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('room-copy');
 }
 
 export function restoreRoomCopy(roomKey, backupRecords) {
@@ -798,7 +798,7 @@ export function restoreRoomCopy(roomKey, backupRecords) {
     backupRecords.forEach((record) => finishRecordStore.set({ ...record }));
   });
   persistFinishStructureChange(before, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('room-copy-restore');
 }
 
 /* ============================================================
@@ -900,7 +900,7 @@ export function seedInitialFinishRecords() {
   });
   assignSampleMaterialsToFinishRecords(records);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  refreshMaterialUsageDerivedFields();
+  refreshMaterialUsageDerivedFields('seed-initial-finish');
 }
 
 /* ============================================================

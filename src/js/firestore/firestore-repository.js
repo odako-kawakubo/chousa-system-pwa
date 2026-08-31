@@ -142,8 +142,8 @@ function toTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : Timestamp.fromDate(date);
 }
 
-async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, run }) {
-  hlog('WRITE_REQUEST', { projectId, environment, recordType, recordId, operation, manualOffline: isManualOffline() });
+async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified', run }) {
+  hlog('WRITE_REQUEST', { projectId, environment, recordType, recordId, operation, source, manualOffline: isManualOffline() });
   if (isManualOffline()) {
     putUnsent({
       projectId,
@@ -153,14 +153,14 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       operation,
       record: localRecord
     });
-    hlog('WRITE_QUEUED_OFFLINE', { projectId, recordType, recordId, operation });
+    hlog('WRITE_QUEUED_OFFLINE', { projectId, recordType, recordId, operation, source });
     return { ok: false, queued: true, operation, offline: true };
   }
 
   beginFirestoreActivity();
   try {
     await run();
-    hlog('WRITE_OK', { projectId, recordType, recordId, operation });
+    hlog('WRITE_OK', { projectId, recordType, recordId, operation, source });
     removeUnsent(projectId, recordType, recordId);
     endFirestoreActivity();
     return { ok: true, queued: false, operation };
@@ -173,7 +173,7 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       operation,
       record: localRecord
     });
-    hlog('WRITE_ERROR', { projectId, recordType, recordId, operation, message: error?.message || String(error) });
+    hlog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
     markError(error);
     endFirestoreActivity();
     return { ok: false, queued: true, operation, error };
@@ -181,7 +181,7 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
 }
 
 /** finishRecord本体と変更履歴を同一batchで確定する。 */
-export async function saveFinishRecord({ projectId, environment = 'production', record }) {
+export async function saveFinishRecord({ projectId, environment = 'production', record, source = 'finish-unspecified' }) {
   return writeWithQueue({
     projectId,
     environment,
@@ -189,6 +189,7 @@ export async function saveFinishRecord({ projectId, environment = 'production', 
     recordId: record.finishId,
     operation: 'set',
     localRecord: record,
+    source,
     run: async () => {
       const batch = writeBatch(db);
       batch.set(
@@ -202,7 +203,7 @@ export async function saveFinishRecord({ projectId, environment = 'production', 
 }
 
 /** 内容差分の解消を他端末へ伝えるため、deleteも変更履歴と同一batchで確定する。 */
-export async function deleteFinishRecord({ projectId, environment = 'production', record }) {
+export async function deleteFinishRecord({ projectId, environment = 'production', record, source = 'finish-delete-unspecified' }) {
   if (!record?.finishId) return { ok: true, skipped: true };
   return writeWithQueue({
     projectId,
@@ -211,6 +212,7 @@ export async function deleteFinishRecord({ projectId, environment = 'production'
     recordId: record.finishId,
     operation: 'delete',
     localRecord: record,
+    source,
     run: async () => {
       const batch = writeBatch(db);
       batch.delete(recordRef(projectId, environment, 'finish', record.finishId));
@@ -220,7 +222,7 @@ export async function deleteFinishRecord({ projectId, environment = 'production'
   });
 }
 
-export async function saveMaterialRecord({ projectId, environment = 'production', record }) {
+export async function saveMaterialRecord({ projectId, environment = 'production', record, source = 'material-unspecified' }) {
   return writeWithQueue({
     projectId,
     environment,
@@ -228,6 +230,7 @@ export async function saveMaterialRecord({ projectId, environment = 'production'
     recordId: record.materialId,
     operation: 'set',
     localRecord: record,
+    source,
     run: () => setDoc(
       recordRef(projectId, environment, 'material', record.materialId),
       serializeMaterialRecord(record, { updatedAt: serverTimestamp() })
@@ -235,7 +238,7 @@ export async function saveMaterialRecord({ projectId, environment = 'production'
   });
 }
 
-export async function savePhotoRecord({ projectId, environment = 'production', record }) {
+export async function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
   return writeWithQueue({
     projectId,
     environment,
@@ -243,6 +246,7 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
     recordId: record.photoId,
     operation: 'set',
     localRecord: record,
+    source,
     run: () => setDoc(
       recordRef(projectId, environment, 'photo', record.photoId),
       serializePhotoRecord(record, { updatedAt: serverTimestamp() })

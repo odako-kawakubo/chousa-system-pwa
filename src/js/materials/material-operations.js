@@ -236,7 +236,7 @@ export function mergeMaterials(targetId, sourceIds) {
             'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType', 'systemMemo'
           ])
         });
-        persistPhotoForProject(getCurrentProject(), nextPhoto);
+        persistPhotoForProject(getCurrentProject(), nextPhoto, 'material-operation-photo-relink');
       });
 
       // 調査備考だけは統合元から重複を除いて統合先へ引き継ぐ。
@@ -261,7 +261,7 @@ export function mergeMaterials(targetId, sourceIds) {
     materialRecordStore.set({ ...nextTarget, updatedAt });
 
     // 仕上表を正として統合先の部位・使用箇所を再派生する。
-    refreshMaterialUsageDerivedFields();
+    refreshMaterialUsageDerivedFields('material-merge-recalc');
 
     // 統合後のactive一覧に合わせて建材No.と末尾英字を整理する。
     resequenceActiveMaterials();
@@ -309,7 +309,7 @@ export function deleteMaterials(materialIds) {
       });
     });
 
-    refreshMaterialUsageDerivedFields();
+    refreshMaterialUsageDerivedFields('material-delete-recalc');
     resequenceActiveMaterials();
   });
 

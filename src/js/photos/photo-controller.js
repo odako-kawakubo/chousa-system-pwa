@@ -69,7 +69,7 @@ function photoWithEditedFields(record, fields = null, confirmedAt = Date.now()) 
 }
 
 function persistPhoto(record) {
-  return persistPhotoForProject(getCurrentProject(), record);
+  return persistPhotoForProject(getCurrentProject(), record, 'photo-controller-save');
 }
 
 let root = null;

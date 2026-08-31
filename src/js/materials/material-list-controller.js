@@ -38,7 +38,7 @@ function changedBusinessFields(previous, next) {
   });
 }
 
-function setAndPersistMaterial(previous, candidate) {
+function setAndPersistMaterial(previous, candidate, source = 'material-list-edit') {
   const fields = changedBusinessFields(previous, candidate);
   if (!fields.length) return previous;
   const next = {
@@ -46,7 +46,7 @@ function setAndPersistMaterial(previous, candidate) {
     fieldEditedAt: touchFieldEditedAt(previous?.fieldEditedAt, fields)
   };
   materialRecordStore.set(next);
-  persistMaterialForProject(getCurrentProject(), next);
+  persistMaterialForProject(getCurrentProject(), next, source);
   return next;
 }
 
@@ -360,7 +360,7 @@ function updateMaterialControl(control) {
       return;
   }
 
-  setAndPersistMaterial(record, next);
+  setAndPersistMaterial(record, next, 'material-control-edit');
   refreshMaterialList();
   refreshRecordView();
 }
@@ -440,7 +440,7 @@ function updateMaterialNote(materialId, rawValue) {
   setAndPersistMaterial(record, {
     ...record,
     note
-  });
+  }, 'material-note-edit');
   refreshConnectedViews();
 }
 
@@ -457,7 +457,7 @@ function applySamplingAutofill() {
   });
 
   if (!updates.length) return;
-  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterial(previous, next)));
+  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterial(previous, next, 'sampling-autofill')));
 }
 
 /**
