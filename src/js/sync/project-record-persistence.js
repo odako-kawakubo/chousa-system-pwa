@@ -331,80 +331,162 @@ export function isFinishChangeCursorFresh(cursor) {
  * finishRecordは変更履歴カーソルを使う。履歴が古い/未移行なら疎finishRecordを全件取得して再構築する。
  * material/photoは従来どおりupdatedAt差分取得。
  */
-export async function readProjectRecordsForProject(project, { cursors = null, finishChangeCursor = null } = {}) {
+export async function readProjectRecordsForProject(project, {
+  cursors = null,
+  finishChangeCursor = null,
+  baseRecords = null
+} = {}) {
   if (!shouldSyncProject(project)) {
     return {
-      mode: 'local', finishRecords: [], materialRecords: [], photoRecords: [], changes: [],
+      mode: 'local',
+      typeModes: { finish: 'local', material: 'local', photo: 'local' },
+      finishRecords: [], materialRecords: [], photoRecords: [], changes: [],
       cursors: { finish: 0, material: 0, photo: 0 }, finishChangeCursor: null, lastSyncedAt: 0
     };
   }
 
   const projectId = String(project.projectId);
   const environment = projectEnvironment(project);
+  const hasLocalBaseline = Boolean(baseRecords);
   const numericCursors = cursors || {};
-  const canOtherDelta = Boolean(cursors && (Number(cursors.material || 0) > 0 || Number(cursors.photo || 0) > 0));
+  const unsent = listUnsent({ projectId });
 
-  // finishは「30日以内らしい」という時刻推測だけで差分同期へ進まない。
-  // 保存しているchangeId自身がFirestoreに残っていることを確認できた場合だけ、
-  // そのカーソル以降のset/delete履歴を安全に追跡する。
+  // 3Recordを一括でfull/delta判定しない。
+  // finishは変更履歴カーソル、material/photoは各updatedAtカーソルだけを見て独立判定する。
   let canFinishDelta = false;
-  if (finishChangeCursor && isFinishChangeCursorFresh(finishChangeCursor)) {
+  if (hasLocalBaseline && finishChangeCursor && isFinishChangeCursorFresh(finishChangeCursor)) {
     canFinishDelta = await isFinishChangeCursorAvailable({ projectId, environment, cursor: finishChangeCursor });
   }
 
-  if (canFinishDelta && canOtherDelta) {
-    const [finishLog, otherRaw] = await Promise.all([
-      readFinishChangeLog({ projectId, environment, cursor: finishChangeCursor }),
-      readProjectRecordsOnce({ projectId, environment, sinceByType: numericCursors, recordTypes: ['material', 'photo'] })
-    ]);
-    const nextCursors = newestByType(otherRaw, numericCursors);
-    const changes = [
-      ...(finishLog.changes || []),
-      ...(otherRaw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record })),
-      ...(otherRaw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
-    ];
-    return {
-      mode: 'delta', changes, cursors: nextCursors, finishChangeCursor: finishLog.cursor || finishChangeCursor,
-      finishHistoryMode: 'delta', lastSyncedAt: maxCursor(nextCursors)
-    };
-  }
+  const typeModes = {
+    finish: canFinishDelta ? 'delta' : 'full',
+    material: hasLocalBaseline && Number(numericCursors.material || 0) > 0 ? 'delta' : 'full',
+    photo: hasLocalBaseline && Number(numericCursors.photo || 0) > 0 ? 'delta' : 'full'
+  };
 
-  // 初回・旧版カーソル・30日以上未接触は現在形から再構築する。
-  const [raw, latestCursorRead] = await Promise.all([
-    readProjectRecordsOnce({ projectId, environment, sinceByType: null }),
-    readLatestFinishChangeCursor({ projectId, environment })
+  // material/photoは1回のreadProjectRecordsOnceで取得するが、since値はタイプ別。
+  // 片方がfullでも、もう片方の健全なcursorは維持する。
+  const otherSince = {
+    material: typeModes.material === 'delta' ? Number(numericCursors.material || 0) : 0,
+    photo: typeModes.photo === 'delta' ? Number(numericCursors.photo || 0) : 0
+  };
+
+  const finishPromise = typeModes.finish === 'delta'
+    ? readFinishChangeLog({ projectId, environment, cursor: finishChangeCursor })
+    : Promise.all([
+        readProjectRecordsOnce({ projectId, environment, sinceByType: null, recordTypes: ['finish'] }),
+        readLatestFinishChangeCursor({ projectId, environment })
+      ]);
+
+  const [finishResult, otherRaw] = await Promise.all([
+    finishPromise,
+    readProjectRecordsOnce({
+      projectId,
+      environment,
+      sinceByType: otherSince,
+      recordTypes: ['material', 'photo']
+    })
   ]);
-  const latestFinishCursor = isFinishChangeCursorFresh(latestCursorRead)
-    ? latestCursorRead
-    : await createFinishChangeLogCheckpoint({ projectId, environment });
-  const nextCursors = newestByType(raw, numericCursors);
-  const unsent = listUnsent({ projectId });
 
-  const materialRawMap = new Map((raw.materialRecords || []).map((record) => [String(record.materialId || record.id || ''), record]));
+  // Firestoreで確認できたRecordだけから次cursorを作る。未送信ローカル値はcursorへ混ぜない。
+  const nextCursors = {
+    finish: Number(numericCursors.finish || 0),
+    material: typeModes.material === 'delta'
+      ? Math.max(Number(numericCursors.material || 0), newestRecordUpdatedAt(otherRaw.materialRecords || []))
+      : newestRecordUpdatedAt(otherRaw.materialRecords || []),
+    photo: typeModes.photo === 'delta'
+      ? Math.max(Number(numericCursors.photo || 0), newestRecordUpdatedAt(otherRaw.photoRecords || []))
+      : newestRecordUpdatedAt(otherRaw.photoRecords || [])
+  };
+
+  // finish全件復元時にmaterialId→inputIdを正しく引けるよう、現在形のmaterialをここで組み立てる。
+  // materialがdeltaならローカル現在形へ受信差分を重ね、fullならFirestore現在形から作り直す。
+  const materialRawMap = new Map();
+  if (typeModes.material === 'delta') {
+    (baseRecords?.materialRecords || []).forEach((record) => {
+      const id = String(record?.materialId || record?.id || '');
+      if (id) materialRawMap.set(id, { ...record, materialId: id });
+    });
+  }
+  (otherRaw.materialRecords || []).forEach((record) => {
+    const id = String(record?.materialId || record?.id || '');
+    if (id) materialRawMap.set(id, record);
+  });
   unsent.filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record)
     .forEach((item) => materialRawMap.set(String(item.recordId), item.record));
-  const materials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
-  const materialById = new Map(materials.map((record) => [record.materialId, record]));
+  const effectiveMaterials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
+  const materialById = new Map(effectiveMaterials.map((record) => [record.materialId, record]));
 
-  const sparseFinishMap = new Map((raw.finishRecords || []).map((record) => [String(record.finishId || record.id || ''), record]));
-  setKnownFinishRecords(projectId, sparseFinishMap.values());
-  unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
-    const finishId = String(item.recordId || '');
-    if (!finishId) return;
-    if (item.operation === 'delete') sparseFinishMap.delete(finishId);
-    else if (item.record) sparseFinishMap.set(finishId, item.record);
-  });
-  const restoredRaw = restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values()));
-  const finishes = hydrateFinishRecords(restoredRaw, materialById);
+  let finishRecords = [];
+  let nextFinishChangeCursor = finishChangeCursor;
+  let finishChanges = [];
+  let finishHistoryMode = 'delta';
 
-  const photoRawMap = new Map((raw.photoRecords || []).map((record) => [String(record.photoId || record.id || ''), record]));
-  unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
-    .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
-  const photos = hydratePhotoRecords(Array.from(photoRawMap.values()));
+  if (typeModes.finish === 'delta') {
+    finishChanges = finishResult.changes || [];
+    nextFinishChangeCursor = finishResult.cursor || finishChangeCursor;
+  } else {
+    const [finishRaw, latestCursorRead] = finishResult;
+    const latestFinishCursor = isFinishChangeCursorFresh(latestCursorRead)
+      ? latestCursorRead
+      : await createFinishChangeLogCheckpoint({ projectId, environment });
+    nextFinishChangeCursor = latestFinishCursor;
+    finishHistoryMode = 'rebuilt';
+    nextCursors.finish = newestRecordUpdatedAt(finishRaw.finishRecords || []);
+
+    const sparseFinishMap = new Map((finishRaw.finishRecords || []).map((record) => [String(record.finishId || record.id || ''), record]));
+    setKnownFinishRecords(projectId, sparseFinishMap.values());
+    unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
+      const finishId = String(item.recordId || '');
+      if (!finishId) return;
+      if (item.operation === 'delete') sparseFinishMap.delete(finishId);
+      else if (item.record) sparseFinishMap.set(finishId, item.record);
+    });
+    finishRecords = hydrateFinishRecords(
+      restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values())),
+      materialById
+    );
+  }
+
+  let materialRecords = [];
+  if (typeModes.material === 'full') materialRecords = effectiveMaterials;
+
+  let photoRecords = [];
+  if (typeModes.photo === 'full') {
+    const photoRawMap = new Map((otherRaw.photoRecords || []).map((record) => [String(record.photoId || record.id || ''), record]));
+    unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
+      .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
+    photoRecords = hydratePhotoRecords(Array.from(photoRawMap.values()));
+  }
+
+  const changes = [
+    ...finishChanges,
+    ...(typeModes.material === 'delta'
+      ? (otherRaw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record }))
+      : []),
+    ...(typeModes.photo === 'delta'
+      ? (otherRaw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
+      : [])
+  ];
+
+  const modeValues = Object.values(typeModes);
+  const mode = modeValues.every((value) => value === 'delta')
+    ? 'delta'
+    : modeValues.every((value) => value === 'full')
+      ? 'full'
+      : 'mixed';
 
   return {
-    mode: 'full', finishRecords: finishes, materialRecords: materials, photoRecords: photos, changes: [],
-    cursors: nextCursors, finishChangeCursor: latestFinishCursor, finishHistoryMode: 'rebuilt', lastSyncedAt: maxCursor(nextCursors)
+    mode,
+    typeModes,
+    finishRecords,
+    materialRecords,
+    photoRecords,
+    changes,
+    cursors: nextCursors,
+    finishChangeCursor: nextFinishChangeCursor,
+    finishHistoryMode,
+    lastSyncedAt: maxCursor(nextCursors)
   };
 }
 

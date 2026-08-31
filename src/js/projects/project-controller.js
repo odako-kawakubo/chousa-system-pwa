@@ -237,15 +237,13 @@ async function openFirestoreProjectSession(target) {
   const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
   const finishChangeCursor = normalizeFinishChangeCursor(syncMeta.finishChangeCursor);
   const legacyLastSyncedAt = Number(syncMeta.lastSyncedAt || 0);
-  const hasPerTypeCursors = Number(storedCursors.material || 0) > 0 || Number(storedCursors.photo || 0) > 0;
   // G以前の単一lastSyncedAtはRecord種別ごとの境界を保証できない。
-  // 既存F案件はGで最初に開く1回だけ全件取得し、正しい3種cursorへ移行する。
+  // H.log5では「全タイプまとめてdelta/full」の判定を廃止し、各Recordが自分のcursorだけで判断する。
   const cursors = storedCursors;
   const useLocalSnapshot = Boolean(syncMeta.hasSyncedOnce || legacyLastSyncedAt > 0)
     && Array.isArray(target.finishRecords)
     && target.finishRecords.length > 0;
-  const canDeltaCatchUp = useLocalSnapshot && hasPerTypeCursors && Boolean(finishChangeCursor);
-  hlog('SYNC_OPEN_PLAN', { projectId: project.projectId, token, useLocalSnapshot, hasPerTypeCursors, canDeltaCatchUp, storedCursors, finishChangeCursor });
+  hlog('SYNC_OPEN_PLAN', { projectId: project.projectId, token, useLocalSnapshot, storedCursors, finishChangeCursor });
 
   setSyncBaseline(latestCursorValue(cursors));
 
@@ -262,21 +260,29 @@ async function openFirestoreProjectSession(target) {
   beginFirestoreActivity();
 
   try {
-    // G: 過去の取りこぼし回収は1回のgetDocsだけ。listenerとは役割を分離する。
-    hlog('SYNC_CATCHUP_START', { projectId: project.projectId, canDeltaCatchUp });
+    // 過去の取りこぼし回収はRecord種別ごとに独立判定する。
+    // finish=変更履歴cursor、material/photo=各updatedAt cursor。片方の未成熟なcursorで他タイプをfullへ巻き込まない。
+    hlog('SYNC_CATCHUP_START', { projectId: project.projectId, useLocalSnapshot });
     const remote = await readProjectRecordsForProject(project, {
-      cursors: canDeltaCatchUp ? cursors : null,
-      finishChangeCursor: canDeltaCatchUp ? finishChangeCursor : null
+      cursors: useLocalSnapshot ? cursors : null,
+      finishChangeCursor: useLocalSnapshot ? finishChangeCursor : null,
+      baseRecords: useLocalSnapshot ? {
+        finishRecords: target.finishRecords || [],
+        materialRecords: target.materialRecords || [],
+        photoRecords: target.photoRecords || []
+      } : null
     });
-    hlog('SYNC_CATCHUP_RESULT', { projectId: project.projectId, mode: remote.mode, changes: remote.changes?.length || 0, finishRecords: remote.finishRecords?.length || 0, materialRecords: remote.materialRecords?.length || 0, photoRecords: remote.photoRecords?.length || 0, finishHistoryMode: remote.finishHistoryMode || '' });
+    hlog('SYNC_TYPE_READ_PLAN', { projectId: project.projectId, typeModes: remote.typeModes || {} });
+    hlog('SYNC_CATCHUP_RESULT', { projectId: project.projectId, mode: remote.mode, typeModes: remote.typeModes || {}, changes: remote.changes?.length || 0, finishRecords: remote.finishRecords?.length || 0, materialRecords: remote.materialRecords?.length || 0, photoRecords: remote.photoRecords?.length || 0, finishHistoryMode: remote.finishHistoryMode || '' });
     if (token !== activeProjectStreamToken) {
       hlog('SYNC_CATCHUP_DISCARDED_TOKEN', { projectId: project.projectId, token, activeProjectStreamToken });
       return target;
     }
 
-    if (remote.mode === 'delta') {
-      if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
-    } else {
+    const typeModes = remote.typeModes || { finish: remote.mode, material: remote.mode, photo: remote.mode };
+
+    if (!useLocalSnapshot) {
+      // 初回は3タイプともfull。現在形をそのまま開く。
       const restored = {
         project,
         finishRecords: remote.finishRecords?.length ? remote.finishRecords : target.finishRecords,
@@ -295,6 +301,49 @@ async function openFirestoreProjectSession(target) {
       openProjectSession(restored);
       refreshMaterialUsageDerivedFields('remote-rebuild');
       refreshMaterialList();
+    } else {
+      // 再オープン時はfull/deltaが混在してよい。fullのタイプだけ現在形へ置換し、
+      // deltaのタイプだけ既存の差分適用経路へ流す。
+      let replacedFullType = false;
+      if (typeModes.material === 'full') {
+        materialRecordStore.replaceAll(remote.materialRecords || [], { notify: false });
+        replacedFullType = true;
+      }
+      if (typeModes.photo === 'full') {
+        photoRecordStore.replaceAll(remote.photoRecords || [], { notify: false });
+        replacedFullType = true;
+      }
+      if (typeModes.finish === 'full') {
+        finishRecordStore.replaceAll(remote.finishRecords || [], { notify: false });
+        replacedFullType = true;
+      }
+
+      if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
+
+      if (replacedFullType) {
+        saveProjectSnapshot({
+          project,
+          finishRecords: finishRecordStore.exportSnapshot(),
+          materialRecords: materialRecordStore.exportSnapshot(),
+          photoRecords: photoRecordStore.exportSnapshot(),
+          syncMeta: {
+            ...(target.syncMeta || {}),
+            recordCursors: normalizeRecordCursors(remote.cursors),
+            finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor),
+            lastSyncedAt: Number(remote.lastSyncedAt || 0),
+            hasSyncedOnce: true,
+            lastSyncCompletedAt: Date.now()
+          }
+        });
+        refreshOpenProjectSessionViews();
+      }
+
+      if (typeModes.finish === 'full') {
+        // finish全再構築時だけ、仕上表を正としてmaterial派生値をローカル再計算する。
+        // 受信直後の再計算でFirestoreへ書き戻さない。
+        refreshMaterialUsageDerivedFields('remote-rebuild', { persist: false });
+        refreshMaterialList();
+      }
     }
 
     const caughtUpCursors = normalizeRecordCursors(remote.cursors || cursors);
