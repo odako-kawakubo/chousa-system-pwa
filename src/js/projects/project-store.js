@@ -22,7 +22,6 @@ function cloneRecords(records = []) {
   }));
 }
 
-
 function cloneEntry(entry) {
   if (!entry) return null;
   return {
@@ -107,6 +106,25 @@ export function saveProjectSnapshot({ project, finishRecords = [], materialRecor
   if (!project.isSample) persistLocalProjects();
   notify();
   return getProject(project.projectId);
+}
+
+/**
+ * 既存案件の案件情報だけを更新する。3レコードのスナップショットは触らない。
+ * ヘッダー・設定タブなど複数の入口から同じ案件情報を更新するための共通経路。
+ */
+export function updateProjectFields(projectId, patch = {}) {
+  const id = String(projectId || '');
+  const entry = projects.get(id);
+  if (!entry?.project) return null;
+
+  const nextProject = { ...entry.project, ...(patch || {}) };
+  entry.project = nextProject;
+  projects.set(id, entry);
+
+  if (currentProject?.projectId === id) currentProject = { ...nextProject };
+  if (!nextProject.isSample) persistLocalProjects();
+  notify();
+  return { ...nextProject };
 }
 
 export function getProjectSyncMeta(projectId) {
