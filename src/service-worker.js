@@ -43,6 +43,9 @@ self.addEventListener('activate', (event) => {
         .filter((name) => name.startsWith(APP_CACHE_PREFIX) && name !== APP_CACHE)
         .map((name) => caches.delete(name))
     );
+
+    // 更新時のcontrollerchangeを安定させ、初回導入後も現在の画面を正式SWの管理下へ移す。
+    await self.clients.claim();
   })());
 });
 
