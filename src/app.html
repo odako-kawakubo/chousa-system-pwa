@@ -8,7 +8,7 @@
     バージョン表示と更新処理は src/js/app-version.js / app-update.js が担当する。
 
   現在の方針：
-    ・バージョン番号は app-config.js を正本とし、HTMLへ直書きしない。
+    ・バージョン番号は app-config.js を正本とし、HTMLへ番号を直書きしない。
     ・サンプル案件に加え、v0.1.6.1Aでは現場新規案件を正式初期仕上表で生成できる。
     ・他タブの業務機能、正式レコード、保存・同期は段階的に実装する。
     ・インラインonclickは使わず、各JSモジュールからイベントを配線する。
@@ -19,6 +19,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>調査システムPWA</title>
+<link rel="manifest" href="./manifest.json" />
 <link rel="stylesheet" href="./css/common.css" />
 <link rel="stylesheet" href="./css/layout.css" />
 <link rel="stylesheet" href="./css/finish-table.css" />
@@ -28,6 +29,7 @@
 <link rel="stylesheet" href="./css/photos.css" />
 <link rel="stylesheet" href="./css/camera.css" />
 <link rel="stylesheet" href="./css/settings.css" />
+<link rel="stylesheet" href="./css/pwa-offline.css" />
 </head>
 <body>
 
@@ -38,17 +40,24 @@
   <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
   <h1 id="caseHeaderTitle">案件未選択</h1>
   <span class="pill header-version" id="headerVersion"></span>
-  <span class="connection-dot neutral" id="onlinePill" title="Firestore：未接続" aria-label="Firestore 未接続"></span>
-  <span class="pill header-sync-state" id="firebasePill">未接続</span>
-  <span class="pill header-device" id="devicePill">端末未設定</span>
-  <button class="header-ms-signin" id="msAuthBtn" type="button" aria-label="Log in with Microsoft">
-    <img src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.svg" alt="">
-    <span>Log in</span>
-  </button>
-  <button class="pill header-account header-account-button" id="msPill" type="button" hidden>
-    <img src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.svg" alt="">
-    <span data-ms-account-name></span>
-  </button>
+
+  <div class="header-sync-group" aria-label="同期状態">
+    <span class="connection-dot neutral" id="onlinePill" title="Firestore：未接続" aria-label="Firestore 未接続"></span>
+    <span class="pill header-sync-state" id="firebasePill">未接続</span>
+    <button class="header-offline-toggle" id="headerOfflineToggle" type="button" aria-pressed="false">オフライン</button>
+  </div>
+
+  <div class="header-user-group" aria-label="端末とMicrosoftアカウント">
+    <span class="pill header-device" id="devicePill">端末未設定</span>
+    <button class="header-ms-signin" id="msAuthBtn" type="button" aria-label="Log in with Microsoft">
+      <span>Microsoft</span>
+      <span>Log in</span>
+    </button>
+    <button class="pill header-account header-account-button" id="msPill" type="button" hidden>
+      <span>Microsoft</span>
+      <span data-ms-account-name></span>
+    </button>
+  </div>
 </header>
 
 <!-- ============================================================
@@ -78,7 +87,6 @@
 
 <!-- ============================================================
      新規案件作成モーダル
-     v0.1.6.1Aでは案件名・住所から仮案件を生成し、正式初期仕上表で開く。
      ============================================================ -->
 <div class="shared-project-modal" id="newProjectModal" data-modal-close data-modal-target="newProjectModal">
   <div class="shared-project-card new-project-card" data-modal-stop>
@@ -106,7 +114,7 @@
 </div>
 
 <!-- ============================================================
-     既存案件を開くモーダル（中身は未実装。開閉のみ確認用）
+     既存案件を開くモーダル
      ============================================================ -->
 <div class="shared-project-modal" id="sharedProjectModal" data-modal-close data-modal-target="sharedProjectModal">
   <div class="shared-project-card" data-modal-stop>
@@ -131,9 +139,7 @@
 <div class="app">
   <main class="main">
     <div class="toolbar">
-      <div class="case-title">
-        <div></div>
-      </div>
+      <div class="case-title"><div></div></div>
       <nav class="tabs">
         <button class="tab active" data-tab="finish">仕上表</button>
         <button class="tab" data-tab="materials">建材リスト</button>
@@ -146,16 +152,10 @@
       </nav>
     </div>
 
-    <!-- 仕上表タブ：中身はfinish-table-controller.jsが初期化時に描画する。 -->
     <section class="content" id="finish"></section>
-
-    <!-- 建材リストタブ：materialRecordStoreを正本としてcontrollerが描画する。 -->
     <section class="content" id="materials" style="display:none"></section>
-
-    <!-- 写真タブ：photo-controller.jsがphotoRecordStoreを正本として描画する。 -->
     <section class="content" id="photos" style="display:none"></section>
 
-    <!-- 調査図タブ：仕様確定後に実装するプレースホルダー。 -->
     <section class="content" id="survey-map" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>調査図</h3></div>
@@ -165,7 +165,6 @@
       </div>
     </section>
 
-    <!-- 同期タブ：Firebase差分同期基盤と合わせて実装する。 -->
     <section class="content" id="sync" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>同期</h3></div>
@@ -176,17 +175,14 @@
       </div>
     </section>
 
-    <!-- 設定タブ：settings-controller.jsが調査システム／同期システム設定を描画する。 -->
     <section class="content" id="settings" style="display:none"></section>
 
-    <!-- レコードタブ：Storeに実際に保持されている正式レコードを読み取り専用で確認する。 -->
     <section class="content" id="records" style="display:none">
       <div class="panel record-view-panel">
         <div class="record-view-toolbar">
           <button class="btn small record-view-subtab active" data-record-view-tab="material">建材</button>
           <button class="btn small record-view-subtab" data-record-view-tab="finish">仕上表</button>
           <button class="btn small record-view-subtab" data-record-view-tab="photo">写真</button>
-
           <span class="pill">
             <span id="recordViewCountLabel">建材レコード</span>
             <b id="recordViewTotalCount">0</b>件
@@ -197,13 +193,9 @@
           <span class="pill" id="recordViewRepresentativePill" style="display:none">
             代表 <b id="recordViewRepresentativeCount">0</b>件
           </span>
-
-          <span class="hint record-view-hint" id="recordViewHint">
-            正式Storeの保存内容を確認します。
-          </span>
+          <span class="hint record-view-hint" id="recordViewHint">正式Storeの保存内容を確認します。</span>
           <button class="btn small" id="recordViewRefreshButton">レコード再表示</button>
         </div>
-
         <div class="record-view-table-wrap">
           <table class="record-view-table" id="recordViewTable"></table>
         </div>
@@ -213,7 +205,7 @@
 </div>
 
 <!-- ============================================================
-     ドロワー（右スライドイン。各機能のイベントは担当モジュールが配線する）
+     ドロワー
      ============================================================ -->
 <div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
 <aside class="drawer" id="drawer">
@@ -233,7 +225,6 @@
       </div>
     </div>
     <div id="materialOperationsMount"></div>
-    <!-- 仕上表操作。クリック処理はfinish-table-controller.jsが既存の正式処理へ配線する。 -->
     <div class="drawer-box" id="finishDrawerTools">
       <h4>仕上表操作</h4>
       <div class="hint">通常画面から移した操作です。＋B階は1-1ブロックの階セルからも実行できます。</div>
@@ -267,7 +258,21 @@
 </div>
 
 <!-- ============================================================
-     写真拡大プレビューモーダル（写真機能実装時に内容を接続する）
+     手動オフライン切替確認モーダル
+     ============================================================ -->
+<div class="update-modal" id="manualOfflineModal">
+  <div class="update-card" data-modal-stop>
+    <h3 id="manualOfflineModalTitle">オフラインモード</h3>
+    <div class="hint manual-offline-message" id="manualOfflineModalMessage"></div>
+    <div class="update-actions">
+      <button type="button" class="btn" id="cancelManualOfflineButton">キャンセル</button>
+      <button type="button" class="btn primary" id="confirmManualOfflineButton">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     写真拡大プレビューモーダル
      ============================================================ -->
 <div class="photo-preview-modal" id="photoPreviewModal" data-modal-close data-modal-target="photoPreviewModal">
   <div class="photo-preview-card" data-modal-stop>
