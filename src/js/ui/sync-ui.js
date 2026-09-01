@@ -16,7 +16,21 @@ function communicationLabel(status) {
   return '良好';
 }
 
+function ensureCommunicationCaption() {
+  const group = document.querySelector('.header-sync-group');
+  const dot = document.getElementById('onlinePill');
+  if (!group || !dot || group.querySelector('[data-sync-caption]')) return;
+
+  const caption = document.createElement('span');
+  caption.className = 'header-sync-caption';
+  caption.dataset.syncCaption = '1';
+  caption.textContent = '通信状態';
+  group.insertBefore(caption, dot);
+}
+
 function render(status) {
+  ensureCommunicationCaption();
+
   const dot = document.getElementById('onlinePill');
   const label = document.getElementById('firebasePill');
   const toggle = document.getElementById('headerOfflineToggle');
@@ -33,7 +47,7 @@ function render(status) {
   }
 
   if (toggle) {
-    toggle.textContent = status.manualOffline ? '解除' : 'オフライン';
+    toggle.textContent = status.manualOffline ? '解除' : 'オフラインモード';
     toggle.classList.toggle('active', status.manualOffline);
     toggle.setAttribute('aria-pressed', status.manualOffline ? 'true' : 'false');
   }
@@ -98,6 +112,7 @@ function bindManualOfflineControls() {
 }
 
 export function bindSyncStatusUi() {
+  ensureCommunicationCaption();
   if (unsubscribe) unsubscribe();
   unsubscribe = subscribeSyncStatus(render);
 
