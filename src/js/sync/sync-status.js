@@ -63,21 +63,21 @@ export function getSyncStatus() {
     text = '対象外';
   } else if (!networkOnline) {
     lamp = 'network-offline';
-    text = 'オフライン';
+    text = '圏外';
   } else if (state.phase === 'error') {
     lamp = 'error';
-    text = '接続エラー';
+    text = 'エラー';
   } else if (state.phase === 'reconnecting') {
     lamp = 'unstable';
-    text = '再接続';
+    text = '不安定';
     blinking = true;
   } else if (state.phase === 'connecting' || state.phase === 'activity') {
     lamp = state.phase === 'connecting' ? 'unstable' : 'connected';
-    text = state.phase === 'connecting' ? '再接続' : '通信中';
+    text = state.phase === 'connecting' ? '不安定' : '通信中';
     blinking = true;
   } else if (state.phase === 'ready') {
     lamp = 'connected';
-    text = unsentCount > 0 ? '未送信' : '完了';
+    text = unsentCount > 0 ? '未送信' : '良好';
   }
 
   return {
@@ -116,7 +116,6 @@ export function setManualOffline(enabled) {
     error: null
   });
 }
-
 
 export function markLocalOnly() {
   if (state.manualOffline) return;
@@ -178,7 +177,6 @@ export function endFirestoreActivity(lastSyncedAt = 0) {
     }
   }, 220);
 }
-
 
 export function setSyncBaseline(value) {
   const next = Number(value || 0);
