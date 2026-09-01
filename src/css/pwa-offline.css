@@ -1,0 +1,34 @@
+/* v0.1.6.3A: ヘッダー同期グループ／手動オフライン確認 */
+.header-sync-group,
+.header-user-group{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:30px;
+  padding:2px 5px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--panel);
+  flex:0 0 auto;
+}
+.header-sync-group>*+*,
+.header-user-group>*+*{
+  border-left:1px solid var(--line);
+  padding-left:6px;
+}
+.header-offline-toggle{
+  min-height:24px;
+  padding:2px 7px;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.header-offline-toggle.active{
+  color:#2563eb;
+}
+.manual-offline-message{
+  line-height:1.6;
+}
