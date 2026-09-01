@@ -25,6 +25,7 @@ import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
 import { bindDeviceUi } from './ui/device-ui.js';
+import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 
@@ -38,6 +39,7 @@ function initUiSkeleton() {
   initializeNetworkStatusEvents();
   bindSyncStatusUi();
   bindDeviceUi();
+  bindHeaderEditUi();
   bindTabEvents();
   bindDrawerEvents();
   bindThemeControls();
