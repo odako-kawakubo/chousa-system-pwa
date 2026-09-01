@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v0163b
+  group: firebase-preview-v0163-review
   cancel-in-progress: true
 
 jobs:
@@ -28,5 +28,5 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
           projectId: odako-chousa-system-pwa
-          channelId: v0163b
+          channelId: v0163a
           expires: 30d
