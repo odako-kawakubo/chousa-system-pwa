@@ -26,7 +26,9 @@ const APP_SHELL = [
   './css/camera.css',
   './css/settings.css',
   './css/pwa-offline.css',
-  './js/app-init.js'
+  './assets/microsoft-symbol.svg',
+  './js/app-init.js',
+  './js/sync/network-session-guard.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -111,6 +113,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.includes('/css/') ||
     url.pathname.includes('/js/') ||
     url.pathname.includes('/config/') ||
+    url.pathname.includes('/assets/') ||
     url.pathname.endsWith('/manifest.json');
 
   if (isAppAsset) {
