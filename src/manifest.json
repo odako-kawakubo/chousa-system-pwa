@@ -1,0 +1,10 @@
+{
+  "name": "アスベスト調査システムPWA",
+  "short_name": "調査システム",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "ja"
+}
