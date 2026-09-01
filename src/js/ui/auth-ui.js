@@ -2,7 +2,7 @@
  * src/js/ui/auth-ui.js
  *
  * Microsoft認証のヘッダー表示を管理する。
- * 未ログイン時はMicrosoft公式サインイン画像、ログイン後はMicrosoftロゴ＋ユーザー名。
+ * Microsoftシンボルはアプリ内ローカル資産を使い、圏外起動でも表示を維持する。
  * ログアウトはユーザー名タップ時の確認から行う。
  */
 
@@ -32,8 +32,30 @@ function notify() {
   listeners.slice().forEach((callback) => callback(value));
 }
 
+function ensureMicrosoftBranding() {
+  const signInButton = document.getElementById('msAuthBtn');
+  const accountButton = document.getElementById('msPill');
+
+  if (signInButton && signInButton.dataset.microsoftBrandReady !== '1') {
+    signInButton.dataset.microsoftBrandReady = '1';
+    signInButton.innerHTML = `
+      <img src="./assets/microsoft-symbol.svg" alt="" aria-hidden="true">
+      <span>Log in</span>
+    `;
+  }
+
+  if (accountButton && accountButton.dataset.microsoftBrandReady !== '1') {
+    accountButton.dataset.microsoftBrandReady = '1';
+    accountButton.innerHTML = `
+      <img src="./assets/microsoft-symbol.svg" alt="" aria-hidden="true">
+      <span data-ms-account-name></span>
+    `;
+  }
+}
+
 function renderAuthState(user) {
   currentUser = user;
+  ensureMicrosoftBranding();
 
   const signInButton = document.getElementById('msAuthBtn');
   const accountButton = document.getElementById('msPill');
@@ -109,6 +131,7 @@ export function bindAuthUiEvents() {
   if (bound) return;
   bound = true;
 
+  ensureMicrosoftBranding();
   document.getElementById('msAuthBtn')?.addEventListener('click', handleSignIn);
   document.getElementById('msPill')?.addEventListener('click', handleAccountClick);
   watchAuthState(renderAuthState);
