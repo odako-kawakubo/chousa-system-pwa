@@ -99,8 +99,13 @@ export function subscribeSyncStatus(callback) {
   };
 }
 
+/**
+ * Firestore通信を止めるべき状態。
+ * 手動オフラインだけでなく、端末自体が圏外のときもtrueにする。
+ * 表示上の「オフライン」と「圏外」はstate.manualOfflineで区別したまま維持する。
+ */
 export function isManualOffline() {
-  return Boolean(state.manualOffline);
+  return Boolean(state.manualOffline || (typeof navigator !== 'undefined' && navigator.onLine === false));
 }
 
 export function setManualOffline(enabled) {
