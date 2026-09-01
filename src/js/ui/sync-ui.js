@@ -52,17 +52,13 @@ function renderOfflineConfirmation(enabled) {
     return;
   }
 
-  const status = getSyncStatus();
   title.textContent = 'オフラインモードを解除しますか？';
   message.innerHTML =
-    `通信状況：<b>${communicationLabel(status)}</b><br><br>` +
+    `通信状況：<b>${communicationLabel(getSyncStatus())}</b><br><br>` +
     '解除するとFirestoreとの同期を再開します。';
 }
 
-/**
- * ヘッダー・設定タブ共通の手動オフライン切替入口。
- * 確認OK時だけ既存chousa:manual-offline-changeイベントを発火する。
- */
+/** ヘッダー・設定タブ共通の確認入口。 */
 export function requestManualOfflineModeChange(enabled) {
   pendingManualOffline = Boolean(enabled);
   renderOfflineConfirmation(pendingManualOffline);
@@ -73,6 +69,13 @@ function bindManualOfflineControls() {
   const headerToggle = document.getElementById('headerOfflineToggle');
   const confirmButton = document.getElementById('confirmManualOfflineButton');
   const cancelButton = document.getElementById('cancelManualOfflineButton');
+
+  // 設定タブなど既存UIからの切替要求も、業務処理へ届く前に同じ確認へ集約する。
+  window.addEventListener('chousa:manual-offline-change', (event) => {
+    if (event.detail?.confirmed === true) return;
+    event.stopImmediatePropagation();
+    requestManualOfflineModeChange(Boolean(event.detail?.enabled));
+  });
 
   headerToggle?.addEventListener('click', () => {
     requestManualOfflineModeChange(!getSyncStatus().manualOffline);
@@ -89,7 +92,7 @@ function bindManualOfflineControls() {
     pendingManualOffline = null;
     closeModal(OFFLINE_MODAL_ID);
     window.dispatchEvent(new CustomEvent('chousa:manual-offline-change', {
-      detail: { enabled }
+      detail: { enabled, confirmed: true }
     }));
   });
 }
