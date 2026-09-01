@@ -5,18 +5,44 @@
  * キャッシュ内容の管理はservice-worker.js、更新UIはapp-update.jsが担当する。
  */
 
+const FIRST_CONTROL_RELOAD_KEY = 'chousaPwaFirstControlReloaded';
 let registrationPromise = null;
 
 function supported() {
   return typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
 }
 
+function bindFirstControlReload() {
+  if (navigator.serviceWorker.controller) {
+    sessionStorage.removeItem(FIRST_CONTROL_RELOAD_KEY);
+    return;
+  }
+
+  const onControllerChange = () => {
+    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    if (sessionStorage.getItem(FIRST_CONTROL_RELOAD_KEY) === '1') return;
+    sessionStorage.setItem(FIRST_CONTROL_RELOAD_KEY, '1');
+    location.reload();
+  };
+
+  navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+}
+
 export function initializePwa() {
   if (!supported()) return Promise.resolve(null);
   if (registrationPromise) return registrationPromise;
 
+  bindFirstControlReload();
+
   registrationPromise = navigator.serviceWorker
     .register('./service-worker.js', { scope: './', updateViaCache: 'none' })
+    .then((registration) => {
+      // 既に制御下なら初回reload用フラグは不要。
+      if (navigator.serviceWorker.controller) {
+        sessionStorage.removeItem(FIRST_CONTROL_RELOAD_KEY);
+      }
+      return registration;
+    })
     .catch((error) => {
       console.warn('Service Workerを登録できませんでした', error);
       return null;
@@ -35,10 +61,12 @@ function waitForWaitingWorker(registration, timeoutMs = 12000) {
 
   return new Promise((resolve) => {
     let settled = false;
+    let timer = null;
+
     const finish = (worker = null) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolve(worker);
     };
 
@@ -56,7 +84,7 @@ function waitForWaitingWorker(registration, timeoutMs = 12000) {
       watchInstalling(registration.installing);
     }, { once: true });
 
-    const timer = window.setTimeout(() => finish(registration.waiting), timeoutMs);
+    timer = window.setTimeout(() => finish(registration.waiting), timeoutMs);
   });
 }
 
@@ -81,16 +109,18 @@ export async function activatePreparedPwaUpdate(worker) {
 
   return new Promise((resolve) => {
     let settled = false;
+    let timer = null;
+
     const finish = (value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       resolve(value);
     };
     const onControllerChange = () => finish(true);
-    const timer = window.setTimeout(() => finish(false), 12000);
 
+    timer = window.setTimeout(() => finish(false), 12000);
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     worker.postMessage({ type: 'SKIP_WAITING' });
   });
