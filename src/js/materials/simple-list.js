@@ -26,12 +26,16 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { openPhotoViewer } from '../photos/photo-viewer.js';
 import { getVisualPhotoTargetKey } from '../records/photo-record.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 
 function findMaterialByInputId(inputId) {
   return materialRecordStore.findByInputId(inputId);
 }
 
 let boundContainer = null;
+let noteEditorOpen = false;
 
 export function initSimpleList(container) {
   if (!container) return;
@@ -42,6 +46,13 @@ export function initSimpleList(container) {
   container.dataset.eventsBound = '1';
 
   container.addEventListener('click', (event) => {
+    const noteButton = event.target.closest('[data-action="edit-finish-material-note"]');
+    if (noteButton) {
+      const material = findMaterialByInputId(getSelectedMaterialInputId());
+      if (material) beginNoteEdit(material);
+      return;
+    }
+
     const chip = event.target.closest('.finish-simple-item');
     if (chip) {
       const inputId = Number(chip.dataset.inputId);
@@ -49,6 +60,7 @@ export function initSimpleList(container) {
 
       // 同じチップをもう一度押したら選択解除。
       setSelectedMaterialInputId(current === inputId ? null : inputId);
+      noteEditorOpen = false;
       renderSimpleList();
       applyMaterialMatchHighlight();
       return;
@@ -66,6 +78,25 @@ export function initSimpleList(container) {
       const material = findMaterialByInputId(getSelectedMaterialInputId());
       if (material) openMaterialSamplingPhotos(material);
     }
+  });
+
+  container.addEventListener('keydown', (event) => {
+    const input = event.target.closest('[data-simple-note-input]');
+    if (!input) return;
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      noteEditorOpen = false;
+      renderSimpleList();
+    }
+  });
+
+  container.addEventListener('focusout', (event) => {
+    const input = event.target.closest('[data-simple-note-input]');
+    if (!input) return;
+    commitNoteEdit(input);
   });
 }
 
@@ -125,12 +156,52 @@ function renderSelectedInfo(inputId) {
       <span class="finish-selected-rooms" tabindex="0" aria-label="使用箇所：${escapeHtml(roomText)}">${escapeHtml(roomText)}</span>
       ${hasRoomOverflow ? '<span class="finish-selected-rooms-ellipsis" aria-hidden="true">…</span>' : ''}
     </span>
-    <span class="finish-selected-note">【調査備考】${escapeHtml(note)}</span>
+    ${noteEditorOpen
+      ? `<span class="finish-selected-note"><span>【調査備考】</span><input type="text" class="finish-selected-note-input" data-simple-note-input="1" data-material-id="${escapeHtml(material.materialId)}" value="${escapeHtml(material.note || '')}" aria-label="調査備考" /></span>`
+      : `<button type="button" class="finish-selected-note finish-selected-note-button" data-action="edit-finish-material-note" title="タップして調査備考を編集">【調査備考】${escapeHtml(note)}</button>`}
     <span class="finish-selected-photo-actions">写真：
       <button type="button" class="finish-photo-link" data-action="show-finish-visual-photos"${visualPhotos.length ? '' : ' disabled'}>目視</button>
       <button type="button" class="finish-photo-link" data-action="show-finish-sampling-photos"${samplingPhotos.length ? '' : ' disabled'}>採取</button>
     </span>
   `;
+}
+
+function beginNoteEdit(material) {
+  if (!material) return;
+  noteEditorOpen = true;
+  renderSimpleList();
+  const input = boundContainer?.querySelector('[data-simple-note-input]');
+  if (input) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+}
+
+function commitNoteEdit(input) {
+  if (!input || !noteEditorOpen) return;
+  const materialId = String(input.dataset.materialId || '');
+  const material = materialRecordStore.get(materialId);
+  noteEditorOpen = false;
+  if (!material) {
+    renderSimpleList();
+    return;
+  }
+
+  const note = String(input.value ?? '').trim();
+  if (note === String(material.note || '')) {
+    renderSimpleList();
+    return;
+  }
+
+  const next = {
+    ...material,
+    note,
+    updatedAt: new Date().toISOString(),
+    fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['note'])
+  };
+  materialRecordStore.set(next);
+  persistMaterialForProject(getCurrentProject(), next, 'simple-list-note-edit');
+  renderSimpleList();
 }
 
 function escapeHtml(value) {
@@ -175,4 +246,3 @@ function openMaterialSamplingPhotos(material) {
   if (!photos.length) return;
   openPhotoViewer(photos[0].photoId, { photos });
 }
-
