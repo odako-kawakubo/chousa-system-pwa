@@ -1,9 +1,10 @@
-name: Deploy v0.1.6.3B Preview
+name: Deploy v0.1.6.3 Review Preview
 
 on:
   push:
     branches:
       - v0.1.6.3B
+      - v0.1.6.3C
   workflow_dispatch:
 
 permissions:
