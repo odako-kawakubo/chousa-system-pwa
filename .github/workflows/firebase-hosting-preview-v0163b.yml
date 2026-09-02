@@ -15,7 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        run: |
+          node --check src/js/sync/sync-status.js
+          node --check src/js/firestore/firestore-repository.js
+          node --check src/js/projects/project-controller.js
+          node --check src/js/ui/sync-ui.js
+          node --check src/js/app-init.js
+          node --check src/service-worker.js
+
+      - name: C cleanup consistency checks
+        shell: bash
+        run: |
+          if grep -R "network-session-guard" -n src; then
+            echo "obsolete network-session-guard reference remains"
+            exit 1
+          fi
+          grep -q "version: '0.1.6.3C'" src/config/app-config.js
+          grep -q '"version": "0.1.6.3C"' src/version.json
+          grep -q "chousa-app-v0.1.6.3C" src/service-worker.js
+          grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
+          grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
