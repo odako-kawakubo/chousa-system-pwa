@@ -1,13 +1,21 @@
 /**
  * ヘッダーのFirestore通信表示と、手動オフライン切替確認を同期状態Storeへ接続する。
- * 実際の切替処理はproject-controller.jsの既存経路へ委譲する。
+ * 実際の手動オフライン切替処理はproject-controller.jsの既存経路へ委譲する。
+ *
+ * v0.1.6.3C:
+ *   未送信が残っている場合は「まとめて同期」を表示し、50件単位で明示同期する。
+ *   バッチ失敗時は自動継続せず、再送するか閉じるかをユーザーへ返す。
  */
 import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { retryUnsentBatch, BULK_SYNC_BATCH_SIZE } from '../firestore/firestore-repository.js';
 import { openModal, closeModal } from './modal.js';
 
 const OFFLINE_MODAL_ID = 'manualOfflineModal';
+const BULK_RETRY_MODAL_ID = 'bulkSyncRetryModal';
 let unsubscribe = null;
 let pendingManualOffline = null;
+let bulkSyncRunning = false;
 
 function communicationLabel(status) {
   if (status.networkOnline === false) return 'エラー';
@@ -28,12 +36,55 @@ function ensureCommunicationCaption() {
   group.insertBefore(caption, dot);
 }
 
+function ensureBulkSyncButton() {
+  const group = document.querySelector('.header-sync-group');
+  if (!group) return null;
+  let button = document.getElementById('headerBulkSyncButton');
+  if (button) return button;
+  button = document.createElement('button');
+  button.id = 'headerBulkSyncButton';
+  button.type = 'button';
+  button.className = 'header-offline-toggle header-bulk-sync';
+  button.hidden = true;
+  button.textContent = 'まとめて同期';
+  group.appendChild(button);
+  return button;
+}
+
+function ensureBulkRetryModal() {
+  if (document.getElementById(BULK_RETRY_MODAL_ID)) return;
+  const modal = document.createElement('div');
+  modal.className = 'shared-project-modal';
+  modal.id = BULK_RETRY_MODAL_ID;
+  modal.dataset.modalClose = '';
+  modal.dataset.modalTarget = BULK_RETRY_MODAL_ID;
+  modal.innerHTML = `
+    <div class="shared-project-card" data-modal-stop>
+      <div class="shared-project-head">
+        <b>未送信データがあります</b>
+      </div>
+      <div class="manual-offline-message" style="padding:16px">
+        通信状態が不安定です。<br>
+        未送信データが残っています。<br>
+        通信状況の良い場所で、後ほど再送してください。
+        <div id="bulkSyncRemaining" class="hint" style="margin-top:10px"></div>
+      </div>
+      <div class="new-project-actions">
+        <button class="btn" id="closeBulkSyncRetryButton" type="button">閉じる</button>
+        <button class="btn primary" id="retryBulkSyncButton" type="button">再送する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
 function render(status) {
   ensureCommunicationCaption();
 
   const dot = document.getElementById('onlinePill');
   const label = document.getElementById('firebasePill');
   const toggle = document.getElementById('headerOfflineToggle');
+  const bulkButton = ensureBulkSyncButton();
 
   if (dot) {
     dot.className = `connection-dot ${status.lamp}${status.blinking ? ' blinking' : ''}`;
@@ -50,6 +101,15 @@ function render(status) {
     toggle.textContent = status.manualOffline ? '解除' : 'オフラインモード';
     toggle.classList.toggle('active', status.manualOffline);
     toggle.setAttribute('aria-pressed', status.manualOffline ? 'true' : 'false');
+  }
+
+  if (bulkButton) {
+    const canBulkSync = status.unsentCount > 0 && !status.manualOffline && status.networkOnline !== false;
+    bulkButton.hidden = status.unsentCount <= 0;
+    bulkButton.disabled = bulkSyncRunning || !canBulkSync;
+    bulkButton.textContent = bulkSyncRunning
+      ? '同期中…'
+      : `まとめて同期 ${status.unsentCount}件`;
   }
 }
 
@@ -77,6 +137,49 @@ export function requestManualOfflineModeChange(enabled) {
   pendingManualOffline = Boolean(enabled);
   renderOfflineConfirmation(pendingManualOffline);
   openModal(OFFLINE_MODAL_ID);
+}
+
+function showBulkRetryModal(remaining) {
+  ensureBulkRetryModal();
+  const text = document.getElementById('bulkSyncRemaining');
+  if (text) text.textContent = `未送信：${Number(remaining || 0)}件`;
+  openModal(BULK_RETRY_MODAL_ID);
+}
+
+async function runBulkSync() {
+  if (bulkSyncRunning) return;
+  const project = getCurrentProject();
+  if (!project?.projectId || project.isSample) return;
+
+  bulkSyncRunning = true;
+  render(getSyncStatus());
+  try {
+    while (true) {
+      const status = getSyncStatus();
+      if (status.manualOffline || status.networkOnline === false) {
+        showBulkRetryModal(status.unsentCount);
+        return;
+      }
+      if (status.unsentCount <= 0) return;
+
+      const result = await retryUnsentBatch({
+        projectId: project.projectId,
+        batchSize: BULK_SYNC_BATCH_SIZE
+      });
+
+      if (!result.ok) {
+        showBulkRetryModal(result.remaining ?? getSyncStatus().unsentCount);
+        return;
+      }
+      if (result.completed || Number(result.remaining || 0) <= 0) return;
+
+      // 成功した50件ごとにUIへ処理を返し、長い同期でも画面を固めない。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  } finally {
+    bulkSyncRunning = false;
+    render(getSyncStatus());
+  }
 }
 
 function bindManualOfflineControls() {
@@ -111,13 +214,30 @@ function bindManualOfflineControls() {
   });
 }
 
+function bindBulkSyncControls() {
+  ensureBulkRetryModal();
+  ensureBulkSyncButton()?.addEventListener('click', () => {
+    void runBulkSync();
+  });
+  document.getElementById('closeBulkSyncRetryButton')?.addEventListener('click', () => {
+    closeModal(BULK_RETRY_MODAL_ID);
+  });
+  document.getElementById('retryBulkSyncButton')?.addEventListener('click', () => {
+    closeModal(BULK_RETRY_MODAL_ID);
+    void runBulkSync();
+  });
+}
+
 export function bindSyncStatusUi() {
   ensureCommunicationCaption();
+  ensureBulkSyncButton();
+  ensureBulkRetryModal();
   if (unsubscribe) unsubscribe();
   unsubscribe = subscribeSyncStatus(render);
 
   if (document.documentElement.dataset.syncOfflineUiBound !== '1') {
     document.documentElement.dataset.syncOfflineUiBound = '1';
     bindManualOfflineControls();
+    bindBulkSyncControls();
   }
 }
