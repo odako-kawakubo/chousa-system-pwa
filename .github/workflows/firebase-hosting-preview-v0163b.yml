@@ -6,6 +6,7 @@ on:
       - v0.1.6.3B
       - v0.1.6.3C
       - v0.1.6.4A
+      - v0.1.6.4B
   workflow_dispatch:
 
 permissions:
@@ -29,26 +30,27 @@ jobs:
           node --check src/js/firestore/firestore-project-list.js
           node --check src/js/projects/project-controller.js
           node --check src/js/projects/project-store.js
+          node --check src/js/projects/project-session.js
           node --check src/js/projects/firestore-project-browser.js
+          node --check src/js/projects/project-transfer.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.4A consistency checks
+      - name: v0.1.6.4B consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.4A'" src/config/app-config.js
-          grep -q '"version": "0.1.6.4A"' src/version.json
-          grep -q "chousa-app-v0.1.6.4A" src/service-worker.js
-          grep -q "readFirestoreProjectList" src/js/firestore/firestore-project-list.js
-          grep -q "initializeFirestoreProjectBrowser" src/js/app-init.js
-          grep -q "data-firestore-project-id" src/js/projects/firestore-project-browser.js
-          grep -q "オフラインモード解除" src/css/pwa-offline.css
-          grep -q "#6b7280" src/css/pwa-offline.css
+          grep -q "version: '0.1.6.4B'" src/config/app-config.js
+          grep -q '"version": "0.1.6.4B"' src/version.json
+          grep -q "chousa-app-v0.1.6.4B" src/service-worker.js
+          grep -q "initializeProjectTransfer" src/js/app-init.js
+          grep -q "project-transfer.js" src/service-worker.js
+          grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
+          grep -q "案件を書き出す" src/js/projects/project-transfer.js
 
   deploy:
     needs: test
