@@ -9,6 +9,7 @@
  *   - 通常書込成功後に過去未送信を最大3件だけ自動再送
  *   - 大量未送信用に50件単位の明示バッチ同期を提供
  *   - 大量同期は1バッチ失敗時に自動継続しない
+ *   - 通常保存と大量同期はRepository内でも直列化し、古い未送信が新しい編集を上書きしない
  */
 
 import {
@@ -60,6 +61,14 @@ const SYNC_DEVICE_COLLECTION = 'syncDevices';
 const CHANGE_LOG_CLEANUP_LIMIT = 200;
 const PASSIVE_RETRY_LIMIT = 3;
 export const BULK_SYNC_BATCH_SIZE = 50;
+
+let repositoryWriteChain = Promise.resolve();
+
+function enqueueRepositoryWrite(run) {
+  const next = repositoryWriteChain.then(run, run);
+  repositoryWriteChain = next.catch(() => undefined);
+  return next;
+}
 
 function projectRoot(environment) {
   return environment === 'test' ? 'testProjects' : 'projects';
@@ -189,12 +198,7 @@ async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
   }
 }
 
-/**
- * 大量未送信をユーザーの明示操作で50件ずつ送る。
- * 1バッチはFirestore writeBatchで原子的に確定し、失敗時は1件もキューから削除しない。
- * 呼び出し側は失敗時に自動継続せず、ユーザーへ再送判断を返す。
- */
-export async function retryUnsentBatch({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
+async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
   const id = String(projectId || '');
   if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
   const remainingBefore = listUnsent({ projectId: id }).length;
@@ -230,6 +234,15 @@ export async function retryUnsentBatch({ projectId, batchSize = BULK_SYNC_BATCH_
   } finally {
     endFirestoreActivity();
   }
+}
+
+/**
+ * 大量未送信をユーザーの明示操作で50件ずつ送る。
+ * 1バッチはFirestore writeBatchで原子的に確定し、失敗時は1件もキューから削除しない。
+ * Repository書込キューへ入れるため、通常編集中の新しい保存と競合しない。
+ */
+export function retryUnsentBatch(options) {
+  return enqueueRepositoryWrite(() => retryUnsentBatchNow(options));
 }
 
 function serializeChangeCursor(snapshotDoc) {
@@ -315,8 +328,6 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
     await commitRecordEntries([entry]);
     syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
 
-    // 現在変更が正常送信できた時だけ、以前の未送信を最大3件だけ自然回復させる。
-    // 通信復帰イベントだけでは再送しない。
     const retryResult = await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
     return {
       ok: true,
@@ -336,8 +347,8 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
 }
 
 /** finishRecord本体と変更履歴を同一batchで確定する。 */
-export async function saveFinishRecord({ projectId, environment = 'production', record, source = 'finish-unspecified' }) {
-  return writeWithQueue({
+export function saveFinishRecord({ projectId, environment = 'production', record, source = 'finish-unspecified' }) {
+  return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
     environment,
     recordType: 'finish',
@@ -345,13 +356,13 @@ export async function saveFinishRecord({ projectId, environment = 'production', 
     operation: 'set',
     localRecord: record,
     source
-  });
+  }));
 }
 
 /** 内容差分の解消を他端末へ伝えるため、deleteも変更履歴と同一batchで確定する。 */
-export async function deleteFinishRecord({ projectId, environment = 'production', record, source = 'finish-delete-unspecified' }) {
-  if (!record?.finishId) return { ok: true, skipped: true };
-  return writeWithQueue({
+export function deleteFinishRecord({ projectId, environment = 'production', record, source = 'finish-delete-unspecified' }) {
+  if (!record?.finishId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
     environment,
     recordType: 'finish',
@@ -359,11 +370,11 @@ export async function deleteFinishRecord({ projectId, environment = 'production'
     operation: 'delete',
     localRecord: record,
     source
-  });
+  }));
 }
 
-export async function saveMaterialRecord({ projectId, environment = 'production', record, source = 'material-unspecified' }) {
-  return writeWithQueue({
+export function saveMaterialRecord({ projectId, environment = 'production', record, source = 'material-unspecified' }) {
+  return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
     environment,
     recordType: 'material',
@@ -371,11 +382,11 @@ export async function saveMaterialRecord({ projectId, environment = 'production'
     operation: 'set',
     localRecord: record,
     source
-  });
+  }));
 }
 
-export async function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
-  return writeWithQueue({
+export function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
+  return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
     environment,
     recordType: 'photo',
@@ -383,7 +394,7 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
     operation: 'set',
     localRecord: record,
     source
-  });
+  }));
 }
 
 /** 仮案件番号の他端末重複を避けるため、案件メタ情報を親Documentにも保持する。 */
@@ -705,8 +716,6 @@ export function subscribeProjectRecordChanges({
           hasPendingWrites: Boolean(change.doc.metadata?.hasPendingWrites)
         }));
 
-        // 自端末のローカルpending writeはStoreへ戻さない。server ack後は
-        // fieldEditedAt比較で同一変更として除外される。
         const remoteChanges = changes.filter((change) => !change.hasPendingWrites);
         if (remoteChanges.length) onChanges?.(remoteChanges);
       },
