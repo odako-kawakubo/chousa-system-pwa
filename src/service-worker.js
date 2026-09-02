@@ -1,11 +1,11 @@
 /*
- * v0.1.6.3C Service Worker
+ * v0.1.6.3 Service Worker
  *
  * 責任は「アプリ本体を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.3C';
+const APP_CACHE = 'chousa-app-v0.1.6.3';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -27,64 +27,43 @@ const APP_SHELL = [
   './css/settings.css',
   './css/pwa-offline.css',
   './assets/microsoft-symbol.svg',
-  './js/app-init.js'
+  './js/app-init.js',
+  './js/app-update.js',
+  './js/pwa/pwa-controller.js',
+  './js/ui/auth-ui.js',
+  './js/ui/header-edit-ui.js',
+  './js/ui/sync-ui.js',
+  './js/firestore/firestore-repository.js',
+  './js/sync/sync-status.js',
+  './js/projects/project-controller.js',
+  './js/projects/project-store.js',
+  './js/materials/simple-list.js',
+  './config/app-config.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(APP_CACHE)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(
-      names
-        .filter((name) => name.startsWith(APP_CACHE_PREFIX) && name !== APP_CACHE)
-        .map((name) => caches.delete(name))
-    );
-
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys
+          .filter((key) => (
+            key.startsWith(APP_CACHE_PREFIX) && key !== APP_CACHE
+          ) || (
+            key.startsWith('chousa-firebase-') && key !== FIREBASE_SDK_CACHE
+          ))
+          .map((key) => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
+  );
 });
-
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-async function networkFirst(request, fallbackRequest = null) {
-  const cache = await caches.open(APP_CACHE);
-  try {
-    const response = await fetch(request);
-    if (response && response.ok) {
-      await cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-    if (fallbackRequest) {
-      const fallback = await cache.match(fallbackRequest, { ignoreSearch: true });
-      if (fallback) return fallback;
-    }
-    throw error;
-  }
-}
-
-async function cacheFirebaseSdk(request) {
-  const cache = await caches.open(FIREBASE_SDK_CACHE);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const response = await fetch(request);
-  if (response && (response.ok || response.type === 'opaque')) {
-    await cache.put(request, response.clone());
-  }
-  return response;
-}
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
@@ -92,27 +71,29 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(request).then((cached) => (
+        cached || fetch(request).then((response) => {
+          const copy = response.clone();
+          caches.open(APP_CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        })
+      ))
+    );
+    return;
+  }
+
   if (request.url.startsWith(FIREBASE_SDK_PREFIX)) {
-    event.respondWith(cacheFirebaseSdk(request));
-    return;
-  }
+    event.respondWith(
+      caches.open(FIREBASE_SDK_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
 
-  if (url.origin !== self.location.origin) return;
-
-  if (request.mode === 'navigate') {
-    const fallback = url.pathname.endsWith('/app.html') ? './app.html' : './index.html';
-    event.respondWith(networkFirst(request, fallback));
-    return;
-  }
-
-  const isAppAsset =
-    url.pathname.includes('/css/') ||
-    url.pathname.includes('/js/') ||
-    url.pathname.includes('/config/') ||
-    url.pathname.includes('/assets/') ||
-    url.pathname.endsWith('/manifest.json');
-
-  if (isAppAsset) {
-    event.respondWith(networkFirst(request));
+        const response = await fetch(request);
+        cache.put(request, response.clone());
+        return response;
+      })
+    );
   }
 });
