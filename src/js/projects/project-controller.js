@@ -46,6 +46,7 @@ import { sampleProject } from '../demo/sample-project.js';
 import { clearProjectBoardSettings } from '../settings/board-settings-store.js';
 import {
   isManualOffline,
+  canUseFirestore,
   setManualOffline,
   markConnecting,
   markReconnecting,
@@ -62,7 +63,6 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getDeviceCode, getDeviceDisplayName } from '../device-code.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
-
 
 let stopActiveProjectRecords = null;
 let activeProjectStreamToken = 0;
@@ -165,7 +165,6 @@ function applyProjectRecordChanges(project, changes = []) {
   const safeChanges = changes.filter((change) => !unsentKeys.has(`${change.recordType}|${change.id}`));
   let changed = false;
 
-  // materialを先に反映し、その後finishのinputId解決に使う。
   const materialChanges = safeChanges.filter((item) => item.recordType === 'material');
   if (materialChanges.length) {
     let rawMaterials = materialRecordStore.exportSnapshot();
@@ -207,7 +206,6 @@ function applyProjectRecordChanges(project, changes = []) {
     const current = photoRecordStore.get(id);
     if (change.changeType !== 'removed' && current && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) return;
     if (change.changeType === 'removed') {
-      // photoRecordは通常論理削除だが、Firestoreから物理削除された場合だけStoreから外す。
       photoRecordStore.replaceAll(photoRecordStore.exportSnapshot().filter((record) => record.photoId !== id), { notify: false });
       changed = true;
       return;
@@ -237,8 +235,6 @@ async function openFirestoreProjectSession(target) {
   const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
   const finishChangeCursor = normalizeFinishChangeCursor(syncMeta.finishChangeCursor);
   const legacyLastSyncedAt = Number(syncMeta.lastSyncedAt || 0);
-  // G以前の単一lastSyncedAtはRecord種別ごとの境界を保証できない。
-  // Gでは「全タイプまとめてdelta/full」の判定を廃止し、各Recordが自分のcursorだけで判断する。
   const cursors = storedCursors;
   const useLocalSnapshot = Boolean(syncMeta.hasSyncedOnce || legacyLastSyncedAt > 0)
     && Array.isArray(target.finishRecords)
@@ -246,11 +242,9 @@ async function openFirestoreProjectSession(target) {
   syncDiagnosticLog('SYNC_OPEN_PLAN', { projectId: project.projectId, token, useLocalSnapshot, storedCursors, finishChangeCursor });
 
   setSyncBaseline(latestCursorValue(cursors));
-
-  // 一度取得済みならまず端末内の現在形を即表示する。
   if (useLocalSnapshot) openProjectSession(target);
 
-  if (isManualOffline()) {
+  if (!canUseFirestore()) {
     if (!useLocalSnapshot) openProjectSession(target);
     markLocalOnly();
     return target;
@@ -260,8 +254,6 @@ async function openFirestoreProjectSession(target) {
   beginFirestoreActivity();
 
   try {
-    // 過去の取りこぼし回収はRecord種別ごとに独立判定する。
-    // finish=変更履歴cursor、material/photo=各updatedAt cursor。片方の未成熟なcursorで他タイプをfullへ巻き込まない。
     syncDiagnosticLog('SYNC_CATCHUP_START', { projectId: project.projectId, useLocalSnapshot });
     const remote = await readProjectRecordsForProject(project, {
       cursors: useLocalSnapshot ? cursors : null,
@@ -282,7 +274,6 @@ async function openFirestoreProjectSession(target) {
     const typeModes = remote.typeModes || { finish: remote.mode, material: remote.mode, photo: remote.mode };
 
     if (!useLocalSnapshot) {
-      // 初回は3タイプともfull。現在形をそのまま開く。
       const restored = {
         project,
         finishRecords: remote.finishRecords?.length ? remote.finishRecords : target.finishRecords,
@@ -302,8 +293,6 @@ async function openFirestoreProjectSession(target) {
       refreshMaterialUsageDerivedFields('remote-rebuild');
       refreshMaterialList();
     } else {
-      // 再オープン時はfull/deltaが混在してよい。fullのタイプだけ現在形へ置換し、
-      // deltaのタイプだけ既存の差分適用経路へ流す。
       let replacedFullType = false;
       if (typeModes.material === 'full') {
         materialRecordStore.replaceAll(remote.materialRecords || [], { notify: false });
@@ -339,8 +328,6 @@ async function openFirestoreProjectSession(target) {
       }
 
       if (typeModes.finish === 'full') {
-        // finish全再構築時だけ、仕上表を正としてmaterial派生値をローカル再計算する。
-        // 受信直後の再計算でFirestoreへ書き戻さない。
         refreshMaterialUsageDerivedFields('remote-rebuild', { persist: false });
         refreshMaterialList();
       }
@@ -350,12 +337,9 @@ async function openFirestoreProjectSession(target) {
     updateProjectSyncCursors(project.projectId, caughtUpCursors, { completed: true });
     if (remote.finishChangeCursor) updateFinishChangeCursor(project.projectId, remote.finishChangeCursor);
 
-    // 案件ごとの接触端末情報は同期判断の正本には使わない。
-    // 端末一覧・最終接触・最後に反映したfinish変更位置の確認用として、案件open時に1回だけ更新する。
     void recordProjectDeviceContact(project, remote.finishChangeCursor || finishChangeCursor);
     void cleanupFinishChangeLogIfDue(project);
 
-    // 取りこぼし回収が完了した地点を、この案件を開いている間だけの監視基準にする。
     const serverReadyTypes = new Set();
     syncDiagnosticLog('SYNC_LISTENER_START', { projectId: project.projectId, caughtUpCursors, finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor) });
     const stop = subscribeRealtimeProjectRecordsForProject(project, {
@@ -368,7 +352,7 @@ async function openFirestoreProjectSession(target) {
       },
       onState: ({ recordType, fromCache }) => {
         syncDiagnosticLog('SYNC_LISTENER_STATE', { projectId: project.projectId, recordType, fromCache });
-        if (token !== activeProjectStreamToken || isManualOffline()) return;
+        if (token !== activeProjectStreamToken || !canUseFirestore()) return;
         if (fromCache) {
           serverReadyTypes.delete(recordType);
           if (navigator.onLine !== false) markReconnecting();
@@ -398,7 +382,6 @@ async function openFirestoreProjectSession(target) {
       }
     });
 
-    // 初回listener snapshotより前でも、案件切替・通信断時に確実に解除できる。
     stopActiveProjectRecords = () => {
       syncDiagnosticLog('SYNC_LISTENER_STOP', { projectId: project.projectId });
       stop();
@@ -482,7 +465,6 @@ function renderProjectList() {
   }).join('');
 }
 
-
 function isTestProject(project) {
   return project?.environment === 'test';
 }
@@ -513,7 +495,6 @@ async function deleteProject(projectId) {
   if (!window.confirm(`${formatProjectLabel(project)}\n\n${scopeText}${unsentText}\n\n削除しますか？`)) return;
 
   try {
-    // テスト案件はFirestore削除に成功してから端末側を消す。失敗時はローカルを残して再試行できるようにする。
     if (testProject) await deleteTestProjectFromFirestore(project);
 
     const photoIds = (entry.photoRecords || []).map((record) => record?.photoId).filter(Boolean);
@@ -549,7 +530,6 @@ async function switchProject(projectId) {
     return;
   }
 
-  // 切替前の案件状態を退避し、旧案件のFirestore監視を必ず解除する。
   saveCurrentProjectSession();
   stopProjectRecordStream();
 
@@ -561,7 +541,6 @@ async function switchProject(projectId) {
       openProjectSession(target);
       markLocalOnly();
     } else {
-      // Fではローカル保存済み案件は即復元し、前回同期以降だけ受け取ってlistenerを維持する。
       await openFirestoreProjectSession(target);
     }
     closeProjectPanel();
@@ -582,11 +561,9 @@ async function createProjectFromForm() {
     if (button) button.disabled = true;
     showStatus('案件番号と初期仕上表を準備しています…');
 
-    // 現在案件を先に退避し、旧案件のFirestore監視を解除する。
     saveCurrentProjectSession();
     stopProjectRecordStream();
 
-    // PC/iPadなど別端末で作成済みの当日仮番号もFirestoreで確認する。
     const dateCode = temporaryDateCode();
     let remoteProjectNos = [];
     try {
@@ -617,11 +594,8 @@ async function createProjectFromForm() {
       photoRecords: []
     });
 
-    // H: 初期仕上表はアプリ側の生成ルールで復元できるため、空の456件はFirestoreへ書かない。
-    // Firestoreには案件情報と、今後発生する入力差分・追加構造の最小レコードだけを保存する。
     await persistProjectMetadataForProject(project, { initializeChangeLog: true });
 
-    // 案件メタ情報登録後は新規案件にもlistenerを張り、以後の変更を差分受信する。
     stopProjectRecordStream();
     const createdTarget = getProject(project.projectId);
     if (createdTarget) await openFirestoreProjectSession(createdTarget);
@@ -636,18 +610,21 @@ async function createProjectFromForm() {
   }
 }
 
-
 async function recoverCurrentProjectAfterNetworkReturn() {
-  if (isManualOffline()) return;
+  if (!canUseFirestore()) return;
   const current = getCurrentProject();
   if (!current?.projectId || current.isSample) return;
+
+  // 圏外中の正式Storeを先に案件Storeへ退避し、古いSnapshotでの巻き戻りを防ぐ。
+  saveCurrentProjectSession();
   const target = getProject(current.projectId);
   if (!target) return;
+
   stopProjectRecordStream();
   try {
     await openFirestoreProjectSession(target);
   } catch (error) {
-    console.error('[v0.1.6.2] 通信復帰後の差分回収失敗', error);
+    console.error('[v0.1.6.3C] 通信復帰後の差分回収失敗', error);
     markError(error);
   }
 }
@@ -663,6 +640,8 @@ export async function setProjectManualOfflineMode(enabled) {
     return;
   }
 
+  // 手動オフライン中の編集を解除前に案件Storeへ退避する。
+  saveCurrentProjectSession();
   setManualOffline(false);
   if (!current?.projectId || current.isSample) {
     markLocalOnly();
