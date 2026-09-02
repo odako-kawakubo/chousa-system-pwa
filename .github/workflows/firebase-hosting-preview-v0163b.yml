@@ -1,10 +1,11 @@
-name: Deploy v0.1.6.3 Review Preview
+name: Deploy Review Preview
 
 on:
   push:
     branches:
       - v0.1.6.3B
       - v0.1.6.3C
+      - v0.1.6.4A
   workflow_dispatch:
 
 permissions:
@@ -25,26 +26,29 @@ jobs:
         run: |
           node --check src/js/sync/sync-status.js
           node --check src/js/firestore/firestore-repository.js
+          node --check src/js/firestore/firestore-project-list.js
           node --check src/js/projects/project-controller.js
+          node --check src/js/projects/project-store.js
+          node --check src/js/projects/firestore-project-browser.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: C cleanup consistency checks
+      - name: v0.1.6.4A consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.3C'" src/config/app-config.js
-          grep -q '"version": "0.1.6.3C"' src/version.json
-          grep -q "chousa-app-v0.1.6.3C" src/service-worker.js
-          grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
-          grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
-          grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
-          grep -q "bulk-required" src/js/firestore/firestore-repository.js
-          grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
+          grep -q "version: '0.1.6.4A'" src/config/app-config.js
+          grep -q '"version": "0.1.6.4A"' src/version.json
+          grep -q "chousa-app-v0.1.6.4A" src/service-worker.js
+          grep -q "readFirestoreProjectList" src/js/firestore/firestore-project-list.js
+          grep -q "initializeFirestoreProjectBrowser" src/js/app-init.js
+          grep -q "data-firestore-project-id" src/js/projects/firestore-project-browser.js
+          grep -q "オフラインモード解除" src/css/pwa-offline.css
+          grep -q "#6b7280" src/css/pwa-offline.css
 
   deploy:
     needs: test
