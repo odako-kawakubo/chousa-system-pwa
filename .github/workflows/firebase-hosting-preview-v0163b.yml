@@ -43,6 +43,8 @@ jobs:
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
           grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
           grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
+          grep -q "bulk-required" src/js/firestore/firestore-repository.js
+          grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
 
   deploy:
     needs: test
