@@ -28,7 +28,6 @@ import { bindDeviceUi } from './ui/device-ui.js';
 import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents } from './sync/sync-status.js';
-import { initializeNetworkSessionGuard } from './sync/network-session-guard.js';
 
 function initUiSkeleton() {
   // SW登録は通常UIの初期化を待たせない。圏外cold start時は前回activeになったSWが起動資産を供給する。
@@ -38,8 +37,6 @@ function initUiSkeleton() {
   initializeDeviceIdentity();
   applyAppVersionDisplay();
   initializeNetworkStatusEvents();
-  // project-controllerの通信復帰処理より先に登録し、圏外中の現在形を必ず端末案件へ退避する。
-  initializeNetworkSessionGuard();
   bindSyncStatusUi();
   bindDeviceUi();
   bindHeaderEditUi();
