@@ -1,4 +1,4 @@
-/* v0.1.6.3B: ヘッダー通信グループ／手動オフライン確認／直接編集 */
+/* v0.1.6.4A: ヘッダー通信グループ／手動オフライン確認／直接編集 */
 .header-sync-group,
 .header-user-group{
   display:inline-flex;
@@ -39,9 +39,9 @@
   outline:none;
 }
 .header-offline-toggle.active{
-  background:var(--main);
-  border-color:var(--main);
-  color:var(--text-on-accent);
+  background:#6b7280;
+  border-color:#6b7280;
+  color:#fff;
 }
 .header-editable-label{
   cursor:pointer;
