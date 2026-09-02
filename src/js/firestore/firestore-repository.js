@@ -3,6 +3,12 @@
  *
  * v0.1.6.2 Firestore Repository。
  * finishRecordは疎保存し、set/deleteを短期変更履歴にも同一batchで記録する。
+ *
+ * v0.1.6.3C:
+ *   - 手動オフラインと物理通信不可を分離
+ *   - 通常書込成功後に過去未送信を最大3件だけ自動再送
+ *   - 大量未送信用に50件単位の明示バッチ同期を提供
+ *   - 大量同期は1バッチ失敗時に自動継続しない
  */
 
 import {
@@ -30,9 +36,11 @@ import {
   serializeMaterialRecord,
   serializePhotoRecord
 } from './record-serializer.js';
-import { putUnsent, removeUnsent } from '../sync/unsent-queue.js';
+import { putUnsent, removeUnsent, listUnsent } from '../sync/unsent-queue.js';
 import {
   isManualOffline,
+  isNetworkOnline,
+  canUseFirestore,
   beginFirestoreActivity,
   endFirestoreActivity,
   markError
@@ -50,6 +58,8 @@ const CHANGE_LOG_COLLECTION = 'finishChangeLogs';
 const CHANGE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const SYNC_DEVICE_COLLECTION = 'syncDevices';
 const CHANGE_LOG_CLEANUP_LIMIT = 200;
+const PASSIVE_RETRY_LIMIT = 3;
+export const BULK_SYNC_BATCH_SIZE = 50;
 
 function projectRoot(environment) {
   return environment === 'test' ? 'testProjects' : 'projects';
@@ -94,6 +104,132 @@ function appendFinishChangeToBatch(batch, { projectId, environment, recordId, op
     committedAt: serverTimestamp(),
     expiresAt: Timestamp.fromMillis(Date.now() + CHANGE_LOG_RETENTION_MS)
   });
+}
+
+function appendRecordOperationToBatch(batch, entry) {
+  const projectId = String(entry.projectId || '');
+  const environment = entry.environment === 'test' ? 'test' : 'production';
+  const recordType = String(entry.recordType || '');
+  const recordId = String(entry.recordId || '');
+  const operation = entry.operation === 'delete' ? 'delete' : 'set';
+  const record = entry.record || null;
+
+  if (!projectId || !recordType || !recordId) {
+    throw new Error('未送信レコードのキー情報が不足しています。');
+  }
+
+  if (recordType === 'finish') {
+    if (operation === 'delete') {
+      batch.delete(recordRef(projectId, environment, 'finish', recordId));
+      appendFinishChangeToBatch(batch, { projectId, environment, recordId, operation: 'delete' });
+      return;
+    }
+    if (!record) throw new Error(`finishRecord本体がありません: ${recordId}`);
+    batch.set(
+      recordRef(projectId, environment, 'finish', recordId),
+      serializeFinishRecord(record, { updatedAt: serverTimestamp() })
+    );
+    appendFinishChangeToBatch(batch, { projectId, environment, recordId, operation: 'set', record });
+    return;
+  }
+
+  if (operation === 'delete') {
+    batch.delete(recordRef(projectId, environment, recordType, recordId));
+    return;
+  }
+
+  if (!record) throw new Error(`${recordType}Record本体がありません: ${recordId}`);
+  if (recordType === 'material') {
+    batch.set(
+      recordRef(projectId, environment, 'material', recordId),
+      serializeMaterialRecord(record, { updatedAt: serverTimestamp() })
+    );
+    return;
+  }
+  if (recordType === 'photo') {
+    batch.set(
+      recordRef(projectId, environment, 'photo', recordId),
+      serializePhotoRecord(record, { updatedAt: serverTimestamp() })
+    );
+    return;
+  }
+  throw new Error(`未対応のrecordTypeです: ${recordType}`);
+}
+
+async function commitRecordEntries(entries = []) {
+  if (!entries.length) return { ok: true, sent: 0 };
+  const batch = writeBatch(db);
+  entries.forEach((entry) => appendRecordOperationToBatch(batch, entry));
+  await batch.commit();
+  entries.forEach((entry) => removeUnsent(entry.projectId, entry.recordType, entry.recordId));
+  return { ok: true, sent: entries.length };
+}
+
+async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
+  if (!canUseFirestore()) return { ok: false, sent: 0, skipped: true };
+  const entries = listUnsent({ projectId, limit: limitCount });
+  if (!entries.length) return { ok: true, sent: 0 };
+
+  try {
+    const result = await commitRecordEntries(entries);
+    syncDiagnosticLog('UNSENT_PASSIVE_RETRY_OK', {
+      projectId,
+      requested: entries.length,
+      sent: result.sent
+    });
+    return result;
+  } catch (error) {
+    syncDiagnosticLog('UNSENT_PASSIVE_RETRY_ERROR', {
+      projectId,
+      requested: entries.length,
+      message: error?.message || String(error)
+    });
+    markError(error);
+    return { ok: false, sent: 0, error };
+  }
+}
+
+/**
+ * 大量未送信をユーザーの明示操作で50件ずつ送る。
+ * 1バッチはFirestore writeBatchで原子的に確定し、失敗時は1件もキューから削除しない。
+ * 呼び出し側は失敗時に自動継続せず、ユーザーへ再送判断を返す。
+ */
+export async function retryUnsentBatch({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
+  const id = String(projectId || '');
+  if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
+  const remainingBefore = listUnsent({ projectId: id }).length;
+  if (!remainingBefore) return { ok: true, sent: 0, remaining: 0, completed: true };
+  if (isManualOffline()) {
+    return { ok: false, sent: 0, remaining: remainingBefore, reason: 'manual-offline' };
+  }
+  if (!isNetworkOnline()) {
+    return { ok: false, sent: 0, remaining: remainingBefore, reason: 'network-offline' };
+  }
+
+  const size = Math.max(1, Math.min(100, Number(batchSize) || BULK_SYNC_BATCH_SIZE));
+  const entries = listUnsent({ projectId: id, limit: size });
+  beginFirestoreActivity();
+  try {
+    const result = await commitRecordEntries(entries);
+    const remaining = listUnsent({ projectId: id }).length;
+    syncDiagnosticLog('UNSENT_BULK_BATCH_OK', {
+      projectId: id,
+      sent: result.sent,
+      remaining
+    });
+    return { ok: true, sent: result.sent, remaining, completed: remaining === 0 };
+  } catch (error) {
+    syncDiagnosticLog('UNSENT_BULK_BATCH_ERROR', {
+      projectId: id,
+      requested: entries.length,
+      remaining: remainingBefore,
+      message: error?.message || String(error)
+    });
+    markError(error);
+    return { ok: false, sent: 0, remaining: remainingBefore, error, reason: 'write-failed' };
+  } finally {
+    endFirestoreActivity();
+  }
 }
 
 function serializeChangeCursor(snapshotDoc) {
@@ -142,41 +278,60 @@ function toTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : Timestamp.fromDate(date);
 }
 
-async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified', run }) {
-  syncDiagnosticLog('WRITE_REQUEST', { projectId, environment, recordType, recordId, operation, source, manualOffline: isManualOffline() });
+async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified' }) {
+  const entry = {
+    projectId,
+    environment,
+    recordType,
+    recordId,
+    operation,
+    record: localRecord
+  };
+  syncDiagnosticLog('WRITE_REQUEST', {
+    projectId,
+    environment,
+    recordType,
+    recordId,
+    operation,
+    source,
+    manualOffline: isManualOffline(),
+    networkOnline: isNetworkOnline()
+  });
+
   if (isManualOffline()) {
-    putUnsent({
-      projectId,
-      environment,
-      recordType,
-      recordId,
-      operation,
-      record: localRecord
-    });
-    syncDiagnosticLog('WRITE_QUEUED_OFFLINE', { projectId, recordType, recordId, operation, source });
-    return { ok: false, queued: true, operation, offline: true };
+    putUnsent(entry);
+    syncDiagnosticLog('WRITE_QUEUED_MANUAL_OFFLINE', { projectId, recordType, recordId, operation, source });
+    return { ok: false, queued: true, operation, offline: true, reason: 'manual-offline' };
+  }
+
+  if (!isNetworkOnline()) {
+    putUnsent(entry);
+    syncDiagnosticLog('WRITE_QUEUED_NETWORK_OFFLINE', { projectId, recordType, recordId, operation, source });
+    return { ok: false, queued: true, operation, offline: true, reason: 'network-offline' };
   }
 
   beginFirestoreActivity();
   try {
-    await run();
+    await commitRecordEntries([entry]);
     syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
-    removeUnsent(projectId, recordType, recordId);
-    endFirestoreActivity();
-    return { ok: true, queued: false, operation };
-  } catch (error) {
-    putUnsent({
-      projectId,
-      environment,
-      recordType,
-      recordId,
+
+    // 現在変更が正常送信できた時だけ、以前の未送信を最大3件だけ自然回復させる。
+    // 通信復帰イベントだけでは再送しない。
+    const retryResult = await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
+    return {
+      ok: true,
+      queued: false,
       operation,
-      record: localRecord
-    });
+      retried: Number(retryResult.sent || 0),
+      retryError: retryResult.ok === false && !retryResult.skipped ? retryResult.error || null : null
+    };
+  } catch (error) {
+    putUnsent(entry);
     syncDiagnosticLog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
     markError(error);
-    endFirestoreActivity();
     return { ok: false, queued: true, operation, error };
+  } finally {
+    endFirestoreActivity();
   }
 }
 
@@ -189,16 +344,7 @@ export async function saveFinishRecord({ projectId, environment = 'production', 
     recordId: record.finishId,
     operation: 'set',
     localRecord: record,
-    source,
-    run: async () => {
-      const batch = writeBatch(db);
-      batch.set(
-        recordRef(projectId, environment, 'finish', record.finishId),
-        serializeFinishRecord(record, { updatedAt: serverTimestamp() })
-      );
-      appendFinishChangeToBatch(batch, { projectId, environment, recordId: record.finishId, operation: 'set', record });
-      await batch.commit();
-    }
+    source
   });
 }
 
@@ -212,13 +358,7 @@ export async function deleteFinishRecord({ projectId, environment = 'production'
     recordId: record.finishId,
     operation: 'delete',
     localRecord: record,
-    source,
-    run: async () => {
-      const batch = writeBatch(db);
-      batch.delete(recordRef(projectId, environment, 'finish', record.finishId));
-      appendFinishChangeToBatch(batch, { projectId, environment, recordId: record.finishId, operation: 'delete' });
-      await batch.commit();
-    }
+    source
   });
 }
 
@@ -230,11 +370,7 @@ export async function saveMaterialRecord({ projectId, environment = 'production'
     recordId: record.materialId,
     operation: 'set',
     localRecord: record,
-    source,
-    run: () => setDoc(
-      recordRef(projectId, environment, 'material', record.materialId),
-      serializeMaterialRecord(record, { updatedAt: serverTimestamp() })
-    )
+    source
   });
 }
 
@@ -246,11 +382,7 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
     recordId: record.photoId,
     operation: 'set',
     localRecord: record,
-    source,
-    run: () => setDoc(
-      recordRef(projectId, environment, 'photo', record.photoId),
-      serializePhotoRecord(record, { updatedAt: serverTimestamp() })
-    )
+    source
   });
 }
 
@@ -258,7 +390,14 @@ export async function savePhotoRecord({ projectId, environment = 'production', r
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
-  if (isManualOffline()) return { ok: false, queued: true, offline: true };
+  if (!canUseFirestore()) {
+    return {
+      ok: false,
+      queued: true,
+      offline: true,
+      reason: isManualOffline() ? 'manual-offline' : 'network-offline'
+    };
+  }
   const environment = project.environment === 'test' ? 'test' : 'production';
   beginFirestoreActivity();
   try {
@@ -274,16 +413,14 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
       updatedAt: serverTimestamp()
     }, { merge: true });
     syncDiagnosticLog('PROJECT_METADATA_WRITE_OK', { projectId: project.projectId, initializeChangeLog });
-    endFirestoreActivity();
     return { ok: true };
   } catch (error) {
     markError(error);
-    endFirestoreActivity();
     throw error;
+  } finally {
+    endFirestoreActivity();
   }
 }
-
-
 
 /**
  * テスト案件専用の完全削除。
@@ -337,8 +474,6 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
     .filter((value) => value.startsWith(prefix));
 }
 
-
-
 /**
  * 保存済みカーソルがまだ変更履歴内に残っているか確認する。
  * 物理deleteされたfinishRecordの取りこぼしを防ぐため、時刻推測だけでなく
@@ -349,7 +484,7 @@ export async function isFinishChangeCursorAvailable({ projectId, environment = '
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
   const ageMs = Date.now() - ((Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6));
   if (ageMs > CHANGE_LOG_RETENTION_MS) return false;
-  if (isManualOffline()) return true;
+  if (!canUseFirestore()) return true;
   const snapshot = await getDoc(doc(finishChangeLogCollectionRef(projectId, environment), String(cursor.changeId)));
   syncDiagnosticLog('CURSOR_CHECK_READ', { projectId, changeId: String(cursor.changeId), exists: snapshot.exists() });
   if (!snapshot.exists()) return false;
@@ -366,7 +501,7 @@ export async function touchProjectSyncDevice({
 }) {
   syncDiagnosticLog('DEVICE_TOUCH_REQUEST', { projectId, deviceCode, deviceName, finishChangeCursor });
   const code = String(deviceCode || '').trim();
-  if (!projectId || !code || isManualOffline()) return { ok: true, skipped: true };
+  if (!projectId || !code || !canUseFirestore()) return { ok: true, skipped: true };
   try {
     await setDoc(projectSyncDeviceRef(projectId, environment, code), {
       deviceCode: code,
@@ -389,7 +524,7 @@ export async function touchProjectSyncDevice({
  */
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
-  if (!projectId || isManualOffline()) return { ok: true, skipped: true, deleted: 0 };
+  if (!projectId || !canUseFirestore()) return { ok: true, skipped: true, deleted: 0 };
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
     ref,
@@ -409,7 +544,7 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
 /** 変更履歴がまだ無い案件に、同期開始点となるcheckpointを1件だけ作る。 */
 export async function createFinishChangeLogCheckpoint({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHECKPOINT_CREATE_START', { projectId });
-  if (isManualOffline()) return null;
+  if (!canUseFirestore()) return null;
   const logRef = doc(finishChangeLogCollectionRef(projectId, environment));
   const batch = writeBatch(db);
   batch.set(logRef, {
@@ -437,7 +572,7 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
 /** finishRecordの変更履歴をカーソル以降だけ取得する。 */
 export async function readFinishChangeLog({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CHANGELOG_READ_START', { projectId, cursor });
-  if (isManualOffline()) return { changes: [], cursor };
+  if (!canUseFirestore()) return { changes: [], cursor };
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const ts = cursorTimestamp(cursor);
   const source = ts
@@ -455,7 +590,7 @@ export async function readFinishChangeLog({ projectId, environment = 'production
 /** 現在のfinish変更履歴の末尾だけ取得し、全件復元後の開始カーソルにする。 */
 export async function readLatestFinishChangeCursor({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_LATEST_CURSOR_READ_START', { projectId });
-  if (isManualOffline()) return null;
+  if (!canUseFirestore()) return null;
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
     ref,
@@ -470,7 +605,7 @@ export async function readLatestFinishChangeCursor({ projectId, environment = 'p
 /** finish変更履歴だけをリアルタイム監視する。 */
 export function subscribeFinishChangeLog({ projectId, environment = 'production', afterCursor = null, onChanges, onState, onError }) {
   syncDiagnosticLog('CHANGELOG_LISTENER_START', { projectId, afterCursor });
-  if (isManualOffline()) return () => {};
+  if (!canUseFirestore()) return () => {};
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const ts = cursorTimestamp(afterCursor);
   const source = ts
@@ -502,7 +637,7 @@ export async function readProjectRecordsOnce({
   recordTypes = Object.keys(RECORD_COLLECTIONS)
 }) {
   syncDiagnosticLog('RECORD_READ_START', { projectId, recordTypes, sinceByType });
-  if (isManualOffline()) {
+  if (!canUseFirestore()) {
     syncDiagnosticLog('RECORD_READ_SKIPPED_OFFLINE', { projectId, recordTypes });
     return { finishRecords: [], materialRecords: [], photoRecords: [] };
   }
@@ -517,7 +652,6 @@ export async function readProjectRecordsOnce({
     syncDiagnosticLog('RECORD_READ_RESULT', { projectId, recordType, count: snapshot.docs.length, since });
     return [recordType, deserializeSnapshot(snapshot)];
   }));
-
   const byType = Object.fromEntries(entries);
   return {
     finishRecords: byType.finish || [],
@@ -541,7 +675,7 @@ export function subscribeProjectRecordChanges({
   onError
 }) {
   syncDiagnosticLog('RECORD_LISTENER_GROUP_START', { projectId, recordTypes, afterByType });
-  if (isManualOffline()) return () => {};
+  if (!canUseFirestore()) return () => {};
 
   let closed = false;
   const unsubscribers = recordTypes.map((recordType) => {
@@ -586,4 +720,3 @@ export function subscribeProjectRecordChanges({
     unsubscribers.forEach((unsubscribe) => unsubscribe());
   };
 }
-
