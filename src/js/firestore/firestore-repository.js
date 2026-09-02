@@ -6,7 +6,7 @@
  *
  * v0.1.6.3C:
  *   - 手動オフラインと物理通信不可を分離
- *   - 通常書込成功後に過去未送信を最大3件だけ自動再送
+ *   - 少量未送信だけ、通常書込成功後に過去最大3件を自動再送
  *   - 大量未送信用に50件単位の明示バッチ同期を提供
  *   - 大量同期は1バッチ失敗時に自動継続しない
  *   - 通常保存と大量同期はRepository内でも直列化し、古い未送信が新しい編集を上書きしない
@@ -175,10 +175,22 @@ async function commitRecordEntries(entries = []) {
 }
 
 async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
-  if (!canUseFirestore()) return { ok: false, sent: 0, skipped: true };
-  const entries = listUnsent({ projectId, limit: limitCount });
-  if (!entries.length) return { ok: true, sent: 0 };
+  if (!canUseFirestore()) return { ok: false, sent: 0, skipped: true, reason: 'offline' };
 
+  const allEntries = listUnsent({ projectId });
+  if (!allEntries.length) return { ok: true, sent: 0 };
+
+  // 自動再送は「数件の一時失敗」だけ。大量未送信は明示のまとめて同期へ任せる。
+  if (allEntries.length > PASSIVE_RETRY_LIMIT) {
+    syncDiagnosticLog('UNSENT_PASSIVE_RETRY_SKIPPED_BULK', {
+      projectId,
+      remaining: allEntries.length,
+      passiveLimit: PASSIVE_RETRY_LIMIT
+    });
+    return { ok: true, sent: 0, skipped: true, reason: 'bulk-required' };
+  }
+
+  const entries = allEntries.slice(0, limitCount);
   try {
     const result = await commitRecordEntries(entries);
     syncDiagnosticLog('UNSENT_PASSIVE_RETRY_OK', {
@@ -346,7 +358,6 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
   }
 }
 
-/** finishRecord本体と変更履歴を同一batchで確定する。 */
 export function saveFinishRecord({ projectId, environment = 'production', record, source = 'finish-unspecified' }) {
   return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
@@ -359,7 +370,6 @@ export function saveFinishRecord({ projectId, environment = 'production', record
   }));
 }
 
-/** 内容差分の解消を他端末へ伝えるため、deleteも変更履歴と同一batchで確定する。 */
 export function deleteFinishRecord({ projectId, environment = 'production', record, source = 'finish-delete-unspecified' }) {
   if (!record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueueRepositoryWrite(() => writeWithQueue({
@@ -397,7 +407,6 @@ export function savePhotoRecord({ projectId, environment = 'production', record,
   }));
 }
 
-/** 仮案件番号の他端末重複を避けるため、案件メタ情報を親Documentにも保持する。 */
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
@@ -433,11 +442,6 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
   }
 }
 
-/**
- * テスト案件専用の完全削除。
- * Firestore Web SDKには親Document削除だけでsubcollectionを再帰削除する機能がないため、
- * 3 Record collectionを先に削除してから案件親Documentを削除する。
- */
 export async function deleteTestProjectCompletely(projectId) {
   const id = String(projectId || '');
   if (!id) throw new Error('削除対象の案件IDがありません。');
@@ -471,7 +475,6 @@ export async function deleteTestProjectCompletely(projectId) {
   return { ok: true };
 }
 
-/** 指定日の仮案件番号をFirestore親Documentから取得する。 */
 export async function readTemporaryProjectNos(dateCode, environment = 'production') {
   const prefix = `${String(dateCode)}-`;
   const ref = collection(db, projectRoot(environment));
@@ -485,11 +488,6 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
     .filter((value) => value.startsWith(prefix));
 }
 
-/**
- * 保存済みカーソルがまだ変更履歴内に残っているか確認する。
- * 物理deleteされたfinishRecordの取りこぼしを防ぐため、時刻推測だけでなく
- * カーソル自身のchangeLog Documentが存在することを確認する。
- */
 export async function isFinishChangeCursorAvailable({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CURSOR_CHECK_START', { projectId, cursor });
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
@@ -506,7 +504,6 @@ export async function isFinishChangeCursorAvailable({ projectId, environment = '
     && stored.changeId === String(cursor.changeId));
 }
 
-/** 案件ごとに、この端末が接触したことと最後に反映したfinish変更位置を記録する。 */
 export async function touchProjectSyncDevice({
   projectId, environment = 'production', deviceCode, deviceName, finishChangeCursor = null
 }) {
@@ -529,10 +526,6 @@ export async function touchProjectSyncDevice({
   }
 }
 
-/**
- * 30日を過ぎたfinish変更履歴を最大200件だけ整理する。
- * Firestore TTLへ依存せず無料枠内でも運用できるよう、案件同期時の低頻度清掃用とする。
- */
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
   if (!projectId || !canUseFirestore()) return { ok: true, skipped: true, deleted: 0 };
@@ -552,7 +545,6 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
   return { ok: true, deleted: snapshot.docs.length };
 }
 
-/** 変更履歴がまだ無い案件に、同期開始点となるcheckpointを1件だけ作る。 */
 export async function createFinishChangeLogCheckpoint({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHECKPOINT_CREATE_START', { projectId });
   if (!canUseFirestore()) return null;
@@ -580,7 +572,6 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
-/** finishRecordの変更履歴をカーソル以降だけ取得する。 */
 export async function readFinishChangeLog({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CHANGELOG_READ_START', { projectId, cursor });
   if (!canUseFirestore()) return { changes: [], cursor };
@@ -598,7 +589,6 @@ export async function readFinishChangeLog({ projectId, environment = 'production
   };
 }
 
-/** 現在のfinish変更履歴の末尾だけ取得し、全件復元後の開始カーソルにする。 */
 export async function readLatestFinishChangeCursor({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_LATEST_CURSOR_READ_START', { projectId });
   if (!canUseFirestore()) return null;
@@ -613,7 +603,6 @@ export async function readLatestFinishChangeCursor({ projectId, environment = 'p
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
-/** finish変更履歴だけをリアルタイム監視する。 */
 export function subscribeFinishChangeLog({ projectId, environment = 'production', afterCursor = null, onChanges, onState, onError }) {
   syncDiagnosticLog('CHANGELOG_LISTENER_START', { projectId, afterCursor });
   if (!canUseFirestore()) return () => {};
@@ -640,7 +629,6 @@ export function subscribeFinishChangeLog({ projectId, environment = 'production'
   };
 }
 
-/** 3Recordそれぞれの基準時刻以降を1回だけ取得する。 */
 export async function readProjectRecordsOnce({
   projectId,
   environment = 'production',
@@ -671,11 +659,6 @@ export async function readProjectRecordsOnce({
   };
 }
 
-/**
- * 1回の取りこぼし回収が終わった後だけ使うリアルタイム監視。
- * afterByTypeは「今回の監視開始時点で各Recordがどこまで揃っているか」を表す。
- * 前回案件切替時の古いlastSyncedAtを長時間listener条件として使い続けない。
- */
 export function subscribeProjectRecordChanges({
   projectId,
   environment = 'production',
