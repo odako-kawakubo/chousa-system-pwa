@@ -42,6 +42,7 @@ jobs:
           grep -q "chousa-app-v0.1.6.3C" src/service-worker.js
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
           grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
+          grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
 
   deploy:
     needs: test
