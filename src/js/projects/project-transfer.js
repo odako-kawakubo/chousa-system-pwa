@@ -12,7 +12,8 @@ import {
   getCurrentProject,
   getProject,
   getProjectSyncMeta,
-  saveProjectSnapshot
+  saveProjectSnapshot,
+  subscribe
 } from './project-store.js';
 import {
   openProjectSession,
@@ -297,5 +298,6 @@ export function initializeProjectTransfer() {
   window.addEventListener('online', updateButtons);
   window.addEventListener('offline', updateButtons);
   window.addEventListener('chousa:manual-offline-change', updateButtons);
+  subscribe(updateButtons);
   updateButtons();
 }
