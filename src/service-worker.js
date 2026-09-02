@@ -1,11 +1,11 @@
 /*
- * v0.1.6.3B Service Worker
+ * v0.1.6.3C Service Worker
  *
  * 責任は「アプリ本体を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.3B';
+const APP_CACHE = 'chousa-app-v0.1.6.3C';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -27,8 +27,7 @@ const APP_SHELL = [
   './css/settings.css',
   './css/pwa-offline.css',
   './assets/microsoft-symbol.svg',
-  './js/app-init.js',
-  './js/sync/network-session-guard.js'
+  './js/app-init.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -46,7 +45,6 @@ self.addEventListener('activate', (event) => {
         .map((name) => caches.delete(name))
     );
 
-    // 更新時のcontrollerchangeを安定させ、初回導入後も現在の画面を正式SWの管理下へ移す。
     await self.clients.claim();
   })());
 });
@@ -94,8 +92,6 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Firebase SDK本体だけを明示的にキャッシュする。
-  // Firestore API / Authentication API / Microsoft Graph等の業務通信はここを通さない。
   if (request.url.startsWith(FIREBASE_SDK_PREFIX)) {
     event.respondWith(cacheFirebaseSdk(request));
     return;
