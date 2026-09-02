@@ -43,6 +43,13 @@
   border-color:#6b7280;
   color:#fff;
 }
+#headerOfflineToggle[aria-pressed="true"]{
+  font-size:0;
+}
+#headerOfflineToggle[aria-pressed="true"]::after{
+  content:"オフラインモード解除";
+  font:700 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;
+}
 .header-editable-label{
   cursor:pointer;
 }
