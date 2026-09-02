@@ -7,6 +7,7 @@
  */
 
 import { sampleProject } from '../demo/sample-project.js';
+import { appConfig } from '../../config/app-config.js';
 
 const LOCAL_PROJECTS_KEY = 'chousa-local-projects-v0161b';
 
@@ -169,9 +170,13 @@ export function subscribe(callback) {
   };
 }
 
+function samplePrefix() {
+  return /[A-Z]$/.test(String(appConfig.version || '')) ? '［レビュー］' : '［サンプル］';
+}
+
 /** 案件一覧・ヘッダーで使う「番号 案件名」表示。 */
 export function formatProjectLabel(project) {
   if (!project) return '案件未選択';
-  if (project.isSample) return `［サンプル］${project.projectName || ''}`;
+  if (project.isSample) return `${samplePrefix()}${project.projectName || ''}`;
   return [project.projectNo, project.projectName].filter(Boolean).join('　');
 }
