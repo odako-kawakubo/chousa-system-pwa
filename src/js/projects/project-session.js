@@ -31,7 +31,28 @@ export function saveCurrentProjectSession() {
   });
 }
 
+/**
+ * inputIdはFirestore正本項目ではなく materialId から復元される表示用派生値。
+ * 建材だけが端末間同期された直後でも、仕上表側の表示を同じ再描画周期で更新する。
+ */
+function refreshDerivedFinishInputIds() {
+  const materials = new Map(
+    materialRecordStore.exportSnapshot().map((record) => [String(record.materialId || ''), record])
+  );
+  const current = finishRecordStore.exportSnapshot();
+  let changed = false;
+  const next = current.map((record) => {
+    const material = materials.get(String(record.materialId || ''));
+    const inputId = material ? String(material.inputId ?? '') : '';
+    if (String(record.inputId ?? '') === inputId) return record;
+    changed = true;
+    return { ...record, inputId };
+  });
+  if (changed) finishRecordStore.replaceAll(next, { notify: false });
+}
+
 export function refreshOpenProjectSessionViews() {
+  refreshDerivedFinishInputIds();
   refreshFinishTableFromStores();
   refreshMaterialList();
   refreshMaterialOperations();
