@@ -66,7 +66,8 @@ export function canUseFirestore() {
 
 export function getSyncStatus() {
   const networkOnline = isNetworkOnline();
-  const currentProjectId = getCurrentProject()?.projectId || '';
+  const currentProject = getCurrentProject();
+  const currentProjectId = currentProject?.projectId || '';
   const unsentCount = currentProjectId ? listUnsent({ projectId: currentProjectId }).length : 0;
   let lamp = 'neutral';
   let text = '未接続';
@@ -75,12 +76,15 @@ export function getSyncStatus() {
   if (state.manualOffline) {
     lamp = 'offline-mode';
     text = 'オフライン';
-  } else if (state.phase === 'local') {
+  } else if (currentProject?.isSample || state.phase === 'local' && !currentProjectId) {
     lamp = 'neutral';
     text = '対象外';
   } else if (!networkOnline) {
     lamp = 'network-offline';
     text = '圏外';
+  } else if (state.phase === 'local') {
+    lamp = 'neutral';
+    text = '対象外';
   } else if (state.phase === 'error') {
     lamp = 'error';
     text = 'エラー';
