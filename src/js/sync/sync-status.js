@@ -3,6 +3,11 @@
  *
  * Firestoreとの通信・同期状態を1か所で管理する。
  * ヘッダーと設定タブはこの状態だけを参照し、各所で独自判定しない。
+ *
+ * v0.1.6.3C:
+ *   「手動オフライン」と「物理的な通信可否」を別概念として扱う。
+ *   isManualOffline() はユーザーが明示的に選んだモードだけを返し、
+ *   Firestore通信可否は canUseFirestore() で判定する。
  */
 
 import { listUnsent } from './unsent-queue.js';
@@ -47,8 +52,20 @@ function setState(patch) {
   notify();
 }
 
+export function isNetworkOnline() {
+  return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+}
+
+export function isManualOffline() {
+  return Boolean(state.manualOffline);
+}
+
+export function canUseFirestore() {
+  return !isManualOffline() && isNetworkOnline();
+}
+
 export function getSyncStatus() {
-  const networkOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+  const networkOnline = isNetworkOnline();
   const currentProjectId = getCurrentProject()?.projectId || '';
   const unsentCount = currentProjectId ? listUnsent({ projectId: currentProjectId }).length : 0;
   let lamp = 'neutral';
@@ -77,12 +94,13 @@ export function getSyncStatus() {
     blinking = true;
   } else if (state.phase === 'ready') {
     lamp = 'connected';
-    text = unsentCount > 0 ? '未送信' : '良好';
+    text = unsentCount > 0 ? `未送信 ${unsentCount}件` : '良好';
   }
 
   return {
     ...state,
     networkOnline,
+    firestoreAvailable: !state.manualOffline && networkOnline,
     lamp,
     text,
     blinking,
@@ -99,15 +117,6 @@ export function subscribeSyncStatus(callback) {
   };
 }
 
-/**
- * Firestore通信を止めるべき状態。
- * 手動オフラインだけでなく、端末自体が圏外のときもtrueにする。
- * 表示上の「オフライン」と「圏外」はstate.manualOfflineで区別したまま維持する。
- */
-export function isManualOffline() {
-  return Boolean(state.manualOffline || (typeof navigator !== 'undefined' && navigator.onLine === false));
-}
-
 export function setManualOffline(enabled) {
   const next = Boolean(enabled);
   writeManualOffline(next);
@@ -116,7 +125,7 @@ export function setManualOffline(enabled) {
   activityTimer = null;
   setState({
     manualOffline: next,
-    phase: next ? 'idle' : (navigator.onLine === false ? 'idle' : 'connecting'),
+    phase: next ? 'idle' : (isNetworkOnline() ? 'connecting' : 'idle'),
     serverConnected: false,
     error: null
   });
@@ -129,16 +138,16 @@ export function markLocalOnly() {
 
 export function markConnecting() {
   if (state.manualOffline) return;
-  setState({ phase: navigator.onLine === false ? 'idle' : 'connecting', serverConnected: false, error: null });
+  setState({ phase: isNetworkOnline() ? 'connecting' : 'idle', serverConnected: false, error: null });
 }
 
 export function markReconnecting() {
   if (state.manualOffline) return;
-  setState({ phase: navigator.onLine === false ? 'idle' : 'reconnecting', serverConnected: false, error: null });
+  setState({ phase: isNetworkOnline() ? 'reconnecting' : 'idle', serverConnected: false, error: null });
 }
 
 export function markReady(lastSyncedAt = 0) {
-  if (state.manualOffline) return;
+  if (state.manualOffline || !isNetworkOnline()) return;
   setState({
     phase: 'ready',
     serverConnected: true,
@@ -149,7 +158,7 @@ export function markReady(lastSyncedAt = 0) {
 
 export function markError(error) {
   if (state.manualOffline) return;
-  if (navigator.onLine === false) {
+  if (!isNetworkOnline()) {
     setState({ phase: 'idle', serverConnected: false, error: error || null });
     return;
   }
@@ -157,7 +166,7 @@ export function markError(error) {
 }
 
 export function beginFirestoreActivity() {
-  if (state.manualOffline) return;
+  if (!canUseFirestore()) return;
   activityDepth += 1;
   if (activityTimer) {
     clearTimeout(activityTimer);
@@ -175,7 +184,7 @@ export function endFirestoreActivity(lastSyncedAt = 0) {
   activityTimer = setTimeout(() => {
     activityTimer = null;
     if (activityDepth === 0 && !state.manualOffline) {
-      const phase = navigator.onLine === false
+      const phase = !isNetworkOnline()
         ? 'idle'
         : (state.serverConnected ? 'ready' : (state.phase === 'reconnecting' ? 'reconnecting' : 'connecting'));
       setState({ phase, lastSyncedAt: synced, error: null });
