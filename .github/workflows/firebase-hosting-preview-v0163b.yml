@@ -51,6 +51,7 @@ jobs:
           grep -q "project-transfer.js" src/service-worker.js
           grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
           grep -q "案件を書き出す" src/js/projects/project-transfer.js
+          grep -q "subscribe(updateButtons)" src/js/projects/project-transfer.js
 
   deploy:
     needs: test
