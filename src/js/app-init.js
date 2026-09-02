@@ -13,6 +13,7 @@ import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
 import { initializeProjectManagement, captureInitialProjectSession } from './projects/project-controller.js';
 import { initializeFirestoreProjectBrowser } from './projects/firestore-project-browser.js';
+import { initializeProjectTransfer } from './projects/project-transfer.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
@@ -48,6 +49,7 @@ function initUiSkeleton() {
   bindModalEvents();
   initializeProjectManagement();
   initializeFirestoreProjectBrowser();
+  initializeProjectTransfer();
   bindAppUpdateEvents();
   bindAuthUiEvents();
   initializeFinishTable();
