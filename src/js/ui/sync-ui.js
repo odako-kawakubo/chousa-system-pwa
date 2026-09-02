@@ -150,11 +150,15 @@ async function runBulkSync() {
   if (bulkSyncRunning) return;
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample) return;
+  const projectId = String(project.projectId);
 
   bulkSyncRunning = true;
   render(getSyncStatus());
   try {
     while (true) {
+      // 同期開始後に案件が切り替わった場合、旧案件の大量送信を画面裏で継続しない。
+      if (String(getCurrentProject()?.projectId || '') !== projectId) return;
+
       const status = getSyncStatus();
       if (status.manualOffline || status.networkOnline === false) {
         showBulkRetryModal(status.unsentCount);
@@ -163,9 +167,12 @@ async function runBulkSync() {
       if (status.unsentCount <= 0) return;
 
       const result = await retryUnsentBatch({
-        projectId: project.projectId,
+        projectId,
         batchSize: BULK_SYNC_BATCH_SIZE
       });
+
+      // 1バッチ中に案件切替が起きても、その50件の原子的commit完了後に止める。
+      if (String(getCurrentProject()?.projectId || '') !== projectId) return;
 
       if (!result.ok) {
         showBulkRetryModal(result.remaining ?? getSyncStatus().unsentCount);
