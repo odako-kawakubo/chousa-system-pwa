@@ -70,6 +70,10 @@ jobs:
             exit 1
           fi
           grep -q "initializeSampleProjectSnapshot" src/js/app-init.js
+          if grep -Eq "seedInitialMaterials|seedInitialFinishRecords" src/js/finish-table/finish-table-controller.js; then
+            echo "finish-table controller still owns sample initialization"
+            exit 1
+          fi
           grep -q "sample-session.js" src/service-worker.js
           grep -q "formatSampleProjectName" src/js/projects/project-store.js
 
