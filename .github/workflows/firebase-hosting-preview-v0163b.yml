@@ -44,6 +44,7 @@ jobs:
           node --check src/js/projects/onedrive-project-browser.js
           node --check src/js/projects/project-transfer.js
           node --check src/js/onedrive/onedrive-client.js
+          node --check src/js/onedrive/onedrive-root.js
           node --check src/js/onedrive/onedrive-connection.js
           node --check src/js/onedrive/onedrive-project.js
           node --check src/js/home/home-controller.js
@@ -79,7 +80,7 @@ jobs:
           grep -q "initializeHome" src/js/app-init.js
           grep -q "サンプル案件を開く" src/js/home/home-controller.js
 
-          # E: Firebase認証とGraph/MSALセッションを分離する。
+          # Firebase認証とGraph/MSALセッションを分離する。
           grep -q 'graphClientId: "f7074fad-6ea0-467b-98db-e308f01950cc"' src/config/microsoft-config.js
           grep -q 'graphScopes: \["User.Read", "Files.ReadWrite", "Sites.ReadWrite.All"\]' src/config/microsoft-config.js
           grep -q "PublicClientApplication" src/js/auth/graph-session.js
@@ -91,18 +92,28 @@ jobs:
             exit 1
           fi
 
-          # E: 04調査の解決責任はonedrive-connectionだけに置く。
-          # 固定共有URLを第一経路、旧v0.14系のOneDrive検索を予備経路とする。
-          grep -q "surveyRootUrl" src/config/microsoft-config.js
+          # v0.14系の04調査取得順序をonedrive-rootへ分離移植する。
+          grep -q "export async function getSurveyRoot" src/js/onedrive/onedrive-root.js
+          grep -q "resolveSharedUrl(microsoftConfig.surveyRootUrl)" src/js/onedrive/onedrive-root.js
+          grep -q "expectedName.replace" src/js/onedrive/onedrive-root.js
+          grep -q "searchDriveFolders(keyword)" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'fixed-share'" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'legacy-search'" src/js/onedrive/onedrive-root.js
           grep -q "export async function resolveSharedUrl" src/js/onedrive/onedrive-client.js
           grep -q "export async function searchDriveFolders" src/js/onedrive/onedrive-client.js
           grep -q "/shares/" src/js/onedrive/onedrive-client.js
           grep -q "/me/drive/root/search" src/js/onedrive/onedrive-client.js
-          grep -q "export async function getUsableSurveyRoot" src/js/onedrive/onedrive-connection.js
-          grep -q "resolveSharedUrl(microsoftConfig.surveyRootUrl)" src/js/onedrive/onedrive-connection.js
-          grep -q "resolveByLegacySearch" src/js/onedrive/onedrive-connection.js
+
+          # connectionはrootを再解決せず、実アクセス/children検証と状態公開だけを担当する。
+          grep -q "getSurveyRoot" src/js/onedrive/onedrive-connection.js
           grep -q "await listDriveChildren(verified)" src/js/onedrive/onedrive-connection.js
-          if grep -q "resolveSharedUrl\|searchDriveFolders\|resolveSharedRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
+          if grep -q "resolveSharedUrl\|searchDriveFolders" src/js/onedrive/onedrive-connection.js; then
+            echo "onedrive-connection still owns root discovery"
+            exit 1
+          fi
+
+          # 案件側はroot ownerを迂回しない。
+          if grep -q "resolveSharedUrl\|searchDriveFolders\|getSurveyRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
             echo "OneDrive consumers bypass connection root owner"
             exit 1
           fi
@@ -143,8 +154,9 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # 新規Graphセッションモジュールをオフライン起動キャッシュへ含める。
+          # 新規モジュールをオフライン起動キャッシュへ含める。
           grep -q "./js/auth/graph-session.js" src/service-worker.js
+          grep -q "./js/onedrive/onedrive-root.js" src/service-worker.js
 
   deploy:
     needs: test
