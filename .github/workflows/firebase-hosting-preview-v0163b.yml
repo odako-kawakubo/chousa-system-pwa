@@ -12,6 +12,7 @@ on:
       - v0.1.6.5B
       - v0.1.6.5C
       - v0.1.6.5D
+      - v0.1.6.5E
   workflow_dispatch:
 
 permissions:
@@ -33,6 +34,8 @@ jobs:
           node --check src/js/sync/sync-status.js
           node --check src/js/firestore/firestore-repository.js
           node --check src/js/firestore/firestore-project-list.js
+          node --check src/js/auth/microsoft-auth.js
+          node --check src/js/auth/graph-session.js
           node --check src/js/projects/project-controller.js
           node --check src/js/projects/project-store.js
           node --check src/js/projects/project-session.js
@@ -53,16 +56,16 @@ jobs:
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5D consistency checks
+      - name: v0.1.6.5E consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5D'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5D"' src/version.json
-          grep -q "chousa-app-v0.1.6.5D" src/service-worker.js
+          grep -q "version: '0.1.6.5E'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5E"' src/version.json
+          grep -q "chousa-app-v0.1.6.5E" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -76,6 +79,48 @@ jobs:
           grep -q "initializeHome" src/js/app-init.js
           grep -q "サンプル案件を開く" src/js/home/home-controller.js
 
+          # E: Firebase認証とGraph/MSALセッションを分離する。
+          grep -q 'graphClientId: "f7074fad-6ea0-467b-98db-e308f01950cc"' src/config/microsoft-config.js
+          grep -q 'graphScopes: \["User.Read", "Files.ReadWrite", "Sites.ReadWrite.All"\]' src/config/microsoft-config.js
+          grep -q "PublicClientApplication" src/js/auth/graph-session.js
+          grep -q "handleRedirectPromise" src/js/auth/graph-session.js
+          grep -q "acquireTokenSilent" src/js/auth/graph-session.js
+          grep -q "cacheLocation: 'localStorage'" src/js/auth/graph-session.js
+          if grep -q "graphAccessToken" src/js/auth/microsoft-auth.js; then
+            echo "Firebase auth still owns Graph token storage"
+            exit 1
+          fi
+
+          # E: 04調査は固定共有URLだけを接続正本にする。名前検索フォールバックは禁止。
+          grep -q "surveyRootUrl" src/config/microsoft-config.js
+          grep -q "export async function resolveSharedUrl" src/js/onedrive/onedrive-client.js
+          grep -q "/shares/" src/js/onedrive/onedrive-client.js
+          grep -q "export async function getUsableSurveyRoot" src/js/onedrive/onedrive-connection.js
+          grep -q "resolveSharedUrl(microsoftConfig.surveyRootUrl)" src/js/onedrive/onedrive-connection.js
+          if grep -q "resolveSharedRoot\|sharedWithMe\|/me/drive/root/search" src/js/onedrive/onedrive-client.js; then
+            echo "obsolete OneDrive root discovery remains"
+            exit 1
+          fi
+          if grep -q "resolveSharedUrl\|resolveSharedRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
+            echo "OneDrive consumers bypass connection root owner"
+            exit 1
+          fi
+          grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
+          grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
+
+          # OneDrive接続状態と案件保存先状態は別モジュールで保持する。
+          grep -q "getOneDriveConnectionState" src/js/home/home-controller.js
+          grep -q "subscribeOneDriveConnection" src/js/settings/settings-controller.js
+          grep -q "data-settings-onedrive-state" src/js/settings/settings-renderer.js
+
+          # 案件を閉じる責任はproject-sessionに置く。
+          grep -q "export function closeProjectSession" src/js/projects/project-session.js
+          grep -q "closeProjectSession" src/js/home/home-controller.js
+          if grep -q "setCurrentProject" src/js/home/home-controller.js; then
+            echo "home-controller still closes project store directly"
+            exit 1
+          fi
+
           # トップから端末内案件を直接開け、アカウント/端末を表示する。
           grep -q "getProjectList" src/js/home/home-controller.js
           grep -q "homeLocalProjectList" src/js/home/home-controller.js
@@ -83,12 +128,13 @@ jobs:
           grep -q "homeMicrosoftName" src/js/home/home-controller.js
           grep -q "dataset.homeReturn" src/js/home/home-return-control.js
 
-          # 既存案件モーダルはイベント配線前にDOMを確定する。
+          # 既存案件モーダルの安全条件を維持する。
           grep -q "initializeProjectEntryUi();" src/js/app-init.js
           grep -q "data-project-source=\"onedrive\"" src/js/projects/project-entry-ui.js
           grep -q "card.addEventListener('click'" src/js/projects/project-entry-ui.js
+          grep -q "この案件番号のFirestore調査データがありません" src/js/projects/onedrive-project-browser.js
 
-          # ヘッダーは未送信件数を通信文言へ混ぜず、件数はまとめて同期側に残す。
+          # ヘッダーはFirestore通信だけ。未送信件数はまとめて同期側。
           grep -q "text = '良好'" src/js/sync/sync-status.js
           if grep -q 'text = unsentCount' src/js/sync/sync-status.js; then
             echo "unsent count is still mixed into header communication label"
@@ -96,18 +142,8 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # Dではv0.14.13の固定共有URLを第一経路として04調査を解決する。
-          grep -q "surveyRootUrl" src/config/microsoft-config.js
-          grep -q "resolveSharedUrl" src/js/onedrive/onedrive-client.js
-          grep -q "/shares/" src/js/onedrive/onedrive-client.js
-          grep -q "sharedRootCache" src/js/onedrive/onedrive-client.js
-          grep -q "export async function resolveSharedRoot" src/js/onedrive/onedrive-client.js
-          grep -q "resolveSharedRoot(ROOT_FOLDER_NAME)" src/js/onedrive/onedrive-project.js
-          grep -q "resolveSharedRoot(ROOT_FOLDER_NAME)" src/js/projects/onedrive-project-browser.js
-          grep -q "Sites.ReadWrite.All" src/config/microsoft-config.js
-          grep -q "getOneDriveConnectionState" src/js/home/home-controller.js
-          grep -q "data-settings-onedrive-state" src/js/settings/settings-renderer.js
-          grep -q "この案件番号のFirestore調査データがありません" src/js/projects/onedrive-project-browser.js
+          # 新規Graphセッションモジュールをオフライン起動キャッシュへ含める。
+          grep -q "./js/auth/graph-session.js" src/service-worker.js
 
   deploy:
     needs: test
