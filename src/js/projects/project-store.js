@@ -10,7 +10,8 @@ import { sampleProject, formatSampleProjectName } from '../demo/sample-project.j
 
 const LOCAL_PROJECTS_KEY = 'chousa-local-projects-v0161b';
 
-let currentProject = { ...sampleProject };
+// 起動時は特定案件を開かない。サンプルも明示的に選択した時だけcurrentにする。
+let currentProject = null;
 let projects = new Map();
 const listeners = [];
 
@@ -110,7 +111,6 @@ export function saveProjectSnapshot({ project, finishRecords = [], materialRecor
 
 /**
  * 既存案件の案件情報だけを更新する。3レコードのSnapshotは触らない。
- * ヘッダー・設定タブなど複数の入口から同じ案件情報を更新するための共通経路。
  */
 export function updateProjectFields(projectId, patch = {}) {
   const id = String(projectId || '');
