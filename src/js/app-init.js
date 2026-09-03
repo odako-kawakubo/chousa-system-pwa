@@ -21,8 +21,6 @@ import { initializeRecordView } from './record-view/record-view-controller.js';
 import { initializeMaterialList } from './materials/material-list-controller.js';
 import { initializeMaterialOperations } from './materials/material-operations-controller.js';
 import { initializePhotoTab } from './photos/photo-controller.js';
-import * as photoRecordStore from './store/photo-record-store.js';
-import { seedInitialPhotoRecords } from './demo/sample-photos.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
@@ -30,6 +28,7 @@ import { bindDeviceUi } from './ui/device-ui.js';
 import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents } from './sync/sync-status.js';
+import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 
 function initUiSkeleton() {
   // SW登録は通常UIの初期化を待たせない。圏外cold start時は前回activeになったSWが起動資産を供給する。
@@ -47,6 +46,10 @@ function initUiSkeleton() {
   bindThemeControls();
   bindProjectPanelEvents();
   bindModalEvents();
+
+  // 公式サンプル案件の3レコードはこの入口で一度だけ組み立てる。
+  initializeSampleProjectSnapshot();
+
   initializeProjectManagement();
   initializeFirestoreProjectBrowser();
   initializeProjectTransfer();
@@ -55,10 +58,6 @@ function initUiSkeleton() {
   initializeFinishTable();
   initializeMaterialList();
   initializeMaterialOperations();
-
-  photoRecordStore.clearAll();
-  seedInitialPhotoRecords();
-
   initializeRecordView();
   initializePhotoTab();
   initializeSettingsTab();
