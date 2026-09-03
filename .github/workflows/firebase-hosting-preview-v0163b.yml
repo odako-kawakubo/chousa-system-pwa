@@ -9,6 +9,7 @@ on:
       - v0.1.6.4B
       - v0.1.6.4C
       - v0.1.6.4
+      - v0.1.6.5B
   workflow_dispatch:
 
 permissions:
@@ -33,23 +34,29 @@ jobs:
           node --check src/js/projects/project-controller.js
           node --check src/js/projects/project-store.js
           node --check src/js/projects/project-session.js
+          node --check src/js/projects/project-entry-ui.js
           node --check src/js/projects/firestore-project-browser.js
+          node --check src/js/projects/onedrive-project-browser.js
           node --check src/js/projects/project-transfer.js
+          node --check src/js/onedrive/onedrive-client.js
+          node --check src/js/onedrive/onedrive-project.js
+          node --check src/js/home/home-controller.js
           node --check src/js/demo/sample-session.js
+          node --check src/js/ui/auth-ui.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.4 consistency checks
+      - name: v0.1.6.5B consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.4'" src/config/app-config.js
-          grep -q '"version": "0.1.6.4"' src/version.json
-          grep -q "chousa-app-v0.1.6.4" src/service-worker.js
+          grep -q "version: '0.1.6.5B'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5B"' src/version.json
+          grep -q "chousa-app-v0.1.6.5B" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -58,25 +65,29 @@ jobs:
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
           grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
 
-          # v0.1.6.4で追加した機能と正式化前整理を守る。
-          grep -q "initializeProjectTransfer" src/js/app-init.js
-          grep -q "project-transfer.js" src/service-worker.js
-          grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
-          grep -q "案件を書き出す" src/js/projects/project-transfer.js
-          grep -q "subscribe(updateButtons)" src/js/projects/project-transfer.js
-          grep -q "export async function openProjectById" src/js/projects/project-controller.js
-          grep -q "openProjectById(project.projectId)" src/js/projects/firestore-project-browser.js
-          if grep -q "localOpenButton.click" src/js/projects/firestore-project-browser.js; then
-            echo "Firestore project browser still depends on DOM click"
+          # Bでは起動時にサンプルをcurrentにしない。
+          grep -q "let currentProject = null" src/js/projects/project-store.js
+          grep -q "initializeHome" src/js/app-init.js
+          grep -q "サンプルを開く" src/js/home/home-controller.js
+
+          # 既存案件モーダルはイベント配線前にDOMを確定する。
+          grep -q "initializeProjectEntryUi();" src/js/app-init.js
+          grep -q "data-project-source=\"onedrive\"" src/js/projects/project-entry-ui.js
+          grep -q "card.addEventListener('click'" src/js/projects/project-entry-ui.js
+
+          # ヘッダーは未送信件数を通信文言へ混ぜず、件数はまとめて同期側に残す。
+          grep -q "text = '良好'" src/js/sync/sync-status.js
+          if grep -q 'text = unsentCount' src/js/sync/sync-status.js; then
+            echo "unsent count is still mixed into header communication label"
             exit 1
           fi
-          grep -q "initializeSampleProjectSnapshot" src/js/app-init.js
-          if grep -Eq "seedInitialMaterials|seedInitialFinishRecords" src/js/finish-table/finish-table-controller.js; then
-            echo "finish-table controller still owns sample initialization"
-            exit 1
-          fi
-          grep -q "sample-session.js" src/service-worker.js
-          grep -q "formatSampleProjectName" src/js/projects/project-store.js
+          grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
+
+          # OneDrive共通基盤と既存案件ブラウザを確認する。
+          grep -q "ROOT_FOLDER_NAME = '04 調査'" src/js/onedrive/onedrive-project.js
+          grep -q "この案件番号のFirestore調査データがありません" src/js/projects/onedrive-project-browser.js
+          grep -q "project-entry-ui.js" src/service-worker.js
+          grep -q "home/home-controller.js" src/service-worker.js
 
   deploy:
     needs: test
