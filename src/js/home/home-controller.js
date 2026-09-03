@@ -1,28 +1,31 @@
 /**
  * しらべの中立トップ画面。
  * 起動時は案件未選択でここを表示し、端末内案件・新規・クラウド既存・サンプルを分離する。
- * 同じブラウザセッション内の再読込では直前案件を復帰し、セッション終了後はトップから始める。
+ * 同じブラウザセッション内の再読込では直前案件を復帰し、明示的にトップへ戻った場合は復帰対象を解除する。
  */
 import {
   getCurrentProject,
   getProject,
   getProjectList,
   formatProjectLabel,
+  setCurrentProject,
   subscribe
 } from '../projects/project-store.js';
 import { openProjectById } from '../projects/project-controller.js';
-import { openProjectSession } from '../projects/project-session.js';
+import { openProjectSession, saveCurrentProjectSession } from '../projects/project-session.js';
 import { sampleProject } from '../demo/sample-project.js';
 import { openModal } from '../ui/modal.js';
 import { getAuthUiState, reconnectMicrosoftAuth, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
-import { resolveSharedRoot } from '../onedrive/onedrive-client.js';
-import { getGraphAccessToken } from '../auth/microsoft-auth.js';
 import { getDeviceDisplayName, subscribeDeviceName } from '../device-code.js';
 import { isManualOffline, markLocalOnly } from '../sync/sync-status.js';
+import {
+  getOneDriveConnectionState,
+  refreshOneDriveConnection,
+  subscribeOneDriveConnection
+} from '../onedrive/onedrive-connection.js';
 
 const ACTIVE_PROJECT_SESSION_KEY = 'shirabe-active-project-session';
-const ONEDRIVE_ROOT_NAME = '04 調査';
 let checkToken = 0;
 let currentAvailability = {
   firestore: false,
@@ -58,9 +61,12 @@ function ensureHomeDom() {
   home.innerHTML = `
     <div class="shirabe-home-shell">
       <header class="shirabe-home-header">
-        <div class="shirabe-home-brand">
-          <h1>しらべ</h1>
-          <span>調査システム</span>
+        <div class="shirabe-home-brand-block">
+          <div class="shirabe-home-brand">
+            <h1>しらべ</h1>
+            <span>調査システム</span>
+          </div>
+          <p>現場で使う案件を選択してください。</p>
         </div>
         <div class="shirabe-home-meta">
           <div class="shirabe-meta-item">
@@ -94,31 +100,33 @@ function ensureHomeDom() {
           <div class="shirabe-section-heading">
             <div>
               <span class="shirabe-section-kicker">この端末</span>
-              <h2>案件を開く</h2>
+              <h2>最近の案件</h2>
             </div>
           </div>
           <div class="shirabe-local-project-list" id="homeLocalProjectList"></div>
         </section>
 
-        <section class="shirabe-home-section shirabe-start-section">
+        <aside class="shirabe-home-section shirabe-start-section">
           <div class="shirabe-section-heading">
             <div>
-              <span class="shirabe-section-kicker">案件</span>
-              <h2>新しく始める</h2>
+              <span class="shirabe-section-kicker">操作</span>
+              <h2>案件を開く</h2>
             </div>
           </div>
           <div class="shirabe-primary-actions">
             <button type="button" class="shirabe-action-card primary" id="homeNewProjectButton">
               <span class="shirabe-action-symbol">＋</span>
-              <span><strong>新規作成</strong><small>仮案件を作成</small></span>
+              <span><strong>新規作成</strong><small>仮案件を作成して調査を開始</small></span>
             </button>
             <button type="button" class="shirabe-action-card" id="homeOpenExistingButton" disabled>
               <span class="shirabe-action-symbol">↗</span>
-              <span><strong>既存案件を開く</strong><small>Firestore / OneDrive</small></span>
+              <span><strong>既存案件を開く</strong><small>Firestore / OneDriveから選択</small></span>
             </button>
           </div>
-          <button type="button" class="shirabe-sample-button" id="homeOpenSampleButton">サンプル案件を開く</button>
-        </section>
+          <div class="shirabe-home-secondary">
+            <button type="button" class="shirabe-sample-button" id="homeOpenSampleButton">サンプル案件を開く</button>
+          </div>
+        </aside>
       </main>
     </div>
   `;
@@ -141,6 +149,14 @@ function rememberAndRenderProjectMode() {
     if (project?.projectId) sessionStorage.setItem(ACTIVE_PROJECT_SESSION_KEY, String(project.projectId));
   } catch {
     // セッション保存不可でも現在画面は維持する。
+  }
+}
+
+function clearResumeProjectId() {
+  try {
+    sessionStorage.removeItem(ACTIVE_PROJECT_SESSION_KEY);
+  } catch {
+    // セッション保存不可でもトップ表示は行う。
   }
 }
 
@@ -195,20 +211,24 @@ function renderIdentity() {
   }
 }
 
-function renderServiceStatus(wrapperId, valueId, connected, message) {
+function renderServiceStatus(wrapperId, valueId, connected, message, phase = '') {
   const wrapper = document.getElementById(wrapperId);
   const value = document.getElementById(valueId);
   if (wrapper) {
-    wrapper.dataset.state = connected ? 'ready' : 'off';
+    wrapper.dataset.state = connected ? 'ready' : (phase === 'checking' ? 'checking' : 'off');
     wrapper.title = message || '';
   }
-  if (value) value.textContent = connected ? '接続' : '未接続';
+  if (value) value.textContent = phase === 'checking' ? '確認中' : (connected ? '接続' : '未接続');
 }
 
 function renderAvailability() {
   const auth = getAuthUiState();
   const openExisting = document.getElementById('homeOpenExistingButton');
   const note = document.getElementById('homeConnectionNote');
+  const oneDriveState = getOneDriveConnectionState();
+
+  currentAvailability.oneDrive = oneDriveState.connected;
+  currentAvailability.oneDriveError = oneDriveState.error || '';
 
   renderIdentity();
   renderServiceStatus(
@@ -221,7 +241,8 @@ function renderAvailability() {
     'homeOneDriveStatus',
     'homeOneDriveState',
     currentAvailability.oneDrive,
-    currentAvailability.oneDriveError
+    currentAvailability.oneDriveError,
+    oneDriveState.phase
   );
 
   if (openExisting) openExisting.disabled = !(currentAvailability.firestore || currentAvailability.oneDrive);
@@ -266,29 +287,18 @@ function renderLocalProjects() {
 async function checkAvailability() {
   const token = ++checkToken;
   const auth = getAuthUiState();
-  currentAvailability = { firestore: false, oneDrive: false, firestoreError: '', oneDriveError: '' };
+  currentAvailability.firestore = false;
+  currentAvailability.firestoreError = '';
   renderAvailability();
 
   if (!auth.loggedIn || navigator.onLine === false || isManualOffline()) return;
 
-  const firestoreCheck = readFirestoreProjectList()
+  const firestore = await readFirestoreProjectList()
     .then(() => ({ ok: true, error: '' }))
     .catch((error) => ({ ok: false, error: error?.message || 'Firestoreへ接続できません。' }));
-
-  const oneDriveCheck = getGraphAccessToken()
-    ? resolveSharedRoot(ONEDRIVE_ROOT_NAME)
-      .then(() => ({ ok: true, error: '' }))
-      .catch((error) => ({ ok: false, error: error?.message || 'OneDriveへ接続できません。' }))
-    : Promise.resolve({ ok: false, error: 'Microsoft Graphトークンがありません。' });
-
-  const [firestore, oneDrive] = await Promise.all([firestoreCheck, oneDriveCheck]);
   if (token !== checkToken) return;
-  currentAvailability = {
-    firestore: firestore.ok,
-    oneDrive: oneDrive.ok,
-    firestoreError: firestore.error,
-    oneDriveError: oneDrive.error
-  };
+  currentAvailability.firestore = firestore.ok;
+  currentAvailability.firestoreError = firestore.error;
   renderAvailability();
 }
 
@@ -303,6 +313,13 @@ async function openLocalProject(projectId) {
 
   openProjectSession(entry);
   markLocalOnly();
+}
+
+function returnToHome() {
+  saveCurrentProjectSession();
+  clearResumeProjectId();
+  resumeAttempted = true;
+  setCurrentProject(null);
 }
 
 function bindHomeEvents() {
@@ -334,6 +351,7 @@ function bindHomeEvents() {
     button.disabled = true;
     try {
       await reconnectMicrosoftAuth();
+      await refreshOneDriveConnection({ force: true });
       await checkAvailability();
     } catch {
       // 認証UI側で表示済み。
@@ -341,6 +359,8 @@ function bindHomeEvents() {
       renderIdentity();
     }
   });
+
+  document.querySelector('[data-home-return]')?.addEventListener('click', returnToHome);
 
   window.addEventListener('online', () => void checkAvailability());
   window.addEventListener('offline', () => void checkAvailability());
@@ -356,6 +376,7 @@ export function initializeHome() {
     renderLocalProjects();
   });
   subscribeDeviceName(renderIdentity);
+  subscribeOneDriveConnection(renderAvailability);
   subscribeAuthUiState(() => {
     renderIdentity();
     void checkAvailability();
@@ -364,6 +385,7 @@ export function initializeHome() {
   rememberAndRenderProjectMode();
   renderLocalProjects();
   renderIdentity();
+  renderAvailability();
   void checkAvailability();
   void tryResumeProject();
 }
