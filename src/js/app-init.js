@@ -28,6 +28,7 @@ import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
+import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
 import { initializeHome } from './home/home-controller.js';
 
@@ -59,7 +60,11 @@ function initUiSkeleton() {
   initializeProjectTransfer();
   bindAppUpdateEvents();
   bindAuthUiEvents();
+
+  // OneDrive接続状態を先に開始し、トップ・設定・案件連携が同じ状態を参照する。
+  initializeOneDriveConnection();
   initializeOneDriveProjectIntegration();
+
   initializeFinishTable();
   initializeMaterialList();
   initializeMaterialOperations();
