@@ -2,6 +2,7 @@
  * しらべの中立トップ画面。
  * 起動時は案件未選択でここを表示し、新規・既存・サンプルの入口を分離する。
  * 既存案件はFirestoreとOneDriveの両方を確認できた時だけ開ける。
+ * 同じブラウザセッション内の再読込では直前案件を復帰し、セッション終了後はトップから始める。
  */
 import { getCurrentProject, getProject, subscribe } from '../projects/project-store.js';
 import { openProjectById } from '../projects/project-controller.js';
@@ -13,8 +14,10 @@ import { findChildFolder } from '../onedrive/onedrive-client.js';
 import { getGraphAccessToken } from '../auth/microsoft-auth.js';
 import { isManualOffline } from '../sync/sync-status.js';
 
+const ACTIVE_PROJECT_SESSION_KEY = 'shirabe-active-project-session';
 let checkToken = 0;
 let currentAvailability = { firestore: false, oneDrive: false };
+let resumeAttempted = false;
 
 function ensureStylesheet() {
   if (document.querySelector('link[data-shirabe-home-css]')) return;
@@ -67,8 +70,43 @@ function setAppVisible(visible) {
   if (home) home.hidden = visible;
 }
 
-function renderProjectMode() {
-  setAppVisible(Boolean(getCurrentProject()?.projectId));
+function rememberAndRenderProjectMode() {
+  const project = getCurrentProject();
+  setAppVisible(Boolean(project?.projectId));
+  try {
+    if (project?.projectId) sessionStorage.setItem(ACTIVE_PROJECT_SESSION_KEY, String(project.projectId));
+  } catch {
+    // セッション保存不可でも現在画面は維持する。
+  }
+}
+
+function readResumeProjectId() {
+  try {
+    return sessionStorage.getItem(ACTIVE_PROJECT_SESSION_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+async function tryResumeProject() {
+  if (resumeAttempted || getCurrentProject()?.projectId) return;
+  const projectId = readResumeProjectId();
+  if (!projectId) {
+    resumeAttempted = true;
+    return;
+  }
+  const entry = getProject(projectId);
+  if (!entry?.project) {
+    resumeAttempted = true;
+    return;
+  }
+
+  const auth = getAuthUiState();
+  const canResumeNow = entry.project.isSample || navigator.onLine === false || auth.loggedIn;
+  if (!canResumeNow) return;
+
+  resumeAttempted = true;
+  await openProjectById(projectId);
 }
 
 function renderAvailability() {
@@ -152,8 +190,12 @@ export function initializeHome() {
   ensureStylesheet();
   ensureHomeDom();
   bindHomeEvents();
-  subscribe(() => renderProjectMode());
-  subscribeAuthUiState(() => void checkAvailability());
-  renderProjectMode();
+  subscribe(() => rememberAndRenderProjectMode());
+  subscribeAuthUiState(() => {
+    void checkAvailability();
+    void tryResumeProject();
+  });
+  rememberAndRenderProjectMode();
   void checkAvailability();
+  void tryResumeProject();
 }
