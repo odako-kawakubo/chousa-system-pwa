@@ -1,11 +1,11 @@
 /*
- * v0.1.6.5D Service Worker
+ * v0.1.6.5E Service Worker
  *
  * 責任は「アプリ本体を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5D';
+const APP_CACHE = 'chousa-app-v0.1.6.5E';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -33,6 +33,8 @@ const APP_SHELL = [
   './js/pwa/pwa-controller.js',
   './js/home/home-controller.js',
   './js/home/home-return-control.js',
+  './js/auth/microsoft-auth.js',
+  './js/auth/graph-session.js',
   './js/ui/auth-ui.js',
   './js/ui/header-edit-ui.js',
   './js/ui/sync-ui.js',
