@@ -1,11 +1,7 @@
 /**
  * src/js/ui/auth-ui.js
- *
- * Microsoft認証のヘッダー表示を管理する。
- * Microsoftシンボルはアプリ内ローカル資産を使い、圏外起動でも表示を維持する。
- * ログアウトはユーザー名タップ時の確認から行う。
+ * Microsoft認証のヘッダー表示と認証状態通知を管理する。
  */
-
 import {
   loginWithMicrosoft,
   logoutMicrosoft,
@@ -30,6 +26,7 @@ function snapshot() {
 function notify() {
   const value = snapshot();
   listeners.slice().forEach((callback) => callback(value));
+  window.dispatchEvent(new CustomEvent('chousa:auth-state-change', { detail: value }));
 }
 
 function ensureMicrosoftBranding() {
@@ -80,20 +77,29 @@ function renderAuthState(user) {
   notify();
 }
 
+async function performSignIn(button = null) {
+  if (button) button.disabled = true;
+  try {
+    const user = await loginWithMicrosoft();
+    renderAuthState(user);
+    return user;
+  } catch (error) {
+    console.error('Microsoft認証に失敗しました。', error);
+    window.alert(`Microsoft認証に失敗しました。\n${error?.message || error}`);
+    throw error;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function handleSignIn() {
   if (currentUser) return;
   const button = document.getElementById('msAuthBtn');
   if (!button) return;
-
-  button.disabled = true;
   try {
-    const user = await loginWithMicrosoft();
-    renderAuthState(user);
-  } catch (error) {
-    console.error('Microsoft認証に失敗しました。', error);
-    window.alert(`Microsoft認証に失敗しました。\n${error?.message || error}`);
-  } finally {
-    button.disabled = false;
+    await performSignIn(button);
+  } catch {
+    // performSignInで通知済み。
   }
 }
 
@@ -112,6 +118,11 @@ async function handleAccountClick() {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+/** Firebaseログインが残っていてGraphトークンだけ失われた場合も再認証できる入口。 */
+export async function reconnectMicrosoftAuth() {
+  return performSignIn(null);
 }
 
 export function getAuthUiState() {
