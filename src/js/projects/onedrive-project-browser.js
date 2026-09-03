@@ -1,17 +1,15 @@
 /**
  * 「既存案件を開く」モーダルのOneDrive側。
- * OneDriveは案件フォルダ選択にだけ使い、Firestoreに既存のしらべデータがない案件を
- * 自動作成しない。既存データがある場合だけ同じ案件番号で開いてOneDriveを紐付ける。
+ * OneDrive業務ルートはonedrive-connectionの正本のみを使用する。
  */
-import { getGraphAccessToken } from '../auth/microsoft-auth.js';
-import { listDriveChildren, resolveSharedRoot } from '../onedrive/onedrive-client.js';
+import { listDriveChildren } from '../onedrive/onedrive-client.js';
+import { getUsableSurveyRoot, getOneDriveConnectionState } from '../onedrive/onedrive-connection.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getProject, saveProjectSnapshot, updateProjectSyncMeta } from './project-store.js';
 import { openProjectById } from './project-controller.js';
 import { closeModal } from '../ui/modal.js';
 
 const MODAL_ID = 'sharedProjectModal';
-const ROOT_FOLDER_NAME = '04 調査';
 let projectFolders = [];
 let loading = false;
 let resolvedRoot = null;
@@ -82,11 +80,12 @@ function render() {
 async function loadProjects() {
   if (loading) return;
   const { input, searchButton, list } = elements();
-  if (!getGraphAccessToken()) {
+  const connection = getOneDriveConnectionState();
+  if (!connection.connected) {
     projectFolders = [];
     resolvedRoot = null;
     if (list) list.innerHTML = '';
-    setStatus('OneDriveが未接続です。', 'warn');
+    setStatus(connection.error || 'OneDriveが未接続です。', 'warn');
     return;
   }
 
@@ -97,7 +96,7 @@ async function loadProjects() {
   setStatus('OneDrive案件を読み込んでいます…');
 
   try {
-    resolvedRoot = await resolveSharedRoot(ROOT_FOLDER_NAME);
+    resolvedRoot = await getUsableSurveyRoot();
     projectFolders = (await listDriveChildren(resolvedRoot))
       .filter((item) => item.folder)
       .map(parseProjectFolder)
@@ -140,7 +139,7 @@ async function openFolder(folderId) {
         driveId: folder.driveId || resolvedRoot?.driveId || '',
         rootDriveId: resolvedRoot?.driveId || '',
         rootFolderId: resolvedRoot?.itemId || resolvedRoot?.id || '',
-        rootFolderName: ROOT_FOLDER_NAME,
+        rootFolderName: resolvedRoot?.name || '04 調査',
         projectFolderId: folder.id,
         projectFolderName: folder.name,
         projectFolderWebUrl: folder.webUrl
