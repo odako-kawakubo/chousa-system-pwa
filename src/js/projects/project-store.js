@@ -1,13 +1,12 @@
 /**
  * src/js/projects/project-store.js
  *
- * v0.1.6.1B 案件一覧Store。
- * デモ案件 + 端末内で作成した仮案件を一覧管理し、案件ごとの3レコード
- * スナップショットを保持する。Firestore接続前の確認用ローカル実装。
+ * 端末内の案件一覧と、案件ごとの3レコードSnapshot・同期メタ情報を保持する。
+ * Firestoreを正本としつつ、案件切替・圏外継続・再起動後の復元に必要な
+ * 端末内SnapshotをlocalStorageへ保存する。
  */
 
-import { sampleProject } from '../demo/sample-project.js';
-import { appConfig } from '../../config/app-config.js';
+import { sampleProject, formatSampleProjectName } from '../demo/sample-project.js';
 
 const LOCAL_PROJECTS_KEY = 'chousa-local-projects-v0161b';
 
@@ -43,7 +42,7 @@ function loadLocalProjects() {
       projects.set(entry.project.projectId, cloneEntry(entry));
     });
   } catch {
-    // 壊れた一時データでアプリ起動を止めない。
+    // 壊れた端末内Snapshotでアプリ起動を止めない。
   }
 }
 
@@ -54,7 +53,7 @@ function persistLocalProjects() {
       .map(cloneEntry);
     localStorage.setItem(LOCAL_PROJECTS_KEY, JSON.stringify(payload));
   } catch {
-    // Firestore接続前の確認用ローカル保存。失敗しても画面操作は継続する。
+    // 端末保存に失敗しても、そのセッション中の画面操作は継続する。
   }
 }
 
@@ -110,7 +109,7 @@ export function saveProjectSnapshot({ project, finishRecords = [], materialRecor
 }
 
 /**
- * 既存案件の案件情報だけを更新する。3レコードのスナップショットは触らない。
+ * 既存案件の案件情報だけを更新する。3レコードのSnapshotは触らない。
  * ヘッダー・設定タブなど複数の入口から同じ案件情報を更新するための共通経路。
  */
 export function updateProjectFields(projectId, patch = {}) {
@@ -170,13 +169,9 @@ export function subscribe(callback) {
   };
 }
 
-function samplePrefix() {
-  return /[A-Z]$/.test(String(appConfig.version || '')) ? '［レビュー］' : '［サンプル］';
-}
-
 /** 案件一覧・ヘッダーで使う「番号 案件名」表示。 */
 export function formatProjectLabel(project) {
   if (!project) return '案件未選択';
-  if (project.isSample) return `${samplePrefix()}${project.projectName || ''}`;
+  if (project.isSample) return formatSampleProjectName(project);
   return [project.projectNo, project.projectName].filter(Boolean).join('　');
 }
