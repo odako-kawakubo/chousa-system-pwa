@@ -49,6 +49,7 @@ const APP_SHELL = [
   './js/projects/onedrive-project-browser.js',
   './js/projects/project-transfer.js',
   './js/onedrive/onedrive-client.js',
+  './js/onedrive/onedrive-root.js',
   './js/onedrive/onedrive-connection.js',
   './js/onedrive/onedrive-project.js',
   './js/demo/sample-session.js',
