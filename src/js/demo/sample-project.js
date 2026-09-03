@@ -1,7 +1,5 @@
 /**
- * src/js/demo/sample-project.js
- *
- * 公式サンプル案件の固定データ。
+ * 公式サンプル案件の固定データと表示名ルール。
  */
 
 import { appConfig } from '../../config/app-config.js';
@@ -18,7 +16,11 @@ function samplePrefix() {
   return /[A-Z]$/.test(String(appConfig.version || '')) ? '［レビュー］' : '［サンプル］';
 }
 
+export function formatSampleProjectName(project) {
+  return `${samplePrefix()}${project?.projectName || ''}`;
+}
+
 export function formatProjectDisplayName(project) {
   if (!project) return '';
-  return project.isSample ? `${samplePrefix()}${project.projectName}` : project.projectName;
+  return project.isSample ? formatSampleProjectName(project) : project.projectName;
 }
