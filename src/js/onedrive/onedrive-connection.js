@@ -1,7 +1,7 @@
 /**
- * OneDrive接続状態と「04 調査」業務ルートの唯一の正本。
- * 固定共有URLを第一経路とし、旧v0.14系と同じOneDrive内検索を予備経路にする。
- * 採用した候補のdriveId/itemIdへ実アクセスし、children取得まで成功した時だけ接続済みにする。
+ * OneDrive接続状態の正本。
+ * 「04 調査」の解決・キャッシュはonedrive-root、Graph認証はgraph-sessionが担当する。
+ * ここでは取得済みrootの実アクセスとchildren取得を確認し、接続状態だけを公開する。
  */
 import {
   initializeGraphSession,
@@ -9,19 +9,14 @@ import {
   subscribeGraphSession,
   getGraphAccessToken
 } from '../auth/graph-session.js';
-import {
-  resolveSharedUrl,
-  searchDriveFolders,
-  getDriveItem,
-  listDriveChildren
-} from './onedrive-client.js';
+import { getDriveItem, listDriveChildren } from './onedrive-client.js';
+import { getSurveyRoot, clearSurveyRoot, getCachedSurveyRoot } from './onedrive-root.js';
 import { microsoftConfig } from '../../config/microsoft-config.js';
 import { isManualOffline } from '../sync/sync-status.js';
 
 const listeners = [];
 let generation = 0;
 let initialized = false;
-let rootCache = null;
 let state = {
   phase: 'unconnected',
   connected: false,
@@ -73,7 +68,7 @@ function isExpectedRootName(name) {
   return actual === expected || actual.includes(expected);
 }
 
-async function verifyRoot(candidate, source) {
+async function verifyResolvedRoot(candidate) {
   const verified = await getDriveItem(candidate);
   if (!verified?.folder || !verified.driveId || !verified.itemId) {
     const error = new Error('04 調査の実体へアクセスできませんでした。');
@@ -86,54 +81,14 @@ async function verifyRoot(candidate, source) {
     throw error;
   }
 
-  // 「接続」はフォルダ本体のGETだけではなく、実際に案件一覧で使うchildrenまで読めた状態とする。
+  // 案件一覧で実際に使うchildrenまで読めることを接続条件にする。
   await listDriveChildren(verified);
-  return { ...verified, rootSource: source };
-}
-
-async function resolveByLegacySearch() {
-  const expected = String(microsoftConfig.surveyRootName || '').trim();
-  const keyword = expected.replace(/^\d+\s*/, '').trim() || expected;
-  const folders = await searchDriveFolders(keyword);
-  const exact = folders.find((item) => String(item.name || '').trim() === expected);
-  const includesExpected = folders.find((item) => String(item.name || '').includes(expected));
-  const includesKeyword = folders.find((item) => String(item.name || '').includes(keyword));
-  const candidate = exact || includesExpected || includesKeyword || null;
-  if (!candidate) {
-    const error = new Error(`OneDrive内に「${expected}」が見つかりません。`);
-    error.code = 'SURVEY_ROOT_SEARCH_NOT_FOUND';
-    throw error;
-  }
-  return verifyRoot(candidate, 'legacy-search');
-}
-
-async function resolveAndVerifyRoot() {
-  await getGraphAccessToken();
-
-  let sharedUrlError = null;
-  try {
-    const shared = await resolveSharedUrl(microsoftConfig.surveyRootUrl);
-    return await verifyRoot(shared, 'fixed-share');
-  } catch (error) {
-    sharedUrlError = error;
-  }
-
-  try {
-    return await resolveByLegacySearch();
-  } catch (searchError) {
-    const error = new Error(
-      `04 調査へ接続できませんでした。共有URL: ${sharedUrlError?.message || '失敗'} / 検索: ${searchError?.message || '失敗'}`
-    );
-    error.code = searchError?.code || sharedUrlError?.code || 'SURVEY_ROOT_RESOLVE_FAILED';
-    error.sharedUrlError = sharedUrlError;
-    error.searchError = searchError;
-    throw error;
-  }
+  return { ...verified, rootSource: candidate.rootSource || '' };
 }
 
 /**
  * OneDriveを使う全機能の入口。
- * 案件一覧や案件保存側は共有URL・検索を直接行わず、必ずここから同じrootを取得する。
+ * 案件一覧/案件保存側はルート解決を行わず、必ずここから同じrootを取得する。
  */
 export async function getUsableSurveyRoot({ force = false } = {}) {
   if (navigator.onLine === false) throw Object.assign(new Error('圏外です。'), { code: 'NETWORK_OFFLINE' });
@@ -143,14 +98,12 @@ export async function getUsableSurveyRoot({ force = false } = {}) {
     throw Object.assign(new Error('Microsoft Graphへログインしていません。'), { code: 'GRAPH_LOGIN_REQUIRED' });
   }
 
-  if (!force && rootCache?.driveId && rootCache?.itemId) return { ...rootCache };
-  rootCache = await resolveAndVerifyRoot();
-  return { ...rootCache };
+  await getGraphAccessToken();
+  const candidate = await getSurveyRoot({ force });
+  return verifyResolvedRoot(candidate);
 }
 
-export function clearSurveyRoot() {
-  rootCache = null;
-}
+export { clearSurveyRoot };
 
 export async function refreshOneDriveConnection({ force = false } = {}) {
   const currentGeneration = ++generation;
@@ -169,14 +122,15 @@ export async function refreshOneDriveConnection({ force = false } = {}) {
     return cloneState();
   }
 
+  const cached = getCachedSurveyRoot();
   publish({
     phase: 'checking',
     connected: false,
     text: '確認中',
     error: '',
     errorCode: '',
-    root: rootCache,
-    rootSource: rootCache?.rootSource || ''
+    root: cached,
+    rootSource: cached?.rootSource || ''
   });
 
   try {
