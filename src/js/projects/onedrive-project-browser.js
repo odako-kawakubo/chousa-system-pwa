@@ -4,7 +4,7 @@
  * 自動作成しない。既存データがある場合だけ同じ案件番号で開いてOneDriveを紐付ける。
  */
 import { getGraphAccessToken } from '../auth/microsoft-auth.js';
-import { listDriveChildren, findChildFolder } from '../onedrive/onedrive-client.js';
+import { listDriveChildren, resolveSharedRoot } from '../onedrive/onedrive-client.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getProject, saveProjectSnapshot, updateProjectSyncMeta } from './project-store.js';
 import { openProjectById } from './project-controller.js';
@@ -14,6 +14,7 @@ const MODAL_ID = 'sharedProjectModal';
 const ROOT_FOLDER_NAME = '04 調査';
 let projectFolders = [];
 let loading = false;
+let resolvedRoot = null;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -39,7 +40,8 @@ function parseProjectFolder(item) {
   const name = String(item?.name || '').trim();
   const match = name.match(/^(\S+)[\s　]+(.+)$/);
   return {
-    id: String(item?.id || ''),
+    id: String(item?.itemId || item?.id || ''),
+    driveId: String(item?.driveId || ''),
     name,
     webUrl: item?.webUrl || '',
     projectNo: match?.[1] || name,
@@ -82,6 +84,7 @@ async function loadProjects() {
   const { input, searchButton, list } = elements();
   if (!getGraphAccessToken()) {
     projectFolders = [];
+    resolvedRoot = null;
     if (list) list.innerHTML = '';
     setStatus('OneDriveが未接続です。', 'warn');
     return;
@@ -94,19 +97,19 @@ async function loadProjects() {
   setStatus('OneDrive案件を読み込んでいます…');
 
   try {
-    const root = await findChildFolder('root', ROOT_FOLDER_NAME);
-    if (!root) throw new Error(`OneDrive直下に「${ROOT_FOLDER_NAME}」が見つかりません。`);
-    projectFolders = (await listDriveChildren(root.id))
+    resolvedRoot = await resolveSharedRoot(ROOT_FOLDER_NAME);
+    projectFolders = (await listDriveChildren(resolvedRoot))
       .filter((item) => item.folder)
       .map(parseProjectFolder)
       .filter((item) => item.projectNo)
-      .sort((a, b) => a.projectNo.localeCompare(b.projectNo, 'ja'));
+      .sort((a, b) => b.projectNo.localeCompare(a.projectNo, 'ja'));
     if (input) input.disabled = false;
     if (searchButton) searchButton.disabled = false;
     setStatus(`OneDrive案件 ${projectFolders.length}件`);
     render();
   } catch (error) {
     projectFolders = [];
+    resolvedRoot = null;
     setStatus(error?.message || 'OneDrive案件を読み込めませんでした。', 'warn');
     render();
   } finally {
@@ -134,6 +137,9 @@ async function openFolder(folderId) {
     updateProjectSyncMeta(project.projectId, {
       oneDriveBinding: {
         mode: 'formal',
+        driveId: folder.driveId || resolvedRoot?.driveId || '',
+        rootDriveId: resolvedRoot?.driveId || '',
+        rootFolderId: resolvedRoot?.itemId || resolvedRoot?.id || '',
         rootFolderName: ROOT_FOLDER_NAME,
         projectFolderId: folder.id,
         projectFolderName: folder.name,
