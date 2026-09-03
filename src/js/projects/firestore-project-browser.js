@@ -1,7 +1,6 @@
 /**
- * 「既存案件を開く」モーダルのFirestore案件一覧を担当する。
- * 選択した案件は端末内案件Storeへ登録し、project-controllerの正式な
- * 案件オープン入口へ直接渡す。
+ * 「既存案件を開く」モーダルのFirestore側を担当する。
+ * OneDrive側とはDOMと責務を分け、選択した案件だけproject-controllerへ渡す。
  */
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getCurrentProject, getProject, saveProjectSnapshot } from './project-store.js';
@@ -26,9 +25,9 @@ function elements() {
   return {
     modal,
     list: document.getElementById('sharedProjectList'),
-    input: modal?.querySelector('.shared-project-search') || null,
-    searchButton: modal?.querySelector('.shared-project-search-row .btn') || null,
-    status: modal?.querySelector('.project-restore-status') || null
+    input: modal?.querySelector('[data-firestore-project-search]') || null,
+    searchButton: modal?.querySelector('[data-firestore-project-search-button]') || null,
+    status: modal?.querySelector('[data-firestore-project-status]') || null
   };
 }
 
@@ -43,7 +42,6 @@ function render() {
   const { list, input } = elements();
   if (!list) return;
   const filtered = remoteProjects.filter((project) => matches(project, input?.value));
-
   if (!filtered.length) {
     list.innerHTML = '<div class="hint" style="padding:16px 4px">該当するFirestore案件がありません</div>';
     return;
@@ -68,7 +66,7 @@ function setStatus(message, type = '') {
   const { status } = elements();
   if (!status) return;
   status.textContent = message;
-  status.className = `project-restore-status show ${type}`.trim();
+  status.className = `project-restore-status${message ? ' show' : ''}${type ? ` ${type}` : ''}`;
 }
 
 async function loadProjects() {
@@ -98,17 +96,9 @@ async function loadProjects() {
 async function openRemoteProject(projectId) {
   const project = remoteProjects.find((item) => item.projectId === String(projectId || ''));
   if (!project) return;
-
   if (!getProject(project.projectId)) {
-    saveProjectSnapshot({
-      project,
-      finishRecords: [],
-      materialRecords: [],
-      photoRecords: [],
-      syncMeta: {}
-    });
+    saveProjectSnapshot({ project, finishRecords: [], materialRecords: [], photoRecords: [], syncMeta: {} });
   }
-
   closeModal(MODAL_ID);
   await openProjectById(project.projectId);
 }
@@ -120,17 +110,18 @@ export function initializeFirestoreProjectBrowser() {
 
   if (restoreButton.dataset.firestoreBrowserBound !== '1') {
     restoreButton.dataset.firestoreBrowserBound = '1';
-    restoreButton.addEventListener('click', () => {
-      void loadProjects();
-    });
+    restoreButton.addEventListener('click', () => void loadProjects());
   }
+
+  window.addEventListener('chousa:project-source-change', (event) => {
+    if (event.detail?.source === 'firestore') void loadProjects();
+  });
 
   if (list.dataset.firestoreBrowserBound !== '1') {
     list.dataset.firestoreBrowserBound = '1';
     list.addEventListener('click', (event) => {
       const button = event.target.closest('[data-firestore-project-id]');
-      if (!button) return;
-      void openRemoteProject(button.dataset.firestoreProjectId);
+      if (button) void openRemoteProject(button.dataset.firestoreProjectId);
     });
   }
 
