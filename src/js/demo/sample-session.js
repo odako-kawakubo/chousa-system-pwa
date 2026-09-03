@@ -1,9 +1,6 @@
 /**
  * 公式サンプル案件の初期データを1か所で組み立てる。
- *
- * 仕上表・建材・写真の各Controllerはサンプル投入を行わず、
- * アプリ起動時にこの入口だけが3つの正式Storeへサンプルデータを投入し、
- * project-storeへ1案件分のSnapshotとして登録する。
+ * サンプルは案件一覧用Snapshotとして準備するだけで、起動時の現在案件にはしない。
  */
 import { sampleProject } from './sample-project.js';
 import { seedInitialMaterials, seedInitialFinishRecords } from '../finish-table/finish-table-actions.js';
@@ -22,11 +19,17 @@ export function initializeSampleProjectSnapshot() {
   seedInitialFinishRecords();
   seedInitialPhotoRecords();
 
-  return saveProjectSnapshot({
+  const snapshot = saveProjectSnapshot({
     project: sampleProject,
     finishRecords: finishRecordStore.exportSnapshot(),
     materialRecords: materialRecordStore.exportSnapshot(),
     photoRecords: photoRecordStore.exportSnapshot(),
     syncMeta: {}
   });
+
+  // 起動時の作業Storeをサンプル状態のまま残さない。
+  finishRecordStore.clearAll();
+  materialRecordStore.clearAll();
+  photoRecordStore.clearAll();
+  return snapshot;
 }
