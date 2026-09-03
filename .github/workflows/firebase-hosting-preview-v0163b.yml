@@ -63,7 +63,8 @@ jobs:
           grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
           grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
-          grep -q "getCurrentProject()?.projectId" src/js/sync/sync-status.js
+          grep -q "const currentProjectId = currentProject?.projectId" src/js/sync/sync-status.js
+          grep -q "listUnsent({ projectId: currentProjectId })" src/js/sync/sync-status.js
 
           # Microsoft認証がクラウド機能全体の入口であることを守る。
           grep -q "export function isMicrosoftCloudReady" src/js/auth/microsoft-auth.js
