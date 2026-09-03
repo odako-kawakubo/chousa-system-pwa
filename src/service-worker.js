@@ -1,11 +1,11 @@
 /*
- * v0.1.6.4 Service Worker
+ * v0.1.6.5B Service Worker
  *
  * 責任は「アプリ本体を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.4';
+const APP_CACHE = 'chousa-app-v0.1.6.5B';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -18,6 +18,7 @@ const APP_SHELL = [
   './version.json',
   './css/common.css',
   './css/layout.css',
+  './css/home.css',
   './css/finish-table.css',
   './css/record-view.css',
   './css/material-list.css',
@@ -30,6 +31,7 @@ const APP_SHELL = [
   './js/app-init.js',
   './js/app-update.js',
   './js/pwa/pwa-controller.js',
+  './js/home/home-controller.js',
   './js/ui/auth-ui.js',
   './js/ui/header-edit-ui.js',
   './js/ui/sync-ui.js',
@@ -39,8 +41,12 @@ const APP_SHELL = [
   './js/projects/project-controller.js',
   './js/projects/project-store.js',
   './js/projects/project-session.js',
+  './js/projects/project-entry-ui.js',
   './js/projects/firestore-project-browser.js',
+  './js/projects/onedrive-project-browser.js',
   './js/projects/project-transfer.js',
+  './js/onedrive/onedrive-client.js',
+  './js/onedrive/onedrive-project.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
   './config/app-config.js'
