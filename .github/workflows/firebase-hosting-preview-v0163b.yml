@@ -8,6 +8,7 @@ on:
       - v0.1.6.4A
       - v0.1.6.4B
       - v0.1.6.4C
+      - v0.1.6.4
   workflow_dispatch:
 
 permissions:
@@ -39,16 +40,16 @@ jobs:
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.4C consistency checks
+      - name: v0.1.6.4 consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.4C'" src/config/app-config.js
-          grep -q '"version": "0.1.6.4C"' src/version.json
-          grep -q "chousa-app-v0.1.6.4C" src/service-worker.js
+          grep -q "version: '0.1.6.4'" src/config/app-config.js
+          grep -q '"version": "0.1.6.4"' src/version.json
+          grep -q "chousa-app-v0.1.6.4" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
