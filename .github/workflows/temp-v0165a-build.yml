@@ -1,0 +1,506 @@
+name: Temporary v0.1.6.5A build
+
+on:
+  push:
+    branches:
+      - v0.1.6.5A
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.event.head_commit.message == 'v0.1.6.5A OneDrive基盤実装開始'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v0.1.6.5A
+
+      - name: Build OneDrive foundation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'anchor not found: {path}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          Path('src/js/onedrive').mkdir(parents=True, exist_ok=True)
+          Path('src/js/onedrive/onedrive-client.js').write_text(r'''/**
+           * Microsoft Graph / OneDrive の低レベル共通処理。
+           * 写真・バックアップ・案件統合はこの層を共有し、Graph APIの呼び方を重複させない。
+           */
+          import { getGraphAccessToken } from '../auth/microsoft-auth.js';
+
+          const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+
+          function graphToken() {
+            const token = getGraphAccessToken();
+            if (!token) throw new Error('Microsoft Graphトークンがありません。Microsoftへ再ログインしてください。');
+            return token;
+          }
+
+          async function graphRequest(path, { method = 'GET', body = null, headers = {}, expectJson = true } = {}) {
+            const requestHeaders = {
+              Authorization: `Bearer ${graphToken()}`,
+              ...headers
+            };
+            const options = { method, headers: requestHeaders };
+            if (body !== null && body !== undefined) options.body = body;
+
+            const response = await fetch(`${GRAPH_BASE}${path}`, options);
+            if (!response.ok) {
+              let detail = '';
+              try {
+                const payload = await response.json();
+                detail = payload?.error?.message || '';
+              } catch {
+                detail = await response.text().catch(() => '');
+              }
+              const error = new Error(detail || `OneDrive通信に失敗しました (${response.status})`);
+              error.status = response.status;
+              throw error;
+            }
+            if (!expectJson || response.status === 204) return null;
+            return response.json();
+          }
+
+          function childrenPath(parentId) {
+            return parentId === 'root'
+              ? '/me/drive/root/children'
+              : `/me/drive/items/${encodeURIComponent(parentId)}/children`;
+          }
+
+          export async function listDriveChildren(parentId = 'root') {
+            const items = [];
+            let path = `${childrenPath(parentId)}?$select=id,name,folder,file,parentReference,webUrl&$top=200`;
+            while (path) {
+              const payload = await graphRequest(path);
+              items.push(...(payload?.value || []));
+              const nextLink = payload?.['@odata.nextLink'] || '';
+              path = nextLink.startsWith(GRAPH_BASE) ? nextLink.slice(GRAPH_BASE.length) : '';
+            }
+            return items;
+          }
+
+          export async function getDriveItem(itemId) {
+            if (!itemId) return null;
+            return graphRequest(`/me/drive/items/${encodeURIComponent(itemId)}?$select=id,name,folder,file,parentReference,webUrl`);
+          }
+
+          export async function findChildFolder(parentId, name) {
+            const target = String(name || '');
+            if (!target) return null;
+            const children = await listDriveChildren(parentId);
+            return children.find((item) => item.folder && item.name === target) || null;
+          }
+
+          export async function createDriveFolder(parentId, name) {
+            const folderName = String(name || '').trim();
+            if (!folderName) throw new Error('作成するOneDriveフォルダ名が空です。');
+            return graphRequest(childrenPath(parentId), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: folderName, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' })
+            });
+          }
+
+          export async function ensureDriveFolder(parentId, name) {
+            return (await findChildFolder(parentId, name)) || createDriveFolder(parentId, name);
+          }
+
+          export async function moveDriveItem(itemId, targetParentId) {
+            return graphRequest(`/me/drive/items/${encodeURIComponent(itemId)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ parentReference: { id: targetParentId } })
+            });
+          }
+
+          export async function deleteDriveItem(itemId) {
+            await graphRequest(`/me/drive/items/${encodeURIComponent(itemId)}`, { method: 'DELETE', expectJson: false });
+          }
+
+          export async function uploadDriveFile(parentId, fileName, content, contentType = 'application/octet-stream') {
+            const encodedName = encodeURIComponent(String(fileName || ''));
+            if (!encodedName) throw new Error('保存するファイル名が空です。');
+            return graphRequest(`/me/drive/items/${encodeURIComponent(parentId)}:/${encodedName}:/content`, {
+              method: 'PUT',
+              headers: { 'Content-Type': contentType },
+              body: content
+            });
+          }
+          '''.replace('\n          ', '\n').lstrip(), encoding='utf-8')
+
+          Path('src/js/onedrive/onedrive-project.js').write_text(r'''/**
+           * 案件とOneDrive案件フォルダの接続を一元管理する。
+           * 04 調査を起点に、仮案件フォルダの自動生成・しらべ配下生成・正式案件への手動統合を担当する。
+           */
+          import {
+            listDriveChildren,
+            getDriveItem,
+            findChildFolder,
+            createDriveFolder,
+            ensureDriveFolder,
+            moveDriveItem,
+            deleteDriveItem
+          } from './onedrive-client.js';
+          import { getGraphAccessToken } from '../auth/microsoft-auth.js';
+          import { getCurrentProject, getProjectSyncMeta, updateProjectSyncMeta, subscribe as subscribeProjects } from '../projects/project-store.js';
+          import { isManualOffline } from '../sync/sync-status.js';
+          import { subscribeAuthUiState } from '../ui/auth-ui.js';
+
+          const ROOT_FOLDER_NAME = '04 調査';
+          const listeners = [];
+          let currentState = stateFor('unconnected');
+          let inFlight = null;
+          let autoTimer = null;
+          let lastAutoKey = '';
+
+          function stateFor(phase, patch = {}) {
+            const labels = {
+              unconnected: '未接続',
+              connecting: '接続中',
+              temporary: '仮フォルダ接続中',
+              formal: '正式案件接続済み',
+              integrating: '統合処理中',
+              error: '接続エラー',
+              unavailable: '対象外'
+            };
+            return {
+              phase,
+              label: labels[phase] || phase,
+              folderName: '',
+              mode: '',
+              canMerge: false,
+              error: null,
+              ...patch
+            };
+          }
+
+          function publish(next) {
+            currentState = { ...next };
+            listeners.slice().forEach((callback) => callback(getCurrentOneDriveState()));
+          }
+
+          function projectBinding(projectId) {
+            return { ...(getProjectSyncMeta(projectId)?.oneDriveBinding || {}) };
+          }
+
+          function saveBinding(projectId, binding) {
+            updateProjectSyncMeta(projectId, { oneDriveBinding: { ...(binding || {}) } });
+          }
+
+          function isTemporaryProject(project) {
+            return Boolean(project?.isTemporary || project?.projectType === 'temporary');
+          }
+
+          function projectFolderName(project) {
+            return [project?.projectNo, project?.projectName].filter(Boolean).join('　');
+          }
+
+          function matchesProjectNo(folderName, projectNo) {
+            const name = String(folderName || '');
+            const no = String(projectNo || '');
+            return Boolean(no) && (name === no || name.startsWith(`${no} `) || name.startsWith(`${no}　`));
+          }
+
+          async function getInvestigationRoot() {
+            const root = await findChildFolder('root', ROOT_FOLDER_NAME);
+            if (!root) throw new Error(`OneDrive直下に「${ROOT_FOLDER_NAME}」が見つかりません。`);
+            return root;
+          }
+
+          async function findProjectFolder(rootId, projectNo) {
+            const children = await listDriveChildren(rootId);
+            return children.find((item) => item.folder && matchesProjectNo(item.name, projectNo)) || null;
+          }
+
+          async function ensureShirabeStructure(projectFolder) {
+            const shirabe = await ensureDriveFolder(projectFolder.id, 'しらべ');
+            const visual = await ensureDriveFolder(shirabe.id, '目視写真');
+            const sampling = await ensureDriveFolder(shirabe.id, '採取写真');
+            const system = await ensureDriveFolder(shirabe.id, 'システムデータ');
+            const visualOriginal = await ensureDriveFolder(visual.id, '元画像');
+            const samplingOriginal = await ensureDriveFolder(sampling.id, '元画像');
+            return {
+              projectFolderId: projectFolder.id,
+              projectFolderName: projectFolder.name,
+              projectFolderWebUrl: projectFolder.webUrl || '',
+              shirabeFolderId: shirabe.id,
+              visualFolderId: visual.id,
+              visualOriginalFolderId: visualOriginal.id,
+              samplingFolderId: sampling.id,
+              samplingOriginalFolderId: samplingOriginal.id,
+              systemFolderId: system.id
+            };
+          }
+
+          function bindingState(binding) {
+            const temporary = binding.mode === 'temporary';
+            return stateFor(temporary ? 'temporary' : 'formal', {
+              mode: binding.mode,
+              folderName: binding.projectFolderName || '',
+              canMerge: temporary,
+              binding
+            });
+          }
+
+          export function getCurrentOneDriveState() {
+            return { ...currentState, binding: currentState.binding ? { ...currentState.binding } : null };
+          }
+
+          export function subscribeOneDriveState(callback) {
+            listeners.push(callback);
+            callback(getCurrentOneDriveState());
+            return () => {
+              const index = listeners.indexOf(callback);
+              if (index >= 0) listeners.splice(index, 1);
+            };
+          }
+
+          export async function connectCurrentProjectOneDrive({ force = false } = {}) {
+            if (inFlight && !force) return inFlight;
+            const task = (async () => {
+              const project = getCurrentProject();
+              if (!project?.projectId || project.isSample) {
+                publish(stateFor('unavailable'));
+                return getCurrentOneDriveState();
+              }
+              if (!getGraphAccessToken() || isManualOffline() || navigator.onLine === false) {
+                publish(stateFor('unconnected'));
+                return getCurrentOneDriveState();
+              }
+
+              publish(stateFor('connecting'));
+              try {
+                const root = await getInvestigationRoot();
+                let binding = projectBinding(project.projectId);
+
+                if (binding.projectFolderId) {
+                  try {
+                    const existing = await getDriveItem(binding.projectFolderId);
+                    if (existing?.folder) {
+                      const folders = await ensureShirabeStructure(existing);
+                      binding = { ...binding, ...folders };
+                      saveBinding(project.projectId, binding);
+                      publish(bindingState(binding));
+                      return getCurrentOneDriveState();
+                    }
+                  } catch (error) {
+                    if (error?.status !== 404) throw error;
+                    binding = {};
+                  }
+                }
+
+                let projectFolder = await findProjectFolder(root.id, project.projectNo);
+                let mode = 'formal';
+                if (isTemporaryProject(project)) {
+                  mode = 'temporary';
+                  if (!projectFolder) projectFolder = await createDriveFolder(root.id, projectFolderName(project));
+                } else if (!projectFolder) {
+                  publish(stateFor('unconnected', { error: null }));
+                  return getCurrentOneDriveState();
+                }
+
+                const folders = await ensureShirabeStructure(projectFolder);
+                binding = { mode, rootFolderId: root.id, rootFolderName: root.name, ...folders };
+                saveBinding(project.projectId, binding);
+                publish(bindingState(binding));
+              } catch (error) {
+                publish(stateFor('error', { error, folderName: projectBinding(project.projectId).projectFolderName || '' }));
+              }
+              return getCurrentOneDriveState();
+            })();
+            inFlight = task;
+            try {
+              return await task;
+            } finally {
+              if (inFlight === task) inFlight = null;
+            }
+          }
+
+          export async function listFormalOneDriveCandidates() {
+            const project = getCurrentProject();
+            if (!project?.projectId) return [];
+            const binding = projectBinding(project.projectId);
+            if (binding.mode !== 'temporary') return [];
+            const root = await getInvestigationRoot();
+            const children = await listDriveChildren(root.id);
+            return children
+              .filter((item) => item.folder && item.id !== binding.projectFolderId)
+              .filter((item) => !/^\d{6}-\d{2}(?:\s|　|$)/.test(String(item.name || '')))
+              .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ja'));
+          }
+
+          export async function mergeCurrentProjectOneDrive(targetFolderId) {
+            const project = getCurrentProject();
+            if (!project?.projectId) throw new Error('案件が開かれていません。');
+            const binding = projectBinding(project.projectId);
+            if (binding.mode !== 'temporary' || !binding.projectFolderId || !binding.shirabeFolderId) {
+              throw new Error('この案件は仮フォルダ接続中ではありません。');
+            }
+
+            const candidates = await listFormalOneDriveCandidates();
+            const target = candidates.find((item) => item.id === String(targetFolderId || ''));
+            if (!target) throw new Error('統合先の正式案件フォルダを確認できませんでした。');
+
+            publish(stateFor('integrating', { mode: 'temporary', folderName: binding.projectFolderName, canMerge: false, binding }));
+            const existingShirabe = await findChildFolder(target.id, 'しらべ');
+            if (existingShirabe) {
+              publish(bindingState(binding));
+              throw new Error('統合先に「しらべ」フォルダがすでにあります。自動統合を中止しました。');
+            }
+
+            try {
+              await moveDriveItem(binding.shirabeFolderId, target.id);
+              const remaining = await listDriveChildren(binding.projectFolderId);
+              if (!remaining.length) await deleteDriveItem(binding.projectFolderId);
+
+              const nextBinding = {
+                ...binding,
+                mode: 'formal',
+                projectFolderId: target.id,
+                projectFolderName: target.name,
+                projectFolderWebUrl: target.webUrl || ''
+              };
+              saveBinding(project.projectId, nextBinding);
+              publish(bindingState(nextBinding));
+              return getCurrentOneDriveState();
+            } catch (error) {
+              publish(stateFor('error', { error, mode: 'temporary', folderName: binding.projectFolderName, canMerge: true, binding }));
+              throw error;
+            }
+          }
+
+          function autoKey() {
+            const project = getCurrentProject();
+            const binding = project?.projectId ? projectBinding(project.projectId) : {};
+            return [
+              project?.projectId || '',
+              binding.projectFolderId || '',
+              Boolean(getGraphAccessToken()),
+              isManualOffline(),
+              navigator.onLine !== false
+            ].join('|');
+          }
+
+          function scheduleAutoConnect(force = false) {
+            if (autoTimer) clearTimeout(autoTimer);
+            autoTimer = setTimeout(() => {
+              autoTimer = null;
+              const key = autoKey();
+              if (!force && key === lastAutoKey) return;
+              lastAutoKey = key;
+              void connectCurrentProjectOneDrive({ force });
+            }, 0);
+          }
+
+          export function initializeOneDriveProjectIntegration() {
+            subscribeProjects(() => scheduleAutoConnect());
+            subscribeAuthUiState(() => scheduleAutoConnect(true));
+            window.addEventListener('online', () => scheduleAutoConnect(true));
+            window.addEventListener('offline', () => scheduleAutoConnect(true));
+            window.addEventListener('chousa:manual-offline-change', () => scheduleAutoConnect(true));
+            scheduleAutoConnect(true);
+          }
+          '''.replace('\n          ', '\n').lstrip(), encoding='utf-8')
+
+          replace_once('src/js/auth/microsoft-auth.js',
+          '''export function getGraphAccessToken() {\n  return sessionStorage.getItem(GRAPH_TOKEN_STORAGE_KEY) || "";\n}\n''',
+          '''export function getGraphAccessToken() {\n  return sessionStorage.getItem(GRAPH_TOKEN_STORAGE_KEY) || "";\n}\n\n/** Microsoft認証とGraphトークンの両方が揃った時だけクラウド機能を許可する。 */\nexport function isMicrosoftCloudReady() {\n  return Boolean(auth.currentUser && getGraphAccessToken());\n}\n''')
+
+          replace_once('src/js/ui/auth-ui.js',
+          '''    graphTokenReady: Boolean(getGraphAccessToken())\n  };\n}\n''',
+          '''    graphTokenReady: Boolean(getGraphAccessToken()),\n    cloudReady: Boolean(currentUser && getGraphAccessToken())\n  };\n}\n''')
+          replace_once('src/js/ui/auth-ui.js',
+          '''  notify();\n}\n\nasync function handleSignIn() {\n''',
+          '''  notify();\n  window.dispatchEvent(new CustomEvent('chousa:auth-state-change', { detail: snapshot() }));\n}\n\nasync function handleSignIn() {\n''')
+
+          replace_once('src/js/sync/sync-status.js',
+          '''import { getCurrentProject } from '../projects/project-store.js';\n''',
+          '''import { getCurrentProject } from '../projects/project-store.js';\nimport { isMicrosoftCloudReady } from '../auth/microsoft-auth.js';\n''')
+          replace_once('src/js/sync/sync-status.js',
+          '''export function canUseFirestore() {\n  return !isManualOffline() && isNetworkOnline();\n}\n''',
+          '''export function canUseFirestore() {\n  return !isManualOffline() && isNetworkOnline() && isMicrosoftCloudReady();\n}\n''')
+          replace_once('src/js/sync/sync-status.js',
+          '''  const networkOnline = isNetworkOnline();\n  const currentProject = getCurrentProject();\n''',
+          '''  const networkOnline = isNetworkOnline();\n  const cloudReady = isMicrosoftCloudReady();\n  const currentProject = getCurrentProject();\n''')
+          replace_once('src/js/sync/sync-status.js',
+          '''  } else if (currentProject?.isSample || state.phase === 'local' && !currentProjectId) {\n    lamp = 'neutral';\n    text = '対象外';\n  } else if (!networkOnline) {\n''',
+          '''  } else if (currentProject?.isSample || state.phase === 'local' && !currentProjectId) {\n    lamp = 'neutral';\n    text = '対象外';\n  } else if (!cloudReady) {\n    lamp = 'neutral';\n    text = 'ローカル';\n  } else if (!networkOnline) {\n''')
+          replace_once('src/js/sync/sync-status.js',
+          '''    networkOnline,\n    firestoreAvailable: !state.manualOffline && networkOnline,\n''',
+          '''    networkOnline,\n    cloudReady,\n    firestoreAvailable: !state.manualOffline && networkOnline && cloudReady,\n''')
+          replace_once('src/js/sync/sync-status.js',
+          '''  window.addEventListener('online', () => {\n    if (state.manualOffline) return;\n    setState({ phase: 'reconnecting', serverConnected: false, error: null });\n  });\n}\n''',
+          '''  window.addEventListener('online', () => {\n    if (state.manualOffline) return;\n    setState({ phase: isMicrosoftCloudReady() ? 'reconnecting' : 'local', serverConnected: false, error: null });\n  });\n  window.addEventListener('chousa:auth-state-change', (event) => {\n    if (state.manualOffline) return;\n    const cloudReady = Boolean(event.detail?.cloudReady);\n    setState({\n      phase: cloudReady && isNetworkOnline() ? 'connecting' : 'local',\n      serverConnected: false,\n      error: null\n    });\n  });\n}\n''')
+
+          replace_once('src/js/projects/project-controller.js',
+          '''  if (document.documentElement.dataset.firestoreNetworkRecoveryBound !== '1') {\n''',
+          '''  if (document.documentElement.dataset.cloudAuthRecoveryBound !== '1') {\n    document.documentElement.dataset.cloudAuthRecoveryBound = '1';\n    window.addEventListener('chousa:auth-state-change', (event) => {\n      const cloudReady = Boolean(event.detail?.cloudReady);\n      if (!cloudReady) {\n        saveCurrentProjectSession();\n        stopProjectRecordStream();\n        markLocalOnly();\n        return;\n      }\n      void recoverCurrentProjectAfterNetworkReturn();\n    });\n  }\n\n  if (document.documentElement.dataset.firestoreNetworkRecoveryBound !== '1') {\n''')
+
+          replace_once('src/js/app-init.js',
+          '''import { initializeSampleProjectSnapshot } from './demo/sample-session.js';\n''',
+          '''import { initializeSampleProjectSnapshot } from './demo/sample-session.js';\nimport { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';\n''')
+          replace_once('src/js/app-init.js',
+          '''  bindAuthUiEvents();\n  initializeFinishTable();\n''',
+          '''  bindAuthUiEvents();\n  initializeOneDriveProjectIntegration();\n  initializeFinishTable();\n''')
+
+          replace_once('src/js/settings/settings-controller.js',
+          '''import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';\n''',
+          '''import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';\nimport {\n  getCurrentOneDriveState,\n  subscribeOneDriveState,\n  connectCurrentProjectOneDrive,\n  listFormalOneDriveCandidates,\n  mergeCurrentProjectOneDrive\n} from '../onedrive/onedrive-project.js';\n''')
+          replace_once('src/js/settings/settings-controller.js',
+          '''let unsubscribeSyncDiagnosticLog = null;\n''',
+          '''let unsubscribeSyncDiagnosticLog = null;\nlet unsubscribeOneDrive = null;\n''')
+          replace_once('src/js/settings/settings-controller.js',
+          '''    auth: getAuthUiState(),\n    device: {\n''',
+          '''    auth: getAuthUiState(),\n    oneDrive: getCurrentOneDriveState(),\n    device: {\n''')
+          replace_once('src/js/settings/settings-controller.js',
+          '''function refreshDeviceFields(name = getDeviceDisplayName()) {\n''',
+          '''function refreshOneDriveStatusFields(state = getCurrentOneDriveState()) {\n  if (!root) return;\n  const status = root.querySelector('[data-settings-onedrive-state]');\n  const folder = root.querySelector('[data-settings-onedrive-folder]');\n  const pill = root.querySelector('[data-settings-onedrive-pill]');\n  const merge = root.querySelector('[data-action="open-onedrive-merge"]');\n  if (status) status.textContent = state.label || '未接続';\n  if (folder) folder.textContent = state.folderName || '-';\n  if (pill) pill.textContent = state.label || '未接続';\n  if (merge) merge.hidden = !state.canMerge;\n}\n\nfunction renderOneDriveMergeCandidates(candidates = []) {\n  const panel = root?.querySelector('[data-onedrive-merge-panel]');\n  const list = root?.querySelector('[data-onedrive-merge-candidates]');\n  if (!panel || !list) return;\n  panel.hidden = false;\n  list.innerHTML = candidates.length\n    ? candidates.map((item) => `<button type="button" class="btn small" data-onedrive-merge-target="${String(item.id).replace(/"/g, '&quot;')}">${String(item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</button>`).join('')\n    : '<span class="hint">統合できる正式案件フォルダがありません。</span>';\n}\n\nasync function openOneDriveMergeCandidates() {\n  try {\n    renderOneDriveMergeCandidates(await listFormalOneDriveCandidates());\n  } catch (error) {\n    window.alert(error?.message || 'OneDrive案件一覧を取得できませんでした。');\n  }\n}\n\nasync function mergeOneDriveTarget(targetId, targetName) {\n  if (!window.confirm(`「${targetName}」へしらべデータを統合しますか？`)) return;\n  try {\n    await mergeCurrentProjectOneDrive(targetId);\n    const panel = root?.querySelector('[data-onedrive-merge-panel]');\n    if (panel) panel.hidden = true;\n  } catch (error) {\n    window.alert(error?.message || '正式案件へ統合できませんでした。');\n  }\n}\n\nfunction refreshDeviceFields(name = getDeviceDisplayName()) {\n''')
+          replace_once('src/js/settings/settings-controller.js',
+          '''  if (event.target.closest('[data-action="save-device-name"]')) {\n''',
+          '''  if (event.target.closest('[data-action="refresh-onedrive-connection"]')) {\n    void connectCurrentProjectOneDrive({ force: true });\n    return;\n  }\n\n  if (event.target.closest('[data-action="open-onedrive-merge"]')) {\n    void openOneDriveMergeCandidates();\n    return;\n  }\n\n  const oneDriveTarget = event.target.closest('[data-onedrive-merge-target]');\n  if (oneDriveTarget) {\n    void mergeOneDriveTarget(oneDriveTarget.dataset.onedriveMergeTarget, oneDriveTarget.textContent || '選択した案件');\n    return;\n  }\n\n  if (event.target.closest('[data-action="save-device-name"]')) {\n''')
+          replace_once('src/js/settings/settings-controller.js',
+          '''  if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();\n  unsubscribeSyncDiagnosticLog = subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);\n  refreshSyncDiagnosticLogView();\n}\n''',
+          '''  if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();\n  unsubscribeSyncDiagnosticLog = subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);\n  if (unsubscribeOneDrive) unsubscribeOneDrive();\n  unsubscribeOneDrive = subscribeOneDriveState(refreshOneDriveStatusFields);\n  refreshSyncDiagnosticLogView();\n}\n''')
+
+          replace_once('src/js/settings/settings-renderer.js',
+          '''              <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}">${viewModel.auth.loggedIn ? 'ログイン済み' : '未ログイン'}</span>\n            </div>\n            <div class="settings-status-list">\n              <div><span>ユーザー</span><b data-settings-auth-user>${escapeHtml(viewModel.auth.displayName || '未ログイン')}</b></div>\n              <div><span>Graphトークン</span><b data-settings-graph-state>${viewModel.auth.graphTokenReady ? '取得済み' : '未取得'}</b></div>\n              <div><span>OneDrive</span><b>未接続</b></div>\n            </div>\n          </section>\n''',
+          '''              <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}" data-settings-onedrive-pill>${escapeHtml(viewModel.oneDrive.label || (viewModel.auth.loggedIn ? '未接続' : '未ログイン'))}</span>\n            </div>\n            <div class="settings-status-list">\n              <div><span>ユーザー</span><b data-settings-auth-user>${escapeHtml(viewModel.auth.displayName || '未ログイン')}</b></div>\n              <div><span>Graphトークン</span><b data-settings-graph-state>${viewModel.auth.graphTokenReady ? '取得済み' : '未取得'}</b></div>\n              <div><span>OneDrive</span><b data-settings-onedrive-state>${escapeHtml(viewModel.oneDrive.label || '未接続')}</b></div>\n              <div><span>保存先</span><b data-settings-onedrive-folder>${escapeHtml(viewModel.oneDrive.folderName || '-')}</b></div>\n            </div>\n            <div class="settings-action-row">\n              <button type="button" class="btn small" data-action="refresh-onedrive-connection">接続確認</button>\n              <button type="button" class="btn small" data-action="open-onedrive-merge"${viewModel.oneDrive.canMerge ? '' : ' hidden'}>正式案件へ統合</button>\n            </div>\n            <div data-onedrive-merge-panel hidden>\n              <div class="hint">OneDriveの「04 調査」から統合先の正式案件を選択してください。</div>\n              <div class="settings-action-row" data-onedrive-merge-candidates></div>\n            </div>\n          </section>\n''')
+          replace_once('src/js/settings/settings-renderer.js',
+          '''              <div><span>自動バックアップ</span><b>30分ごと（後続接続）</b></div>\n''',
+          '''              <div><span>自動バックアップ</span><b>10分ごと（後続接続）</b></div>\n''')
+
+          replace_once('src/config/app-config.js', "version: '0.1.6.4'", "version: '0.1.6.5A'")
+          Path('src/version.json').write_text('{\n  "version": "0.1.6.5A"\n}\n', encoding='utf-8')
+          replace_once('src/service-worker.js', 'v0.1.6.4 Service Worker', 'v0.1.6.5A Service Worker')
+          replace_once('src/service-worker.js', "const APP_CACHE = 'chousa-app-v0.1.6.4';", "const APP_CACHE = 'chousa-app-v0.1.6.5A';")
+          replace_once('src/service-worker.js',
+          '''  './js/projects/project-transfer.js',\n  './js/demo/sample-session.js',\n''',
+          '''  './js/projects/project-transfer.js',\n  './js/auth/microsoft-auth.js',\n  './js/onedrive/onedrive-client.js',\n  './js/onedrive/onedrive-project.js',\n  './js/demo/sample-session.js',\n''')
+
+      - name: Validate JavaScript
+        run: |
+          node --check src/js/onedrive/onedrive-client.js
+          node --check src/js/onedrive/onedrive-project.js
+          node --check src/js/settings/settings-controller.js
+          node --check src/js/settings/settings-renderer.js
+          node --check src/js/sync/sync-status.js
+          node --check src/js/projects/project-controller.js
+          node --check src/js/ui/auth-ui.js
+          node --check src/js/app-init.js
+          node --check src/service-worker.js
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "v0.1.6.5A OneDrive共通基盤を実装"
+          git push origin HEAD:v0.1.6.5A
