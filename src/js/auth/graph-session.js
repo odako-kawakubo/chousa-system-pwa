@@ -1,6 +1,5 @@
 /**
  * Microsoft Graph専用セッション。
- *
  * Firebase Authenticationとは責任を分離し、v0.14系で実機利用していたMSAL構成を
  * Graphアクセス専用として復活させる。
  */
@@ -19,22 +18,34 @@ let state = {
 };
 
 function cloneState() {
-  return {
-    ...state,
-    account: state.account ? { ...state.account } : null
-  };
+  return { ...state, account: state.account ? { ...state.account } : null };
+}
+
+function accountKey(account) {
+  return [account?.homeAccountId || '', account?.username || '', account?.name || ''].join('|');
 }
 
 function publish(patch = {}) {
-  state = { ...state, ...patch };
+  const next = { ...state, ...patch };
+  const changed = next.initialized !== state.initialized
+    || next.tokenReady !== state.tokenReady
+    || next.error !== state.error
+    || accountKey(next.account) !== accountKey(state.account);
+  state = next;
+  if (!changed) return;
   listeners.slice().forEach((callback) => callback(cloneState()));
 }
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
-    const existing = Array.from(document.scripts).find((script) => script.src === src);
-    if (existing && window.msal) {
+    if (window.msal) {
       resolve();
+      return;
+    }
+    const existing = Array.from(document.scripts).find((script) => script.src === src);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error(`MSALライブラリを読み込めませんでした: ${src}`)), { once: true });
       return;
     }
     const script = document.createElement('script');
@@ -68,29 +79,32 @@ function activeAccount() {
 export async function initializeGraphSession() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    await ensureMsalLibrary();
-    msalClient = new window.msal.PublicClientApplication({
-      auth: {
-        clientId: microsoftConfig.graphClientId,
-        authority: `https://login.microsoftonline.com/${microsoftConfig.tenantId}`,
-        redirectUri: window.location.origin + window.location.pathname
-      },
-      cache: {
-        cacheLocation: 'localStorage',
-        storeAuthStateInCookie: false
-      }
-    });
-
     try {
-      const redirectResult = await msalClient.handleRedirectPromise();
-      if (redirectResult?.account) msalClient.setActiveAccount(redirectResult.account);
-    } catch (error) {
-      publish({ error: error?.message || 'Microsoftログイン結果を処理できませんでした。' });
-    }
+      await ensureMsalLibrary();
+      msalClient = new window.msal.PublicClientApplication({
+        auth: {
+          clientId: microsoftConfig.graphClientId,
+          authority: `https://login.microsoftonline.com/${microsoftConfig.tenantId}`,
+          redirectUri: window.location.origin + window.location.pathname
+        },
+        cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+      });
 
-    const account = activeAccount();
-    publish({ initialized: true, account, tokenReady: false });
-    return cloneState();
+      try {
+        const redirectResult = await msalClient.handleRedirectPromise();
+        if (redirectResult?.account) msalClient.setActiveAccount(redirectResult.account);
+      } catch (error) {
+        publish({ error: error?.message || 'Microsoftログイン結果を処理できませんでした。' });
+      }
+
+      const account = activeAccount();
+      publish({ initialized: true, account, tokenReady: false });
+      return cloneState();
+    } catch (error) {
+      publish({ initialized: false, account: null, tokenReady: false, error: error?.message || 'Graphセッションを初期化できませんでした。' });
+      initPromise = null;
+      throw error;
+    }
   })();
   return initPromise;
 }
@@ -115,10 +129,7 @@ export async function loginGraph() {
     publish({ account, error: '' });
     return account;
   }
-  await msalClient.loginRedirect({
-    scopes: microsoftConfig.graphScopes,
-    prompt: 'select_account'
-  });
+  await msalClient.loginRedirect({ scopes: microsoftConfig.graphScopes, prompt: 'select_account' });
   return null;
 }
 
@@ -133,19 +144,15 @@ export async function getGraphAccessToken({ allowInteractive = false } = {}) {
   }
 
   try {
-    const result = await msalClient.acquireTokenSilent({
-      scopes: microsoftConfig.graphScopes,
-      account
-    });
-    publish({ account, tokenReady: Boolean(result?.accessToken), error: '' });
-    return result.accessToken;
+    const result = await msalClient.acquireTokenSilent({ scopes: microsoftConfig.graphScopes, account });
+    const token = result?.accessToken || '';
+    if (!token) throw new Error('Graphアクセストークンが空です。');
+    publish({ account, tokenReady: true, error: '' });
+    return token;
   } catch (error) {
     publish({ account, tokenReady: false, error: error?.message || 'Graphトークンを取得できませんでした。' });
     if (allowInteractive) {
-      await msalClient.acquireTokenRedirect({
-        scopes: microsoftConfig.graphScopes,
-        account
-      });
+      await msalClient.acquireTokenRedirect({ scopes: microsoftConfig.graphScopes, account });
       return '';
     }
     const wrapped = new Error('Microsoft Graphトークンを取得できませんでした。再接続してください。');
