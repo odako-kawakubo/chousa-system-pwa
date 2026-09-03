@@ -30,6 +30,7 @@ import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
+import { ensureHomeReturnControl } from './home/home-return-control.js';
 import { initializeHome } from './home/home-controller.js';
 
 function initUiSkeleton() {
@@ -72,6 +73,9 @@ function initUiSkeleton() {
   initializePhotoTab();
   initializeSettingsTab();
   captureInitialProjectSession();
+
+  // 案件画面のヘッダーへトップ復帰導線を置いてからhome-controllerでイベント配線する。
+  ensureHomeReturnControl();
   initializeHome();
 
   window.addEventListener('pagehide', captureInitialProjectSession);
