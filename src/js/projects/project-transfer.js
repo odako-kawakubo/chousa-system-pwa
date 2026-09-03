@@ -208,8 +208,6 @@ async function importProjectFile(file) {
     }
 
     saveCurrentProjectSession();
-
-    // 同一案件にこの端末の未送信変更がある場合は、受信Snapshotの上に戻して消失を防ぐ。
     const finishRecords = applyPendingToRecords(payload.finishRecords, localPending, 'finish');
     const materialRecords = applyPendingToRecords(payload.materialRecords, localPending, 'material');
     const photoRecords = applyPendingToRecords(payload.photoRecords, localPending, 'photo');
@@ -271,13 +269,13 @@ export function initializeProjectTransfer() {
   exportButton.className = 'btn';
   exportButton.id = 'exportProjectJsonButton';
   exportButton.type = 'button';
-  exportButton.textContent = '案件を書き出す';
+  exportButton.textContent = '書き出し';
 
   const importButton = document.createElement('button');
   importButton.className = 'btn';
   importButton.id = 'importProjectJsonButton';
   importButton.type = 'button';
-  importButton.textContent = '案件ファイルを読み込む';
+  importButton.textContent = '読み込み';
 
   const input = document.createElement('input');
   input.type = 'file';
