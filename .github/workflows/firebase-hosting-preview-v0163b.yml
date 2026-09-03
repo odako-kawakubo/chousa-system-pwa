@@ -7,6 +7,7 @@ on:
       - v0.1.6.3C
       - v0.1.6.4A
       - v0.1.6.4B
+      - v0.1.6.4C
   workflow_dispatch:
 
 permissions:
@@ -33,25 +34,44 @@ jobs:
           node --check src/js/projects/project-session.js
           node --check src/js/projects/firestore-project-browser.js
           node --check src/js/projects/project-transfer.js
+          node --check src/js/demo/sample-session.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.4B consistency checks
+      - name: v0.1.6.4C consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.4B'" src/config/app-config.js
-          grep -q '"version": "0.1.6.4B"' src/version.json
-          grep -q "chousa-app-v0.1.6.4B" src/service-worker.js
+          grep -q "version: '0.1.6.4C'" src/config/app-config.js
+          grep -q '"version": "0.1.6.4C"' src/version.json
+          grep -q "chousa-app-v0.1.6.4C" src/service-worker.js
+
+          # v0.1.6.3で確定した同期基盤を継続して守る。
+          grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
+          grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
+          grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
+          grep -q "bulk-required" src/js/firestore/firestore-repository.js
+          grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
+
+          # v0.1.6.4で追加した機能と正式化前整理を守る。
           grep -q "initializeProjectTransfer" src/js/app-init.js
           grep -q "project-transfer.js" src/service-worker.js
           grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
           grep -q "案件を書き出す" src/js/projects/project-transfer.js
           grep -q "subscribe(updateButtons)" src/js/projects/project-transfer.js
+          grep -q "export async function openProjectById" src/js/projects/project-controller.js
+          grep -q "openProjectById(project.projectId)" src/js/projects/firestore-project-browser.js
+          if grep -q "localOpenButton.click" src/js/projects/firestore-project-browser.js; then
+            echo "Firestore project browser still depends on DOM click"
+            exit 1
+          fi
+          grep -q "initializeSampleProjectSnapshot" src/js/app-init.js
+          grep -q "sample-session.js" src/service-worker.js
+          grep -q "formatSampleProjectName" src/js/projects/project-store.js
 
   deploy:
     needs: test
