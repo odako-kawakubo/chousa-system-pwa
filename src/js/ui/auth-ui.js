@@ -1,25 +1,37 @@
 /**
- * src/js/ui/auth-ui.js
- * Microsoft認証のヘッダー表示と認証状態通知を管理する。
+ * Microsoft認証UI。
+ * Firebase Authentication（Firestore利用者）とMSAL Graphセッション（OneDrive）を
+ * 別責任で保持し、画面上では同じMicrosoftアカウント領域に状態をまとめる。
  */
 import {
   loginWithMicrosoft,
   logoutMicrosoft,
-  watchAuthState,
-  getGraphAccessToken
+  watchAuthState
 } from '../auth/microsoft-auth.js';
+import {
+  initializeGraphSession,
+  getGraphSessionState,
+  subscribeGraphSession,
+  loginGraph,
+  getGraphAccessToken,
+  logoutGraph
+} from '../auth/graph-session.js';
 
 let currentUser = null;
 let bound = false;
 const listeners = [];
 
 function snapshot() {
+  const graph = getGraphSessionState();
+  const graphAccount = graph.account || null;
   return {
     user: currentUser,
-    displayName: currentUser?.displayName || currentUser?.email || '',
-    email: currentUser?.email || '',
+    displayName: graphAccount?.name || currentUser?.displayName || currentUser?.email || graphAccount?.username || '',
+    email: currentUser?.email || graphAccount?.username || '',
     loggedIn: Boolean(currentUser),
-    graphTokenReady: Boolean(getGraphAccessToken())
+    graphLoggedIn: Boolean(graphAccount),
+    graphTokenReady: Boolean(graph.tokenReady),
+    graphError: graph.error || ''
   };
 }
 
@@ -50,10 +62,11 @@ function ensureMicrosoftBranding() {
   }
 }
 
-function renderAuthState(user) {
+function renderAuthState(user = currentUser) {
   currentUser = user;
   ensureMicrosoftBranding();
 
+  const auth = snapshot();
   const signInButton = document.getElementById('msAuthBtn');
   const accountButton = document.getElementById('msPill');
   const accountName = accountButton?.querySelector('[data-ms-account-name]');
@@ -62,10 +75,10 @@ function renderAuthState(user) {
     return;
   }
 
-  if (user) {
+  if (auth.loggedIn || auth.graphLoggedIn) {
     signInButton.hidden = true;
     accountButton.hidden = false;
-    accountName.textContent = user.displayName || user.email || 'Microsoftログイン済み';
+    accountName.textContent = auth.displayName || 'Microsoftログイン済み';
     accountButton.title = 'タップしてログアウト';
   } else {
     signInButton.hidden = false;
@@ -77,10 +90,32 @@ function renderAuthState(user) {
   notify();
 }
 
+async function ensureFirebaseLogin() {
+  if (currentUser) return currentUser;
+  return loginWithMicrosoft();
+}
+
+async function ensureGraphLogin() {
+  await initializeGraphSession();
+  const graph = getGraphSessionState();
+  if (!graph.account) return loginGraph();
+  try {
+    await getGraphAccessToken({ allowInteractive: true });
+  } catch {
+    return loginGraph();
+  }
+  return graph.account;
+}
+
 async function performSignIn(button = null) {
   if (button) button.disabled = true;
   try {
-    const user = await loginWithMicrosoft();
+    // Firestore用Firebase認証を先に確保し、その後Graph/OneDrive用MSAL認証を確保する。
+    // MSAL側がredirectした場合は、この関数はページ遷移で終了する。
+    const user = await ensureFirebaseLogin();
+    currentUser = user;
+    renderAuthState(user);
+    await ensureGraphLogin();
     renderAuthState(user);
     return user;
   } catch (error) {
@@ -93,7 +128,6 @@ async function performSignIn(button = null) {
 }
 
 async function handleSignIn() {
-  if (currentUser) return;
   const button = document.getElementById('msAuthBtn');
   if (!button) return;
   try {
@@ -104,14 +138,18 @@ async function handleSignIn() {
 }
 
 async function handleAccountClick() {
-  if (!currentUser) return;
+  const auth = snapshot();
+  if (!auth.loggedIn && !auth.graphLoggedIn) return;
   if (!window.confirm('ログアウトしますか？')) return;
 
   const button = document.getElementById('msPill');
   if (button) button.disabled = true;
   try {
-    await logoutMicrosoft();
+    // Firebaseを先にログアウトし、最後にMSAL redirectでMicrosoftセッションを閉じる。
+    if (auth.loggedIn) await logoutMicrosoft();
+    currentUser = null;
     renderAuthState(null);
+    if (auth.graphLoggedIn) await logoutGraph();
   } catch (error) {
     console.error('Microsoftログアウトに失敗しました。', error);
     window.alert(`Microsoftログアウトに失敗しました。\n${error?.message || error}`);
@@ -120,7 +158,6 @@ async function handleAccountClick() {
   }
 }
 
-/** Firebaseログインが残っていてGraphトークンだけ失われた場合も再認証できる入口。 */
 export async function reconnectMicrosoftAuth() {
   return performSignIn(null);
 }
@@ -146,4 +183,9 @@ export function bindAuthUiEvents() {
   document.getElementById('msAuthBtn')?.addEventListener('click', handleSignIn);
   document.getElementById('msPill')?.addEventListener('click', handleAccountClick);
   watchAuthState(renderAuthState);
+  subscribeGraphSession(() => renderAuthState(currentUser));
+  void initializeGraphSession().then(() => renderAuthState(currentUser)).catch((error) => {
+    console.warn('Graphセッション初期化に失敗しました。', error);
+    renderAuthState(currentUser);
+  });
 }
