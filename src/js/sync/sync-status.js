@@ -98,7 +98,7 @@ export function getSyncStatus() {
     blinking = true;
   } else if (state.phase === 'ready') {
     lamp = 'connected';
-    text = unsentCount > 0 ? `未送信 ${unsentCount}件` : '良好';
+    text = '良好';
   }
 
   return {
