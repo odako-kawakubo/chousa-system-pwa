@@ -125,8 +125,10 @@ export function subscribeOneDriveState(callback) {
   };
 }
 
-export async function connectCurrentProjectOneDrive({ force = false } = {}) {
-  if (inFlight && !force) return inFlight;
+export async function connectCurrentProjectOneDrive() {
+  // 案件切替・認証変化・手動「接続確認」が重なっても、同じGraph接続処理を並列実行しない。
+  if (inFlight) return inFlight;
+
   const task = (async () => {
     const project = getCurrentProject();
     if (!project?.projectId || project.isSample) {
@@ -143,19 +145,21 @@ export async function connectCurrentProjectOneDrive({ force = false } = {}) {
       const root = await getInvestigationRoot();
       let binding = projectBinding(project.projectId);
 
+      // 一度接続した案件はフォルダ名ではなくGraph item IDを優先する。
+      // 正式番号へ変わっても、手動統合まで現在の仮フォルダを使い続けられる。
       if (binding.projectFolderId) {
         try {
-const existing = await getDriveItem(binding.projectFolderId);
-if (existing?.folder) {
-  const folders = await ensureShirabeStructure(existing);
-  binding = { ...binding, ...folders };
-  saveBinding(project.projectId, binding);
-  publish(bindingState(binding));
-  return getCurrentOneDriveState();
-}
+          const existing = await getDriveItem(binding.projectFolderId);
+          if (existing?.folder) {
+            const folders = await ensureShirabeStructure(existing);
+            binding = { ...binding, ...folders };
+            saveBinding(project.projectId, binding);
+            publish(bindingState(binding));
+            return getCurrentOneDriveState();
+          }
         } catch (error) {
-if (error?.status !== 404) throw error;
-binding = {};
+          if (error?.status !== 404) throw error;
+          binding = {};
         }
       }
 
@@ -165,7 +169,8 @@ binding = {};
         mode = 'temporary';
         if (!projectFolder) projectFolder = await createDriveFolder(root.id, projectFolderName(project));
       } else if (!projectFolder) {
-        publish(stateFor('unconnected', { error: null }));
+        // 正式案件フォルダは業務側で作成するため、PWAが勝手に生成しない。
+        publish(stateFor('unconnected'));
         return getCurrentOneDriveState();
       }
 
@@ -178,6 +183,7 @@ binding = {};
     }
     return getCurrentOneDriveState();
   })();
+
   inFlight = task;
   try {
     return await task;
@@ -211,7 +217,13 @@ export async function mergeCurrentProjectOneDrive(targetFolderId) {
   const target = candidates.find((item) => item.id === String(targetFolderId || ''));
   if (!target) throw new Error('統合先の正式案件フォルダを確認できませんでした。');
 
-  publish(stateFor('integrating', { mode: 'temporary', folderName: binding.projectFolderName, canMerge: false, binding }));
+  publish(stateFor('integrating', {
+    mode: 'temporary',
+    folderName: binding.projectFolderName,
+    canMerge: false,
+    binding
+  }));
+
   const existingShirabe = await findChildFolder(target.id, 'しらべ');
   if (existingShirabe) {
     publish(bindingState(binding));
@@ -234,7 +246,13 @@ export async function mergeCurrentProjectOneDrive(targetFolderId) {
     publish(bindingState(nextBinding));
     return getCurrentOneDriveState();
   } catch (error) {
-    publish(stateFor('error', { error, mode: 'temporary', folderName: binding.projectFolderName, canMerge: true, binding }));
+    publish(stateFor('error', {
+      error,
+      mode: 'temporary',
+      folderName: binding.projectFolderName,
+      canMerge: true,
+      binding
+    }));
     throw error;
   }
 }
@@ -258,7 +276,7 @@ function scheduleAutoConnect(force = false) {
     const key = autoKey();
     if (!force && key === lastAutoKey) return;
     lastAutoKey = key;
-    void connectCurrentProjectOneDrive({ force });
+    void connectCurrentProjectOneDrive();
   }, 0);
 }
 
