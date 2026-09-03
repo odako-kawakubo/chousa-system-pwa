@@ -12,7 +12,9 @@ import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
 import { initializeProjectManagement, captureInitialProjectSession } from './projects/project-controller.js';
+import { initializeProjectEntryUi } from './projects/project-entry-ui.js';
 import { initializeFirestoreProjectBrowser } from './projects/firestore-project-browser.js';
+import { initializeOneDriveProjectBrowser } from './projects/onedrive-project-browser.js';
 import { initializeProjectTransfer } from './projects/project-transfer.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
@@ -32,7 +34,6 @@ import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
 
 function initUiSkeleton() {
-  // SW登録は通常UIの初期化を待たせない。圏外cold start時は前回activeになったSWが起動資産を供給する。
   void initializePwa();
 
   initializeTheme();
@@ -48,11 +49,12 @@ function initUiSkeleton() {
   bindProjectPanelEvents();
   bindModalEvents();
 
-  // 公式サンプル案件の3レコードはこの入口で一度だけ組み立てる。
   initializeSampleProjectSnapshot();
 
   initializeProjectManagement();
+  initializeProjectEntryUi();
   initializeFirestoreProjectBrowser();
+  initializeOneDriveProjectBrowser();
   initializeProjectTransfer();
   bindAppUpdateEvents();
   bindAuthUiEvents();
