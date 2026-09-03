@@ -10,6 +10,7 @@ on:
       - v0.1.6.4C
       - v0.1.6.4
       - v0.1.6.5B
+      - v0.1.6.5C
   workflow_dispatch:
 
 permissions:
@@ -47,16 +48,16 @@ jobs:
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5B consistency checks
+      - name: v0.1.6.5C consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5B'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5B"' src/version.json
-          grep -q "chousa-app-v0.1.6.5B" src/service-worker.js
+          grep -q "version: '0.1.6.5C'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5C"' src/version.json
+          grep -q "chousa-app-v0.1.6.5C" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -65,10 +66,16 @@ jobs:
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
           grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
 
-          # Bでは起動時にサンプルをcurrentにしない。
+          # 起動時は案件未選択。サンプルは明示操作だけで開く。
           grep -q "let currentProject = null" src/js/projects/project-store.js
           grep -q "initializeHome" src/js/app-init.js
-          grep -q "サンプルを開く" src/js/home/home-controller.js
+          grep -q "サンプル案件を開く" src/js/home/home-controller.js
+
+          # トップから端末内案件を直接開け、アカウント/端末を表示する。
+          grep -q "getProjectList" src/js/home/home-controller.js
+          grep -q "homeLocalProjectList" src/js/home/home-controller.js
+          grep -q "getDeviceDisplayName" src/js/home/home-controller.js
+          grep -q "homeMicrosoftName" src/js/home/home-controller.js
 
           # 既存案件モーダルはイベント配線前にDOMを確定する。
           grep -q "initializeProjectEntryUi();" src/js/app-init.js
@@ -83,11 +90,14 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # OneDrive共通基盤と既存案件ブラウザを確認する。
-          grep -q "ROOT_FOLDER_NAME = '04 調査'" src/js/onedrive/onedrive-project.js
+          # CではOneDriveの /me/drive/root 決め打ちを廃止し共有Driveを解決する。
+          grep -q "export async function resolveSharedRoot" src/js/onedrive/onedrive-client.js
+          grep -q "sharedWithMe" src/js/onedrive/onedrive-client.js
+          grep -q "parentReference?.driveId" src/js/onedrive/onedrive-client.js
+          grep -q "resolveSharedRoot(ROOT_FOLDER_NAME)" src/js/onedrive/onedrive-project.js
+          grep -q "resolveSharedRoot(ROOT_FOLDER_NAME)" src/js/projects/onedrive-project-browser.js
+          grep -q "Sites.ReadWrite.All" src/config/microsoft-config.js
           grep -q "この案件番号のFirestore調査データがありません" src/js/projects/onedrive-project-browser.js
-          grep -q "project-entry-ui.js" src/service-worker.js
-          grep -q "home/home-controller.js" src/service-worker.js
 
   deploy:
     needs: test
