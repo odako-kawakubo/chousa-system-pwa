@@ -1,10 +1,6 @@
 /**
  * src/js/settings/settings-controller.js
- *
- * v0.1.5.4B 設定タブの入口。
- * - 案件情報／同期システムはUIだけ用意し、まだ保存しない。
- * - 建材名称候補・部位名称候補はsurveyCandidateStoreを正本として編集する。
- * - 削除仕様は未確定のため、この版では追加・編集のみ実装する。
+ * 設定タブの入口。
  */
 
 import { getCurrentProject } from '../projects/project-store.js';
@@ -17,12 +13,14 @@ import { listUnsent } from '../sync/unsent-queue.js';
 import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import { getOneDriveConnectionState, subscribeOneDriveConnection } from '../onedrive/onedrive-connection.js';
 
 let root = null;
 let unsubscribe = null;
 let unsubscribeSync = null;
 let unsubscribeAuth = null;
 let unsubscribeDevice = null;
+let unsubscribeOneDrive = null;
 let unsubscribeSyncDiagnosticLog = null;
 
 function buildViewModel() {
@@ -44,6 +42,7 @@ function buildViewModel() {
       unsentCount: currentProject.projectId ? listUnsent({ projectId: currentProject.projectId }).length : 0
     },
     auth: getAuthUiState(),
+    oneDrive: getOneDriveConnectionState(),
     device: {
       code: getDeviceCode(),
       name: getDeviceDisplayName()
@@ -85,6 +84,16 @@ function refreshAuthStatusFields(auth = getAuthUiState()) {
   if (graph) graph.textContent = auth.graphTokenReady ? '取得済み' : '未取得';
 }
 
+function refreshOneDriveStatusFields(oneDrive = getOneDriveConnectionState()) {
+  if (!root) return;
+  const state = root.querySelector('[data-settings-onedrive-state]');
+  const rootName = root.querySelector('[data-settings-onedrive-root]');
+  if (state) {
+    state.textContent = oneDrive.text;
+    state.title = oneDrive.error || '';
+  }
+  if (rootName) rootName.textContent = oneDrive.connected ? (oneDrive.root?.name || '04 調査') : '-';
+}
 
 function refreshSyncDiagnosticLogView() {
   if (!root) return;
@@ -169,8 +178,6 @@ function syncBoardFromInputs(changedElement = null) {
   const surveyDate = surveyDateInput?.value || '';
   const surveyor = surveyorInput?.value || '';
 
-  // 案件情報を変更した場合は、看板用文字列もその場で同じ値へ更新する。
-  // これにより「リセットを押した時だけ新しい案件情報が反映される」状態を作らない。
   if (changedElement?.matches('[data-setting-project-field="projectName"]') && subjectTextInput) {
     subjectTextInput.value = projectName;
   }
@@ -349,6 +356,8 @@ export function initializeSettingsTab() {
   unsubscribeSync = subscribeSyncStatus(refreshSyncStatusFields);
   if (unsubscribeAuth) unsubscribeAuth();
   unsubscribeAuth = subscribeAuthUiState(refreshAuthStatusFields);
+  if (unsubscribeOneDrive) unsubscribeOneDrive();
+  unsubscribeOneDrive = subscribeOneDriveConnection(refreshOneDriveStatusFields);
   if (unsubscribeDevice) unsubscribeDevice();
   unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
   if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();
