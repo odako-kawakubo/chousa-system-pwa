@@ -1,0 +1,51 @@
+name: Temporary v0.1.6.4C cleanup
+
+on:
+  push:
+    branches:
+      - v0.1.6.4C
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.head_commit.message == 'v0.1.6.4C サンプル初期化重複整理用一時ワークフロー'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v0.1.6.4C
+
+      - name: Remove duplicated sample initialization and harden CI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          controller = Path('src/js/finish-table/finish-table-controller.js')
+          text = controller.read_text(encoding='utf-8')
+          text = text.replace('  seedInitialMaterials,\n  seedInitialFinishRecords,\n', '')
+          old = '''  // finishRecordStore／materialRecordStoreへ初期データを投入する\n  // （sample-materials.js／sample-finish-data.jsの種データから）。\n  finishRecordStore.clearAll();\n  materialRecordStore.clearAll();\n  seedInitialMaterials();\n  seedInitialFinishRecords();\n\n'''
+          if old not in text:
+              raise SystemExit('expected duplicated sample initialization block was not found')
+          text = text.replace(old, '')
+          controller.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/firebase-hosting-preview-v0163b.yml')
+          wf = workflow.read_text(encoding='utf-8')
+          anchor = '          grep -q "initializeSampleProjectSnapshot" src/js/app-init.js\n'
+          insert = '''          grep -q "initializeSampleProjectSnapshot" src/js/app-init.js\n          if grep -q "seedInitialMaterials\\|seedInitialFinishRecords" src/js/finish-table/finish-table-controller.js; then\n            echo "finish-table controller still owns sample initialization"\n            exit 1\n          fi\n'''
+          if anchor not in wf:
+              raise SystemExit('CI insertion anchor was not found')
+          wf = wf.replace(anchor, insert, 1)
+          workflow.write_text(wf, encoding='utf-8')
+
+          Path('.github/workflows/temp-cleanup-v0164c.yml').unlink()
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/js/finish-table/finish-table-controller.js .github/workflows/firebase-hosting-preview-v0163b.yml .github/workflows/temp-cleanup-v0164c.yml
+          git commit -m "v0.1.6.4C サンプル初期化重複を解消"
+          git push origin HEAD:v0.1.6.4C
