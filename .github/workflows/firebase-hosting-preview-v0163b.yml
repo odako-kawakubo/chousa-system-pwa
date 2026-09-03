@@ -9,6 +9,7 @@ on:
       - v0.1.6.4B
       - v0.1.6.4C
       - v0.1.6.4
+      - v0.1.6.5A
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,7 @@ jobs:
 
       - name: JavaScript syntax checks
         run: |
+          node --check src/js/auth/microsoft-auth.js
           node --check src/js/sync/sync-status.js
           node --check src/js/firestore/firestore-repository.js
           node --check src/js/firestore/firestore-project-list.js
@@ -35,30 +37,40 @@ jobs:
           node --check src/js/projects/project-session.js
           node --check src/js/projects/firestore-project-browser.js
           node --check src/js/projects/project-transfer.js
+          node --check src/js/onedrive/onedrive-client.js
+          node --check src/js/onedrive/onedrive-project.js
+          node --check src/js/settings/settings-controller.js
+          node --check src/js/settings/settings-renderer.js
           node --check src/js/demo/sample-session.js
+          node --check src/js/ui/auth-ui.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.4 consistency checks
+      - name: v0.1.6.5A consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.4'" src/config/app-config.js
-          grep -q '"version": "0.1.6.4"' src/version.json
-          grep -q "chousa-app-v0.1.6.4" src/service-worker.js
+          grep -q "version: '0.1.6.5A'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5A"' src/version.json
+          grep -q "chousa-app-v0.1.6.5A" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
           grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
           grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
-          grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
+          grep -q "getCurrentProject()?.projectId" src/js/sync/sync-status.js
 
-          # v0.1.6.4で追加した機能と正式化前整理を守る。
+          # Microsoft認証がクラウド機能全体の入口であることを守る。
+          grep -q "export function isMicrosoftCloudReady" src/js/auth/microsoft-auth.js
+          grep -q "isMicrosoftCloudReady()" src/js/sync/sync-status.js
+          grep -q "chousa:auth-state-change" src/js/projects/project-controller.js
+
+          # v0.1.6.4で追加した機能と整理済み責務を守る。
           grep -q "initializeProjectTransfer" src/js/app-init.js
           grep -q "project-transfer.js" src/service-worker.js
           grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
@@ -75,8 +87,26 @@ jobs:
             echo "finish-table controller still owns sample initialization"
             exit 1
           fi
-          grep -q "sample-session.js" src/service-worker.js
           grep -q "formatSampleProjectName" src/js/projects/project-store.js
+
+          # v0.1.6.5A OneDrive共通基盤。
+          grep -q "const ROOT_FOLDER_NAME = '04 調査'" src/js/onedrive/onedrive-project.js
+          grep -q "ensureShirabeStructure" src/js/onedrive/onedrive-project.js
+          grep -q "目視写真" src/js/onedrive/onedrive-project.js
+          grep -q "採取写真" src/js/onedrive/onedrive-project.js
+          grep -q "システムデータ" src/js/onedrive/onedrive-project.js
+          grep -q "元画像" src/js/onedrive/onedrive-project.js
+          grep -q "mergeCurrentProjectOneDrive" src/js/onedrive/onedrive-project.js
+          grep -q "moveDriveItem" src/js/onedrive/onedrive-client.js
+          grep -q "uploadDriveFile" src/js/onedrive/onedrive-client.js
+          grep -q "正式案件へ統合" src/js/settings/settings-renderer.js
+          grep -q "10分ごと（後続接続）" src/js/settings/settings-renderer.js
+          grep -q "onedrive/onedrive-client.js" src/service-worker.js
+          grep -q "onedrive/onedrive-project.js" src/service-worker.js
+          if test -f .github/workflows/temp-v0165a-build.yml; then
+            echo "temporary v0.1.6.5A build workflow remains"
+            exit 1
+          fi
 
   deploy:
     needs: test
