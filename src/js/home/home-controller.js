@@ -182,8 +182,16 @@ function renderIdentity() {
   if (device) device.textContent = getDeviceDisplayName();
   if (microsoft) microsoft.textContent = auth.loggedIn ? (auth.displayName || auth.email || 'ログイン済み') : '未接続';
   if (reconnect) {
-    reconnect.textContent = auth.loggedIn && !auth.graphTokenReady ? '再接続' : auth.loggedIn ? '接続済み' : '接続';
-    reconnect.disabled = auth.loggedIn && auth.graphTokenReady;
+    if (!auth.loggedIn) {
+      reconnect.textContent = '接続';
+      reconnect.disabled = false;
+    } else if (!auth.graphTokenReady || !currentAvailability.oneDrive) {
+      reconnect.textContent = '再接続';
+      reconnect.disabled = false;
+    } else {
+      reconnect.textContent = '接続済み';
+      reconnect.disabled = true;
+    }
   }
 }
 
