@@ -60,8 +60,6 @@ import {
   getPendingCellName
 } from './finish-table-state.js';
 import {
-  seedInitialMaterials,
-  seedInitialFinishRecords,
   addNormalFloor,
   addBasementFloor,
   addStairs,
@@ -419,13 +417,6 @@ function focusOtherCompanionField(roomKeyValue, partIndex, row, targetKind) {
 export function initializeFinishTable() {
   const finishSection = document.getElementById('finish');
   if (!finishSection) return;
-
-  // finishRecordStore／materialRecordStoreへ初期データを投入する
-  // （sample-materials.js／sample-finish-data.jsの種データから）。
-  finishRecordStore.clearAll();
-  materialRecordStore.clearAll();
-  seedInitialMaterials();
-  seedInitialFinishRecords();
 
   initFinishTableState();
   resetHistory();
