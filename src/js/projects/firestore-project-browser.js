@@ -1,10 +1,11 @@
 /**
  * 「既存案件を開く」モーダルのFirestore案件一覧を担当する。
- * 選択した案件は端末内案件Storeへ登録し、既存の案件切替UIを経由して
- * project-controllerの正式なFirestore読込・リアルタイム購読へ接続する。
+ * 選択した案件は端末内案件Storeへ登録し、project-controllerの正式な
+ * 案件オープン入口へ直接渡す。
  */
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getCurrentProject, getProject, saveProjectSnapshot } from './project-store.js';
+import { openProjectById } from './project-controller.js';
 import { closeModal } from '../ui/modal.js';
 
 const MODAL_ID = 'sharedProjectModal';
@@ -94,7 +95,7 @@ async function loadProjects() {
   }
 }
 
-function openRemoteProject(projectId) {
+async function openRemoteProject(projectId) {
   const project = remoteProjects.find((item) => item.projectId === String(projectId || ''));
   if (!project) return;
 
@@ -109,17 +110,7 @@ function openRemoteProject(projectId) {
   }
 
   closeModal(MODAL_ID);
-
-  // 案件切替そのものは既存project-controllerの責務。
-  // 端末内一覧の既存ボタンを経由することで、3レコード読込・編集・購読を同じ経路へ統一する。
-  const selector = `[data-project-open-id="${CSS.escape(project.projectId)}"]`;
-  const localOpenButton = document.querySelector(selector);
-  if (localOpenButton) {
-    localOpenButton.click();
-    return;
-  }
-
-  window.alert('案件を端末内一覧へ登録しました。案件一覧から開いてください。');
+  await openProjectById(project.projectId);
 }
 
 export function initializeFirestoreProjectBrowser() {
@@ -139,7 +130,7 @@ export function initializeFirestoreProjectBrowser() {
     list.addEventListener('click', (event) => {
       const button = event.target.closest('[data-firestore-project-id]');
       if (!button) return;
-      openRemoteProject(button.dataset.firestoreProjectId);
+      void openRemoteProject(button.dataset.firestoreProjectId);
     });
   }
 
