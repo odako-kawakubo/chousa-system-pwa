@@ -1,14 +1,17 @@
 /**
  * Microsoft Graph / OneDrive の低レベル共通処理。
  *
- * v0.1.6.5C:
- * - /me/drive/root 決め打ちをやめ、共有フォルダの driveId / itemId を解決して扱う。
- * - 個人Drive・共有Driveのどちらでも同じAPIで子要素取得／作成／移動を行う。
- * - 旧版で実績のあった「共有アイテム→remoteItem.parentReference.driveId」解決を復活。
+ * v0.1.6.5D:
+ * - v0.14.13で実機利用していた共有URL解決を第一経路へ戻す。
+ * - 「04 調査」は名前検索を正本にせず、共有URLからdriveId / itemIdを直接解決する。
+ * - 解決済み共有ルートは同一セッション中キャッシュし、各機能で同じ実体を参照する。
+ * - 名前検索は共有URL解決に失敗した場合のフォールバックだけにする。
  */
 import { getGraphAccessToken } from '../auth/microsoft-auth.js';
+import { microsoftConfig } from '../../config/microsoft-config.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const sharedRootCache = new Map();
 
 function graphToken() {
   const token = getGraphAccessToken();
@@ -106,6 +109,34 @@ function quoteSearch(value) {
   return String(value || '').replace(/'/g, "''");
 }
 
+function base64UrlEncodeUtf8(value) {
+  const bytes = new TextEncoder().encode(String(value || ''));
+  let binary = '';
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary)
+    .replace(/=+$/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function sharedLinkId(url) {
+  return `u!${base64UrlEncodeUtf8(url)}`;
+}
+
+async function resolveSharedUrl(sharedUrl) {
+  const url = String(sharedUrl || '').trim();
+  if (!url) return null;
+  const shareId = sharedLinkId(url);
+  const item = await graphRequest(`/shares/${encodeURIComponent(shareId)}/driveItem?$select=id,name,folder,file,parentReference,webUrl,remoteItem`);
+  const ref = refForItem(item);
+  if (!ref.driveId || !ref.itemId || !ref.folder) {
+    const error = new Error('共有URLからOneDriveフォルダのdriveId/itemIdを取得できませんでした。');
+    error.code = 'SHARED_URL_RESOLVE_FAILED';
+    throw error;
+  }
+  return ref;
+}
+
 export async function listDriveChildren(parentRef = 'root') {
   const ref = normalizeRef(parentRef);
   const path = `${childrenPath(ref)}?$select=id,name,folder,file,parentReference,webUrl,remoteItem&$top=200`;
@@ -187,39 +218,72 @@ async function sharedWithMeItems() {
   return items.map((item) => refForItem(item));
 }
 
-/**
- * 利用者がアクセス可能な「04 調査」等の共有ルートを driveId / itemId 付きで解決する。
- * 順序:
- * 1. 自分のOneDrive直下
- * 2. 自分のOneDrive内検索（ショートカット／追加済み共有項目を含む）
- * 3. sharedWithMe の共有項目そのもの
- * 4. sharedWithMe の共有フォルダ直下
- */
-export async function resolveSharedRoot(folderName) {
-  const target = String(folderName || '').trim();
-  if (!target) throw new Error('OneDrive共有ルート名が空です。');
-
-  const direct = await findChildFolder('root', target).catch(() => null);
+async function resolveByNameFallback(folderName) {
+  const direct = await findChildFolder('root', folderName).catch(() => null);
   if (direct) return direct;
 
-  const searched = await searchMyDriveExactFolder(target).catch(() => null);
+  const searched = await searchMyDriveExactFolder(folderName).catch(() => null);
   if (searched) return searched;
 
   const sharedItems = await sharedWithMeItems();
-  const directShared = sharedItems.find((item) => item.folder && item.name === target);
+  const directShared = sharedItems.find((item) => item.folder && item.name === folderName);
   if (directShared) return directShared;
 
   for (const shared of sharedItems.filter((item) => item.folder && item.itemId && item.driveId)) {
     try {
-      const child = await findChildFolder(shared, target);
+      const child = await findChildFolder(shared, folderName);
       if (child) return child;
     } catch (error) {
       if (error?.status === 401 || error?.status === 403) continue;
       throw error;
     }
   }
+  return null;
+}
 
-  const error = new Error(`アクセス可能なOneDrive内に「${target}」が見つかりません。`);
-  error.code = 'SHARED_ROOT_NOT_FOUND';
+/**
+ * 利用者がアクセス可能な共有ルートをdriveId / itemId付きで解決する。
+ * 「04 調査」は設定済み共有URLを第一経路とし、名前検索は予備経路だけにする。
+ */
+export async function resolveSharedRoot(folderName = microsoftConfig.surveyRootName) {
+  const target = String(folderName || '').trim();
+  if (!target) throw new Error('OneDrive共有ルート名が空です。');
+
+  const cached = sharedRootCache.get(target);
+  if (cached?.driveId && cached?.itemId) return { ...cached };
+
+  let sharedUrlError = null;
+  if (target === microsoftConfig.surveyRootName && microsoftConfig.surveyRootUrl) {
+    try {
+      const resolved = await resolveSharedUrl(microsoftConfig.surveyRootUrl);
+      const verified = await getDriveItem(resolved);
+      if (verified?.folder) {
+        sharedRootCache.set(target, verified);
+        return { ...verified };
+      }
+    } catch (error) {
+      sharedUrlError = error;
+    }
+  }
+
+  const fallback = await resolveByNameFallback(target);
+  if (fallback) {
+    sharedRootCache.set(target, fallback);
+    return { ...fallback };
+  }
+
+  const error = new Error(
+    sharedUrlError?.message
+      ? `共有URLから「${target}」へ接続できませんでした。${sharedUrlError.message}`
+      : `アクセス可能なOneDrive内に「${target}」が見つかりません。`
+  );
+  error.code = sharedUrlError?.code || 'SHARED_ROOT_NOT_FOUND';
+  error.cause = sharedUrlError || null;
   throw error;
+}
+
+export function clearSharedRootCache(folderName = '') {
+  const target = String(folderName || '').trim();
+  if (target) sharedRootCache.delete(target);
+  else sharedRootCache.clear();
 }
