@@ -1,83 +1,321 @@
 .shirabe-home {
   min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: var(--bg, #f4f6f8);
+  padding: 0;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, .08), transparent 28%),
+    var(--bg, #f4f6f8);
   color: var(--text, #1f2937);
 }
 
 .shirabe-home[hidden] { display: none; }
 
-.shirabe-home-card {
-  width: min(760px, 100%);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #d8dee6);
-  border-radius: 22px;
-  padding: 28px;
-  box-shadow: 0 18px 50px rgba(15, 23, 42, .08);
+.shirabe-home-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 52px 36px 64px;
+}
+
+.shirabe-home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line, #d8dee6);
 }
 
 .shirabe-home-brand {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 22px;
+  gap: 14px;
 }
 
 .shirabe-home-brand h1 {
   margin: 0;
-  font-size: clamp(32px, 6vw, 54px);
+  font-size: clamp(42px, 6vw, 68px);
+  line-height: 1;
+  font-weight: 780;
   letter-spacing: .08em;
 }
 
-.shirabe-home-brand span { color: var(--muted, #64748b); }
-
-.shirabe-cloud-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
+.shirabe-home-brand span {
+  color: var(--muted, #64748b);
+  font-size: 14px;
+  letter-spacing: .08em;
 }
 
-.shirabe-cloud-state {
-  border: 1px solid var(--line, #d8dee6);
-  border-radius: 12px;
-  padding: 12px 14px;
+.shirabe-home-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 28px;
+  min-width: 0;
 }
 
-.shirabe-cloud-state b { font-size: 14px; }
-.shirabe-cloud-state span { font-size: 13px; color: var(--muted, #64748b); }
-
-.shirabe-home-actions {
+.shirabe-meta-item {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 3px;
+  min-width: 0;
 }
 
-.shirabe-home-action {
-  min-height: 76px;
-  border-radius: 14px;
-  font-size: 17px;
+.shirabe-meta-label {
+  color: var(--muted, #64748b);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.shirabe-meta-item strong {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
   font-weight: 700;
 }
 
-.shirabe-home-subactions {
-  margin-top: 14px;
+.shirabe-meta-account {
+  grid-template-columns: auto auto;
+  column-gap: 8px;
+}
+
+.shirabe-meta-account .shirabe-meta-label {
+  grid-column: 1 / -1;
+}
+
+.shirabe-link-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent, #2563eb);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.shirabe-link-button:disabled {
+  color: var(--muted, #64748b);
+  cursor: default;
+}
+
+.shirabe-home-statusbar {
+  min-height: 48px;
   display: flex;
-  gap: 10px;
   align-items: center;
-  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line, #d8dee6);
+}
+
+.shirabe-service-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted, #64748b);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.shirabe-service-status b {
+  color: var(--text, #1f2937);
+  font-size: 12px;
+}
+
+.shirabe-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+  box-shadow: 0 0 0 3px rgba(156, 163, 175, .12);
+}
+
+.shirabe-service-status[data-state="ready"] .shirabe-status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .13);
 }
 
 .shirabe-home-note {
-  margin-top: 14px;
+  margin-left: auto;
+  color: var(--muted, #64748b);
+  font-size: 12px;
+}
+
+.shirabe-home-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  gap: 36px;
+  padding-top: 36px;
+}
+
+.shirabe-home-section {
+  min-width: 0;
+}
+
+.shirabe-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.shirabe-section-heading h2 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.shirabe-section-kicker {
+  color: var(--muted, #64748b);
+  font-size: 11px;
+  letter-spacing: .08em;
+}
+
+.shirabe-local-project-list {
+  overflow: hidden;
+  border-top: 1px solid var(--line, #d8dee6);
+}
+
+.shirabe-local-project {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line, #d8dee6);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shirabe-local-project:hover,
+.shirabe-local-project:focus-visible {
+  background: rgba(148, 163, 184, .08);
+  outline: none;
+}
+
+.shirabe-local-project-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shirabe-local-project-main strong,
+.shirabe-local-project-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shirabe-local-project-main strong {
+  font-size: 15px;
+}
+
+.shirabe-local-project-main small {
+  color: var(--muted, #64748b);
+  font-size: 12px;
+}
+
+.shirabe-local-project-arrow {
+  flex: 0 0 auto;
+  color: var(--muted, #64748b);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.shirabe-empty-projects {
+  padding: 26px 4px;
+  border-bottom: 1px solid var(--line, #d8dee6);
   color: var(--muted, #64748b);
   font-size: 13px;
-  min-height: 1.4em;
+}
+
+.shirabe-start-section {
+  padding-left: 6px;
+}
+
+.shirabe-primary-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.shirabe-action-card {
+  width: 100%;
+  min-height: 94px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px;
+  border: 1px solid var(--line, #d8dee6);
+  border-radius: 16px;
+  background: var(--panel, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .04);
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+.shirabe-action-card:hover:not(:disabled),
+.shirabe-action-card:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, .35);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .07);
+  outline: none;
+}
+
+.shirabe-action-card.primary {
+  border-color: rgba(37, 99, 235, .26);
+}
+
+.shirabe-action-card:disabled {
+  opacity: .46;
+  cursor: default;
+  box-shadow: none;
+}
+
+.shirabe-action-symbol {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, .09);
+  color: var(--accent, #2563eb);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.shirabe-action-card > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.shirabe-action-card strong {
+  font-size: 16px;
+}
+
+.shirabe-action-card small {
+  color: var(--muted, #64748b);
+  font-size: 12px;
+}
+
+.shirabe-sample-button {
+  margin-top: 18px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #64748b);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
 .project-transfer-group {
@@ -90,10 +328,21 @@
 
 .project-transfer-title { margin-bottom: -2px; }
 
-@media (max-width: 640px) {
-  .shirabe-home { padding: 16px; }
-  .shirabe-home-card { padding: 20px; border-radius: 18px; }
-  .shirabe-cloud-row,
-  .shirabe-home-actions { grid-template-columns: 1fr; }
-  .shirabe-home-subactions { align-items: stretch; flex-direction: column; }
+@media (max-width: 820px) {
+  .shirabe-home-shell { padding: 34px 22px 44px; }
+  .shirabe-home-header { align-items: flex-start; }
+  .shirabe-home-meta { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .shirabe-home-main { grid-template-columns: 1fr; gap: 34px; }
+  .shirabe-start-section { padding-left: 0; }
+}
+
+@media (max-width: 560px) {
+  .shirabe-home-shell { padding: 26px 16px 34px; }
+  .shirabe-home-header { flex-direction: column; align-items: stretch; }
+  .shirabe-home-brand h1 { font-size: 48px; }
+  .shirabe-home-meta { display: grid; grid-template-columns: 1fr; }
+  .shirabe-home-statusbar { align-items: flex-start; flex-wrap: wrap; gap: 8px 14px; }
+  .shirabe-home-note { width: 100%; margin-left: 0; }
+  .shirabe-home-main { padding-top: 28px; }
+  .shirabe-action-card { min-height: 82px; }
 }
