@@ -1,6 +1,6 @@
 /**
  * Microsoft Graph / OneDrive の低レベルAPI。
- * Graph認証はgraph-session、業務ルート保持はonedrive-connectionが担当する。
+ * Graph認証はgraph-session、業務ルートの選定・保持はonedrive-connectionが担当する。
  */
 import { getGraphAccessToken } from '../auth/graph-session.js';
 
@@ -101,7 +101,7 @@ function sharedLinkId(url) {
   return `u!${base64UrlEncodeUtf8(url)}`;
 }
 
-/** 固定共有URLをGraph上のdriveId/itemIdへ変換する。検索フォールバックは行わない。 */
+/** 固定共有URLをGraph上のdriveId/itemIdへ変換する。業務上のフォールバック判断はここでは行わない。 */
 export async function resolveSharedUrl(sharedUrl) {
   const url = String(sharedUrl || '').trim();
   if (!url) {
@@ -113,11 +113,25 @@ export async function resolveSharedUrl(sharedUrl) {
   const item = await graphRequest(`/shares/${encodeURIComponent(shareId)}/driveItem?$select=id,name,folder,file,parentReference,webUrl,remoteItem`);
   const ref = refForItem(item);
   if (!ref.driveId || !ref.itemId || !ref.folder) {
-    const error = new Error('共有URLから04 調査のdriveId/itemIdを取得できませんでした。');
+    const error = new Error('共有URLからフォルダのdriveId/itemIdを取得できませんでした。');
     error.code = 'SHARED_URL_RESOLVE_FAILED';
     throw error;
   }
   return ref;
+}
+
+/**
+ * v0.14系で利用していたOneDrive内検索の低レベルAPI。
+ * どの候補を業務ルートとして採用するかはonedrive-connection側だけが判断する。
+ */
+export async function searchDriveFolders(keyword) {
+  const query = String(keyword || '').trim();
+  if (!query) return [];
+  const safe = query.replace(/'/g, "''");
+  const items = await listPaged(`/me/drive/root/search(q='${encodeURIComponent(safe)}')?$select=id,name,folder,webUrl,parentReference,remoteItem&$top=200`);
+  return items
+    .map((item) => refForItem(item))
+    .filter((item) => item.folder && item.driveId && item.itemId);
 }
 
 export async function listDriveChildren(parentRef = 'root') {
