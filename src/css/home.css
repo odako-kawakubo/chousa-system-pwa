@@ -1,0 +1,99 @@
+.shirabe-home {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: var(--bg, #f4f6f8);
+  color: var(--text, #1f2937);
+}
+
+.shirabe-home[hidden] { display: none; }
+
+.shirabe-home-card {
+  width: min(760px, 100%);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #d8dee6);
+  border-radius: 22px;
+  padding: 28px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, .08);
+}
+
+.shirabe-home-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.shirabe-home-brand h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 54px);
+  letter-spacing: .08em;
+}
+
+.shirabe-home-brand span { color: var(--muted, #64748b); }
+
+.shirabe-cloud-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.shirabe-cloud-state {
+  border: 1px solid var(--line, #d8dee6);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shirabe-cloud-state b { font-size: 14px; }
+.shirabe-cloud-state span { font-size: 13px; color: var(--muted, #64748b); }
+
+.shirabe-home-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shirabe-home-action {
+  min-height: 76px;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.shirabe-home-subactions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shirabe-home-note {
+  margin-top: 14px;
+  color: var(--muted, #64748b);
+  font-size: 13px;
+  min-height: 1.4em;
+}
+
+.project-transfer-group {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line, #d8dee6);
+}
+
+.project-transfer-title { margin-bottom: -2px; }
+
+@media (max-width: 640px) {
+  .shirabe-home { padding: 16px; }
+  .shirabe-home-card { padding: 20px; border-radius: 18px; }
+  .shirabe-cloud-row,
+  .shirabe-home-actions { grid-template-columns: 1fr; }
+  .shirabe-home-subactions { align-items: stretch; flex-direction: column; }
+}
