@@ -8,11 +8,10 @@ import {
   getProject,
   getProjectList,
   formatProjectLabel,
-  setCurrentProject,
   subscribe
 } from '../projects/project-store.js';
 import { openProjectById } from '../projects/project-controller.js';
-import { openProjectSession, saveCurrentProjectSession } from '../projects/project-session.js';
+import { openProjectSession, closeProjectSession } from '../projects/project-session.js';
 import { sampleProject } from '../demo/sample-project.js';
 import { openModal } from '../ui/modal.js';
 import { getAuthUiState, reconnectMicrosoftAuth, subscribeAuthUiState } from '../ui/auth-ui.js';
@@ -194,20 +193,14 @@ function renderIdentity() {
   const device = document.getElementById('homeDeviceName');
   const microsoft = document.getElementById('homeMicrosoftName');
   const reconnect = document.getElementById('homeReconnectMicrosoftButton');
+  const anyMicrosoftSession = auth.loggedIn || auth.graphLoggedIn;
 
   if (device) device.textContent = getDeviceDisplayName();
-  if (microsoft) microsoft.textContent = auth.loggedIn ? (auth.displayName || auth.email || 'ログイン済み') : '未接続';
+  if (microsoft) microsoft.textContent = anyMicrosoftSession ? (auth.displayName || auth.email || 'ログイン済み') : '未接続';
   if (reconnect) {
-    if (!auth.loggedIn) {
-      reconnect.textContent = '接続';
-      reconnect.disabled = false;
-    } else if (!auth.graphTokenReady || !currentAvailability.oneDrive) {
-      reconnect.textContent = '再接続';
-      reconnect.disabled = false;
-    } else {
-      reconnect.textContent = '接続済み';
-      reconnect.disabled = true;
-    }
+    const complete = auth.loggedIn && auth.graphLoggedIn && auth.graphTokenReady && currentAvailability.oneDrive;
+    reconnect.textContent = complete ? '接続済み' : (anyMicrosoftSession ? '再接続' : '接続');
+    reconnect.disabled = complete;
   }
 }
 
@@ -231,31 +224,21 @@ function renderAvailability() {
   currentAvailability.oneDriveError = oneDriveState.error || '';
 
   renderIdentity();
-  renderServiceStatus(
-    'homeFirestoreStatus',
-    'homeFirestoreState',
-    currentAvailability.firestore,
-    currentAvailability.firestoreError
-  );
-  renderServiceStatus(
-    'homeOneDriveStatus',
-    'homeOneDriveState',
-    currentAvailability.oneDrive,
-    currentAvailability.oneDriveError,
-    oneDriveState.phase
-  );
+  renderServiceStatus('homeFirestoreStatus', 'homeFirestoreState', currentAvailability.firestore, currentAvailability.firestoreError);
+  renderServiceStatus('homeOneDriveStatus', 'homeOneDriveState', currentAvailability.oneDrive, currentAvailability.oneDriveError, oneDriveState.phase);
 
   if (openExisting) openExisting.disabled = !(currentAvailability.firestore || currentAvailability.oneDrive);
 
   if (!note) return;
   if (navigator.onLine === false) note.textContent = '圏外';
   else if (isManualOffline()) note.textContent = 'オフラインモード';
-  else if (!auth.loggedIn) note.textContent = 'Microsoft未接続';
-  else if (!auth.graphTokenReady) note.textContent = 'OneDriveの再接続が必要';
+  else if (!auth.loggedIn && !auth.graphLoggedIn) note.textContent = 'Microsoft未接続';
+  else if (!auth.loggedIn) note.textContent = 'Firestore認証が必要';
+  else if (!auth.graphLoggedIn || !auth.graphTokenReady) note.textContent = 'OneDriveの再接続が必要';
   else if (currentAvailability.firestore && currentAvailability.oneDrive) note.textContent = 'クラウド接続済み';
-  else if (currentAvailability.firestore) note.textContent = 'OneDriveを確認してください';
+  else if (currentAvailability.firestore) note.textContent = currentAvailability.oneDriveError || 'OneDriveを確認してください';
   else if (currentAvailability.oneDrive) note.textContent = 'Firestoreを確認してください';
-  else note.textContent = 'クラウド接続を確認してください';
+  else note.textContent = currentAvailability.oneDriveError || 'クラウド接続を確認してください';
 }
 
 function localProjects() {
@@ -316,16 +299,13 @@ async function openLocalProject(projectId) {
 }
 
 function returnToHome() {
-  saveCurrentProjectSession();
   clearResumeProjectId();
   resumeAttempted = true;
-  setCurrentProject(null);
+  closeProjectSession();
 }
 
 function bindHomeEvents() {
-  document.getElementById('homeNewProjectButton')?.addEventListener('click', () => {
-    openModal('newProjectModal');
-  });
+  document.getElementById('homeNewProjectButton')?.addEventListener('click', () => openModal('newProjectModal'));
 
   document.getElementById('homeOpenExistingButton')?.addEventListener('click', () => {
     if (!(currentAvailability.firestore || currentAvailability.oneDrive)) return;
@@ -336,13 +316,11 @@ function bindHomeEvents() {
 
   document.getElementById('homeLocalProjectList')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-home-local-project-id]');
-    if (!button) return;
-    void openLocalProject(button.dataset.homeLocalProjectId);
+    if (button) void openLocalProject(button.dataset.homeLocalProjectId);
   });
 
   document.getElementById('homeOpenSampleButton')?.addEventListener('click', () => {
-    if (!getProject(sampleProject.projectId)) return;
-    void openProjectById(sampleProject.projectId);
+    if (getProject(sampleProject.projectId)) void openProjectById(sampleProject.projectId);
   });
 
   document.getElementById('homeReconnectMicrosoftButton')?.addEventListener('click', async (event) => {
@@ -361,7 +339,6 @@ function bindHomeEvents() {
   });
 
   document.querySelector('[data-home-return]')?.addEventListener('click', returnToHome);
-
   window.addEventListener('online', () => void checkAvailability());
   window.addEventListener('offline', () => void checkAvailability());
   window.addEventListener('chousa:manual-offline-change', () => void checkAvailability());
