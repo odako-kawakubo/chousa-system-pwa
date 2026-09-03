@@ -1,9 +1,9 @@
 /**
  * src/js/projects/project-controller.js
  *
- * v0.1.6.2の案件管理入口。
- * デモ案件と端末内で作成した仮案件を同じ一覧へ表示し、
- * 新規作成・案件切替を行う。Firestore案件一覧は後続版で接続する。
+ * 案件管理の正式入口。
+ * 端末内案件一覧・Firestore案件一覧・新規作成・通信復帰の各入口から、
+ * 同じ案件切替／Firestore読込／リアルタイム購読経路を使う。
  */
 
 import { createTemporaryProject, temporaryDateCode } from './project-factory.js';
@@ -522,7 +522,11 @@ async function deleteProject(projectId) {
   }
 }
 
-async function switchProject(projectId) {
+/**
+ * projectIdから案件を開く正式な共通入口。
+ * 端末内案件一覧・Firestore案件一覧のどちらもこの関数を使う。
+ */
+export async function openProjectById(projectId) {
   const targetId = String(projectId || '');
   const current = getCurrentProject();
   if (!targetId || targetId === current?.projectId) {
@@ -717,7 +721,7 @@ export function initializeProjectManagement() {
 
       const openButton = event.target.closest('[data-project-open-id]');
       if (!openButton) return;
-      switchProject(openButton.dataset.projectOpenId);
+      void openProjectById(openButton.dataset.projectOpenId);
     });
   }
 
