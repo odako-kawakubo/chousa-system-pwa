@@ -1,31 +1,17 @@
 /**
- * Microsoft Graph / OneDrive の低レベル共通処理。
- *
- * v0.1.6.5D:
- * - v0.14.13で実機利用していた共有URL解決を第一経路へ戻す。
- * - 「04 調査」は名前検索を正本にせず、共有URLからdriveId / itemIdを直接解決する。
- * - 解決済み共有ルートは同一セッション中キャッシュし、各機能で同じ実体を参照する。
- * - 名前検索は共有URL解決に失敗した場合のフォールバックだけにする。
+ * Microsoft Graph / OneDrive の低レベルAPI。
+ * Graph認証はgraph-session、業務ルート保持はonedrive-connectionが担当する。
  */
-import { getGraphAccessToken } from '../auth/microsoft-auth.js';
-import { microsoftConfig } from '../../config/microsoft-config.js';
+import { getGraphAccessToken } from '../auth/graph-session.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-const sharedRootCache = new Map();
-
-function graphToken() {
-  const token = getGraphAccessToken();
-  if (!token) {
-    const error = new Error('Microsoft Graphトークンがありません。Microsoftへ再ログインしてください。');
-    error.code = 'GRAPH_TOKEN_MISSING';
-    throw error;
-  }
-  return token;
-}
 
 async function graphRequest(path, { method = 'GET', body = null, headers = {}, expectJson = true } = {}) {
-  const requestHeaders = { Authorization: `Bearer ${graphToken()}`, ...headers };
-  const options = { method, headers: requestHeaders };
+  const accessToken = await getGraphAccessToken();
+  const options = {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}`, ...headers }
+  };
   if (body !== null && body !== undefined) options.body = body;
 
   const response = await fetch(`${GRAPH_BASE}${path}`, options);
@@ -44,7 +30,8 @@ async function graphRequest(path, { method = 'GET', body = null, headers = {}, e
     error.graphCode = graphCode;
     error.code = response.status === 401 ? 'GRAPH_UNAUTHORIZED'
       : response.status === 403 ? 'GRAPH_FORBIDDEN'
-        : 'GRAPH_REQUEST_FAILED';
+        : response.status === 404 ? 'GRAPH_NOT_FOUND'
+          : 'GRAPH_REQUEST_FAILED';
     throw error;
   }
   if (!expectJson || response.status === 204) return null;
@@ -92,9 +79,7 @@ function refForItem(item, fallbackDriveId = '') {
 function itemBasePath(value) {
   const ref = normalizeRef(value);
   if (ref.itemId === 'root') {
-    return ref.driveId
-      ? `/drives/${encodeURIComponent(ref.driveId)}/root`
-      : '/me/drive/root';
+    return ref.driveId ? `/drives/${encodeURIComponent(ref.driveId)}/root` : '/me/drive/root';
   }
   return ref.driveId
     ? `/drives/${encodeURIComponent(ref.driveId)}/items/${encodeURIComponent(ref.itemId)}`
@@ -105,32 +90,30 @@ function childrenPath(value) {
   return `${itemBasePath(value)}/children`;
 }
 
-function quoteSearch(value) {
-  return String(value || '').replace(/'/g, "''");
-}
-
 function base64UrlEncodeUtf8(value) {
   const bytes = new TextEncoder().encode(String(value || ''));
   let binary = '';
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary)
-    .replace(/=+$/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+  return btoa(binary).replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 function sharedLinkId(url) {
   return `u!${base64UrlEncodeUtf8(url)}`;
 }
 
-async function resolveSharedUrl(sharedUrl) {
+/** 固定共有URLをGraph上のdriveId/itemIdへ変換する。検索フォールバックは行わない。 */
+export async function resolveSharedUrl(sharedUrl) {
   const url = String(sharedUrl || '').trim();
-  if (!url) return null;
+  if (!url) {
+    const error = new Error('OneDrive共有URLが設定されていません。');
+    error.code = 'SHARED_URL_MISSING';
+    throw error;
+  }
   const shareId = sharedLinkId(url);
   const item = await graphRequest(`/shares/${encodeURIComponent(shareId)}/driveItem?$select=id,name,folder,file,parentReference,webUrl,remoteItem`);
   const ref = refForItem(item);
   if (!ref.driveId || !ref.itemId || !ref.folder) {
-    const error = new Error('共有URLからOneDriveフォルダのdriveId/itemIdを取得できませんでした。');
+    const error = new Error('共有URLから04 調査のdriveId/itemIdを取得できませんでした。');
     error.code = 'SHARED_URL_RESOLVE_FAILED';
     throw error;
   }
@@ -139,8 +122,7 @@ async function resolveSharedUrl(sharedUrl) {
 
 export async function listDriveChildren(parentRef = 'root') {
   const ref = normalizeRef(parentRef);
-  const path = `${childrenPath(ref)}?$select=id,name,folder,file,parentReference,webUrl,remoteItem&$top=200`;
-  const items = await listPaged(path);
+  const items = await listPaged(`${childrenPath(ref)}?$select=id,name,folder,file,parentReference,webUrl,remoteItem&$top=200`);
   return items.map((item) => refForItem(item, ref.driveId));
 }
 
@@ -202,88 +184,4 @@ export async function uploadDriveFile(parentRef, fileName, content, contentType 
     body: content
   });
   return refForItem(item, ref.driveId);
-}
-
-async function searchMyDriveExactFolder(folderName) {
-  const q = encodeURIComponent(quoteSearch(folderName));
-  const items = await listPaged(`/me/drive/root/search(q='${q}')?$select=id,name,folder,parentReference,webUrl,remoteItem&$top=200`);
-  const match = items
-    .map((item) => refForItem(item))
-    .find((item) => item.folder && item.name === folderName);
-  return match || null;
-}
-
-async function sharedWithMeItems() {
-  const items = await listPaged('/me/drive/sharedWithMe?$select=id,name,folder,parentReference,webUrl,remoteItem&$top=200');
-  return items.map((item) => refForItem(item));
-}
-
-async function resolveByNameFallback(folderName) {
-  const direct = await findChildFolder('root', folderName).catch(() => null);
-  if (direct) return direct;
-
-  const searched = await searchMyDriveExactFolder(folderName).catch(() => null);
-  if (searched) return searched;
-
-  const sharedItems = await sharedWithMeItems();
-  const directShared = sharedItems.find((item) => item.folder && item.name === folderName);
-  if (directShared) return directShared;
-
-  for (const shared of sharedItems.filter((item) => item.folder && item.itemId && item.driveId)) {
-    try {
-      const child = await findChildFolder(shared, folderName);
-      if (child) return child;
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) continue;
-      throw error;
-    }
-  }
-  return null;
-}
-
-/**
- * 利用者がアクセス可能な共有ルートをdriveId / itemId付きで解決する。
- * 「04 調査」は設定済み共有URLを第一経路とし、名前検索は予備経路だけにする。
- */
-export async function resolveSharedRoot(folderName = microsoftConfig.surveyRootName) {
-  const target = String(folderName || '').trim();
-  if (!target) throw new Error('OneDrive共有ルート名が空です。');
-
-  const cached = sharedRootCache.get(target);
-  if (cached?.driveId && cached?.itemId) return { ...cached };
-
-  let sharedUrlError = null;
-  if (target === microsoftConfig.surveyRootName && microsoftConfig.surveyRootUrl) {
-    try {
-      const resolved = await resolveSharedUrl(microsoftConfig.surveyRootUrl);
-      const verified = await getDriveItem(resolved);
-      if (verified?.folder) {
-        sharedRootCache.set(target, verified);
-        return { ...verified };
-      }
-    } catch (error) {
-      sharedUrlError = error;
-    }
-  }
-
-  const fallback = await resolveByNameFallback(target);
-  if (fallback) {
-    sharedRootCache.set(target, fallback);
-    return { ...fallback };
-  }
-
-  const error = new Error(
-    sharedUrlError?.message
-      ? `共有URLから「${target}」へ接続できませんでした。${sharedUrlError.message}`
-      : `アクセス可能なOneDrive内に「${target}」が見つかりません。`
-  );
-  error.code = sharedUrlError?.code || 'SHARED_ROOT_NOT_FOUND';
-  error.cause = sharedUrlError || null;
-  throw error;
-}
-
-export function clearSharedRootCache(folderName = '') {
-  const target = String(folderName || '').trim();
-  if (target) sharedRootCache.delete(target);
-  else sharedRootCache.clear();
 }
