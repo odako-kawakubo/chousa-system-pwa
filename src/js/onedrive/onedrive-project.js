@@ -1,6 +1,6 @@
 /**
  * 案件とOneDrive案件フォルダの接続を一元管理する。
- * 04 調査を起点に、仮案件フォルダの自動生成・しらべ配下生成・正式案件への手動統合を担当する。
+ * OneDrive業務ルート自体はonedrive-connectionの正本だけを使用する。
  */
 import {
   listDriveChildren,
@@ -9,15 +9,16 @@ import {
   createDriveFolder,
   ensureDriveFolder,
   moveDriveItem,
-  deleteDriveItem,
-  resolveSharedRoot
+  deleteDriveItem
 } from './onedrive-client.js';
-import { getGraphAccessToken } from '../auth/microsoft-auth.js';
+import {
+  getUsableSurveyRoot,
+  getOneDriveConnectionState,
+  subscribeOneDriveConnection
+} from './onedrive-connection.js';
 import { getCurrentProject, getProjectSyncMeta, updateProjectSyncMeta, subscribe as subscribeProjects } from '../projects/project-store.js';
 import { isManualOffline } from '../sync/sync-status.js';
-import { subscribeAuthUiState } from '../ui/auth-ui.js';
 
-const ROOT_FOLDER_NAME = '04 調査';
 const listeners = [];
 let currentState = stateFor('unconnected');
 let inFlight = null;
@@ -79,10 +80,6 @@ function folderRefFromBinding(binding = {}, prefix = 'project') {
   return itemId ? { driveId, itemId } : null;
 }
 
-async function getInvestigationRoot() {
-  return resolveSharedRoot(ROOT_FOLDER_NAME);
-}
-
 async function findProjectFolder(root, projectNo) {
   const children = await listDriveChildren(root);
   return children.find((item) => item.folder && matchesProjectNo(item.name, projectNo)) || null;
@@ -135,21 +132,20 @@ export function subscribeOneDriveState(callback) {
 
 export async function connectCurrentProjectOneDrive() {
   if (inFlight) return inFlight;
-
   const task = (async () => {
     const project = getCurrentProject();
     if (!project?.projectId || project.isSample) {
       publish(stateFor('unavailable'));
       return getCurrentOneDriveState();
     }
-    if (!getGraphAccessToken() || isManualOffline() || navigator.onLine === false) {
+    if (!getOneDriveConnectionState().connected || isManualOffline() || navigator.onLine === false) {
       publish(stateFor('unconnected'));
       return getCurrentOneDriveState();
     }
 
     publish(stateFor('connecting'));
     try {
-      const root = await getInvestigationRoot();
+      const root = await getUsableSurveyRoot();
       let binding = projectBinding(project.projectId);
 
       const boundProjectRef = folderRefFromBinding(binding, 'project');
@@ -218,7 +214,7 @@ export async function listFormalOneDriveCandidates() {
   if (!project?.projectId) return [];
   const binding = projectBinding(project.projectId);
   if (binding.mode !== 'temporary') return [];
-  const root = await getInvestigationRoot();
+  const root = await getUsableSurveyRoot();
   const children = await listDriveChildren(root);
   return children
     .filter((item) => item.folder && (item.itemId || item.id) !== binding.projectFolderId)
@@ -238,12 +234,7 @@ export async function mergeCurrentProjectOneDrive(targetFolderId) {
   const target = candidates.find((item) => (item.itemId || item.id) === String(targetFolderId || ''));
   if (!target) throw new Error('統合先の正式案件フォルダを確認できませんでした。');
 
-  publish(stateFor('integrating', {
-    mode: 'temporary',
-    folderName: binding.projectFolderName,
-    canMerge: false,
-    binding
-  }));
+  publish(stateFor('integrating', { mode: 'temporary', folderName: binding.projectFolderName, canMerge: false, binding }));
 
   const existingShirabe = await findChildFolder(target, 'しらべ');
   if (existingShirabe) {
@@ -287,13 +278,8 @@ export async function mergeCurrentProjectOneDrive(targetFolderId) {
 function autoKey() {
   const project = getCurrentProject();
   const binding = project?.projectId ? projectBinding(project.projectId) : {};
-  return [
-    project?.projectId || '',
-    binding.projectFolderId || '',
-    Boolean(getGraphAccessToken()),
-    isManualOffline(),
-    navigator.onLine !== false
-  ].join('|');
+  const oneDrive = getOneDriveConnectionState();
+  return [project?.projectId || '', binding.projectFolderId || '', oneDrive.connected, oneDrive.root?.itemId || '', isManualOffline(), navigator.onLine !== false].join('|');
 }
 
 function scheduleAutoConnect(force = false) {
@@ -309,9 +295,7 @@ function scheduleAutoConnect(force = false) {
 
 export function initializeOneDriveProjectIntegration() {
   subscribeProjects(() => scheduleAutoConnect());
-  subscribeAuthUiState(() => scheduleAutoConnect(true));
-  window.addEventListener('online', () => scheduleAutoConnect(true));
-  window.addEventListener('offline', () => scheduleAutoConnect(true));
+  subscribeOneDriveConnection(() => scheduleAutoConnect(true));
   window.addEventListener('chousa:manual-offline-change', () => scheduleAutoConnect(true));
   scheduleAutoConnect(true);
 }
