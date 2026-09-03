@@ -1,7 +1,7 @@
 /**
  * src/js/settings/settings-renderer.js
  *
- * v0.1.5.4B 設定タブの描画専用モジュール。
+ * 設定タブの描画専用モジュール。
  * 保存・同期処理は行わず、受け取ったViewModelをHTMLへ反映する。
  */
 
@@ -13,7 +13,6 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
-
 
 function formatSyncTime(value) {
   const time = Number(value || 0);
@@ -112,8 +111,6 @@ export function renderSettingsTab(root, viewModel) {
             </div>
           </section>
 
-
-
           <section class="settings-card settings-candidate-card">
             <div class="settings-card-head">
               <div>
@@ -205,14 +202,15 @@ export function renderSettingsTab(root, viewModel) {
             <div class="settings-card-head">
               <div>
                 <h3>Microsoft / OneDrive</h3>
-                <div class="hint">Microsoft認証とOneDrive接続に必要な状態を確認します。</div>
+                <div class="hint">OneDriveは共有保存先「04 調査」へ実アクセスできた時だけ接続済みと表示します。</div>
               </div>
               <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}">${viewModel.auth.loggedIn ? 'ログイン済み' : '未ログイン'}</span>
             </div>
             <div class="settings-status-list">
               <div><span>ユーザー</span><b data-settings-auth-user>${escapeHtml(viewModel.auth.displayName || '未ログイン')}</b></div>
               <div><span>Graphトークン</span><b data-settings-graph-state>${viewModel.auth.graphTokenReady ? '取得済み' : '未取得'}</b></div>
-              <div><span>OneDrive</span><b>未接続</b></div>
+              <div><span>OneDrive</span><b data-settings-onedrive-state title="${escapeHtml(viewModel.oneDrive.error || '')}">${escapeHtml(viewModel.oneDrive.text)}</b></div>
+              <div><span>保存先</span><b data-settings-onedrive-root>${escapeHtml(viewModel.oneDrive.connected ? (viewModel.oneDrive.root?.name || '04 調査') : '-')}</b></div>
             </div>
           </section>
 
