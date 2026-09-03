@@ -12,6 +12,7 @@
 
 import { listUnsent } from './unsent-queue.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { isMicrosoftCloudReady } from '../auth/microsoft-auth.js';
 
 const OFFLINE_KEY = 'chousa-manual-offline';
 
@@ -61,11 +62,12 @@ export function isManualOffline() {
 }
 
 export function canUseFirestore() {
-  return !isManualOffline() && isNetworkOnline();
+  return !isManualOffline() && isNetworkOnline() && isMicrosoftCloudReady();
 }
 
 export function getSyncStatus() {
   const networkOnline = isNetworkOnline();
+  const cloudReady = isMicrosoftCloudReady();
   const currentProject = getCurrentProject();
   const currentProjectId = currentProject?.projectId || '';
   const unsentCount = currentProjectId ? listUnsent({ projectId: currentProjectId }).length : 0;
@@ -79,6 +81,9 @@ export function getSyncStatus() {
   } else if (currentProject?.isSample || state.phase === 'local' && !currentProjectId) {
     lamp = 'neutral';
     text = '対象外';
+  } else if (!cloudReady) {
+    lamp = 'neutral';
+    text = 'ローカル';
   } else if (!networkOnline) {
     lamp = 'network-offline';
     text = '圏外';
@@ -104,7 +109,8 @@ export function getSyncStatus() {
   return {
     ...state,
     networkOnline,
-    firestoreAvailable: !state.manualOffline && networkOnline,
+    cloudReady,
+    firestoreAvailable: !state.manualOffline && networkOnline && cloudReady,
     lamp,
     text,
     blinking,
@@ -214,6 +220,15 @@ export function initializeNetworkStatusEvents() {
   });
   window.addEventListener('online', () => {
     if (state.manualOffline) return;
-    setState({ phase: 'reconnecting', serverConnected: false, error: null });
+    setState({ phase: isMicrosoftCloudReady() ? 'reconnecting' : 'local', serverConnected: false, error: null });
+  });
+  window.addEventListener('chousa:auth-state-change', (event) => {
+    if (state.manualOffline) return;
+    const cloudReady = Boolean(event.detail?.cloudReady);
+    setState({
+      phase: cloudReady && isNetworkOnline() ? 'connecting' : 'local',
+      serverConnected: false,
+      error: null
+    });
   });
 }

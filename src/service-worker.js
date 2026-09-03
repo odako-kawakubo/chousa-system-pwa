@@ -1,11 +1,11 @@
 /*
- * v0.1.6.4 Service Worker
+ * v0.1.6.5A Service Worker
  *
  * 責任は「アプリ本体を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.4';
+const APP_CACHE = 'chousa-app-v0.1.6.5A';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -41,6 +41,9 @@ const APP_SHELL = [
   './js/projects/project-session.js',
   './js/projects/firestore-project-browser.js',
   './js/projects/project-transfer.js',
+  './js/auth/microsoft-auth.js',
+  './js/onedrive/onedrive-client.js',
+  './js/onedrive/onedrive-project.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
   './config/app-config.js'

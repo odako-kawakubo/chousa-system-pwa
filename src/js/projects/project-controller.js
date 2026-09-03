@@ -676,6 +676,20 @@ export function initializeProjectManagement() {
     });
   }
 
+  if (document.documentElement.dataset.cloudAuthRecoveryBound !== '1') {
+    document.documentElement.dataset.cloudAuthRecoveryBound = '1';
+    window.addEventListener('chousa:auth-state-change', (event) => {
+      const cloudReady = Boolean(event.detail?.cloudReady);
+      if (!cloudReady) {
+        saveCurrentProjectSession();
+        stopProjectRecordStream();
+        markLocalOnly();
+        return;
+      }
+      void recoverCurrentProjectAfterNetworkReturn();
+    });
+  }
+
   if (document.documentElement.dataset.firestoreNetworkRecoveryBound !== '1') {
     document.documentElement.dataset.firestoreNetworkRecoveryBound = '1';
     window.addEventListener('offline', () => {

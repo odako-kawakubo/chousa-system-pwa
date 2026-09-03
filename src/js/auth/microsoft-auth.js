@@ -71,3 +71,8 @@ export function watchAuthState(callback) {
 export function getGraphAccessToken() {
   return sessionStorage.getItem(GRAPH_TOKEN_STORAGE_KEY) || "";
 }
+
+/** Microsoft認証とGraphトークンの両方が揃った時だけクラウド機能を許可する。 */
+export function isMicrosoftCloudReady() {
+  return Boolean(auth.currentUser && getGraphAccessToken());
+}

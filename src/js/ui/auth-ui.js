@@ -23,7 +23,8 @@ function snapshot() {
     displayName: currentUser?.displayName || currentUser?.email || '',
     email: currentUser?.email || '',
     loggedIn: Boolean(currentUser),
-    graphTokenReady: Boolean(getGraphAccessToken())
+    graphTokenReady: Boolean(getGraphAccessToken()),
+    cloudReady: Boolean(currentUser && getGraphAccessToken())
   };
 }
 
@@ -78,6 +79,7 @@ function renderAuthState(user) {
   }
 
   notify();
+  window.dispatchEvent(new CustomEvent('chousa:auth-state-change', { detail: snapshot() }));
 }
 
 async function handleSignIn() {

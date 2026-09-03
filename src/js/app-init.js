@@ -29,6 +29,7 @@ import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
+import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
 
 function initUiSkeleton() {
   // SW登録は通常UIの初期化を待たせない。圏外cold start時は前回activeになったSWが起動資産を供給する。
@@ -55,6 +56,7 @@ function initUiSkeleton() {
   initializeProjectTransfer();
   bindAppUpdateEvents();
   bindAuthUiEvents();
+  initializeOneDriveProjectIntegration();
   initializeFinishTable();
   initializeMaterialList();
   initializeMaterialOperations();

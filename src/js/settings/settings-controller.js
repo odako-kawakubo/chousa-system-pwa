@@ -17,6 +17,13 @@ import { listUnsent } from '../sync/unsent-queue.js';
 import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import {
+  getCurrentOneDriveState,
+  subscribeOneDriveState,
+  connectCurrentProjectOneDrive,
+  listFormalOneDriveCandidates,
+  mergeCurrentProjectOneDrive
+} from '../onedrive/onedrive-project.js';
 
 let root = null;
 let unsubscribe = null;
@@ -24,6 +31,7 @@ let unsubscribeSync = null;
 let unsubscribeAuth = null;
 let unsubscribeDevice = null;
 let unsubscribeSyncDiagnosticLog = null;
+let unsubscribeOneDrive = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -44,6 +52,7 @@ function buildViewModel() {
       unsentCount: currentProject.projectId ? listUnsent({ projectId: currentProject.projectId }).length : 0
     },
     auth: getAuthUiState(),
+    oneDrive: getCurrentOneDriveState(),
     device: {
       code: getDeviceCode(),
       name: getDeviceDisplayName()
@@ -105,6 +114,47 @@ function downloadSyncDiagnosticLog() {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function refreshOneDriveStatusFields(state = getCurrentOneDriveState()) {
+  if (!root) return;
+  const status = root.querySelector('[data-settings-onedrive-state]');
+  const folder = root.querySelector('[data-settings-onedrive-folder]');
+  const pill = root.querySelector('[data-settings-onedrive-pill]');
+  const merge = root.querySelector('[data-action="open-onedrive-merge"]');
+  if (status) status.textContent = state.label || '未接続';
+  if (folder) folder.textContent = state.folderName || '-';
+  if (pill) pill.textContent = state.label || '未接続';
+  if (merge) merge.hidden = !state.canMerge;
+}
+
+function renderOneDriveMergeCandidates(candidates = []) {
+  const panel = root?.querySelector('[data-onedrive-merge-panel]');
+  const list = root?.querySelector('[data-onedrive-merge-candidates]');
+  if (!panel || !list) return;
+  panel.hidden = false;
+  list.innerHTML = candidates.length
+    ? candidates.map((item) => `<button type="button" class="btn small" data-onedrive-merge-target="${String(item.id).replace(/"/g, '&quot;')}">${String(item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</button>`).join('')
+    : '<span class="hint">統合できる正式案件フォルダがありません。</span>';
+}
+
+async function openOneDriveMergeCandidates() {
+  try {
+    renderOneDriveMergeCandidates(await listFormalOneDriveCandidates());
+  } catch (error) {
+    window.alert(error?.message || 'OneDrive案件一覧を取得できませんでした。');
+  }
+}
+
+async function mergeOneDriveTarget(targetId, targetName) {
+  if (!window.confirm(`「${targetName}」へしらべデータを統合しますか？`)) return;
+  try {
+    await mergeCurrentProjectOneDrive(targetId);
+    const panel = root?.querySelector('[data-onedrive-merge-panel]');
+    if (panel) panel.hidden = true;
+  } catch (error) {
+    window.alert(error?.message || '正式案件へ統合できませんでした。');
+  }
 }
 
 function refreshDeviceFields(name = getDeviceDisplayName()) {
@@ -222,6 +272,22 @@ function handleClick(event) {
     const next = !getSyncStatus().manualOffline;
     window.dispatchEvent(new CustomEvent('chousa:manual-offline-change', { detail: { enabled: next } }));
     window.setTimeout(render, 0);
+    return;
+  }
+
+  if (event.target.closest('[data-action="refresh-onedrive-connection"]')) {
+    void connectCurrentProjectOneDrive({ force: true });
+    return;
+  }
+
+  if (event.target.closest('[data-action="open-onedrive-merge"]')) {
+    void openOneDriveMergeCandidates();
+    return;
+  }
+
+  const oneDriveTarget = event.target.closest('[data-onedrive-merge-target]');
+  if (oneDriveTarget) {
+    void mergeOneDriveTarget(oneDriveTarget.dataset.onedriveMergeTarget, oneDriveTarget.textContent || '選択した案件');
     return;
   }
 
@@ -353,5 +419,7 @@ export function initializeSettingsTab() {
   unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
   if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();
   unsubscribeSyncDiagnosticLog = subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);
+  if (unsubscribeOneDrive) unsubscribeOneDrive();
+  unsubscribeOneDrive = subscribeOneDriveState(refreshOneDriveStatusFields);
   refreshSyncDiagnosticLogView();
 }

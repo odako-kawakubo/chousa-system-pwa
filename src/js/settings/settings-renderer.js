@@ -207,12 +207,21 @@ export function renderSettingsTab(root, viewModel) {
                 <h3>Microsoft / OneDrive</h3>
                 <div class="hint">Microsoft認証とOneDrive接続に必要な状態を確認します。</div>
               </div>
-              <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}">${viewModel.auth.loggedIn ? 'ログイン済み' : '未ログイン'}</span>
+              <span class="pill${viewModel.auth.loggedIn ? ' ok' : ''}" data-settings-onedrive-pill>${escapeHtml(viewModel.oneDrive.label || (viewModel.auth.loggedIn ? '未接続' : '未ログイン'))}</span>
             </div>
             <div class="settings-status-list">
               <div><span>ユーザー</span><b data-settings-auth-user>${escapeHtml(viewModel.auth.displayName || '未ログイン')}</b></div>
               <div><span>Graphトークン</span><b data-settings-graph-state>${viewModel.auth.graphTokenReady ? '取得済み' : '未取得'}</b></div>
-              <div><span>OneDrive</span><b>未接続</b></div>
+              <div><span>OneDrive</span><b data-settings-onedrive-state>${escapeHtml(viewModel.oneDrive.label || '未接続')}</b></div>
+              <div><span>保存先</span><b data-settings-onedrive-folder>${escapeHtml(viewModel.oneDrive.folderName || '-')}</b></div>
+            </div>
+            <div class="settings-action-row">
+              <button type="button" class="btn small" data-action="refresh-onedrive-connection">接続確認</button>
+              <button type="button" class="btn small" data-action="open-onedrive-merge"${viewModel.oneDrive.canMerge ? '' : ' hidden'}>正式案件へ統合</button>
+            </div>
+            <div data-onedrive-merge-panel hidden>
+              <div class="hint">OneDriveの「04 調査」から統合先の正式案件を選択してください。</div>
+              <div class="settings-action-row" data-onedrive-merge-candidates></div>
             </div>
           </section>
 
@@ -242,7 +251,7 @@ export function renderSettingsTab(root, viewModel) {
             </div>
             <div class="settings-status-list">
               <div><span>最終バックアップ</span><b>未実行</b></div>
-              <div><span>自動バックアップ</span><b>30分ごと（後続接続）</b></div>
+              <div><span>自動バックアップ</span><b>10分ごと（後続接続）</b></div>
             </div>
             <div class="settings-action-row">
               <button type="button" class="btn" disabled title="OneDrive接続後に有効化">今すぐバックアップ</button>
