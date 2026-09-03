@@ -91,17 +91,18 @@ jobs:
             exit 1
           fi
 
-          # E: 04調査は固定共有URLだけを接続正本にする。名前検索フォールバックは禁止。
+          # E: 04調査の解決責任はonedrive-connectionだけに置く。
+          # 固定共有URLを第一経路、旧v0.14系のOneDrive検索を予備経路とする。
           grep -q "surveyRootUrl" src/config/microsoft-config.js
           grep -q "export async function resolveSharedUrl" src/js/onedrive/onedrive-client.js
+          grep -q "export async function searchDriveFolders" src/js/onedrive/onedrive-client.js
           grep -q "/shares/" src/js/onedrive/onedrive-client.js
+          grep -q "/me/drive/root/search" src/js/onedrive/onedrive-client.js
           grep -q "export async function getUsableSurveyRoot" src/js/onedrive/onedrive-connection.js
           grep -q "resolveSharedUrl(microsoftConfig.surveyRootUrl)" src/js/onedrive/onedrive-connection.js
-          if grep -q "resolveSharedRoot\|sharedWithMe\|/me/drive/root/search" src/js/onedrive/onedrive-client.js; then
-            echo "obsolete OneDrive root discovery remains"
-            exit 1
-          fi
-          if grep -q "resolveSharedUrl\|resolveSharedRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
+          grep -q "resolveByLegacySearch" src/js/onedrive/onedrive-connection.js
+          grep -q "await listDriveChildren(verified)" src/js/onedrive/onedrive-connection.js
+          if grep -q "resolveSharedUrl\|searchDriveFolders\|resolveSharedRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
             echo "OneDrive consumers bypass connection root owner"
             exit 1
           fi
