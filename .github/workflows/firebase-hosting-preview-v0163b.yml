@@ -81,7 +81,7 @@ jobs:
           grep -q "homeLocalProjectList" src/js/home/home-controller.js
           grep -q "getDeviceDisplayName" src/js/home/home-controller.js
           grep -q "homeMicrosoftName" src/js/home/home-controller.js
-          grep -q "data.homeReturn" src/js/home/home-return-control.js
+          grep -q "dataset.homeReturn" src/js/home/home-return-control.js
 
           # 既存案件モーダルはイベント配線前にDOMを確定する。
           grep -q "initializeProjectEntryUi();" src/js/app-init.js
