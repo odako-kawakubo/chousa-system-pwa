@@ -1,11 +1,7 @@
 /**
  * src/js/projects/project-session.js
- *
- * 案件を開くときの共通入口。
- * 案件情報と3つの正式Storeを同じタイミングで切り替え、各画面を再描画する。
- * Firestore／OneDriveの取得処理はここに持たず、取得済みデータを受け取るだけにする。
+ * 案件を開く／閉じる共通入口。Firestore／OneDriveの取得処理は持たない。
  */
-
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -19,7 +15,6 @@ import { refreshPhotoTab } from '../photos/photo-controller.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 
-/** 現在開いている案件の3レコードを案件一覧Storeへ退避する。 */
 export function saveCurrentProjectSession() {
   const project = getCurrentProject();
   if (!project?.projectId) return null;
@@ -31,10 +26,6 @@ export function saveCurrentProjectSession() {
   });
 }
 
-/**
- * inputIdはFirestore正本項目ではなく materialId から復元される表示用派生値。
- * 建材だけが端末間同期された直後でも、仕上表側の表示を同じ再描画周期で更新する。
- */
 function refreshDerivedFinishInputIds() {
   const materials = new Map(
     materialRecordStore.exportSnapshot().map((record) => [String(record.materialId || ''), record])
@@ -76,9 +67,17 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   refreshOpenProjectSessionViews();
 
   const header = document.getElementById('caseHeaderTitle');
-  if (header) {
-    header.textContent = formatProjectLabel(project);
-  }
-
+  if (header) header.textContent = formatProjectLabel(project);
   return project;
+}
+
+/**
+ * 現在案件を安全に閉じる。
+ * 端末Snapshotへ退避してからcurrentProjectだけ解除し、案件データ自体は削除しない。
+ */
+export function closeProjectSession() {
+  saveCurrentProjectSession();
+  setCurrentProject(null);
+  const header = document.getElementById('caseHeaderTitle');
+  if (header) header.textContent = '案件未選択';
 }
