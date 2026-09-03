@@ -35,7 +35,9 @@ jobs:
           node --check src/js/projects/project-controller.js
           node --check src/js/projects/project-store.js
           node --check src/js/projects/project-session.js
+          node --check src/js/projects/project-entry-ui.js
           node --check src/js/projects/firestore-project-browser.js
+          node --check src/js/projects/onedrive-project-browser.js
           node --check src/js/projects/project-transfer.js
           node --check src/js/onedrive/onedrive-client.js
           node --check src/js/onedrive/onedrive-project.js
@@ -75,7 +77,8 @@ jobs:
           grep -q "initializeProjectTransfer" src/js/app-init.js
           grep -q "project-transfer.js" src/service-worker.js
           grep -q "refreshDerivedFinishInputIds" src/js/projects/project-session.js
-          grep -q "案件を書き出す" src/js/projects/project-transfer.js
+          grep -q "書き出し" src/js/projects/project-transfer.js
+          grep -q "読み込み" src/js/projects/project-transfer.js
           grep -q "subscribe(updateButtons)" src/js/projects/project-transfer.js
           grep -q "export async function openProjectById" src/js/projects/project-controller.js
           grep -q "openProjectById(project.projectId)" src/js/projects/firestore-project-browser.js
@@ -90,7 +93,7 @@ jobs:
           fi
           grep -q "formatSampleProjectName" src/js/projects/project-store.js
 
-          # v0.1.6.5A OneDrive共通基盤。
+          # v0.1.6.5A OneDrive共通基盤と案件入口。
           grep -q "const ROOT_FOLDER_NAME = '04 調査'" src/js/onedrive/onedrive-project.js
           grep -q "ensureShirabeStructure" src/js/onedrive/onedrive-project.js
           grep -q "目視写真" src/js/onedrive/onedrive-project.js
@@ -102,8 +105,12 @@ jobs:
           grep -q "uploadDriveFile" src/js/onedrive/onedrive-client.js
           grep -q "正式案件へ統合" src/js/settings/settings-renderer.js
           grep -q "10分ごと（後続接続）" src/js/settings/settings-renderer.js
-          grep -q "onedrive/onedrive-client.js" src/service-worker.js
-          grep -q "onedrive/onedrive-project.js" src/service-worker.js
+          grep -q "Firestore" src/js/projects/project-entry-ui.js
+          grep -q "OneDrive" src/js/projects/project-entry-ui.js
+          grep -q "oneDriveProjectList" src/js/projects/project-entry-ui.js
+          grep -q "ROOT_FOLDER_NAME = '04 調査'" src/js/projects/onedrive-project-browser.js
+          grep -q "onedrive-project-browser.js" src/service-worker.js
+          grep -q "project-entry-ui.js" src/service-worker.js
           if test -f .github/workflows/temp-v0165a-build.yml; then
             echo "temporary v0.1.6.5A build workflow remains"
             exit 1
