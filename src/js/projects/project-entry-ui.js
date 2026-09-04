@@ -1,7 +1,7 @@
 /**
  * 案件入口UIの正本。
  * 「既存案件を開く」モーダルは、汎用モーダルのイベント配線より前にここで一度だけ構築する。
- * 実行後にinnerHTMLで作り直さないことで、閉じるボタンや取得元タブのイベント消失を防ぐ。
+ * app.html / index.html の両方から利用するため、案件画面専用要素は明示的にスコープする。
  */
 const MODAL_ID = 'sharedProjectModal';
 
@@ -75,7 +75,7 @@ function organizeTransferControls() {
 export function initializeProjectEntryUi() {
   renderExistingProjectModal();
 
-  const newButton = document.querySelector('[data-modal-target="newProjectModal"]');
+  const newButton = document.querySelector('#projectSidePanel [data-modal-target="newProjectModal"]');
   if (newButton) newButton.textContent = '＋ 新規作成';
   const newTitle = document.querySelector('#newProjectModal .shared-project-head b');
   if (newTitle) newTitle.textContent = '新規作成';
