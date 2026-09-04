@@ -1,8 +1,10 @@
 /**
  * OneDrive案件フォルダ内の業務ファイル選定と案件Excel読取。
  * Graph通信そのものはonedrive-clientへ委譲し、この層では案件ファイルの意味だけを扱う。
+ * 実運用の.xlsmを含むため、Workbook APIではなくファイル本体を取得してOpen XMLを読む。
  */
-import { listDriveChildren, readDriveWorkbookRange } from './onedrive-client.js';
+import { listDriveChildren, downloadDriveFile } from './onedrive-client.js';
+import { readOpenXmlCells } from './openxml-workbook-reader.js';
 
 function itemId(item) {
   return String(item?.itemId || item?.id || '');
@@ -20,7 +22,7 @@ function normalizeProjectNo(value) {
 }
 
 function isExcelFile(item) {
-  return Boolean(item?.file) && /\.xlsx$/i.test(String(item?.name || ''));
+  return Boolean(item?.file) && /\.(?:xlsx|xlsm)$/i.test(String(item?.name || ''));
 }
 
 function isInternalRequestFile(name) {
@@ -34,7 +36,7 @@ function scoreCandidate(item, projectNo) {
 }
 
 /**
- * 案件番号を含むxlsxだけを対象にし、通常版を社内依頼用より優先する。
+ * 案件番号を含む.xlsx/.xlsmだけを対象にし、通常版を社内依頼用より優先する。
  */
 export async function findProjectExcelFile(projectFolder, projectNo) {
   const no = normalizeProjectNo(projectNo);
@@ -50,11 +52,6 @@ export async function findProjectExcelFile(projectFolder, projectNo) {
   return candidates[0]?.item || null;
 }
 
-function cellValue(row, index) {
-  const value = row?.[index];
-  return value === null || value === undefined ? '' : String(value).trim();
-}
-
 /**
  * 「入力」シートの固定セルから案件情報を読む。
  * F2=案件番号 / K2=案件名 / L2=住所。
@@ -67,12 +64,12 @@ export async function readProjectExcelInfo(projectFolder, projectNo) {
     throw error;
   }
 
-  const range = await readDriveWorkbookRange(fileRef(excel, projectFolder?.driveId), '入力', 'F2:L2');
-  const row = Array.isArray(range?.values?.[0]) ? range.values[0] : [];
+  const file = await downloadDriveFile(fileRef(excel, projectFolder?.driveId), { responseType: 'arrayBuffer' });
+  const cells = await readOpenXmlCells(file, '入力', ['F2', 'K2', 'L2']);
   const info = {
-    projectNo: cellValue(row, 0),
-    projectName: cellValue(row, 5),
-    address: cellValue(row, 6),
+    projectNo: String(cells.F2 || '').trim(),
+    projectName: String(cells.K2 || '').trim(),
+    address: String(cells.L2 || '').trim(),
     excelFileId: itemId(excel),
     excelFileName: String(excel?.name || ''),
     excelFileWebUrl: String(excel?.webUrl || '')
