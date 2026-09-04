@@ -1,17 +1,9 @@
 <!--
   src/app.html
 
-  このファイルの役割：
-    本開発版のメイン画面。ヘッダー・案件選択パネル・上部タブ・各タブ領域・
-    操作パネル・モーダルのDOM骨格を定義する。仕上表の実データ描画と操作は
-    src/js/finish-table/ 配下、認証は src/js/auth/ と src/js/ui/auth-ui.js、
-    バージョン表示と更新処理は src/js/app-version.js / app-update.js が担当する。
-
-  現在の方針：
-    ・バージョン番号は app-config.js を正本とし、HTMLへ番号を直書きしない。
-    ・サンプル案件に加え、v0.1.6.1Aでは現場新規案件を正式初期仕上表で生成できる。
-    ・他タブの業務機能、正式レコード、保存・同期は段階的に実装する。
-    ・インラインonclickは使わず、各JSモジュールからイベントを配線する。
+  案件作業専用ページ。
+  案件選択・新規作成・既存案件検索は独立トップ(index.html)が担当する。
+  このページは選択済み案件の仕上表・建材・写真・設定等だけを表示する。
 -->
 <!doctype html>
 <html lang="ja">
@@ -33,12 +25,8 @@
 </head>
 <body>
 
-<!-- ============================================================
-     ヘッダー
-     ============================================================ -->
 <header class="app-header-compact">
-  <button class="btn header-case-btn" data-project-panel-open title="案件一覧">案件</button>
-  <h1 id="caseHeaderTitle">案件未選択</h1>
+  <h1 id="caseHeaderTitle">案件読込中</h1>
   <span class="pill header-version" id="headerVersion"></span>
 
   <div class="header-sync-group" aria-label="同期状態">
@@ -60,82 +48,6 @@
   </div>
 </header>
 
-<!-- ============================================================
-     案件選択パネル（左スライドイン）
-     案件一覧は案件管理モジュール実装時に描画する。
-     ============================================================ -->
-<div class="project-side-backdrop" id="projectSideBackdrop" data-project-panel-close></div>
-<aside class="project-side-panel" id="projectSidePanel" aria-hidden="true">
-  <div class="project-side-head">
-    <b>案件選択</b>
-    <button class="btn icon" data-project-panel-close>×</button>
-  </div>
-  <div class="project-side-tools">
-    <input id="projectSearchInput" placeholder="端末内の案件を検索" disabled />
-    <button class="btn primary" data-modal-open data-modal-target="newProjectModal">＋ 現場で新規作成</button>
-    <button class="btn" id="restoreProjectButton" data-modal-open data-modal-target="sharedProjectModal">
-      既存案件を開く
-    </button>
-  </div>
-  <div class="project-restore-status" id="projectRestoreStatus"></div>
-  <div class="project-side-list" id="projectList">
-    <div class="hint" style="padding:16px 4px">
-      案件一覧は未実装です（案件管理モジュール実装時に表示されます）
-    </div>
-  </div>
-</aside>
-
-<!-- ============================================================
-     新規案件作成モーダル
-     ============================================================ -->
-<div class="shared-project-modal" id="newProjectModal" data-modal-close data-modal-target="newProjectModal">
-  <div class="shared-project-card new-project-card" data-modal-stop>
-    <div class="shared-project-head">
-      <b>現場で新規作成</b>
-      <button class="btn small" data-modal-close data-modal-target="newProjectModal">閉じる</button>
-    </div>
-    <div class="new-project-form">
-      <label>
-        <span>案件名</span>
-        <input id="newProjectNameInput" autocomplete="off" placeholder="案件名を入力" />
-      </label>
-      <label>
-        <span>住所</span>
-        <input id="newProjectAddressInput" autocomplete="off" placeholder="住所を入力" />
-      </label>
-      <div class="hint">案件番号は作成時に yymmdd-連番 で自動発番します。</div>
-      <div class="project-restore-status" id="newProjectStatus"></div>
-    </div>
-    <div class="new-project-actions">
-      <button class="btn" data-modal-close data-modal-target="newProjectModal">キャンセル</button>
-      <button class="btn primary" id="createNewProjectButton">作成して開く</button>
-    </div>
-  </div>
-</div>
-
-<!-- ============================================================
-     既存案件を開くモーダル
-     ============================================================ -->
-<div class="shared-project-modal" id="sharedProjectModal" data-modal-close data-modal-target="sharedProjectModal">
-  <div class="shared-project-card" data-modal-stop>
-    <div class="shared-project-head">
-      <b id="sharedProjectTitle">既存案件を開く</b>
-      <button class="btn small" data-modal-close data-modal-target="sharedProjectModal">閉じる</button>
-    </div>
-    <div class="shared-project-search-row">
-      <input class="shared-project-search" placeholder="案件を検索" disabled />
-      <button class="btn small primary" disabled>検索</button>
-    </div>
-    <div class="project-restore-status show warn">
-      OneDrive連携は未実装です。案件検索はここでは動作しません。
-    </div>
-    <div class="shared-project-list" id="sharedProjectList"></div>
-  </div>
-</div>
-
-<!-- ============================================================
-     本体（タブ切り替えエリア）
-     ============================================================ -->
 <div class="app">
   <main class="main">
     <div class="toolbar">
@@ -204,9 +116,6 @@
   </main>
 </div>
 
-<!-- ============================================================
-     ドロワー
-     ============================================================ -->
 <div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
 <aside class="drawer" id="drawer">
   <div class="drawer-head">
@@ -243,9 +152,6 @@
   </div>
 </aside>
 
-<!-- ============================================================
-     アップデート確認モーダル
-     ============================================================ -->
 <div class="update-modal" id="updateModal" data-update-modal-close>
   <div class="update-card" data-modal-stop>
     <h3>アップデート</h3>
@@ -257,9 +163,6 @@
   </div>
 </div>
 
-<!-- ============================================================
-     手動オフライン切替確認モーダル
-     ============================================================ -->
 <div class="update-modal" id="manualOfflineModal">
   <div class="update-card" data-modal-stop>
     <h3 id="manualOfflineModalTitle">オフラインモード</h3>
@@ -271,9 +174,6 @@
   </div>
 </div>
 
-<!-- ============================================================
-     写真拡大プレビューモーダル
-     ============================================================ -->
 <div class="photo-preview-modal" id="photoPreviewModal" data-modal-close data-modal-target="photoPreviewModal">
   <div class="photo-preview-card" data-modal-stop>
     <div class="photo-preview-head">
