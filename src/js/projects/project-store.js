@@ -7,10 +7,10 @@
  */
 
 import { sampleProject, formatSampleProjectName } from '../demo/sample-project.js';
+import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
 const LOCAL_PROJECTS_KEY = 'chousa-local-projects-v0161b';
 
-// 起動時は特定案件を開かない。サンプルも明示的に選択した時だけcurrentにする。
 let currentProject = null;
 let projects = new Map();
 const listeners = [];
@@ -42,19 +42,30 @@ function loadLocalProjects() {
       if (!entry?.project?.projectId || entry.project.isSample) return;
       projects.set(entry.project.projectId, cloneEntry(entry));
     });
-  } catch {
-    // 壊れた端末内Snapshotでアプリ起動を止めない。
+  } catch (error) {
+    syncDiagnosticLog('LOCAL_SNAPSHOT_LOAD_ERROR', { message: error?.message || String(error) });
   }
 }
 
-function persistLocalProjects() {
+function persistLocalProjects(source = 'unspecified') {
   try {
     const payload = Array.from(projects.values())
       .filter((entry) => !entry.project?.isSample)
       .map(cloneEntry);
     localStorage.setItem(LOCAL_PROJECTS_KEY, JSON.stringify(payload));
-  } catch {
-    // 端末保存に失敗しても、そのセッション中の画面操作は継続する。
+    syncDiagnosticLog('LOCAL_SNAPSHOT_PERSIST_OK', {
+      source,
+      projects: payload.map((entry) => ({
+        projectId: entry.project?.projectId || '',
+        finishCount: entry.finishRecords?.length || 0,
+        materialCount: entry.materialRecords?.length || 0,
+        photoCount: entry.photoRecords?.length || 0
+      }))
+    });
+    return true;
+  } catch (error) {
+    syncDiagnosticLog('LOCAL_SNAPSHOT_PERSIST_ERROR', { source, message: error?.message || String(error) });
+    return false;
   }
 }
 
@@ -94,9 +105,28 @@ export function getProjectList() {
   });
 }
 
-export function saveProjectSnapshot({ project, finishRecords = [], materialRecords = [], photoRecords = [], syncMeta = null }) {
+export function saveProjectSnapshot({
+  project,
+  finishRecords = [],
+  materialRecords = [],
+  photoRecords = [],
+  syncMeta = null,
+  source = 'unspecified'
+}) {
   if (!project?.projectId) return null;
   const previous = projects.get(project.projectId);
+  syncDiagnosticLog('LOCAL_SNAPSHOT_BEFORE_SAVE', {
+    source,
+    projectId: project.projectId,
+    previousFinishCount: previous?.finishRecords?.length || 0,
+    previousMaterialCount: previous?.materialRecords?.length || 0,
+    previousPhotoCount: previous?.photoRecords?.length || 0,
+    nextFinishCount: finishRecords.length,
+    nextMaterialCount: materialRecords.length,
+    nextPhotoCount: photoRecords.length,
+    nextMaterialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
+  });
+
   projects.set(project.projectId, {
     project: { ...project },
     finishRecords: cloneRecords(finishRecords),
@@ -104,14 +134,20 @@ export function saveProjectSnapshot({ project, finishRecords = [], materialRecor
     photoRecords: cloneRecords(photoRecords),
     syncMeta: { ...(previous?.syncMeta || {}), ...(syncMeta || {}) }
   });
-  if (!project.isSample) persistLocalProjects();
+  const persisted = project.isSample ? true : persistLocalProjects(source);
+  syncDiagnosticLog('LOCAL_SNAPSHOT_AFTER_SAVE', {
+    source,
+    projectId: project.projectId,
+    persisted,
+    finishCount: finishRecords.length,
+    materialCount: materialRecords.length,
+    photoCount: photoRecords.length,
+    materialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
+  });
   notify();
   return getProject(project.projectId);
 }
 
-/**
- * 既存案件の案件情報だけを更新する。3レコードのSnapshotは触らない。
- */
 export function updateProjectFields(projectId, patch = {}) {
   const id = String(projectId || '');
   const entry = projects.get(id);
@@ -122,7 +158,7 @@ export function updateProjectFields(projectId, patch = {}) {
   projects.set(id, entry);
 
   if (currentProject?.projectId === id) currentProject = { ...nextProject };
-  if (!nextProject.isSample) persistLocalProjects();
+  if (!nextProject.isSample) persistLocalProjects('project-fields-update');
   notify();
   return { ...nextProject };
 }
@@ -137,7 +173,7 @@ export function updateProjectSyncMeta(projectId, patch = {}) {
   if (!entry) return null;
   entry.syncMeta = { ...(entry.syncMeta || {}), ...(patch || {}) };
   projects.set(id, entry);
-  if (!entry.project?.isSample) persistLocalProjects();
+  if (!entry.project?.isSample) persistLocalProjects('sync-meta-update');
   notify();
   return { ...entry.syncMeta };
 }
@@ -147,7 +183,7 @@ export function removeProject(projectId) {
   if (!id || id === sampleProject.projectId) return false;
   const deleted = projects.delete(id);
   if (deleted) {
-    persistLocalProjects();
+    persistLocalProjects('project-remove');
     notify();
   }
   return deleted;
@@ -156,7 +192,7 @@ export function removeProject(projectId) {
 export function ensureProject(project) {
   if (!project?.projectId) return null;
   if (!projects.has(project.projectId)) {
-    saveProjectSnapshot({ project });
+    saveProjectSnapshot({ project, source: 'ensure-project' });
   }
   return getProject(project.projectId);
 }
@@ -169,7 +205,6 @@ export function subscribe(callback) {
   };
 }
 
-/** 案件一覧・ヘッダーで使う「番号 案件名」表示。 */
 export function formatProjectLabel(project) {
   if (!project) return '案件未選択';
   if (project.isSample) return formatSampleProjectName(project);
