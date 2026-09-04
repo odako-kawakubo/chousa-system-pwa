@@ -5,6 +5,8 @@
  * v0.1.6.3C:
  *   未送信が残っている場合は「まとめて同期」を表示し、50件単位で明示同期する。
  *   バッチ失敗時は自動継続せず、再送するか閉じるかをユーザーへ返す。
+ * v0.1.6.5H:
+ *   設定 > 同期システムの「今すぐ同期」も同じ同期処理へ接続する。
  */
 import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -146,11 +148,21 @@ function showBulkRetryModal(remaining) {
   openModal(BULK_RETRY_MODAL_ID);
 }
 
-async function runBulkSync() {
+async function runBulkSync({ notifyWhenEmpty = false } = {}) {
   if (bulkSyncRunning) return;
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample) return;
   const projectId = String(project.projectId);
+  const initialStatus = getSyncStatus();
+
+  if (initialStatus.manualOffline || initialStatus.networkOnline === false) {
+    showBulkRetryModal(initialStatus.unsentCount);
+    return;
+  }
+  if (initialStatus.unsentCount <= 0) {
+    if (notifyWhenEmpty) window.alert('同期するデータはありません。');
+    return;
+  }
 
   bulkSyncRunning = true;
   render(getSyncStatus());
@@ -164,7 +176,10 @@ async function runBulkSync() {
         showBulkRetryModal(status.unsentCount);
         return;
       }
-      if (status.unsentCount <= 0) return;
+      if (status.unsentCount <= 0) {
+        if (notifyWhenEmpty) window.alert('同期が完了しました。');
+        return;
+      }
 
       const result = await retryUnsentBatch({
         projectId,
@@ -178,7 +193,10 @@ async function runBulkSync() {
         showBulkRetryModal(result.remaining ?? getSyncStatus().unsentCount);
         return;
       }
-      if (result.completed || Number(result.remaining || 0) <= 0) return;
+      if (result.completed || Number(result.remaining || 0) <= 0) {
+        if (notifyWhenEmpty) window.alert('同期が完了しました。');
+        return;
+      }
 
       // 成功した50件ごとにUIへ処理を返し、長い同期でも画面を固めない。
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -225,6 +243,9 @@ function bindBulkSyncControls() {
   ensureBulkRetryModal();
   ensureBulkSyncButton()?.addEventListener('click', () => {
     void runBulkSync();
+  });
+  window.addEventListener('chousa:manual-sync-request', () => {
+    void runBulkSync({ notifyWhenEmpty: true });
   });
   document.getElementById('closeBulkSyncRetryButton')?.addEventListener('click', () => {
     closeModal(BULK_RETRY_MODAL_ID);
