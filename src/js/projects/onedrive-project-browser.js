@@ -1,7 +1,8 @@
 /**
  * 独立トップ/案件サイドパネルの「既存案件を開く」OneDrive側。
  * OneDrive業務ルートはonedrive-connectionの正本のみを使用する。
- * 案件Excelから案件番号・案件名・住所を確定し、Firestore既存案件を優先する。
+ * 案件番号・案件名はOneDrive案件フォルダ名を正本とし、案件Excelは住所等の補完にだけ使用する。
+ * Excelが見つからない/読めない場合でも、案件フォルダからFirestore案件を開ける。
  */
 import { listDriveChildren } from '../onedrive/onedrive-client.js';
 import { getUsableSurveyRoot, getOneDriveConnectionState } from '../onedrive/onedrive-connection.js';
@@ -124,7 +125,7 @@ async function loadProjects() {
   }
 }
 
-function bindOneDrive(projectId, folder, excelInfo) {
+function bindOneDrive(projectId, folder, excelInfo = null) {
   updateProjectSyncMeta(projectId, {
     oneDriveBinding: {
       mode: 'formal',
@@ -142,24 +143,45 @@ function bindOneDrive(projectId, folder, excelInfo) {
   });
 }
 
+async function tryReadProjectExcel(folder) {
+  try {
+    return await readProjectExcelInfo(folder, folder.projectNo);
+  } catch (error) {
+    console.warn('案件Excelを読めないため、OneDrive案件フォルダ情報で続行します。', {
+      projectNo: folder.projectNo,
+      projectName: folder.projectName,
+      message: error?.message || String(error)
+    });
+    return null;
+  }
+}
+
 async function openFolder(folderId) {
   const folder = projectFolders.find((item) => item.id === String(folderId || ''));
   if (!folder) return;
 
-  const loadingToken = beginLoading('案件ファイルを取得しています…');
-  setStatus('案件Excelを確認しています…');
+  const loadingToken = beginLoading('案件を確認しています…');
+  setStatus('案件情報を確認しています…');
 
   try {
-    const excelInfo = await readProjectExcelInfo(folder, folder.projectNo);
+    // 案件番号・案件名はOneDrive案件フォルダ名を正本とする。
+    // Excelは住所等の補完だけに使い、失敗しても案件を開く処理を止めない。
+    const excelInfo = await tryReadProjectExcel(folder);
+    const projectInfo = {
+      projectNo: folder.projectNo,
+      projectName: folder.projectName,
+      address: excelInfo?.address || ''
+    };
+
     updateLoading(loadingToken, 'Firestoreの調査データを確認しています…');
     setStatus('Firestoreの調査データを確認しています…');
 
     const firestoreProjects = await readFirestoreProjectList();
-    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === excelInfo.projectNo) || null;
+    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === projectInfo.projectNo) || null;
 
     if (!project) {
       const confirmed = window.confirm(
-        `${excelInfo.projectNo}　${excelInfo.projectName}\n${excelInfo.address || ''}\n\nFirestoreに調査データがありません。\nこの案件の調査データを新規作成しますか？`
+        `${projectInfo.projectNo}　${projectInfo.projectName}\n${projectInfo.address || ''}\n\nFirestoreに調査データがありません。\nこの案件の調査データを新規作成しますか？`
       );
       if (!confirmed) {
         setStatus('作成をキャンセルしました。');
@@ -167,11 +189,7 @@ async function openFolder(folderId) {
       }
       updateLoading(loadingToken, '案件を作成しています…');
       setStatus('Firestoreに調査データを作成しています…');
-      const created = await createFormalProjectFromOneDriveSnapshot({
-        projectNo: excelInfo.projectNo,
-        projectName: excelInfo.projectName,
-        address: excelInfo.address
-      });
+      const created = await createFormalProjectFromOneDriveSnapshot(projectInfo);
       project = created?.project || null;
       if (!project) throw new Error('Firestore調査データを作成できませんでした。');
     } else if (!getProject(project.projectId)) {
