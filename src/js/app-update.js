@@ -24,6 +24,14 @@ const UPDATE_FAILURE_MESSAGE = [
   'ホーム画面のアプリを終了して開き直してください。'
 ].join('\n');
 
+function waitForPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
 export async function fetchLatestVersionInfo() {
   try {
     const response = await fetch(`./version.json?ts=${Date.now()}`, {
@@ -106,6 +114,8 @@ export async function showUpdatePrompt() {
  */
 export async function reloadLatestApp(loadingToken = '') {
   updateLoading(loadingToken, 'アップデートを確認しています…');
+  await waitForPaint();
+
   const latestInfo = await fetchLatestVersionInfo();
   if (latestInfo.fetchFailed) {
     sessionStorage.removeItem(UPDATE_VERIFY_KEY);
@@ -115,8 +125,14 @@ export async function reloadLatestApp(loadingToken = '') {
   const expectedVersion = String(latestInfo.version || appConfig.version);
   sessionStorage.setItem(UPDATE_VERIFY_KEY, expectedVersion);
 
-  updateLoading(loadingToken, 'アップデート中です…');
+  updateLoading(loadingToken, 'アップデートをダウンロードしています…');
+  await waitForPaint();
+
   const worker = await preparePwaUpdate();
+
+  updateLoading(loadingToken, 'アップデートを適用しています…');
+  await waitForPaint();
+
   const switched = await activatePreparedPwaUpdate(worker);
 
   // SWファイルに差分がない場合でもHTML/JS側の更新を取り直せるようreloadする。
@@ -164,8 +180,9 @@ export function bindAppUpdateEvents() {
 
   confirmButton?.addEventListener('click', async () => {
     confirmButton.disabled = true;
-    const loadingToken = beginLoading('アップデート中です…', { delay: 0 });
+    const loadingToken = beginLoading('アップデートを確認しています…', { delay: 0 });
     try {
+      await waitForPaint();
       await reloadLatestApp(loadingToken);
     } catch (error) {
       endLoading(loadingToken);
