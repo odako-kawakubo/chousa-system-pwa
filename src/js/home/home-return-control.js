@@ -1,7 +1,10 @@
 /**
- * 案件画面から中立トップへ戻るためのヘッダー導線だけを生成する。
- * 実際の保存・案件解除はhome-controllerが担当する。
+ * 案件画面から独立トップ(index.html)へ戻る導線。
+ * 保存・案件解除後にページ遷移する。
  */
+import { closeProjectSession } from '../projects/project-session.js';
+import { openHomePage } from '../projects/project-navigation.js';
+
 export function ensureHomeReturnControl() {
   const header = document.querySelector('.app-header-compact');
   if (!header || header.querySelector('[data-home-return]')) return;
@@ -12,7 +15,11 @@ export function ensureHomeReturnControl() {
   button.dataset.homeReturn = '1';
   button.title = 'トップへ戻る';
   button.setAttribute('aria-label', 'トップへ戻る');
-  button.textContent = 'しらべ';
+  button.textContent = '←';
+  button.addEventListener('click', () => {
+    closeProjectSession();
+    openHomePage();
+  });
 
   header.prepend(button);
 }
