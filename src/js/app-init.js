@@ -10,6 +10,7 @@ import { initializePwa } from './pwa/pwa-controller.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
+import { beginLoading, endLoading } from './ui/loading-ui.js';
 import { initializeProjectManagement, captureInitialProjectSession, openProjectById } from './projects/project-controller.js';
 import { initializeProjectSidePanelController } from './projects/project-side-panel-controller.js';
 import { initializeProjectEntryUi } from './projects/project-entry-ui.js';
@@ -44,52 +45,56 @@ async function initProjectApp() {
     return;
   }
 
-  void initializePwa();
-  initializeTheme();
-  initializeDeviceIdentity();
-  applyAppVersionDisplay();
-  initializeNetworkStatusEvents();
-  bindSyncStatusUi();
-  bindDeviceUi();
-  bindHeaderEditUi();
-  bindTabEvents();
-  bindDrawerEvents();
-  bindThemeControls();
-  bindProjectPanelEvents();
+  const loadingToken = beginLoading('起動しています…', { delay: 0 });
+  try {
+    void initializePwa();
+    initializeTheme();
+    initializeDeviceIdentity();
+    applyAppVersionDisplay();
+    initializeNetworkStatusEvents();
+    bindSyncStatusUi();
+    bindDeviceUi();
+    bindHeaderEditUi();
+    bindTabEvents();
+    bindDrawerEvents();
+    bindThemeControls();
+    bindProjectPanelEvents();
 
-  // サイドパネルの新規/既存案件UIを先に構築してから汎用モーダルを配線する。
-  initializeProjectEntryUi();
-  bindModalEvents();
+    initializeProjectEntryUi();
+    bindModalEvents();
 
-  initializeSampleProjectSnapshot();
-  initializeProjectManagement();
-  initializeProjectSidePanelController();
-  initializeFirestoreProjectBrowser();
-  initializeOneDriveProjectBrowser();
-  initializeProjectTransfer();
-  bindAppUpdateEvents();
-  bindAuthUiEvents();
+    initializeSampleProjectSnapshot();
+    initializeProjectManagement();
+    initializeProjectSidePanelController();
+    initializeFirestoreProjectBrowser();
+    initializeOneDriveProjectBrowser();
+    initializeProjectTransfer();
+    bindAppUpdateEvents();
+    bindAuthUiEvents();
 
-  initializeOneDriveConnection();
-  initializeOneDriveProjectIntegration();
+    initializeOneDriveConnection();
+    initializeOneDriveProjectIntegration();
 
-  initializeFinishTable();
-  initializeMaterialList();
-  initializeMaterialOperations();
-  initializeRecordView();
-  initializePhotoTab();
-  initializeSettingsTab();
+    initializeFinishTable();
+    initializeMaterialList();
+    initializeMaterialOperations();
+    initializeRecordView();
+    initializePhotoTab();
+    initializeSettingsTab();
 
-  ensureHomeReturnControl();
-  showTab('finish');
+    ensureHomeReturnControl();
+    showTab('finish');
 
-  if (!getProject(projectId)) {
-    openHomePage({ replace: true });
-    return;
+    if (!getProject(projectId)) {
+      openHomePage({ replace: true });
+      return;
+    }
+
+    await openProjectById(projectId);
+    window.addEventListener('pagehide', captureInitialProjectSession);
+  } finally {
+    endLoading(loadingToken);
   }
-
-  await openProjectById(projectId);
-  window.addEventListener('pagehide', captureInitialProjectSession);
 }
 
 if (document.readyState === 'loading') {
