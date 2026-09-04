@@ -14,6 +14,7 @@ on:
       - v0.1.6.5D
       - v0.1.6.5E
       - v0.1.6.5F
+      - v0.1.6.5G
   workflow_dispatch:
 
 permissions:
@@ -52,6 +53,7 @@ jobs:
           node --check src/js/onedrive/onedrive-root.js
           node --check src/js/onedrive/onedrive-connection.js
           node --check src/js/onedrive/onedrive-project.js
+          node --check src/js/onedrive/onedrive-project-file.js
           node --check src/js/home/home-init.js
           node --check src/js/home/home-controller.js
           node --check src/js/home/home-return-control.js
@@ -60,19 +62,21 @@ jobs:
           node --check src/js/demo/sample-session.js
           node --check src/js/ui/auth-ui.js
           node --check src/js/ui/sync-ui.js
+          node --check src/js/ui/loading-ui.js
           node --check src/js/app-init.js
+          node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5F consistency checks
+      - name: v0.1.6.5G consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5F'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5F"' src/version.json
-          grep -q "chousa-app-v0.1.6.5F" src/service-worker.js
+          grep -q "version: '0.1.6.5G'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5G"' src/version.json
+          grep -q "chousa-app-v0.1.6.5G" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -146,12 +150,32 @@ jobs:
             echo "onedrive-connection owns root discovery"
             exit 1
           fi
-          if grep -q "resolveSharedUrl\|searchDriveFolders\|getSurveyRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
+          if grep -q "resolveSharedUrl\|searchDriveFolders\|getSurveyRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js src/js/onedrive/onedrive-project-file.js; then
             echo "OneDrive consumer bypasses connection root owner"
             exit 1
           fi
           grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
           grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
+
+          # G: OneDriveファイル取得と案件Excelの責務を分離する。
+          grep -q "export async function downloadDriveFile" src/js/onedrive/onedrive-client.js
+          grep -q "export async function readDriveWorkbookRange" src/js/onedrive/onedrive-client.js
+          grep -q "export async function findProjectExcelFile" src/js/onedrive/onedrive-project-file.js
+          grep -q "export async function readProjectExcelInfo" src/js/onedrive/onedrive-project-file.js
+          grep -q "'入力', 'F2:L2'" src/js/onedrive/onedrive-project-file.js
+          grep -q "isInternalRequestFile" src/js/onedrive/onedrive-project-file.js
+          grep -q "readProjectExcelInfo" src/js/projects/onedrive-project-browser.js
+          grep -q "address: excelInfo.address" src/js/projects/onedrive-project-browser.js
+          grep -q "projectExcelFileId" src/js/projects/onedrive-project-browser.js
+
+          # G: 共通待機UIを起動・案件操作・OneDrive・アップデートから利用する。
+          grep -q "export function beginLoading" src/js/ui/loading-ui.js
+          grep -q "export function endLoading" src/js/ui/loading-ui.js
+          grep -q "beginLoading('起動しています…'" src/js/app-init.js
+          grep -q "beginLoading('案件を作成しています…'" src/js/home/home-controller.js
+          grep -q "beginLoading('案件を作成しています…'" src/js/projects/project-side-panel-controller.js
+          grep -q "beginLoading('案件ファイルを取得しています…'" src/js/projects/onedrive-project-browser.js
+          grep -q "beginLoading('アップデート中です…'" src/js/app-update.js
 
           # F: Firestoreありは既存、なしだけOneDrive正式案件を作る。
           grep -q "readFirestoreProjectList" src/js/projects/onedrive-project-browser.js
@@ -169,7 +193,9 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # 新規ページ境界/サイドパネルモジュールをオフライン起動キャッシュへ含める。
+          # Gの追加モジュールもオフライン起動キャッシュへ含める。
+          grep -q "./js/ui/loading-ui.js" src/service-worker.js
+          grep -q "./js/onedrive/onedrive-project-file.js" src/service-worker.js
           grep -q "./js/home/home-init.js" src/service-worker.js
           grep -q "./js/projects/project-navigation.js" src/service-worker.js
           grep -q "./js/projects/project-creation.js" src/service-worker.js
