@@ -1,12 +1,14 @@
 /**
- * 「既存案件を開く」モーダルのOneDrive側。
+ * 独立トップの「既存案件を開く」OneDrive側。
  * OneDrive業務ルートはonedrive-connectionの正本のみを使用する。
+ * Firestore案件が存在する場合は既存を利用し、存在しない場合だけ正式案件を新規作成する。
  */
 import { listDriveChildren } from '../onedrive/onedrive-client.js';
 import { getUsableSurveyRoot, getOneDriveConnectionState } from '../onedrive/onedrive-connection.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getProject, saveProjectSnapshot, updateProjectSyncMeta } from './project-store.js';
-import { openProjectById } from './project-controller.js';
+import { createFormalProjectFromOneDriveSnapshot } from './project-creation.js';
+import { openProjectPage } from './project-navigation.js';
 import { closeModal } from '../ui/modal.js';
 
 const MODAL_ID = 'sharedProjectModal';
@@ -116,6 +118,21 @@ async function loadProjects() {
   }
 }
 
+function bindOneDrive(projectId, folder) {
+  updateProjectSyncMeta(projectId, {
+    oneDriveBinding: {
+      mode: 'formal',
+      driveId: folder.driveId || resolvedRoot?.driveId || '',
+      rootDriveId: resolvedRoot?.driveId || '',
+      rootFolderId: resolvedRoot?.itemId || resolvedRoot?.id || '',
+      rootFolderName: resolvedRoot?.name || '04 調査',
+      projectFolderId: folder.id,
+      projectFolderName: folder.name,
+      projectFolderWebUrl: folder.webUrl
+    }
+  });
+}
+
 async function openFolder(folderId) {
   const folder = projectFolders.find((item) => item.id === String(folderId || ''));
   if (!folder) return;
@@ -123,31 +140,38 @@ async function openFolder(folderId) {
 
   try {
     const firestoreProjects = await readFirestoreProjectList();
-    const project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === folder.projectNo) || null;
+    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === folder.projectNo) || null;
+
     if (!project) {
-      setStatus('この案件番号のFirestore調査データがありません。', 'warn');
-      return;
-    }
-
-    if (!getProject(project.projectId)) {
-      saveProjectSnapshot({ project, finishRecords: [], materialRecords: [], photoRecords: [], syncMeta: {} });
-    }
-
-    updateProjectSyncMeta(project.projectId, {
-      oneDriveBinding: {
-        mode: 'formal',
-        driveId: folder.driveId || resolvedRoot?.driveId || '',
-        rootDriveId: resolvedRoot?.driveId || '',
-        rootFolderId: resolvedRoot?.itemId || resolvedRoot?.id || '',
-        rootFolderName: resolvedRoot?.name || '04 調査',
-        projectFolderId: folder.id,
-        projectFolderName: folder.name,
-        projectFolderWebUrl: folder.webUrl
+      const confirmed = window.confirm(
+        `${folder.projectNo}　${folder.projectName}\n\nFirestoreに調査データがありません。\nこの案件の調査データを新規作成しますか？`
+      );
+      if (!confirmed) {
+        setStatus('作成をキャンセルしました。');
+        return;
       }
-    });
+      setStatus('Firestoreに調査データを作成しています…');
+      const created = await createFormalProjectFromOneDriveSnapshot({
+        projectNo: folder.projectNo,
+        projectName: folder.projectName,
+        address: ''
+      });
+      project = created?.project || null;
+      if (!project) throw new Error('Firestore調査データを作成できませんでした。');
+    } else if (!getProject(project.projectId)) {
+      saveProjectSnapshot({
+        project,
+        finishRecords: [],
+        materialRecords: [],
+        photoRecords: [],
+        syncMeta: {},
+        source: 'onedrive-existing-firestore-project'
+      });
+    }
 
+    bindOneDrive(project.projectId, folder);
     closeModal(MODAL_ID);
-    await openProjectById(project.projectId);
+    openProjectPage(project.projectId);
   } catch (error) {
     setStatus(error?.message || 'OneDrive案件を開けませんでした。', 'warn');
   }
