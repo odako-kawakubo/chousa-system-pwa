@@ -5,8 +5,6 @@
  * v0.1.6.3C:
  *   未送信が残っている場合は「まとめて同期」を表示し、50件単位で明示同期する。
  *   バッチ失敗時は自動継続せず、再送するか閉じるかをユーザーへ返す。
- * v0.1.6.5H:
- *   設定 > 同期システムの「今すぐ同期」も同じ同期処理へ接続する。
  */
 import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -148,27 +146,16 @@ function showBulkRetryModal(remaining) {
   openModal(BULK_RETRY_MODAL_ID);
 }
 
-async function runBulkSync({ notifyWhenEmpty = false } = {}) {
+async function runBulkSync() {
   if (bulkSyncRunning) return;
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample) return;
   const projectId = String(project.projectId);
-  const initialStatus = getSyncStatus();
-
-  if (initialStatus.manualOffline || initialStatus.networkOnline === false) {
-    showBulkRetryModal(initialStatus.unsentCount);
-    return;
-  }
-  if (initialStatus.unsentCount <= 0) {
-    if (notifyWhenEmpty) window.alert('同期するデータはありません。');
-    return;
-  }
 
   bulkSyncRunning = true;
   render(getSyncStatus());
   try {
     while (true) {
-      // 同期開始後に案件が切り替わった場合、旧案件の大量送信を画面裏で継続しない。
       if (String(getCurrentProject()?.projectId || '') !== projectId) return;
 
       const status = getSyncStatus();
@@ -176,29 +163,21 @@ async function runBulkSync({ notifyWhenEmpty = false } = {}) {
         showBulkRetryModal(status.unsentCount);
         return;
       }
-      if (status.unsentCount <= 0) {
-        if (notifyWhenEmpty) window.alert('同期が完了しました。');
-        return;
-      }
+      if (status.unsentCount <= 0) return;
 
       const result = await retryUnsentBatch({
         projectId,
         batchSize: BULK_SYNC_BATCH_SIZE
       });
 
-      // 1バッチ中に案件切替が起きても、その50件の原子的commit完了後に止める。
       if (String(getCurrentProject()?.projectId || '') !== projectId) return;
 
       if (!result.ok) {
         showBulkRetryModal(result.remaining ?? getSyncStatus().unsentCount);
         return;
       }
-      if (result.completed || Number(result.remaining || 0) <= 0) {
-        if (notifyWhenEmpty) window.alert('同期が完了しました。');
-        return;
-      }
+      if (result.completed || Number(result.remaining || 0) <= 0) return;
 
-      // 成功した50件ごとにUIへ処理を返し、長い同期でも画面を固めない。
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   } finally {
@@ -212,7 +191,6 @@ function bindManualOfflineControls() {
   const confirmButton = document.getElementById('confirmManualOfflineButton');
   const cancelButton = document.getElementById('cancelManualOfflineButton');
 
-  // 設定タブなど既存UIからの切替要求も、業務処理へ届く前に同じ確認へ集約する。
   window.addEventListener('chousa:manual-offline-change', (event) => {
     if (event.detail?.confirmed === true) return;
     event.stopImmediatePropagation();
@@ -243,9 +221,6 @@ function bindBulkSyncControls() {
   ensureBulkRetryModal();
   ensureBulkSyncButton()?.addEventListener('click', () => {
     void runBulkSync();
-  });
-  window.addEventListener('chousa:manual-sync-request', () => {
-    void runBulkSync({ notifyWhenEmpty: true });
   });
   document.getElementById('closeBulkSyncRetryButton')?.addEventListener('click', () => {
     closeModal(BULK_RETRY_MODAL_ID);

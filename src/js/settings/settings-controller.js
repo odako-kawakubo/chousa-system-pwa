@@ -14,7 +14,7 @@ import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { getOneDriveConnectionState, subscribeOneDriveConnection } from '../onedrive/onedrive-connection.js';
-import { listSystemDataBackups } from '../onedrive/system-data-backup.js';
+import { listSystemDataBackups, saveSystemDataNow } from '../onedrive/system-data-backup.js';
 
 let root = null;
 let unsubscribe = null;
@@ -66,7 +66,6 @@ function refreshSyncStatusFields(status = getSyncStatus()) {
   const time = root.querySelector('[data-settings-sync-time]');
   const unsent = root.querySelector('[data-settings-sync-unsent]');
   const toggle = root.querySelector('[data-settings-offline-toggle]');
-  const manualSync = root.querySelector('[data-settings-manual-sync]');
   if (statusPill) statusPill.textContent = status.text;
   if (firestore) firestore.textContent = status.text;
   if (time) time.textContent = formatSyncTime(status.lastSyncedAt);
@@ -75,14 +74,6 @@ function refreshSyncStatusFields(status = getSyncStatus()) {
     toggle.textContent = status.manualOffline ? 'ON' : 'OFF';
     toggle.classList.toggle('active', status.manualOffline);
     toggle.setAttribute('aria-pressed', status.manualOffline ? 'true' : 'false');
-  }
-  if (manualSync) {
-    manualSync.disabled = Boolean(status.manualOffline || status.networkOnline === false);
-    manualSync.title = status.manualOffline
-      ? 'オフラインモード中は同期できません'
-      : status.networkOnline === false
-        ? '通信できないため同期できません'
-        : '';
   }
 }
 
@@ -230,6 +221,37 @@ function adjustBoardFontSize(field, delta) {
   syncBoardFromInputs(input);
 }
 
+async function saveSystemDataManually() {
+  const button = root?.querySelector('[data-action="save-system-data-now"]');
+  if (button) {
+    button.disabled = true;
+    button.textContent = '保存中…';
+  }
+  try {
+    const result = await saveSystemDataNow();
+    if (result?.ok && result.saved) {
+      window.alert('システムデータをOneDriveへ保存しました。');
+      return;
+    }
+    if (result?.reason === 'busy') {
+      window.alert('システムデータを保存中です。完了後にもう一度お試しください。');
+      return;
+    }
+    if (result?.reason === 'onedrive-unavailable') {
+      window.alert('OneDrive保存先を利用できません。接続状態を確認してください。');
+      return;
+    }
+    window.alert('システムデータを保存できませんでした。');
+  } catch (error) {
+    window.alert(error?.message || 'システムデータを保存できませんでした。');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = '今すぐバックアップ';
+    }
+  }
+}
+
 async function showSystemDataBackups() {
   try {
     const backups = await listSystemDataBackups();
@@ -251,8 +273,8 @@ async function handleClick(event) {
     return;
   }
 
-  if (event.target.closest('[data-action="manual-sync"]')) {
-    window.dispatchEvent(new CustomEvent('chousa:manual-sync-request'));
+  if (event.target.closest('[data-action="save-system-data-now"]')) {
+    await saveSystemDataManually();
     return;
   }
 

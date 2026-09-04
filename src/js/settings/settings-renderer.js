@@ -42,7 +42,6 @@ function renderPartRows(rows) {
 }
 
 export function renderSettingsTab(root, viewModel) {
-  const manualSyncDisabled = viewModel.sync.manualOffline || viewModel.sync.networkOnline === false;
   const restoreDisabled = !viewModel.oneDrive.connected;
 
   root.innerHTML = `
@@ -172,9 +171,6 @@ export function renderSettingsTab(root, viewModel) {
               <div><span>最終同期</span><b data-settings-sync-time>${escapeHtml(formatSyncTime(viewModel.sync.lastSyncedAt))}</b></div>
               <div><span>未送信</span><b data-settings-sync-unsent>${escapeHtml(viewModel.sync.unsentCount)}件</b></div>
             </div>
-            <div class="settings-action-row">
-              <button type="button" class="btn" data-action="manual-sync" data-settings-manual-sync${manualSyncDisabled ? ' disabled' : ''}>今すぐ同期</button>
-            </div>
           </section>
 
           <section class="settings-card">
@@ -247,6 +243,7 @@ export function renderSettingsTab(root, viewModel) {
               <div><span>世代管理</span><b>端末ごと15世代</b></div>
             </div>
             <div class="settings-action-row">
+              <button type="button" class="btn primary" data-action="save-system-data-now">今すぐバックアップ</button>
               <button type="button" class="btn" data-action="show-system-data-backups"${restoreDisabled ? ' disabled' : ''}>復元データを確認</button>
             </div>
           </section>

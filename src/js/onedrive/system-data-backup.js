@@ -1,7 +1,7 @@
 /**
  * src/js/onedrive/system-data-backup.js
  *
- * OneDrive「しらべ/システムデータ」へ案件の文字データを定期保存する。
+ * OneDrive「しらべ/システムデータ」へ案件の文字データを保存する。
  * Firestoreの代替正本ではなく、災害復旧・ロールバック用の退避データ。
  * 通常起動では読込まず、復元は明示操作から行う。
  */
@@ -105,7 +105,7 @@ function systemFolderRef() {
 }
 
 function canUseOneDriveBackup() {
-  if (isManualOffline() || navigator.onLine === false) return false;
+  if (isManualOffline()) return false;
   const state = getCurrentOneDriveState();
   return Boolean(
     (state?.phase === 'formal' || state?.phase === 'temporary')
@@ -140,7 +140,7 @@ async function trimOldGenerations(folderRef) {
 
 async function saveGeneration(payload) {
   const folderRef = systemFolderRef();
-  if (!folderRef) return false;
+  if (!folderRef) throw new Error('この案件のOneDrive保存先を確認できません。');
 
   const prefix = generationPrefix();
   const json = JSON.stringify({
@@ -158,25 +158,36 @@ async function saveGeneration(payload) {
   await uploadDriveFile(folderRef, `${prefix}_photo.csv`, toCsv(payload.photoRecords), 'text/csv;charset=utf-8');
   await uploadDriveFile(folderRef, `${prefix}.json`, json, 'application/json;charset=utf-8');
   await trimOldGenerations(folderRef);
-  return true;
+  return prefix;
 }
 
-async function runScheduledBackup() {
-  if (inFlight) return;
+async function saveCurrentSystemData({ requireChange = true } = {}) {
+  if (inFlight) return { ok: false, reason: 'busy' };
   const payload = currentBackupPayload();
-  if (!payload || !canUseOneDriveBackup()) return;
+  if (!payload) return { ok: false, reason: 'no-project' };
+  if (!canUseOneDriveBackup()) return { ok: false, reason: 'onedrive-unavailable' };
 
   const signature = payloadSignature(payload);
-  if (!signature || signature === lastSuccessfulSignature) return;
+  if (!signature) return { ok: false, reason: 'no-data' };
+  if (requireChange && signature === lastSuccessfulSignature) {
+    return { ok: true, saved: false, reason: 'unchanged' };
+  }
 
   inFlight = true;
   try {
-    const saved = await saveGeneration(payload);
-    if (saved) lastSuccessfulSignature = signature;
-  } catch (error) {
-    console.warn('[v0.1.6.5H] システムデータ保存失敗', error);
+    const generation = await saveGeneration(payload);
+    lastSuccessfulSignature = signature;
+    return { ok: true, saved: true, generation };
   } finally {
     inFlight = false;
+  }
+}
+
+async function runScheduledBackup() {
+  try {
+    await saveCurrentSystemData({ requireChange: true });
+  } catch (error) {
+    console.warn('[v0.1.6.5H] システムデータ保存失敗', error);
   }
 }
 
@@ -210,6 +221,14 @@ export function initializeSystemDataBackup() {
     if (nextId === activeProjectId) return;
     resetForProject(nextId);
   });
+}
+
+/**
+ * 設定 > 同期システム > システムデータの手動保存入口。
+ * 定期保存と同じ生成処理を使い、変更有無にかかわらず明示的に1世代保存する。
+ */
+export async function saveSystemDataNow() {
+  return saveCurrentSystemData({ requireChange: false });
 }
 
 /** 復元入口用。実際の差分確認・復元処理は後段で接続する。 */
