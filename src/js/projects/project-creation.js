@@ -37,7 +37,12 @@ export async function createTemporaryProjectSnapshot({ projectName, address }) {
 export async function createFormalProjectFromOneDriveSnapshot({ projectNo, projectName, address = '' }) {
   const project = createFormalProjectFromOneDrive({ projectNo, projectName, address });
   const existing = getProject(project.projectId);
-  if (existing) return existing;
+
+  if (existing?.project) {
+    // 前回のFirestore作成だけ失敗して端末Snapshotが残った場合も、再選択で正式作成を再試行する。
+    await persistProjectMetadataForProject(existing.project, { initializeChangeLog: true });
+    return existing;
+  }
 
   const finishRecords = createDefaultFinishRecords();
   const snapshot = saveProjectSnapshot({
