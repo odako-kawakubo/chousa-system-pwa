@@ -1,6 +1,7 @@
 /**
  * src/js/app-init.js
- * アプリ起動時の初期化順序をまとめる入口モジュール。
+ * 案件画面(app.html)専用の初期化入口。
+ * 独立トップ(index.html)で選択された projectId が無い場合はトップへ戻す。
  */
 import { applyAppVersionDisplay } from './app-version.js';
 import { bindAppUpdateEvents } from './app-update.js';
@@ -8,11 +9,13 @@ import { initializePwa } from './pwa/pwa-controller.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
 import { bindProjectPanelEvents } from './ui/project-panel.js';
-import { initializeProjectManagement, captureInitialProjectSession } from './projects/project-controller.js';
+import { initializeProjectManagement, captureInitialProjectSession, openProjectById } from './projects/project-controller.js';
 import { initializeProjectEntryUi } from './projects/project-entry-ui.js';
 import { initializeFirestoreProjectBrowser } from './projects/firestore-project-browser.js';
 import { initializeOneDriveProjectBrowser } from './projects/onedrive-project-browser.js';
 import { initializeProjectTransfer } from './projects/project-transfer.js';
+import { getOpenProjectId, openHomePage } from './projects/project-navigation.js';
+import { getProject } from './projects/project-store.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
@@ -31,11 +34,15 @@ import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
 import { ensureHomeReturnControl } from './home/home-return-control.js';
-import { initializeHome } from './home/home-controller.js';
 
-function initUiSkeleton() {
+async function initProjectApp() {
+  const projectId = getOpenProjectId();
+  if (!projectId) {
+    openHomePage({ replace: true });
+    return;
+  }
+
   void initializePwa();
-
   initializeTheme();
   initializeDeviceIdentity();
   applyAppVersionDisplay();
@@ -48,11 +55,8 @@ function initUiSkeleton() {
   bindThemeControls();
   bindProjectPanelEvents();
 
-  // モーダル内部DOMを先に確定してから、汎用開閉イベントを配線する。
   initializeProjectEntryUi();
   bindModalEvents();
-
-  // サンプルはSnapshotだけ準備し、起動案件にはしない。
   initializeSampleProjectSnapshot();
 
   initializeProjectManagement();
@@ -62,7 +66,6 @@ function initUiSkeleton() {
   bindAppUpdateEvents();
   bindAuthUiEvents();
 
-  // OneDrive接続状態を先に開始し、トップ・設定・案件連携が同じ状態を参照する。
   initializeOneDriveConnection();
   initializeOneDriveProjectIntegration();
 
@@ -72,18 +75,21 @@ function initUiSkeleton() {
   initializeRecordView();
   initializePhotoTab();
   initializeSettingsTab();
-  captureInitialProjectSession();
 
-  // 案件画面のヘッダーへトップ復帰導線を置いてからhome-controllerでイベント配線する。
   ensureHomeReturnControl();
-  initializeHome();
-
-  window.addEventListener('pagehide', captureInitialProjectSession);
   showTab('finish');
+
+  if (!getProject(projectId)) {
+    openHomePage({ replace: true });
+    return;
+  }
+
+  await openProjectById(projectId);
+  window.addEventListener('pagehide', captureInitialProjectSession);
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initUiSkeleton, { once: true });
+  document.addEventListener('DOMContentLoaded', () => void initProjectApp(), { once: true });
 } else {
-  initUiSkeleton();
+  void initProjectApp();
 }
