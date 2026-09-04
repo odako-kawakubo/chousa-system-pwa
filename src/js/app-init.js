@@ -8,12 +8,7 @@ import { bindAppUpdateEvents } from './app-update.js';
 import { initializePwa } from './pwa/pwa-controller.js';
 import { showTab, bindTabEvents } from './ui/tabs.js';
 import { bindDrawerEvents } from './ui/drawer.js';
-import { bindProjectPanelEvents } from './ui/project-panel.js';
 import { initializeProjectManagement, captureInitialProjectSession, openProjectById } from './projects/project-controller.js';
-import { initializeProjectEntryUi } from './projects/project-entry-ui.js';
-import { initializeFirestoreProjectBrowser } from './projects/firestore-project-browser.js';
-import { initializeOneDriveProjectBrowser } from './projects/onedrive-project-browser.js';
-import { initializeProjectTransfer } from './projects/project-transfer.js';
 import { getOpenProjectId, openHomePage } from './projects/project-navigation.js';
 import { getProject } from './projects/project-store.js';
 import { bindModalEvents } from './ui/modal.js';
@@ -53,16 +48,10 @@ async function initProjectApp() {
   bindTabEvents();
   bindDrawerEvents();
   bindThemeControls();
-  bindProjectPanelEvents();
-
-  initializeProjectEntryUi();
   bindModalEvents();
-  initializeSampleProjectSnapshot();
 
+  initializeSampleProjectSnapshot();
   initializeProjectManagement();
-  initializeFirestoreProjectBrowser();
-  initializeOneDriveProjectBrowser();
-  initializeProjectTransfer();
   bindAppUpdateEvents();
   bindAuthUiEvents();
 
