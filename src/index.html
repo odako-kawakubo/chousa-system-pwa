@@ -28,6 +28,10 @@
             <strong id="homeMicrosoftName">未接続</strong>
             <button type="button" class="shirabe-link-button" id="homeReconnectMicrosoftButton">接続</button>
           </div>
+          <div class="shirabe-meta-item">
+            <span class="shirabe-meta-label">アプリ</span>
+            <button type="button" class="shirabe-link-button" id="showUpdatePromptButton">バージョン確認</button>
+          </div>
         </div>
       </header>
 
@@ -102,6 +106,17 @@
 
   <div class="shared-project-modal" id="sharedProjectModal" data-modal-close data-modal-target="sharedProjectModal">
     <div class="shared-project-card" data-modal-stop></div>
+  </div>
+
+  <div class="update-modal" id="updateModal" data-update-modal-close>
+    <div class="update-card" data-modal-stop>
+      <h3>アップデート</h3>
+      <div class="hint" id="updateMessage">最新バージョンを確認します。</div>
+      <div class="update-actions">
+        <button type="button" class="btn" id="closeAppUpdateButton" data-update-modal-close>閉じる</button>
+        <button type="button" class="btn primary" id="confirmAppUpdateButton" hidden>アップデート</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./js/home/home-init.js"></script>
