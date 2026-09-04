@@ -90,11 +90,19 @@ function refreshOneDriveStatusFields(oneDrive = getOneDriveConnectionState()) {
   const state = root.querySelector('[data-settings-onedrive-state]');
   const rootName = root.querySelector('[data-settings-onedrive-root]');
   const restoreButton = root.querySelector('[data-action="show-system-data-backups"]');
+  const systemDataCard = root.querySelector('[data-action="save-system-data-now"]')?.closest('.settings-card');
+  const systemDataState = systemDataCard?.querySelector('.settings-card-head .pill');
+
   if (state) {
     state.textContent = oneDrive.text;
     state.title = oneDrive.error || '';
   }
   if (rootName) rootName.textContent = oneDrive.connected ? (oneDrive.root?.name || '04 調査') : '-';
+  if (systemDataState) {
+    systemDataState.textContent = oneDrive.connected ? 'OneDrive接続済み' : 'OneDrive未接続';
+    systemDataState.classList.toggle('ok', oneDrive.connected);
+    systemDataState.title = oneDrive.error || '';
+  }
   if (restoreButton) restoreButton.disabled = !oneDrive.connected;
 }
 
@@ -380,7 +388,7 @@ function handleChange(event) {
   if (partRow && event.target.matches('[data-setting-part-field]')) {
     const candidateId = partRow.dataset.settingPartRow;
     if (!surveyCandidateStore.updatePartCandidate(candidateId, event.target.value)) {
-      window.alert('同じ候補が登録済み、または入力内容が正しくありません。');
+      window.alert('同じ部位名称候補が登録済み、または入力内容が正しくありません。');
       render();
     }
   }
