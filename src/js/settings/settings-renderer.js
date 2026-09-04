@@ -42,6 +42,9 @@ function renderPartRows(rows) {
 }
 
 export function renderSettingsTab(root, viewModel) {
+  const manualSyncDisabled = viewModel.sync.manualOffline || viewModel.sync.networkOnline === false;
+  const restoreDisabled = !viewModel.oneDrive.connected;
+
   root.innerHTML = `
     <div class="settings-root">
       <div class="settings-subtabs" role="tablist" aria-label="設定区分">
@@ -170,7 +173,7 @@ export function renderSettingsTab(root, viewModel) {
               <div><span>未送信</span><b data-settings-sync-unsent>${escapeHtml(viewModel.sync.unsentCount)}件</b></div>
             </div>
             <div class="settings-action-row">
-              <button type="button" class="btn" disabled title="後続フェーズで接続">今すぐ同期</button>
+              <button type="button" class="btn" data-action="manual-sync" data-settings-manual-sync${manualSyncDisabled ? ' disabled' : ''}>今すぐ同期</button>
             </div>
           </section>
 
@@ -233,17 +236,18 @@ export function renderSettingsTab(root, viewModel) {
           <section class="settings-card settings-sync-wide">
             <div class="settings-card-head">
               <div>
-                <h3>バックアップ</h3>
-                <div class="hint">OneDriveへの写真保存・完全バックアップは後続フェーズで接続します。</div>
+                <h3>システムデータ</h3>
+                <div class="hint">案件情報と3レコードをOneDriveへ10分ごとに保存します。変更がない場合は新しい世代を作成しません。</div>
               </div>
-              <span class="pill">未接続</span>
+              <span class="pill${viewModel.oneDrive.connected ? ' ok' : ''}">${viewModel.oneDrive.connected ? 'OneDrive接続済み' : 'OneDrive未接続'}</span>
             </div>
             <div class="settings-status-list">
-              <div><span>最終バックアップ</span><b>未実行</b></div>
-              <div><span>自動バックアップ</span><b>30分ごと（後続接続）</b></div>
+              <div><span>保存内容</span><b>案件情報 + 仕上表 / 建材 / 写真レコード</b></div>
+              <div><span>自動保存</span><b>10分ごと・変更時のみ</b></div>
+              <div><span>世代管理</span><b>端末ごと15世代</b></div>
             </div>
             <div class="settings-action-row">
-              <button type="button" class="btn" disabled title="OneDrive接続後に有効化">今すぐバックアップ</button>
+              <button type="button" class="btn" data-action="show-system-data-backups"${restoreDisabled ? ' disabled' : ''}>復元データを確認</button>
             </div>
           </section>
         </div>
