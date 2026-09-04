@@ -42,6 +42,7 @@ jobs:
           node --check src/js/projects/project-session.js
           node --check src/js/projects/project-creation.js
           node --check src/js/projects/project-navigation.js
+          node --check src/js/projects/project-side-panel-controller.js
           node --check src/js/projects/project-factory.js
           node --check src/js/projects/project-entry-ui.js
           node --check src/js/projects/firestore-project-browser.js
@@ -96,6 +97,17 @@ jobs:
           grep -q "window.location.assign('./app.html')" src/js/projects/project-navigation.js
           grep -q "window.location.assign('./')" src/js/projects/project-navigation.js
           grep -q "button.textContent = '←'" src/js/home/home-return-control.js
+
+          # F: トップとは別に案件画面内サイドパネルを維持する。
+          grep -q 'id="projectSidePanel"' src/app.html
+          grep -q 'id="restoreProjectButton"' src/app.html
+          grep -q 'id="newProjectModal"' src/app.html
+          grep -q 'id="sharedProjectModal"' src/app.html
+          grep -q "initializeProjectSidePanelController" src/js/app-init.js
+          grep -q "initializeProjectEntryUi" src/js/app-init.js
+          grep -q "initializeFirestoreProjectBrowser" src/js/app-init.js
+          grep -q "initializeOneDriveProjectBrowser" src/js/app-init.js
+          grep -q "initializeProjectTransfer" src/js/app-init.js
 
           # F: listener受信→適用→Snapshot→cursorの診断を残す。
           grep -q "SYNC_APPLY_START" src/js/projects/project-controller.js
@@ -157,10 +169,11 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # 新規ページ境界モジュールをオフライン起動キャッシュへ含める。
+          # 新規ページ境界/サイドパネルモジュールをオフライン起動キャッシュへ含める。
           grep -q "./js/home/home-init.js" src/service-worker.js
           grep -q "./js/projects/project-navigation.js" src/service-worker.js
           grep -q "./js/projects/project-creation.js" src/service-worker.js
+          grep -q "./js/projects/project-side-panel-controller.js" src/service-worker.js
           grep -q "./js/auth/graph-session.js" src/service-worker.js
           grep -q "./js/onedrive/onedrive-root.js" src/service-worker.js
 
