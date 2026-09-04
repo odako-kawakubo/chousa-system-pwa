@@ -1,15 +1,17 @@
 /**
- * 独立トップの「既存案件を開く」OneDrive側。
+ * 独立トップ/案件サイドパネルの「既存案件を開く」OneDrive側。
  * OneDrive業務ルートはonedrive-connectionの正本のみを使用する。
- * Firestore案件が存在する場合は既存を利用し、存在しない場合だけ正式案件を新規作成する。
+ * 案件Excelから案件番号・案件名・住所を確定し、Firestore既存案件を優先する。
  */
 import { listDriveChildren } from '../onedrive/onedrive-client.js';
 import { getUsableSurveyRoot, getOneDriveConnectionState } from '../onedrive/onedrive-connection.js';
+import { readProjectExcelInfo } from '../onedrive/onedrive-project-file.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getProject, saveProjectSnapshot, updateProjectSyncMeta } from './project-store.js';
 import { createFormalProjectFromOneDriveSnapshot } from './project-creation.js';
 import { openProjectPage } from './project-navigation.js';
 import { closeModal } from '../ui/modal.js';
+import { beginLoading, updateLoading, endLoading } from '../ui/loading-ui.js';
 
 const MODAL_ID = 'sharedProjectModal';
 let projectFolders = [];
@@ -41,9 +43,11 @@ function parseProjectFolder(item) {
   const match = name.match(/^(\S+)[\s　]+(.+)$/);
   return {
     id: String(item?.itemId || item?.id || ''),
+    itemId: String(item?.itemId || item?.id || ''),
     driveId: String(item?.driveId || ''),
     name,
     webUrl: item?.webUrl || '',
+    folder: item?.folder || null,
     projectNo: match?.[1] || name,
     projectName: match?.[2] || ''
   };
@@ -92,6 +96,7 @@ async function loadProjects() {
   }
 
   loading = true;
+  const loadingToken = beginLoading('OneDriveを確認しています…');
   if (input) input.disabled = true;
   if (searchButton) searchButton.disabled = true;
   if (list) list.innerHTML = '';
@@ -115,10 +120,11 @@ async function loadProjects() {
     render();
   } finally {
     loading = false;
+    endLoading(loadingToken);
   }
 }
 
-function bindOneDrive(projectId, folder) {
+function bindOneDrive(projectId, folder, excelInfo) {
   updateProjectSyncMeta(projectId, {
     oneDriveBinding: {
       mode: 'formal',
@@ -128,7 +134,10 @@ function bindOneDrive(projectId, folder) {
       rootFolderName: resolvedRoot?.name || '04 調査',
       projectFolderId: folder.id,
       projectFolderName: folder.name,
-      projectFolderWebUrl: folder.webUrl
+      projectFolderWebUrl: folder.webUrl,
+      projectExcelFileId: excelInfo?.excelFileId || '',
+      projectExcelFileName: excelInfo?.excelFileName || '',
+      projectExcelFileWebUrl: excelInfo?.excelFileWebUrl || ''
     }
   });
 }
@@ -136,25 +145,32 @@ function bindOneDrive(projectId, folder) {
 async function openFolder(folderId) {
   const folder = projectFolders.find((item) => item.id === String(folderId || ''));
   if (!folder) return;
-  setStatus('Firestoreの調査データを確認しています…');
+
+  const loadingToken = beginLoading('案件ファイルを取得しています…');
+  setStatus('案件Excelを確認しています…');
 
   try {
+    const excelInfo = await readProjectExcelInfo(folder, folder.projectNo);
+    updateLoading(loadingToken, 'Firestoreの調査データを確認しています…');
+    setStatus('Firestoreの調査データを確認しています…');
+
     const firestoreProjects = await readFirestoreProjectList();
-    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === folder.projectNo) || null;
+    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === excelInfo.projectNo) || null;
 
     if (!project) {
       const confirmed = window.confirm(
-        `${folder.projectNo}　${folder.projectName}\n\nFirestoreに調査データがありません。\nこの案件の調査データを新規作成しますか？`
+        `${excelInfo.projectNo}　${excelInfo.projectName}\n${excelInfo.address || ''}\n\nFirestoreに調査データがありません。\nこの案件の調査データを新規作成しますか？`
       );
       if (!confirmed) {
         setStatus('作成をキャンセルしました。');
         return;
       }
+      updateLoading(loadingToken, '案件を作成しています…');
       setStatus('Firestoreに調査データを作成しています…');
       const created = await createFormalProjectFromOneDriveSnapshot({
-        projectNo: folder.projectNo,
-        projectName: folder.projectName,
-        address: ''
+        projectNo: excelInfo.projectNo,
+        projectName: excelInfo.projectName,
+        address: excelInfo.address
       });
       project = created?.project || null;
       if (!project) throw new Error('Firestore調査データを作成できませんでした。');
@@ -169,11 +185,13 @@ async function openFolder(folderId) {
       });
     }
 
-    bindOneDrive(project.projectId, folder);
+    bindOneDrive(project.projectId, folder, excelInfo);
     closeModal(MODAL_ID);
     openProjectPage(project.projectId);
   } catch (error) {
     setStatus(error?.message || 'OneDrive案件を開けませんでした。', 'warn');
+  } finally {
+    endLoading(loadingToken);
   }
 }
 
