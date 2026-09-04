@@ -1,10 +1,10 @@
 /**
- * 「既存案件を開く」モーダルのFirestore側を担当する。
- * OneDrive側とはDOMと責務を分け、選択した案件だけproject-controllerへ渡す。
+ * 独立トップの「既存案件を開く」Firestore側。
+ * 選択した案件を端末Snapshotへ登録し、案件ページへ遷移する。
  */
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
-import { getCurrentProject, getProject, saveProjectSnapshot } from './project-store.js';
-import { openProjectById } from './project-controller.js';
+import { getProject, saveProjectSnapshot } from './project-store.js';
+import { openProjectPage } from './project-navigation.js';
 import { closeModal } from '../ui/modal.js';
 
 const MODAL_ID = 'sharedProjectModal';
@@ -49,14 +49,12 @@ function render() {
 
   list.innerHTML = filtered.map((project) => {
     const registered = Boolean(getProject(project.projectId));
-    const active = getCurrentProject()?.projectId === project.projectId;
-    const state = active ? '開いています' : registered ? 'この端末に登録済み' : '';
     return `
       <button type="button" class="project-card shared-firestore-project-card"
         data-firestore-project-id="${escapeHtml(project.projectId)}">
         <strong>${escapeHtml(project.projectNo)}　${escapeHtml(project.projectName)}</strong>
         <span>${escapeHtml(project.address)}</span>
-        ${state ? `<small class="hint">${escapeHtml(state)}</small>` : ''}
+        ${registered ? '<small class="hint">この端末に登録済み</small>' : ''}
       </button>
     `;
   }).join('');
@@ -93,25 +91,26 @@ async function loadProjects() {
   }
 }
 
-async function openRemoteProject(projectId) {
+function openRemoteProject(projectId) {
   const project = remoteProjects.find((item) => item.projectId === String(projectId || ''));
   if (!project) return;
   if (!getProject(project.projectId)) {
-    saveProjectSnapshot({ project, finishRecords: [], materialRecords: [], photoRecords: [], syncMeta: {} });
+    saveProjectSnapshot({
+      project,
+      finishRecords: [],
+      materialRecords: [],
+      photoRecords: [],
+      syncMeta: {},
+      source: 'firestore-project-browser'
+    });
   }
   closeModal(MODAL_ID);
-  await openProjectById(project.projectId);
+  openProjectPage(project.projectId);
 }
 
 export function initializeFirestoreProjectBrowser() {
-  const restoreButton = document.getElementById('restoreProjectButton');
   const { modal, list, input, searchButton } = elements();
-  if (!restoreButton || !modal || !list) return;
-
-  if (restoreButton.dataset.firestoreBrowserBound !== '1') {
-    restoreButton.dataset.firestoreBrowserBound = '1';
-    restoreButton.addEventListener('click', () => void loadProjects());
-  }
+  if (!modal || !list) return;
 
   window.addEventListener('chousa:project-source-change', (event) => {
     if (event.detail?.source === 'firestore') void loadProjects();
@@ -121,7 +120,7 @@ export function initializeFirestoreProjectBrowser() {
     list.dataset.firestoreBrowserBound = '1';
     list.addEventListener('click', (event) => {
       const button = event.target.closest('[data-firestore-project-id]');
-      if (button) void openRemoteProject(button.dataset.firestoreProjectId);
+      if (button) openRemoteProject(button.dataset.firestoreProjectId);
     });
   }
 
