@@ -5,7 +5,7 @@
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5H';
+const APP_CACHE = 'chousa-app-v0.1.6.5H-r2';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -40,6 +40,7 @@ const APP_SHELL = [
   './js/ui/header-edit-ui.js',
   './js/ui/sync-ui.js',
   './js/ui/loading-ui.js',
+  './js/ui/modal.js',
   './js/firestore/firestore-repository.js',
   './js/firestore/firestore-project-list.js',
   './js/sync/sync-status.js',
