@@ -22,7 +22,8 @@ export function saveCurrentProjectSession() {
     project,
     finishRecords: finishRecordStore.exportSnapshot(),
     materialRecords: materialRecordStore.exportSnapshot(),
-    photoRecords: photoRecordStore.exportSnapshot()
+    photoRecords: photoRecordStore.exportSnapshot(),
+    source: 'current-project-session'
   });
 }
 
@@ -71,10 +72,6 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   return project;
 }
 
-/**
- * 現在案件を安全に閉じる。
- * 端末Snapshotへ退避してからcurrentProjectだけ解除し、案件データ自体は削除しない。
- */
 export function closeProjectSession() {
   saveCurrentProjectSession();
   setCurrentProject(null);
