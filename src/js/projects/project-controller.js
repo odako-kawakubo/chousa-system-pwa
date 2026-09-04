@@ -397,7 +397,7 @@ function applyProjectRecordChanges(project, changes = []) {
 function typeModeReasons(typeModes, storedCursors, target, remote) {
   return {
     finish: typeModes.finish === 'delta'
-      ? `delta:${remote.finishHistoryMode || 'history'}'
+      ? `delta:${remote.finishHistoryMode || 'history'}`
       : `full:${remote.finishHistoryMode || 'baseline-unavailable'}`,
     material: typeModes.material === 'delta'
       ? `delta:local-baseline+cursor-${Number(storedCursors.material || 0)}`
