@@ -54,6 +54,7 @@ jobs:
           node --check src/js/onedrive/onedrive-connection.js
           node --check src/js/onedrive/onedrive-project.js
           node --check src/js/onedrive/onedrive-project-file.js
+          node --check src/js/onedrive/openxml-workbook-reader.js
           node --check src/js/home/home-init.js
           node --check src/js/home/home-controller.js
           node --check src/js/home/home-return-control.js
@@ -157,12 +158,22 @@ jobs:
           grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
           grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
 
-          # G: OneDriveファイル取得と案件Excelの責務を分離する。
+          # G: OneDrive共通ファイル取得 + xlsx/xlsm Open XML読取を分離する。
           grep -q "export async function downloadDriveFile" src/js/onedrive/onedrive-client.js
-          grep -q "export async function readDriveWorkbookRange" src/js/onedrive/onedrive-client.js
+          if grep -q "readDriveWorkbookRange" src/js/onedrive/onedrive-client.js src/js/onedrive/onedrive-project-file.js; then
+            echo "obsolete Graph Workbook API reader remains"
+            exit 1
+          fi
+          grep -q "export async function readOpenXmlCells" src/js/onedrive/openxml-workbook-reader.js
+          grep -q "DecompressionStream" src/js/onedrive/openxml-workbook-reader.js
           grep -q "export async function findProjectExcelFile" src/js/onedrive/onedrive-project-file.js
           grep -q "export async function readProjectExcelInfo" src/js/onedrive/onedrive-project-file.js
-          grep -q "'入力', 'F2:L2'" src/js/onedrive/onedrive-project-file.js
+          grep -q "downloadDriveFile" src/js/onedrive/onedrive-project-file.js
+          grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
+          grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
+          grep -q "F2" src/js/onedrive/onedrive-project-file.js
+          grep -q "K2" src/js/onedrive/onedrive-project-file.js
+          grep -q "L2" src/js/onedrive/onedrive-project-file.js
           grep -q "isInternalRequestFile" src/js/onedrive/onedrive-project-file.js
           grep -q "readProjectExcelInfo" src/js/projects/onedrive-project-browser.js
           grep -q "address: excelInfo.address" src/js/projects/onedrive-project-browser.js
@@ -175,7 +186,10 @@ jobs:
           grep -q "beginLoading('案件を作成しています…'" src/js/home/home-controller.js
           grep -q "beginLoading('案件を作成しています…'" src/js/projects/project-side-panel-controller.js
           grep -q "beginLoading('案件ファイルを取得しています…'" src/js/projects/onedrive-project-browser.js
-          grep -q "beginLoading('アップデート中です…'" src/js/app-update.js
+          grep -q "beginLoading('アップデートを確認しています…'" src/js/app-update.js
+          grep -q "アップデートをダウンロードしています…" src/js/app-update.js
+          grep -q "アップデートを適用しています…" src/js/app-update.js
+          grep -q "waitForPaint" src/js/app-update.js
 
           # F: Firestoreありは既存、なしだけOneDrive正式案件を作る。
           grep -q "readFirestoreProjectList" src/js/projects/onedrive-project-browser.js
@@ -196,6 +210,7 @@ jobs:
           # Gの追加モジュールもオフライン起動キャッシュへ含める。
           grep -q "./js/ui/loading-ui.js" src/service-worker.js
           grep -q "./js/onedrive/onedrive-project-file.js" src/service-worker.js
+          grep -q "./js/onedrive/openxml-workbook-reader.js" src/service-worker.js
           grep -q "./js/home/home-init.js" src/service-worker.js
           grep -q "./js/projects/project-navigation.js" src/service-worker.js
           grep -q "./js/projects/project-creation.js" src/service-worker.js
