@@ -7,6 +7,7 @@ import { createTemporaryProjectSnapshot } from '../projects/project-creation.js'
 import { openProjectPage } from '../projects/project-navigation.js';
 import { sampleProject } from '../demo/sample-project.js';
 import { openModal, closeModal } from '../ui/modal.js';
+import { beginLoading, endLoading } from '../ui/loading-ui.js';
 import { getAuthUiState, reconnectMicrosoftAuth, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getDeviceDisplayName, subscribeDeviceName } from '../device-code.js';
@@ -142,6 +143,7 @@ async function createNewProject() {
   const button = document.getElementById('createNewProjectButton');
   const projectName = document.getElementById('newProjectNameInput')?.value || '';
   const address = document.getElementById('newProjectAddressInput')?.value || '';
+  const loadingToken = beginLoading('案件を作成しています…');
   try {
     if (button) button.disabled = true;
     showNewProjectStatus('案件番号と初期仕上表を準備しています…');
@@ -152,6 +154,7 @@ async function createNewProject() {
   } catch (error) {
     showNewProjectStatus(error?.message || '新規案件を作成できませんでした。', 'warn');
   } finally {
+    endLoading(loadingToken);
     if (button) button.disabled = false;
   }
 }
@@ -184,6 +187,7 @@ function bindHomeEvents() {
     const button = event.currentTarget;
     if (button.disabled) return;
     button.disabled = true;
+    const loadingToken = beginLoading('Microsoft / OneDriveへ接続しています…');
     try {
       await reconnectMicrosoftAuth();
       await refreshOneDriveConnection({ force: true });
@@ -191,6 +195,7 @@ function bindHomeEvents() {
     } catch {
       // 認証UI側で表示済み。
     } finally {
+      endLoading(loadingToken);
       renderIdentity();
     }
   });
