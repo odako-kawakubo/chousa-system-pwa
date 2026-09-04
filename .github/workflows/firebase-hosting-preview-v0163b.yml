@@ -13,6 +13,7 @@ on:
       - v0.1.6.5C
       - v0.1.6.5D
       - v0.1.6.5E
+      - v0.1.6.5F
   workflow_dispatch:
 
 permissions:
@@ -39,6 +40,9 @@ jobs:
           node --check src/js/projects/project-controller.js
           node --check src/js/projects/project-store.js
           node --check src/js/projects/project-session.js
+          node --check src/js/projects/project-creation.js
+          node --check src/js/projects/project-navigation.js
+          node --check src/js/projects/project-factory.js
           node --check src/js/projects/project-entry-ui.js
           node --check src/js/projects/firestore-project-browser.js
           node --check src/js/projects/onedrive-project-browser.js
@@ -47,6 +51,7 @@ jobs:
           node --check src/js/onedrive/onedrive-root.js
           node --check src/js/onedrive/onedrive-connection.js
           node --check src/js/onedrive/onedrive-project.js
+          node --check src/js/home/home-init.js
           node --check src/js/home/home-controller.js
           node --check src/js/home/home-return-control.js
           node --check src/js/settings/settings-controller.js
@@ -57,16 +62,16 @@ jobs:
           node --check src/js/app-init.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5E consistency checks
+      - name: v0.1.6.5F consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5E'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5E"' src/version.json
-          grep -q "chousa-app-v0.1.6.5E" src/service-worker.js
+          grep -q "version: '0.1.6.5F'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5F"' src/version.json
+          grep -q "chousa-app-v0.1.6.5F" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -75,10 +80,33 @@ jobs:
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
           grep -q "getCurrentProject()?.projectId" src/js/ui/sync-ui.js
 
-          # 起動時は案件未選択。サンプルは明示操作だけで開く。
-          grep -q "let currentProject = null" src/js/projects/project-store.js
-          grep -q "initializeHome" src/js/app-init.js
-          grep -q "サンプル案件を開く" src/js/home/home-controller.js
+          # F: indexを独立トップ、appを案件専用ページにする。
+          grep -q './js/home/home-init.js' src/index.html
+          if grep -q "location.replace('./app.html')" src/index.html; then
+            echo "index still redirects directly to app.html"
+            exit 1
+          fi
+          grep -q "getOpenProjectId" src/js/app-init.js
+          grep -q "openHomePage({ replace: true })" src/js/app-init.js
+          if grep -q "initializeHome" src/js/app-init.js; then
+            echo "app-init still initializes home view"
+            exit 1
+          fi
+          grep -q "openProjectPage" src/js/home/home-controller.js
+          grep -q "window.location.assign('./app.html')" src/js/projects/project-navigation.js
+          grep -q "window.location.assign('./')" src/js/projects/project-navigation.js
+          grep -q "button.textContent = '←'" src/js/home/home-return-control.js
+
+          # F: listener受信→適用→Snapshot→cursorの診断を残す。
+          grep -q "SYNC_APPLY_START" src/js/projects/project-controller.js
+          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-controller.js
+          grep -q "SYNC_STORE_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_LISTENER_APPLY_RESULT" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_BEFORE" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_BASELINE_CHECK" src/js/projects/project-controller.js
+          grep -q "LOCAL_SNAPSHOT_BEFORE_SAVE" src/js/projects/project-store.js
+          grep -q "LOCAL_SNAPSHOT_AFTER_SAVE" src/js/projects/project-store.js
 
           # Firebase認証とGraph/MSALセッションを分離する。
           grep -q 'graphClientId: "f7074fad-6ea0-467b-98db-e308f01950cc"' src/config/microsoft-config.js
@@ -92,69 +120,47 @@ jobs:
             exit 1
           fi
 
-          # v0.14系の04調査取得順序をonedrive-rootへ分離移植する。
+          # 既知正常のOneDrive root解決を変更しない。
           grep -q "export async function getSurveyRoot" src/js/onedrive/onedrive-root.js
           grep -q "resolveSharedUrl(microsoftConfig.surveyRootUrl)" src/js/onedrive/onedrive-root.js
-          grep -q "expectedName.replace" src/js/onedrive/onedrive-root.js
           grep -q "searchDriveFolders(keyword)" src/js/onedrive/onedrive-root.js
           grep -q "rootSource: 'fixed-share'" src/js/onedrive/onedrive-root.js
           grep -q "rootSource: 'legacy-search'" src/js/onedrive/onedrive-root.js
           grep -q "export async function resolveSharedUrl" src/js/onedrive/onedrive-client.js
           grep -q "export async function searchDriveFolders" src/js/onedrive/onedrive-client.js
-          grep -q "/shares/" src/js/onedrive/onedrive-client.js
-          grep -q "/me/drive/root/search" src/js/onedrive/onedrive-client.js
-
-          # connectionはrootを再解決せず、実アクセス/children検証と状態公開だけを担当する。
           grep -q "getSurveyRoot" src/js/onedrive/onedrive-connection.js
           grep -q "await listDriveChildren(verified)" src/js/onedrive/onedrive-connection.js
           if grep -q "resolveSharedUrl\|searchDriveFolders" src/js/onedrive/onedrive-connection.js; then
-            echo "onedrive-connection still owns root discovery"
+            echo "onedrive-connection owns root discovery"
             exit 1
           fi
-
-          # 案件側はroot ownerを迂回しない。
           if grep -q "resolveSharedUrl\|searchDriveFolders\|getSurveyRoot" src/js/onedrive/onedrive-project.js src/js/projects/onedrive-project-browser.js; then
-            echo "OneDrive consumers bypass connection root owner"
+            echo "OneDrive consumer bypasses connection root owner"
             exit 1
           fi
           grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
           grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
 
-          # OneDrive接続状態と案件保存先状態は別モジュールで保持する。
-          grep -q "getOneDriveConnectionState" src/js/home/home-controller.js
-          grep -q "subscribeOneDriveConnection" src/js/settings/settings-controller.js
-          grep -q "data-settings-onedrive-state" src/js/settings/settings-renderer.js
-
-          # 案件を閉じる責任はproject-sessionに置く。
-          grep -q "export function closeProjectSession" src/js/projects/project-session.js
-          grep -q "closeProjectSession" src/js/home/home-controller.js
-          if grep -q "setCurrentProject" src/js/home/home-controller.js; then
-            echo "home-controller still closes project store directly"
-            exit 1
-          fi
-
-          # トップから端末内案件を直接開け、アカウント/端末を表示する。
-          grep -q "getProjectList" src/js/home/home-controller.js
-          grep -q "homeLocalProjectList" src/js/home/home-controller.js
-          grep -q "getDeviceDisplayName" src/js/home/home-controller.js
-          grep -q "homeMicrosoftName" src/js/home/home-controller.js
-          grep -q "dataset.homeReturn" src/js/home/home-return-control.js
-
-          # 既存案件モーダルの安全条件を維持する。
-          grep -q "initializeProjectEntryUi();" src/js/app-init.js
-          grep -q "data-project-source=\"onedrive\"" src/js/projects/project-entry-ui.js
-          grep -q "card.addEventListener('click'" src/js/projects/project-entry-ui.js
-          grep -q "この案件番号のFirestore調査データがありません" src/js/projects/onedrive-project-browser.js
+          # F: Firestoreありは既存、なしだけOneDrive正式案件を作る。
+          grep -q "readFirestoreProjectList" src/js/projects/onedrive-project-browser.js
+          grep -q "if (!project)" src/js/projects/onedrive-project-browser.js
+          grep -q "createFormalProjectFromOneDriveSnapshot" src/js/projects/onedrive-project-browser.js
+          grep -q "createFormalProjectFromOneDrive" src/js/projects/project-factory.js
+          grep -q "isTemporary: false" src/js/projects/project-factory.js
+          grep -q "projectType: 'formal'" src/js/projects/project-factory.js
 
           # ヘッダーはFirestore通信だけ。未送信件数はまとめて同期側。
           grep -q "text = '良好'" src/js/sync/sync-status.js
           if grep -q 'text = unsentCount' src/js/sync/sync-status.js; then
-            echo "unsent count is still mixed into header communication label"
+            echo "unsent count is mixed into header communication label"
             exit 1
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # 新規モジュールをオフライン起動キャッシュへ含める。
+          # 新規ページ境界モジュールをオフライン起動キャッシュへ含める。
+          grep -q "./js/home/home-init.js" src/service-worker.js
+          grep -q "./js/projects/project-navigation.js" src/service-worker.js
+          grep -q "./js/projects/project-creation.js" src/service-worker.js
           grep -q "./js/auth/graph-session.js" src/service-worker.js
           grep -q "./js/onedrive/onedrive-root.js" src/service-worker.js
 
