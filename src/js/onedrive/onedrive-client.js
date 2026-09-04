@@ -202,16 +202,6 @@ export async function downloadDriveFile(itemRef, { responseType = 'arrayBuffer' 
   return graphRequest(`${itemBasePath(ref)}/content`, { responseType });
 }
 
-/** Microsoft Graph Excel APIでブック内の固定範囲を読む。 */
-export async function readDriveWorkbookRange(itemRef, worksheetName, address) {
-  const ref = normalizeRef(itemRef);
-  if (!ref.itemId || ref.itemId === 'root') throw new Error('Excelファイルを特定できません。');
-  const sheet = String(worksheetName || '').replace(/'/g, "''");
-  const range = String(address || '').replace(/'/g, "''");
-  if (!sheet || !range) throw new Error('Excelの読取範囲が指定されていません。');
-  return graphRequest(`${itemBasePath(ref)}/workbook/worksheets('${encodeURIComponent(sheet)}')/range(address='${encodeURIComponent(range)}')`);
-}
-
 export async function uploadDriveFile(parentRef, fileName, content, contentType = 'application/octet-stream') {
   const encodedName = encodeURIComponent(String(fileName || ''));
   if (!encodedName) throw new Error('保存するファイル名が空です。');
