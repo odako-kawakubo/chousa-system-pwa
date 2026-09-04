@@ -36,6 +36,7 @@ import { initializeNetworkStatusEvents } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
+import { initializeSystemDataBackup } from './onedrive/system-data-backup.js';
 import { ensureHomeReturnControl } from './home/home-return-control.js';
 
 async function initProjectApp() {
@@ -91,6 +92,7 @@ async function initProjectApp() {
     }
 
     await openProjectById(projectId);
+    initializeSystemDataBackup();
     window.addEventListener('pagehide', captureInitialProjectSession);
   } finally {
     endLoading(loadingToken);
