@@ -3,6 +3,7 @@
  * 仕上表・建材・写真など案件画面の機能は読み込まない。
  */
 import { initializePwa } from '../pwa/pwa-controller.js';
+import { bindAppUpdateEvents } from '../app-update.js';
 import { initializeDeviceIdentity } from '../device-code.js';
 import { initializeNetworkStatusEvents } from '../sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from '../demo/sample-session.js';
@@ -16,6 +17,7 @@ import { initializeHome } from './home-controller.js';
 
 function initHome() {
   void initializePwa();
+  bindAppUpdateEvents();
   initializeDeviceIdentity();
   initializeNetworkStatusEvents();
   initializeSampleProjectSnapshot();
