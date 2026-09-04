@@ -15,6 +15,7 @@ import { openProjectById, captureInitialProjectSession } from './project-control
 import { setOpenProjectId, openHomePage } from './project-navigation.js';
 import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
+import { beginLoading, endLoading } from '../ui/loading-ui.js';
 import { listUnsent, clearUnsentForProject } from '../sync/unsent-queue.js';
 import { deleteTestProjectFromFirestore } from '../sync/project-record-persistence.js';
 import { deleteLocalPhotoData } from '../photos/photo-local-store.js';
@@ -83,6 +84,7 @@ async function createNewProject() {
   const button = document.getElementById('createNewProjectButton');
   const projectName = document.getElementById('newProjectNameInput')?.value || '';
   const address = document.getElementById('newProjectAddressInput')?.value || '';
+  const loadingToken = beginLoading('案件を作成しています…');
   try {
     if (button) button.disabled = true;
     showNewProjectStatus('案件番号と初期仕上表を準備しています…');
@@ -98,6 +100,7 @@ async function createNewProject() {
   } catch (error) {
     showNewProjectStatus(error?.message || '新規案件を作成できませんでした。', 'warn');
   } finally {
+    endLoading(loadingToken);
     if (button) button.disabled = false;
   }
 }
@@ -127,7 +130,7 @@ async function deleteProject(projectId) {
     try {
       await deleteLocalPhotoData(photoIds);
     } catch (error) {
-      console.warn('[v0.1.6.5F] 写真キャッシュ削除失敗', error);
+      console.warn('[v0.1.6.5G] 写真キャッシュ削除失敗', error);
     }
     clearUnsentForProject(id);
     clearProjectBoardSettings(id);
@@ -138,7 +141,7 @@ async function deleteProject(projectId) {
     }
     renderProjectList();
   } catch (error) {
-    console.error('[v0.1.6.5F] 案件削除失敗', error);
+    console.error('[v0.1.6.5G] 案件削除失敗', error);
     window.alert(testProject
       ? 'テスト案件をFirestoreから削除できませんでした。端末内の案件は残しています。'
       : '案件を端末から削除できませんでした。');
@@ -152,10 +155,15 @@ async function switchProject(projectId) {
     closeProjectPanel();
     return;
   }
-  captureInitialProjectSession();
-  setOpenProjectId(id);
-  await openProjectById(id);
-  closeProjectPanel();
+  const loadingToken = beginLoading('案件を読み込んでいます…');
+  try {
+    captureInitialProjectSession();
+    setOpenProjectId(id);
+    await openProjectById(id);
+    closeProjectPanel();
+  } finally {
+    endLoading(loadingToken);
+  }
 }
 
 export function initializeProjectSidePanelController() {
