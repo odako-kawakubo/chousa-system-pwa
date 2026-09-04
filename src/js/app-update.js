@@ -10,6 +10,7 @@
 
 import { appConfig } from '../config/app-config.js';
 import { openModal, closeModal } from './ui/modal.js';
+import { beginLoading, updateLoading, endLoading } from './ui/loading-ui.js';
 import { preparePwaUpdate, activatePreparedPwaUpdate } from './pwa/pwa-controller.js';
 
 const UPDATE_MODAL_ID = 'updateModal';
@@ -103,7 +104,8 @@ export async function showUpdatePrompt() {
  * 新しいService Workerを準備し、切替後に通常reloadする。
  * Cache Storageの直接削除やService Workerのunregisterは行わない。
  */
-export async function reloadLatestApp() {
+export async function reloadLatestApp(loadingToken = '') {
+  updateLoading(loadingToken, 'アップデートを確認しています…');
   const latestInfo = await fetchLatestVersionInfo();
   if (latestInfo.fetchFailed) {
     sessionStorage.removeItem(UPDATE_VERIFY_KEY);
@@ -113,6 +115,7 @@ export async function reloadLatestApp() {
   const expectedVersion = String(latestInfo.version || appConfig.version);
   sessionStorage.setItem(UPDATE_VERIFY_KEY, expectedVersion);
 
+  updateLoading(loadingToken, 'アップデート中です…');
   const worker = await preparePwaUpdate();
   const switched = await activatePreparedPwaUpdate(worker);
 
@@ -161,9 +164,11 @@ export function bindAppUpdateEvents() {
 
   confirmButton?.addEventListener('click', async () => {
     confirmButton.disabled = true;
+    const loadingToken = beginLoading('アップデート中です…', { delay: 0 });
     try {
-      await reloadLatestApp();
+      await reloadLatestApp(loadingToken);
     } catch (error) {
+      endLoading(loadingToken);
       console.error('アプリをアップデートできませんでした', error);
       const message = document.getElementById('updateMessage');
       if (message) {
