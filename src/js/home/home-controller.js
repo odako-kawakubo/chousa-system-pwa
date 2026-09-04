@@ -1,30 +1,22 @@
 /**
- * しらべの中立トップ画面。
- * 起動時は案件未選択でここを表示し、端末内案件・新規・クラウド既存・サンプルを分離する。
- * 同じブラウザセッション内の再読込では直前案件を復帰し、明示的にトップへ戻った場合は復帰対象を解除する。
+ * 独立トップページ(index.html)のコントローラ。
+ * 案件本体は初期化せず、案件選択・新規作成・接続状態確認だけを担当する。
  */
-import {
-  getCurrentProject,
-  getProject,
-  getProjectList,
-  formatProjectLabel,
-  subscribe
-} from '../projects/project-store.js';
-import { openProjectById } from '../projects/project-controller.js';
-import { openProjectSession, closeProjectSession } from '../projects/project-session.js';
+import { getProjectList, formatProjectLabel, subscribe } from '../projects/project-store.js';
+import { createTemporaryProjectSnapshot } from '../projects/project-creation.js';
+import { openProjectPage } from '../projects/project-navigation.js';
 import { sampleProject } from '../demo/sample-project.js';
-import { openModal } from '../ui/modal.js';
+import { openModal, closeModal } from '../ui/modal.js';
 import { getAuthUiState, reconnectMicrosoftAuth, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { readFirestoreProjectList } from '../firestore/firestore-project-list.js';
 import { getDeviceDisplayName, subscribeDeviceName } from '../device-code.js';
-import { isManualOffline, markLocalOnly } from '../sync/sync-status.js';
+import { isManualOffline } from '../sync/sync-status.js';
 import {
   getOneDriveConnectionState,
   refreshOneDriveConnection,
   subscribeOneDriveConnection
 } from '../onedrive/onedrive-connection.js';
 
-const ACTIVE_PROJECT_SESSION_KEY = 'shirabe-active-project-session';
 let checkToken = 0;
 let currentAvailability = {
   firestore: false,
@@ -32,7 +24,6 @@ let currentAvailability = {
   firestoreError: '',
   oneDriveError: ''
 };
-let resumeAttempted = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -41,151 +32,6 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-function ensureStylesheet() {
-  if (document.querySelector('link[data-shirabe-home-css]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = './css/home.css';
-  link.dataset.shirabeHomeCss = '1';
-  document.head.appendChild(link);
-}
-
-function ensureHomeDom() {
-  if (document.getElementById('shirabeHome')) return;
-  const home = document.createElement('section');
-  home.id = 'shirabeHome';
-  home.className = 'shirabe-home';
-  home.innerHTML = `
-    <div class="shirabe-home-shell">
-      <header class="shirabe-home-header">
-        <div class="shirabe-home-brand-block">
-          <div class="shirabe-home-brand">
-            <h1>しらべ</h1>
-            <span>調査システム</span>
-          </div>
-          <p>現場で使う案件を選択してください。</p>
-        </div>
-        <div class="shirabe-home-meta">
-          <div class="shirabe-meta-item">
-            <span class="shirabe-meta-label">端末</span>
-            <strong id="homeDeviceName"></strong>
-          </div>
-          <div class="shirabe-meta-item shirabe-meta-account">
-            <span class="shirabe-meta-label">Microsoft</span>
-            <strong id="homeMicrosoftName">未接続</strong>
-            <button type="button" class="shirabe-link-button" id="homeReconnectMicrosoftButton">接続</button>
-          </div>
-        </div>
-      </header>
-
-      <div class="shirabe-home-statusbar">
-        <div class="shirabe-service-status" id="homeFirestoreStatus" title="">
-          <span class="shirabe-status-dot" aria-hidden="true"></span>
-          <b>Firestore</b>
-          <span id="homeFirestoreState">確認中</span>
-        </div>
-        <div class="shirabe-service-status" id="homeOneDriveStatus" title="">
-          <span class="shirabe-status-dot" aria-hidden="true"></span>
-          <b>OneDrive</b>
-          <span id="homeOneDriveState">確認中</span>
-        </div>
-        <div class="shirabe-home-note" id="homeConnectionNote"></div>
-      </div>
-
-      <main class="shirabe-home-main">
-        <section class="shirabe-home-section shirabe-device-projects">
-          <div class="shirabe-section-heading">
-            <div>
-              <span class="shirabe-section-kicker">この端末</span>
-              <h2>最近の案件</h2>
-            </div>
-          </div>
-          <div class="shirabe-local-project-list" id="homeLocalProjectList"></div>
-        </section>
-
-        <aside class="shirabe-home-section shirabe-start-section">
-          <div class="shirabe-section-heading">
-            <div>
-              <span class="shirabe-section-kicker">操作</span>
-              <h2>案件を開く</h2>
-            </div>
-          </div>
-          <div class="shirabe-primary-actions">
-            <button type="button" class="shirabe-action-card primary" id="homeNewProjectButton">
-              <span class="shirabe-action-symbol">＋</span>
-              <span><strong>新規作成</strong><small>仮案件を作成して調査を開始</small></span>
-            </button>
-            <button type="button" class="shirabe-action-card" id="homeOpenExistingButton" disabled>
-              <span class="shirabe-action-symbol">↗</span>
-              <span><strong>既存案件を開く</strong><small>Firestore / OneDriveから選択</small></span>
-            </button>
-          </div>
-          <div class="shirabe-home-secondary">
-            <button type="button" class="shirabe-sample-button" id="homeOpenSampleButton">サンプル案件を開く</button>
-          </div>
-        </aside>
-      </main>
-    </div>
-  `;
-  document.body.prepend(home);
-}
-
-function setAppVisible(visible) {
-  const header = document.querySelector('.app-header-compact');
-  const app = document.querySelector('.app');
-  if (header) header.hidden = !visible;
-  if (app) app.hidden = !visible;
-  const home = document.getElementById('shirabeHome');
-  if (home) home.hidden = visible;
-}
-
-function rememberAndRenderProjectMode() {
-  const project = getCurrentProject();
-  setAppVisible(Boolean(project?.projectId));
-  try {
-    if (project?.projectId) sessionStorage.setItem(ACTIVE_PROJECT_SESSION_KEY, String(project.projectId));
-  } catch {
-    // セッション保存不可でも現在画面は維持する。
-  }
-}
-
-function clearResumeProjectId() {
-  try {
-    sessionStorage.removeItem(ACTIVE_PROJECT_SESSION_KEY);
-  } catch {
-    // セッション保存不可でもトップ表示は行う。
-  }
-}
-
-function readResumeProjectId() {
-  try {
-    return sessionStorage.getItem(ACTIVE_PROJECT_SESSION_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-async function tryResumeProject() {
-  if (resumeAttempted || getCurrentProject()?.projectId) return;
-  const projectId = readResumeProjectId();
-  if (!projectId) {
-    resumeAttempted = true;
-    return;
-  }
-  const entry = getProject(projectId);
-  if (!entry?.project) {
-    resumeAttempted = true;
-    return;
-  }
-
-  const auth = getAuthUiState();
-  const canResumeNow = entry.project.isSample || navigator.onLine === false || auth.loggedIn;
-  if (!canResumeNow) return;
-
-  resumeAttempted = true;
-  await openProjectById(projectId);
 }
 
 function renderIdentity() {
@@ -285,27 +131,40 @@ async function checkAvailability() {
   renderAvailability();
 }
 
-async function openLocalProject(projectId) {
-  const entry = getProject(projectId);
-  if (!entry?.project) return;
-
-  if (currentAvailability.firestore && getAuthUiState().loggedIn) {
-    await openProjectById(projectId);
-    return;
-  }
-
-  openProjectSession(entry);
-  markLocalOnly();
+function showNewProjectStatus(message, type = '') {
+  const status = document.getElementById('newProjectStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.className = `project-restore-status${message ? ' show' : ''}${type ? ` ${type}` : ''}`;
 }
 
-function returnToHome() {
-  clearResumeProjectId();
-  resumeAttempted = true;
-  closeProjectSession();
+async function createNewProject() {
+  const button = document.getElementById('createNewProjectButton');
+  const projectName = document.getElementById('newProjectNameInput')?.value || '';
+  const address = document.getElementById('newProjectAddressInput')?.value || '';
+  try {
+    if (button) button.disabled = true;
+    showNewProjectStatus('案件番号と初期仕上表を準備しています…');
+    const snapshot = await createTemporaryProjectSnapshot({ projectName, address });
+    if (!snapshot?.project?.projectId) throw new Error('案件を作成できませんでした。');
+    closeModal('newProjectModal');
+    openProjectPage(snapshot.project.projectId);
+  } catch (error) {
+    showNewProjectStatus(error?.message || '新規案件を作成できませんでした。', 'warn');
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function bindHomeEvents() {
   document.getElementById('homeNewProjectButton')?.addEventListener('click', () => openModal('newProjectModal'));
+  document.getElementById('createNewProjectButton')?.addEventListener('click', () => void createNewProject());
+  document.getElementById('newProjectModal')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      void createNewProject();
+    }
+  });
 
   document.getElementById('homeOpenExistingButton')?.addEventListener('click', () => {
     if (!(currentAvailability.firestore || currentAvailability.oneDrive)) return;
@@ -316,12 +175,10 @@ function bindHomeEvents() {
 
   document.getElementById('homeLocalProjectList')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-home-local-project-id]');
-    if (button) void openLocalProject(button.dataset.homeLocalProjectId);
+    if (button) openProjectPage(button.dataset.homeLocalProjectId);
   });
 
-  document.getElementById('homeOpenSampleButton')?.addEventListener('click', () => {
-    if (getProject(sampleProject.projectId)) void openProjectById(sampleProject.projectId);
-  });
+  document.getElementById('homeOpenSampleButton')?.addEventListener('click', () => openProjectPage(sampleProject.projectId));
 
   document.getElementById('homeReconnectMicrosoftButton')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
@@ -338,31 +195,22 @@ function bindHomeEvents() {
     }
   });
 
-  document.querySelector('[data-home-return]')?.addEventListener('click', returnToHome);
   window.addEventListener('online', () => void checkAvailability());
   window.addEventListener('offline', () => void checkAvailability());
   window.addEventListener('chousa:manual-offline-change', () => void checkAvailability());
 }
 
 export function initializeHome() {
-  ensureStylesheet();
-  ensureHomeDom();
   bindHomeEvents();
-  subscribe(() => {
-    rememberAndRenderProjectMode();
-    renderLocalProjects();
-  });
+  subscribe(renderLocalProjects);
   subscribeDeviceName(renderIdentity);
   subscribeOneDriveConnection(renderAvailability);
   subscribeAuthUiState(() => {
     renderIdentity();
     void checkAvailability();
-    void tryResumeProject();
   });
-  rememberAndRenderProjectMode();
   renderLocalProjects();
   renderIdentity();
   renderAvailability();
   void checkAvailability();
-  void tryResumeProject();
 }
