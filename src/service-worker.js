@@ -47,6 +47,7 @@ const APP_SHELL = [
   './js/projects/project-session.js',
   './js/projects/project-creation.js',
   './js/projects/project-navigation.js',
+  './js/projects/project-side-panel-controller.js',
   './js/projects/project-entry-ui.js',
   './js/projects/firestore-project-browser.js',
   './js/projects/onedrive-project-browser.js',
