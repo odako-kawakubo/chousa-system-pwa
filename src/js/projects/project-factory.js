@@ -1,8 +1,9 @@
 /**
  * src/js/projects/project-factory.js
  *
- * 現場で新規作成する仮案件の案件情報を生成する。
- * 仮番号は yymmdd-連番。Cでは端末内案件一覧＋Firestore既存番号を見て最大+1を採番する。
+ * 案件情報の生成だけを担当する。
+ * - 現場新規: yymmdd-連番の仮案件
+ * - OneDrive既存案件: 既存の正式案件番号をそのまま正本キーにする
  */
 
 function two(value) {
@@ -49,6 +50,27 @@ export function createTemporaryProject({ projectName, address, existingProjects 
     projectType: 'temporary',
     isTemporary: true,
     isSample: false,
+    environment: 'production',
+    createdAt: new Date().toISOString()
+  };
+}
+
+export function createFormalProjectFromOneDrive({ projectNo, projectName, address = '' }) {
+  const no = String(projectNo || '').trim();
+  const name = String(projectName || '').trim();
+  if (!no) throw new Error('OneDrive案件番号を取得できません。');
+  if (!name) throw new Error('OneDrive案件名を取得できません。');
+
+  return {
+    projectId: no,
+    projectNo: no,
+    projectName: name,
+    address: String(address || '').trim(),
+    surveyDate: '',
+    projectType: 'formal',
+    isTemporary: false,
+    isSample: false,
+    environment: 'production',
     createdAt: new Date().toISOString()
   };
 }
