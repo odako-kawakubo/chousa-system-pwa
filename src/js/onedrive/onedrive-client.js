@@ -6,7 +6,7 @@ import { getGraphAccessToken } from '../auth/graph-session.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-async function graphRequest(path, { method = 'GET', body = null, headers = {}, expectJson = true } = {}) {
+async function graphRequest(path, { method = 'GET', body = null, headers = {}, responseType = 'json' } = {}) {
   const accessToken = await getGraphAccessToken();
   const options = {
     method,
@@ -34,7 +34,11 @@ async function graphRequest(path, { method = 'GET', body = null, headers = {}, e
           : 'GRAPH_REQUEST_FAILED';
     throw error;
   }
-  if (!expectJson || response.status === 204) return null;
+
+  if (response.status === 204 || responseType === 'none') return null;
+  if (responseType === 'arrayBuffer') return response.arrayBuffer();
+  if (responseType === 'blob') return response.blob();
+  if (responseType === 'text') return response.text();
   return response.json();
 }
 
@@ -185,7 +189,27 @@ export async function moveDriveItem(itemRef, targetParentRef) {
 }
 
 export async function deleteDriveItem(itemRef) {
-  await graphRequest(itemBasePath(itemRef), { method: 'DELETE', expectJson: false });
+  await graphRequest(itemBasePath(itemRef), { method: 'DELETE', responseType: 'none' });
+}
+
+/**
+ * 任意のOneDriveファイル本体を取得する共通基盤。
+ * Excel専用にはせず、今後のバックアップ取得等でも再利用する。
+ */
+export async function downloadDriveFile(itemRef, { responseType = 'arrayBuffer' } = {}) {
+  const ref = normalizeRef(itemRef);
+  if (!ref.itemId || ref.itemId === 'root') throw new Error('取得するOneDriveファイルを特定できません。');
+  return graphRequest(`${itemBasePath(ref)}/content`, { responseType });
+}
+
+/** Microsoft Graph Excel APIでブック内の固定範囲を読む。 */
+export async function readDriveWorkbookRange(itemRef, worksheetName, address) {
+  const ref = normalizeRef(itemRef);
+  if (!ref.itemId || ref.itemId === 'root') throw new Error('Excelファイルを特定できません。');
+  const sheet = String(worksheetName || '').replace(/'/g, "''");
+  const range = String(address || '').replace(/'/g, "''");
+  if (!sheet || !range) throw new Error('Excelの読取範囲が指定されていません。');
+  return graphRequest(`${itemBasePath(ref)}/workbook/worksheets('${encodeURIComponent(sheet)}')/range(address='${encodeURIComponent(range)}')`);
 }
 
 export async function uploadDriveFile(parentRef, fileName, content, contentType = 'application/octet-stream') {
