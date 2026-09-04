@@ -14,6 +14,7 @@ import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { getOneDriveConnectionState, subscribeOneDriveConnection } from '../onedrive/onedrive-connection.js';
+import { listSystemDataBackups } from '../onedrive/system-data-backup.js';
 
 let root = null;
 let unsubscribe = null;
@@ -65,6 +66,7 @@ function refreshSyncStatusFields(status = getSyncStatus()) {
   const time = root.querySelector('[data-settings-sync-time]');
   const unsent = root.querySelector('[data-settings-sync-unsent]');
   const toggle = root.querySelector('[data-settings-offline-toggle]');
+  const manualSync = root.querySelector('[data-settings-manual-sync]');
   if (statusPill) statusPill.textContent = status.text;
   if (firestore) firestore.textContent = status.text;
   if (time) time.textContent = formatSyncTime(status.lastSyncedAt);
@@ -73,6 +75,14 @@ function refreshSyncStatusFields(status = getSyncStatus()) {
     toggle.textContent = status.manualOffline ? 'ON' : 'OFF';
     toggle.classList.toggle('active', status.manualOffline);
     toggle.setAttribute('aria-pressed', status.manualOffline ? 'true' : 'false');
+  }
+  if (manualSync) {
+    manualSync.disabled = Boolean(status.manualOffline || status.networkOnline === false);
+    manualSync.title = status.manualOffline
+      ? 'オフラインモード中は同期できません'
+      : status.networkOnline === false
+        ? '通信できないため同期できません'
+        : '';
   }
 }
 
@@ -88,11 +98,13 @@ function refreshOneDriveStatusFields(oneDrive = getOneDriveConnectionState()) {
   if (!root) return;
   const state = root.querySelector('[data-settings-onedrive-state]');
   const rootName = root.querySelector('[data-settings-onedrive-root]');
+  const restoreButton = root.querySelector('[data-action="show-system-data-backups"]');
   if (state) {
     state.textContent = oneDrive.text;
     state.title = oneDrive.error || '';
   }
   if (rootName) rootName.textContent = oneDrive.connected ? (oneDrive.root?.name || '04 調査') : '-';
+  if (restoreButton) restoreButton.disabled = !oneDrive.connected;
 }
 
 function refreshSyncDiagnosticLogView() {
@@ -218,10 +230,34 @@ function adjustBoardFontSize(field, delta) {
   syncBoardFromInputs(input);
 }
 
-function handleClick(event) {
+async function showSystemDataBackups() {
+  try {
+    const backups = await listSystemDataBackups();
+    if (!backups.length) {
+      window.alert('この案件の復元データはまだありません。');
+      return;
+    }
+    const names = backups.slice(0, 15).map((item) => `・${item.name}`).join('\n');
+    window.alert(`復元データを確認しました。\n\n${names}\n\n復元処理は後続フェーズで接続します。`);
+  } catch (error) {
+    window.alert(error?.message || '復元データを確認できませんでした。');
+  }
+}
+
+async function handleClick(event) {
   const subtab = event.target.closest('[data-settings-section]');
   if (subtab) {
     showInnerSection(subtab.dataset.settingsSection);
+    return;
+  }
+
+  if (event.target.closest('[data-action="manual-sync"]')) {
+    window.dispatchEvent(new CustomEvent('chousa:manual-sync-request'));
+    return;
+  }
+
+  if (event.target.closest('[data-action="show-system-data-backups"]')) {
+    await showSystemDataBackups();
     return;
   }
 
@@ -340,7 +376,7 @@ export function initializeSettingsTab() {
 
   if (root.dataset.settingsEventsBound !== '1') {
     root.dataset.settingsEventsBound = '1';
-    root.addEventListener('click', handleClick);
+    root.addEventListener('click', (event) => void handleClick(event));
     root.addEventListener('input', (event) => {
       if (event.target.matches('[data-board-setting], [data-setting-project-field]')) {
         syncBoardFromInputs(event.target);
