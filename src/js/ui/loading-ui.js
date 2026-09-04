@@ -6,9 +6,53 @@
 const DEFAULT_DELAY_MS = 250;
 const active = new Map();
 let sequence = 0;
-let timer = null;
+
+function ensureStyle() {
+  if (document.getElementById('globalLoadingStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'globalLoadingStyle';
+  style.textContent = `
+    .global-loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: grid;
+      place-items: center;
+      background: var(--overlay-modal, rgba(15, 23, 42, .28));
+      padding: 24px;
+    }
+    .global-loading-overlay[hidden] { display: none; }
+    .global-loading-card {
+      min-width: min(320px, calc(100vw - 48px));
+      max-width: 460px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 20px;
+      border: 1px solid var(--line, #d6dce8);
+      border-radius: 14px;
+      background: var(--panel, #fff);
+      color: var(--text, #1f2937);
+      box-shadow: 0 16px 42px var(--shadow-dialog, rgba(15, 23, 42, .25));
+      font-weight: 700;
+    }
+    .global-loading-spinner {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      border: 3px solid var(--line-strong, #cbd5e1);
+      border-top-color: var(--main, #2563eb);
+      border-radius: 50%;
+      animation: global-loading-spin .8s linear infinite;
+    }
+    .global-loading-message { line-height: 1.5; }
+    @keyframes global-loading-spin { to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(style);
+}
 
 function ensureOverlay() {
+  ensureStyle();
   let overlay = document.getElementById('globalLoadingOverlay');
   if (overlay) return overlay;
 
@@ -37,14 +81,12 @@ function render() {
   const message = overlay.querySelector('[data-global-loading-message]');
 
   if (!entry) {
-    if (timer) clearTimeout(timer);
-    timer = null;
     overlay.hidden = true;
     return;
   }
 
   if (message) message.textContent = entry.message;
-  if (entry.visible) overlay.hidden = false;
+  overlay.hidden = !entry.visible;
 }
 
 export function beginLoading(message = '処理中です…', { delay = DEFAULT_DELAY_MS } = {}) {
