@@ -33,7 +33,6 @@ const MATERIAL_COLUMNS = [
   ['updatedAt', '更新日時']
 ];
 
-
 const PHOTO_COLUMNS = [
   ['photoId', '写真ID'],
   ['photoTypeLabel', '区分'],
@@ -78,6 +77,30 @@ const FINISH_COLUMNS = [
   ['updatedAt', '更新日時']
 ];
 
+const VALUE_LABELS = Object.freeze({
+  active: '有効',
+  deleted: '削除',
+  pending: '未同期',
+  synced: '同期済み',
+  uploaded: '送信済み',
+  saved: '保存済み',
+  visual: '目視',
+  sampling: '採取',
+  before: '施工前',
+  during: '施工中',
+  after: '施工後',
+  section: '断面'
+});
+
+const DATE_TIME_KEYS = new Set(['updatedAt', 'capturedAt', 'lastEditedAt']);
+
+function formatDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function formatValue(key, value) {
   if (value === null || value === undefined || value === '') return '';
   if (Array.isArray(value)) return value.join('、');
@@ -85,9 +108,10 @@ function formatValue(key, value) {
   if (key === 'isEdited') return value ? 'あり' : 'なし';
   if (key === 'deleted') return value ? '削除' : '有効';
   if (key === 'samplingBranch' && Number(value) === 0) return '-';
-  return String(value);
+  if (DATE_TIME_KEYS.has(key)) return formatDateTime(value);
+  const text = String(value);
+  return VALUE_LABELS[text] || text;
 }
-
 
 function setText(id, text) {
   const element = document.getElementById(id);
