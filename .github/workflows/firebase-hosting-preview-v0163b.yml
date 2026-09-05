@@ -19,6 +19,7 @@ on:
       - v0.1.6.5I
       - v0.1.6.5J
       - v0.1.6.5K
+      - v0.1.6.5L
   workflow_dispatch:
 
 permissions:
@@ -63,6 +64,7 @@ jobs:
           node --check src/js/photos/photo-local-store.js
           node --check src/js/photos/photo-filename.js
           node --check src/js/photos/photo-onedrive-sync.js
+          node --check src/js/photos/photo-remote-reader.js
           node --check src/js/photos/photo-controller.js
           node --check src/js/record-view/record-view-view-model.js
           node --check src/js/record-view/record-view-renderer.js
@@ -79,16 +81,16 @@ jobs:
           node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5K consistency checks
+      - name: v0.1.6.5L consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5K'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5K"' src/version.json
-          grep -q "chousa-app-v0.1.6.5K" src/service-worker.js
+          grep -q "version: '0.1.6.5L'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5L"' src/version.json
+          grep -q "chousa-app-v0.1.6.5L" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -230,7 +232,7 @@ jobs:
           grep -q "systemFolderId" src/js/onedrive/system-data-backup.js
           grep -q "initializeSystemDataBackup" src/js/app-init.js
 
-          # K: 新規写真は保存時点でprojectId確定、旧空欄Blobだけ救済、既知photoIdだけ未送信抽出。
+          # K: 写真送信は保存時点でprojectId確定、旧空欄Blobだけ救済、既知photoIdだけ未送信抽出。
           grep -q "configurePhotoLocalStore" src/js/photos/photo-local-store.js src/js/app-init.js
           grep -q "resolveProjectId" src/js/photos/photo-local-store.js
           grep -q "!String(row.projectId || '')" src/js/photos/photo-local-store.js
@@ -239,7 +241,20 @@ jobs:
           grep -q "PHOTO_SYNC_PENDING" src/js/photos/photo-onedrive-sync.js
           grep -q "PHOTO_UPLOAD_START" src/js/photos/photo-onedrive-sync.js
           grep -q "PHOTO_VERIFY_OK" src/js/photos/photo-onedrive-sync.js
-          grep -q "setLocalPreview(record?.photoId, completedBlob)" src/js/photos/photo-controller.js
+
+          # L: 他端末写真はサムネ即時取得、拡大時にcompleted本体を端末へ保存し再送しない。
+          grep -q "export async function downloadDriveThumbnail" src/js/onedrive/onedrive-client.js
+          grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
+          grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
+          grep -q "saveRemoteCompletedPhoto" src/js/photos/photo-local-store.js src/js/photos/photo-controller.js
+          grep -q "uploadStatus: 'uploaded'" src/js/photos/photo-local-store.js
+          grep -q "remoteThumbnailUrls" src/js/photos/photo-controller.js
+          grep -q "ensureRemoteThumbnail" src/js/photos/photo-controller.js
+          grep -q "他端末で撮影されたため、この端末では看板編集できません" src/js/photos/photo-controller.js
+          grep -q "record-view-url-link" src/js/record-view/record-view-renderer.js src/css/record-view.css
+          grep -q "./js/photos/photo-remote-reader.js" src/service-worker.js
+
+          # レコード確認の表示改善を維持する。
           grep -q "record.completedPath || record.originalPath || record.oneDrivePath" src/js/record-view/record-view-view-model.js
           grep -q "pending: '未同期'" src/js/record-view/record-view-renderer.js
           grep -q "DATE_TIME_KEYS" src/js/record-view/record-view-renderer.js
@@ -266,6 +281,7 @@ jobs:
           grep -q "./js/photos/photo-local-store.js" src/service-worker.js
           grep -q "./js/photos/photo-filename.js" src/service-worker.js
           grep -q "./js/photos/photo-onedrive-sync.js" src/service-worker.js
+          grep -q "./js/photos/photo-remote-reader.js" src/service-worker.js
 
   deploy:
     needs: test
