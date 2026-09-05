@@ -37,7 +37,6 @@ export function initializePwa() {
   registrationPromise = navigator.serviceWorker
     .register('./service-worker.js', { scope: './', updateViaCache: 'none' })
     .then((registration) => {
-      // 既に制御下なら初回reload用フラグは不要。
       if (navigator.serviceWorker.controller) {
         sessionStorage.removeItem(FIRST_CONTROL_RELOAD_KEY);
       }
@@ -90,7 +89,6 @@ function waitForWaitingWorker(registration, timeoutMs = 12000) {
 
 /**
  * サーバー上のservice-worker.jsを再確認し、新版があればwaiting状態まで待つ。
- * @returns {Promise<ServiceWorker|null>}
  */
 export async function preparePwaUpdate() {
   const registration = await getPwaRegistration();
@@ -102,7 +100,7 @@ export async function preparePwaUpdate() {
 
 /**
  * waiting中のService Workerへ切替を要求し、controllerchangeを待つ。
- * 初回登録などwaiting workerがない場合はfalseを返す。
+ * Service Worker側のSKIP_WAITINGメッセージ処理と対になる。
  */
 export async function activatePreparedPwaUpdate(worker) {
   if (!worker) return false;
