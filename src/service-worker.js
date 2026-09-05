@@ -1,12 +1,12 @@
 /*
- * v0.1.6.5I Service Worker
+ * v0.1.6.5J Service Worker
  *
  * 責任は「トップと案件画面を圏外でも起動できる状態に保つ」ことだけ。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
- * network-firstへの更新方式整理はJで行う。
+ * network-firstへの更新方式整理は次段階で行う。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5I-r2';
+const APP_CACHE = 'chousa-app-v0.1.6.5J';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
