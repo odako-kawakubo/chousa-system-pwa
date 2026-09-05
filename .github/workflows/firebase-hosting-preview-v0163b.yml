@@ -18,6 +18,7 @@ on:
       - v0.1.6.5H
       - v0.1.6.5I
       - v0.1.6.5J
+      - v0.1.6.5K
   workflow_dispatch:
 
 permissions:
@@ -62,6 +63,9 @@ jobs:
           node --check src/js/photos/photo-local-store.js
           node --check src/js/photos/photo-filename.js
           node --check src/js/photos/photo-onedrive-sync.js
+          node --check src/js/photos/photo-controller.js
+          node --check src/js/record-view/record-view-view-model.js
+          node --check src/js/record-view/record-view-renderer.js
           node --check src/js/home/home-init.js
           node --check src/js/home/home-controller.js
           node --check src/js/home/home-return-control.js
@@ -75,16 +79,16 @@ jobs:
           node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5J consistency checks
+      - name: v0.1.6.5K consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5J'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5J"' src/version.json
-          grep -q "chousa-app-v0.1.6.5J" src/service-worker.js
+          grep -q "version: '0.1.6.5K'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5K"' src/version.json
+          grep -q "chousa-app-v0.1.6.5K" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -226,22 +230,19 @@ jobs:
           grep -q "systemFolderId" src/js/onedrive/system-data-backup.js
           grep -q "initializeSystemDataBackup" src/js/app-init.js
 
-          # I/J: 写真本体はIndexedDBを正本にphotoId×variant×projectIdで送る。
-          grep -q "projectId" src/js/photos/photo-local-store.js
-          grep -q "listPendingPhotoBlobEntries" src/js/photos/photo-local-store.js
-          grep -q "markPhotoBlobUploaded" src/js/photos/photo-local-store.js
-          grep -q "uploadedItemId" src/js/photos/photo-local-store.js
-          grep -q "lastUploadError" src/js/photos/photo-local-store.js
-          grep -q "未整理_\${device}_\${uploadTimestamp(fields.capturedAt)}" src/js/photos/photo-filename.js
-          grep -q "uploadDriveFile" src/js/photos/photo-onedrive-sync.js
-          grep -q "getDriveItem" src/js/photos/photo-onedrive-sync.js
-          grep -q "original" src/js/photos/photo-onedrive-sync.js
-          grep -q "completed" src/js/photos/photo-onedrive-sync.js
-          grep -q "record.deleted" src/js/photos/photo-onedrive-sync.js
-          grep -q "subscribeOneDriveState" src/js/photos/photo-onedrive-sync.js
-          grep -q "photoRecordStore.subscribe(requestSync)" src/js/photos/photo-onedrive-sync.js
-          grep -q "assignPhotoProject(record.photoId, project.projectId)" src/js/photos/photo-onedrive-sync.js
-          grep -q "initializePhotoOneDriveSync" src/js/app-init.js
+          # K: 新規写真は保存時点でprojectId確定、旧空欄Blobだけ救済、既知photoIdだけ未送信抽出。
+          grep -q "configurePhotoLocalStore" src/js/photos/photo-local-store.js src/js/app-init.js
+          grep -q "resolveProjectId" src/js/photos/photo-local-store.js
+          grep -q "!String(row.projectId || '')" src/js/photos/photo-local-store.js
+          grep -q "listPendingPhotoBlobEntries(project.projectId, photoIds)" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_BINDING_MISSING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_PENDING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_UPLOAD_START" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_VERIFY_OK" src/js/photos/photo-onedrive-sync.js
+          grep -q "setLocalPreview(record?.photoId, completedBlob)" src/js/photos/photo-controller.js
+          grep -q "record.completedPath || record.originalPath || record.oneDrivePath" src/js/record-view/record-view-view-model.js
+          grep -q "pending: '未同期'" src/js/record-view/record-view-renderer.js
+          grep -q "DATE_TIME_KEYS" src/js/record-view/record-view-renderer.js
 
           # ヘッダーはFirestore通信だけ。未送信件数はまとめて同期側。
           grep -q "text = '良好'" src/js/sync/sync-status.js
