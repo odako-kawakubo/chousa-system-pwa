@@ -109,7 +109,9 @@ export function buildPhotoRecordView() {
       ...record,
       roomNo: record.roomNo || photoRoomNo(record),
       photoTypeLabel: record.photoType === 'visual' ? '目視' : '採取',
-      shootingTypeLabel: getShootingTypeLabel(record.shootingType)
+      shootingTypeLabel: getShootingTypeLabel(record.shootingType),
+      // レコード構造は増やさず、表示用だけ完成画像→元画像→旧互換の順で1列へまとめる。
+      oneDrivePath: record.completedPath || record.originalPath || record.oneDrivePath || ''
     }))
     .sort(comparePhotoRecords);
 
