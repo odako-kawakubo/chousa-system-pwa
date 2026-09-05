@@ -26,6 +26,7 @@ import { initializeRecordView } from './record-view/record-view-controller.js';
 import { initializeMaterialList } from './materials/material-list-controller.js';
 import { initializeMaterialOperations } from './materials/material-operations-controller.js';
 import { initializePhotoTab } from './photos/photo-controller.js';
+import { initializePhotoOneDriveSync } from './photos/photo-onedrive-sync.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
@@ -81,6 +82,7 @@ async function initProjectApp() {
     initializeMaterialOperations();
     initializeRecordView();
     initializePhotoTab();
+    initializePhotoOneDriveSync();
     initializeSettingsTab();
 
     ensureHomeReturnControl();
