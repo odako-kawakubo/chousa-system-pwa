@@ -1,0 +1,65 @@
+name: Deploy v0.1.6.5 Final
+
+on:
+  push:
+    branches:
+      - v0.1.6.5
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-preview-v0165-final
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          find src/js -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --check src/service-worker.js
+
+      - name: v0.1.6.5 final consistency checks
+        shell: bash
+        run: |
+          grep -q "version: '0.1.6.5'" src/config/app-config.js
+          grep -q "revision: 'r1'" src/config/app-config.js
+          grep -q "mode: 'stable'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5"' src/version.json
+          grep -q '"revision": "r1"' src/version.json
+          grep -q "chousa-app-v0.1.6.5-r1" src/service-worker.js
+          grep -q "networkFirstAppRequest" src/service-worker.js
+          grep -q "SKIP_WAITING" src/service-worker.js src/js/pwa/pwa-controller.js
+          grep -q "oneDriveDriveId: text(record.oneDriveDriveId)" src/js/firestore/record-serializer.js
+          grep -q "originalItemId: text(record.originalItemId)" src/js/firestore/record-serializer.js
+          grep -q "completedItemId: text(record.completedItemId)" src/js/firestore/record-serializer.js
+          grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
+          grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
+          grep -q "saveRemoteCompletedPhoto" src/js/photos/photo-local-store.js src/js/photos/photo-controller.js
+          if grep -R "network-session-guard" -n src; then
+            echo "obsolete network-session-guard reference remains"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Deploy to Firebase Hosting preview channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+          projectId: odako-chousa-system-pwa
+          channelId: v0163a
+          expires: 30d
