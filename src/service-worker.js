@@ -6,7 +6,7 @@
  * network-firstへの更新方式整理はJで行う。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5I';
+const APP_CACHE = 'chousa-app-v0.1.6.5I-r2';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -45,6 +45,8 @@ const APP_SHELL = [
   './js/firestore/firestore-repository.js',
   './js/firestore/firestore-project-list.js',
   './js/sync/sync-status.js',
+  './js/sync/field-edit-meta.js',
+  './js/sync/project-record-persistence.js',
   './js/projects/project-controller.js',
   './js/projects/project-store.js',
   './js/projects/project-session.js',
@@ -62,6 +64,8 @@ const APP_SHELL = [
   './js/onedrive/onedrive-project-file.js',
   './js/onedrive/openxml-workbook-reader.js',
   './js/onedrive/system-data-backup.js',
+  './js/records/photo-record.js',
+  './js/store/photo-record-store.js',
   './js/photos/photo-local-store.js',
   './js/photos/photo-filename.js',
   './js/photos/photo-onedrive-sync.js',
