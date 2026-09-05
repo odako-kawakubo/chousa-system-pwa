@@ -1,12 +1,12 @@
 /*
- * v0.1.6.5L Service Worker
+ * v0.1.6.5M Service Worker
  *
- * 責任は「トップと案件画面を圏外でも起動できる状態に保つ」ことだけ。
+ * 責任は「最新版を優先しつつ、圏外では直近キャッシュから起動できる状態を保つ」こと。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
- * network-firstへの更新方式整理は次段階で行う。
+ * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5L';
+const APP_CACHE = 'chousa-app-v0.1.6.5M-M-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -34,6 +34,7 @@ const APP_SHELL = [
   './js/home/home-return-control.js',
   './js/app-init.js',
   './js/app-update.js',
+  './js/app-version.js',
   './js/pwa/pwa-controller.js',
   './js/auth/microsoft-auth.js',
   './js/auth/graph-session.js',
@@ -44,6 +45,7 @@ const APP_SHELL = [
   './js/ui/modal.js',
   './js/firestore/firestore-repository.js',
   './js/firestore/firestore-project-list.js',
+  './js/firestore/record-serializer.js',
   './js/sync/sync-status.js',
   './js/sync/field-edit-meta.js',
   './js/sync/project-record-persistence.js',
@@ -70,18 +72,48 @@ const APP_SHELL = [
   './js/photos/photo-filename.js',
   './js/photos/photo-onedrive-sync.js',
   './js/photos/photo-remote-reader.js',
+  './js/photos/photo-controller.js',
+  './js/photos/photo-viewer.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
   './config/app-config.js',
   './config/microsoft-config.js'
 ];
 
+function appCacheKey(request) {
+  const url = new URL(request.url);
+  url.search = '';
+  return new Request(url.toString(), { method: 'GET' });
+}
+
+async function networkFirstAppRequest(request) {
+  const cache = await caches.open(APP_CACHE);
+  const cacheKey = appCacheKey(request);
+
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      await cache.put(cacheKey, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+    throw error;
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(APP_CACHE)
       .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -107,15 +139,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then((cached) => (
-        cached || fetch(request).then((response) => {
-          const copy = response.clone();
-          caches.open(APP_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-      ))
-    );
+    event.respondWith(networkFirstAppRequest(request));
     return;
   }
 
