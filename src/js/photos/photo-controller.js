@@ -166,7 +166,7 @@ function photoById(photoId) {
 /**
  * 写真タブ内のサムネイルimgへ、Record外で管理している表示URLを差し込む。
  * 画像URLはphotoRecordへ保存しない。ローカル撮影画像はIndexedDBから復元済みの
- * Object URL、デモは一時Data URL、将来OneDrive接続後はremote URLを使う。
+ * Object URL、デモは一時Data URL、OneDrive参照はphotoRecordから表示する。
  */
 function hydrateThumbnailImages() {
   if (!root) return;
@@ -205,6 +205,13 @@ function nextPhotoId() {
   // 案件ごとの連番だけでは端末内画像キャッシュで別案件と衝突するため、
   // 端末コード＋時刻で一意になるIDを使う。
   return `I-${getDeviceCode()}-${Date.now()}`;
+}
+
+function setLocalPreview(photoId, blob) {
+  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
+  const previous = localPreviewUrls.get(photoId);
+  if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
+  localPreviewUrls.set(photoId, URL.createObjectURL(blob));
 }
 
 function openFilePicker(context) {
@@ -280,13 +287,13 @@ async function addPickedFiles(fileList) {
         }));
 
     await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
+
+    // Store通知より前に表示URLを確定し、最初の再描画から実画像を使う。
+    setLocalPreview(photoId, file);
+
     const stored = photoRecordStore.set(record);
     await updateCameraPhotoRecord(stored);
     await persistPhoto(stored);
-
-    const previous = localPreviewUrls.get(photoId);
-    if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
-    if (typeof URL.createObjectURL === 'function') localPreviewUrls.set(photoId, URL.createObjectURL(file));
   }
 }
 
@@ -313,7 +320,6 @@ function samplingContextFromKey(key, shootingType) {
     shootingType
   };
 }
-
 
 /**
  * カメラへ渡す候補一覧。
@@ -350,14 +356,13 @@ function buildCameraOptions() {
 }
 
 async function registerCameraPreview({ record, completedBlob }) {
+  // photoRecordStore.set()の通知で再描画される前にObject URLを登録する。
+  // これにより撮影直後に一度カメラマークへ落ちる競合を防ぐ。
+  setLocalPreview(record?.photoId, completedBlob);
+
   if (record?.photoId) {
     await updateCameraPhotoRecord(record);
     await persistPhoto(record);
-  }
-  const previous = localPreviewUrls.get(record.photoId);
-  if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
-  if (completedBlob && typeof URL.createObjectURL === 'function') {
-    localPreviewUrls.set(record.photoId, URL.createObjectURL(completedBlob));
   }
 }
 
@@ -376,9 +381,7 @@ async function hydrateCurrentPhotoPreviews() {
       if (localPreviewUrls.has(record.photoId)) continue;
       const blob = await getPhotoBlob(record.photoId, 'completed');
       if (!blob || typeof URL.createObjectURL !== 'function') continue;
-      const previous = localPreviewUrls.get(record.photoId);
-      if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
-      localPreviewUrls.set(record.photoId, URL.createObjectURL(blob));
+      setLocalPreview(record.photoId, blob);
     }
   } catch (error) {
     console.warn('現在案件のローカル写真プレビュー復元に失敗しました', error);
@@ -467,7 +470,7 @@ function previewSourceForPhoto(photo) {
   const demo = demoPreviewSource(photo);
   if (demo) return demo;
 
-  const remote = String(photo.oneDrivePath || '').trim();
+  const remote = String(photo.completedPath || photo.originalPath || photo.oneDrivePath || '').trim();
   if (/^(?:https?:|blob:|data:)/i.test(remote)) return remote;
   return '';
 }
@@ -486,8 +489,7 @@ function startEditSequence(photoIds) {
   // Controller側には別の編集キューや保存経路を持たせない。
   openPhotoBoardEditorSequence(ids).catch((error) => {
     console.error(error);
-    window.alert(`看板編集を開始できませんでした。
-${error.message || error}`);
+    window.alert(`看板編集を開始できませんでした。\n${error.message || error}`);
   });
 }
 
@@ -700,8 +702,6 @@ function bindEvents() {
     });
   });
 }
-
-
 
 /**
  * 複数Storeが同じ業務操作で連続通知しても、写真タブの再描画は1回へまとめる。
