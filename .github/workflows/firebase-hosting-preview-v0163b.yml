@@ -16,6 +16,7 @@ on:
       - v0.1.6.5F
       - v0.1.6.5G
       - v0.1.6.5H
+      - v0.1.6.5I
   workflow_dispatch:
 
 permissions:
@@ -57,6 +58,9 @@ jobs:
           node --check src/js/onedrive/onedrive-project-file.js
           node --check src/js/onedrive/openxml-workbook-reader.js
           node --check src/js/onedrive/system-data-backup.js
+          node --check src/js/photos/photo-local-store.js
+          node --check src/js/photos/photo-filename.js
+          node --check src/js/photos/photo-onedrive-sync.js
           node --check src/js/home/home-init.js
           node --check src/js/home/home-controller.js
           node --check src/js/home/home-return-control.js
@@ -70,16 +74,16 @@ jobs:
           node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5H consistency checks
+      - name: v0.1.6.5I consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5H'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5H"' src/version.json
-          grep -q "chousa-app-v0.1.6.5H" src/service-worker.js
+          grep -q "version: '0.1.6.5I'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5I"' src/version.json
+          grep -q "chousa-app-v0.1.6.5I" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -221,6 +225,21 @@ jobs:
           grep -q "systemFolderId" src/js/onedrive/system-data-backup.js
           grep -q "initializeSystemDataBackup" src/js/app-init.js
 
+          # I: 写真本体はIndexedDBを正本にphotoId×variant×projectIdで送る。
+          grep -q "projectId" src/js/photos/photo-local-store.js
+          grep -q "listPendingPhotoBlobEntries" src/js/photos/photo-local-store.js
+          grep -q "markPhotoBlobUploaded" src/js/photos/photo-local-store.js
+          grep -q "uploadedItemId" src/js/photos/photo-local-store.js
+          grep -q "lastUploadError" src/js/photos/photo-local-store.js
+          grep -q "未整理_\${device}_\${uploadTimestamp(fields.capturedAt)}" src/js/photos/photo-filename.js
+          grep -q "uploadDriveFile" src/js/photos/photo-onedrive-sync.js
+          grep -q "getDriveItem" src/js/photos/photo-onedrive-sync.js
+          grep -q "original" src/js/photos/photo-onedrive-sync.js
+          grep -q "completed" src/js/photos/photo-onedrive-sync.js
+          grep -q "record.deleted" src/js/photos/photo-onedrive-sync.js
+          grep -q "subscribeOneDriveState" src/js/photos/photo-onedrive-sync.js
+          grep -q "initializePhotoOneDriveSync" src/js/app-init.js
+
           # ヘッダーはFirestore通信だけ。未送信件数はまとめて同期側。
           grep -q "text = '良好'" src/js/sync/sync-status.js
           if grep -q 'text = unsentCount' src/js/sync/sync-status.js; then
@@ -229,7 +248,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-          # Hの追加モジュールもオフライン起動キャッシュへ含める。
+          # オフライン起動キャッシュ。
           grep -q "./js/ui/loading-ui.js" src/service-worker.js
           grep -q "./js/onedrive/onedrive-project-file.js" src/service-worker.js
           grep -q "./js/onedrive/openxml-workbook-reader.js" src/service-worker.js
@@ -240,6 +259,9 @@ jobs:
           grep -q "./js/projects/project-side-panel-controller.js" src/service-worker.js
           grep -q "./js/auth/graph-session.js" src/service-worker.js
           grep -q "./js/onedrive/onedrive-root.js" src/service-worker.js
+          grep -q "./js/photos/photo-local-store.js" src/service-worker.js
+          grep -q "./js/photos/photo-filename.js" src/service-worker.js
+          grep -q "./js/photos/photo-onedrive-sync.js" src/service-worker.js
 
   deploy:
     needs: test
