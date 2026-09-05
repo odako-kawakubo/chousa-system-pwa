@@ -110,17 +110,19 @@ export function blobKey(photoId, variant) {
 
 /**
  * Blobを保存する。
- * completedを再編集した場合はpendingへ戻すが、originalは編集処理で再保存されても
- * 既にuploadedなら送信済み状態を維持する。元画像自体は看板編集では変化しないため。
+ * 看板編集で元画像の内容と保存名が変わらない場合、originalのuploaded状態は維持する。
+ * 未整理→正式整理など保存名が変わる時はoriginalもpendingへ戻し、完成画像と同じ正式名へ揃える。
  */
 export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
   const key = blobKey(photoId, variant);
   const requestedStatus = metadata.uploadStatus || 'pending';
 
   await replaceBlobEntry(key, (existing) => {
+    const nextFileName = metadata.fileName || existing?.fileName || '';
     const preserveOriginalUpload = variant === 'original'
       && requestedStatus === 'pending'
-      && existing?.uploadStatus === 'uploaded';
+      && existing?.uploadStatus === 'uploaded'
+      && String(existing?.uploadedFileName || '') === String(nextFileName || '');
 
     return {
       ...(existing || {}),
@@ -132,7 +134,7 @@ export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
       size: Number(blob?.size || 0),
       projectId: String(metadata.projectId || existing?.projectId || ''),
       createdAt: metadata.createdAt || existing?.createdAt || new Date().toISOString(),
-      fileName: metadata.fileName || existing?.fileName || '',
+      fileName: nextFileName,
       uploadStatus: preserveOriginalUpload ? 'uploaded' : requestedStatus,
       uploadedItemId: existing?.uploadedItemId || '',
       uploadedDriveId: existing?.uploadedDriveId || '',
