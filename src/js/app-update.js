@@ -1,8 +1,9 @@
 /**
  * src/js/app-update.js
  *
- * version.jsonとappConfig.versionを比較し、利用者が明示的にアップデートを
- * 実行した時だけService Workerを新版へ切り替える。
+ * version.json と実行中 appConfig の version + revision を比較する。
+ * version は利用者向け表示、revision は同一version内の実装更新識別子。
+ * 利用者が明示的にアップデートを実行した時だけ、新しいService Workerへ切り替える。
  *
  * キャッシュの作成・旧世代削除はservice-worker.jsだけが担当する。
  * localStorage / IndexedDB / 案件データ / 写真データには触れない。
@@ -14,7 +15,7 @@ import { beginLoading, updateLoading, endLoading } from './ui/loading-ui.js';
 import { preparePwaUpdate, activatePreparedPwaUpdate } from './pwa/pwa-controller.js';
 
 const UPDATE_MODAL_ID = 'updateModal';
-const UPDATE_VERIFY_KEY = 'chousaAppExpectedVersionAfterReload';
+const UPDATE_VERIFY_KEY = 'chousaAppExpectedRevisionAfterReload';
 
 const UPDATE_FAILURE_MESSAGE = [
   'アップデートを確認できませんでした。',
@@ -32,6 +33,32 @@ function waitForPaint() {
   });
 }
 
+function normalizeVersionInfo(info = {}) {
+  return {
+    version: String(info.version || '').trim(),
+    revision: String(info.revision || '').trim()
+  };
+}
+
+function currentVersionInfo() {
+  return normalizeVersionInfo(appConfig);
+}
+
+function sameBuild(left, right) {
+  const a = normalizeVersionInfo(left);
+  const b = normalizeVersionInfo(right);
+  return Boolean(a.version && b.version)
+    && a.version === b.version
+    && a.revision === b.revision;
+}
+
+function buildLabel(info) {
+  const normalized = normalizeVersionInfo(info);
+  return normalized.revision
+    ? `v${normalized.version}（${normalized.revision}）`
+    : `v${normalized.version}`;
+}
+
 export async function fetchLatestVersionInfo() {
   try {
     const response = await fetch(`./version.json?ts=${Date.now()}`, {
@@ -42,11 +69,11 @@ export async function fetchLatestVersionInfo() {
       throw new Error(`version.json fetch failed: ${response.status}`);
     }
 
-    return await response.json();
+    return normalizeVersionInfo(await response.json());
   } catch (error) {
     console.warn('最新バージョンを取得できませんでした', error);
     return {
-      version: appConfig.version,
+      ...currentVersionInfo(),
       fetchFailed: true
     };
   }
@@ -68,48 +95,49 @@ function renderUpdateActions({ canUpdate }) {
 
 export async function showUpdatePrompt() {
   const message = document.getElementById('updateMessage');
+  const current = currentVersionInfo();
 
   if (message) {
     message.innerHTML =
-      `現在：v${appConfig.version}<br>` +
+      `現在：${buildLabel(current)}<br>` +
       '最新バージョンを確認しています...';
   }
 
   renderUpdateActions({ canUpdate: false });
   openModal(UPDATE_MODAL_ID);
 
-  const info = await fetchLatestVersionInfo();
-  const latest = String(info.version || appConfig.version);
+  const latest = await fetchLatestVersionInfo();
 
   if (!message) return;
 
-  if (info.fetchFailed) {
+  if (latest.fetchFailed) {
     message.innerHTML =
-      `現在：v${appConfig.version}<br><br>` +
+      `現在：${buildLabel(current)}<br><br>` +
       '最新バージョンを確認できませんでした。<br>' +
       '通信状態を確認して、もう一度お試しください。';
     renderUpdateActions({ canUpdate: false });
     return;
   }
 
-  if (latest === appConfig.version) {
+  if (sameBuild(latest, current)) {
     message.innerHTML =
-      `現在：v${appConfig.version}<br>` +
-      `最新：v${latest}<br><br>` +
+      `現在：${buildLabel(current)}<br>` +
+      `最新：${buildLabel(latest)}<br><br>` +
       '<b>最新の状態です。</b>';
     renderUpdateActions({ canUpdate: false });
     return;
   }
 
   message.innerHTML =
-    `現在：v${appConfig.version}<br>` +
-    `最新：v${latest}<br><br>` +
+    `現在：${buildLabel(current)}<br>` +
+    `最新：${buildLabel(latest)}<br><br>` +
     '<b>アップデートできます。</b>';
   renderUpdateActions({ canUpdate: true });
 }
 
 /**
  * 新しいService Workerを準備し、切替後に通常reloadする。
+ * versionが同じでもrevisionが異なれば更新対象になる。
  * Cache Storageの直接削除やService Workerのunregisterは行わない。
  */
 export async function reloadLatestApp(loadingToken = '') {
@@ -122,8 +150,7 @@ export async function reloadLatestApp(loadingToken = '') {
     throw new Error('最新バージョンを確認できませんでした。');
   }
 
-  const expectedVersion = String(latestInfo.version || appConfig.version);
-  sessionStorage.setItem(UPDATE_VERIFY_KEY, expectedVersion);
+  sessionStorage.setItem(UPDATE_VERIFY_KEY, JSON.stringify(latestInfo));
 
   updateLoading(loadingToken, 'アップデートをダウンロードしています…');
   await waitForPaint();
@@ -135,7 +162,7 @@ export async function reloadLatestApp(loadingToken = '') {
 
   const switched = await activatePreparedPwaUpdate(worker);
 
-  // SWファイルに差分がない場合でもHTML/JS側の更新を取り直せるようreloadする。
+  // 新しいSWが無い場合でも、M以降のnetwork-first制御下ならreload時に最新資材を取得する。
   // controllerchangeを待てなかった場合も自動再試行ループには入らない。
   if (!switched && worker) {
     console.warn('Service Workerの切替完了を確認できませんでした。通常reloadを続行します。');
@@ -145,18 +172,23 @@ export async function reloadLatestApp(loadingToken = '') {
 }
 
 async function verifyPendingAppUpdate() {
-  const expectedVersion = sessionStorage.getItem(UPDATE_VERIFY_KEY);
-  if (!expectedVersion) return;
+  const expectedRaw = sessionStorage.getItem(UPDATE_VERIFY_KEY);
+  if (!expectedRaw) return;
 
   sessionStorage.removeItem(UPDATE_VERIFY_KEY);
 
-  const latestInfo = await fetchLatestVersionInfo();
-  const latestVersion = String(latestInfo.version || expectedVersion);
-  const currentVersion = String(appConfig.version || '');
-
-  if (!latestInfo.fetchFailed && currentVersion === latestVersion) {
-    return;
+  let expected = {};
+  try {
+    expected = normalizeVersionInfo(JSON.parse(expectedRaw));
+  } catch {
+    expected = { version: expectedRaw, revision: '' };
   }
+
+  const latestInfo = await fetchLatestVersionInfo();
+  const current = currentVersionInfo();
+  const target = latestInfo.fetchFailed ? expected : latestInfo;
+
+  if (sameBuild(current, target)) return;
 
   const message = document.getElementById('updateMessage');
   if (message) {
