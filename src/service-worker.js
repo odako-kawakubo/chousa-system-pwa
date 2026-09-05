@@ -1,12 +1,12 @@
 /*
- * v0.1.6.5M Service Worker
+ * v0.1.6.5 Service Worker
  *
  * 責任は「最新版を優先しつつ、圏外では直近キャッシュから起動できる状態を保つ」こと。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5M-M-r1';
+const APP_CACHE = 'chousa-app-v0.1.6.5-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
