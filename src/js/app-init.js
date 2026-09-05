@@ -18,7 +18,7 @@ import { initializeFirestoreProjectBrowser } from './projects/firestore-project-
 import { initializeOneDriveProjectBrowser } from './projects/onedrive-project-browser.js';
 import { initializeProjectTransfer } from './projects/project-transfer.js';
 import { getOpenProjectId, openHomePage } from './projects/project-navigation.js';
-import { getProject } from './projects/project-store.js';
+import { getProject, getCurrentProject } from './projects/project-store.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
@@ -26,6 +26,7 @@ import { initializeRecordView } from './record-view/record-view-controller.js';
 import { initializeMaterialList } from './materials/material-list-controller.js';
 import { initializeMaterialOperations } from './materials/material-operations-controller.js';
 import { initializePhotoTab } from './photos/photo-controller.js';
+import { configurePhotoLocalStore } from './photos/photo-local-store.js';
 import { initializePhotoOneDriveSync } from './photos/photo-onedrive-sync.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
@@ -76,6 +77,12 @@ async function initProjectApp() {
 
     initializeOneDriveConnection();
     initializeOneDriveProjectIntegration();
+
+    // 写真Blob保存時点で現在案件projectIdを確定する。
+    // camera / editor側へ案件Store依存を広げず、local-storeへ取得関数だけ注入する。
+    configurePhotoLocalStore({
+      getProjectId: () => String(getCurrentProject()?.projectId || '')
+    });
 
     initializeFinishTable();
     initializeMaterialList();
