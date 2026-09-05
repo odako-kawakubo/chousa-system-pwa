@@ -1,15 +1,11 @@
 /**
  * src/js/photos/photo-controller.js
  *
- * v0.1.6.2B 写真タブの状態・イベント・photoRecordStore更新を担当する。
- *
- * Dでの主な変更：
- * - 採取表示はmaterialRecordStoreの変更へ追従する。
- * - 目視表示はfinishRecordStore / materialRecordStoreの変更へ追従する。
- * - 写真サムネイルはダブルタップ／ダブルクリックで共通PhotoViewerを開く。
- * - ローカル写真選択時のObject URLはController内だけに保持し、photoRecordへ重複保存しない。
- *
- * photoRecordはFirestore保存・再読込へ接続する。画像本体のOneDrive保存は後続段階。
+ * 写真タブの状態・イベント・photoRecordStore更新を担当する。
+ * v0.1.6.5Lでは他端末写真の表示経路を追加する。
+ * - サムネイルはOneDriveの軽量サムネイルを自動取得する。
+ * - 拡大時だけ完成画像本体を取得し、IndexedDBへ保持する。
+ * - 一度取得した完成画像は以後ローカル表示を優先する。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -20,7 +16,8 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
+import { getPhotoBlob, saveCapturedPhoto, saveRemoteCompletedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
+import { fetchRemoteCompletedPhoto, fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -42,6 +39,8 @@ const state = {
 };
 
 const localPreviewUrls = new Map();
+const remoteThumbnailUrls = new Map();
+const remoteThumbnailFetches = new Map();
 const SAMPLE_STAGE_ORDER = [
   SHOOTING_TYPES.BEFORE,
   SHOOTING_TYPES.DURING,
@@ -163,10 +162,47 @@ function photoById(photoId) {
   return photoRecordStore.get(photoId);
 }
 
+function revokePreviewUrl(map, photoId) {
+  const value = map.get(photoId);
+  if (value && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(value);
+  map.delete(photoId);
+}
+
+function setLocalPreview(photoId, blob) {
+  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
+  revokePreviewUrl(localPreviewUrls, photoId);
+  revokePreviewUrl(remoteThumbnailUrls, photoId);
+  localPreviewUrls.set(photoId, URL.createObjectURL(blob));
+}
+
+function setRemoteThumbnail(photoId, blob) {
+  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
+  if (localPreviewUrls.has(photoId)) return;
+  revokePreviewUrl(remoteThumbnailUrls, photoId);
+  remoteThumbnailUrls.set(photoId, URL.createObjectURL(blob));
+}
+
+async function ensureRemoteThumbnail(photo) {
+  const photoId = String(photo?.photoId || '');
+  if (!photoId || photo.deleted || localPreviewUrls.has(photoId) || remoteThumbnailUrls.has(photoId)) return;
+  if (!hasRemoteCompletedPhoto(photo) || remoteThumbnailFetches.has(photoId)) return;
+
+  const fetchPromise = fetchRemotePhotoThumbnail(photo)
+    .then((blob) => {
+      if (!(blob instanceof Blob) || !photoById(photoId) || localPreviewUrls.has(photoId)) return;
+      setRemoteThumbnail(photoId, blob);
+      hydrateThumbnailImages();
+    })
+    .catch(() => undefined)
+    .finally(() => remoteThumbnailFetches.delete(photoId));
+
+  remoteThumbnailFetches.set(photoId, fetchPromise);
+  await fetchPromise;
+}
+
 /**
- * 写真タブ内のサムネイルimgへ、Record外で管理している表示URLを差し込む。
- * 画像URLはphotoRecordへ保存しない。ローカル撮影画像はIndexedDBから復元済みの
- * Object URL、デモは一時Data URL、OneDrive参照はphotoRecordから表示する。
+ * サムネイルはローカル完成画像を最優先し、無い写真だけOneDriveサムネイルを非同期取得する。
+ * 他端末写真の完成画像本体はここでは保存しない。
  */
 function hydrateThumbnailImages() {
   if (!root) return;
@@ -181,6 +217,7 @@ function hydrateThumbnailImages() {
       image.removeAttribute('src');
       card?.classList.remove('photo-thumb-ready');
       card?.classList.add('photo-thumb-loading');
+      if (photo) void ensureRemoteThumbnail(photo);
       return;
     }
 
@@ -202,16 +239,7 @@ function hydrateThumbnailImages() {
 }
 
 function nextPhotoId() {
-  // 案件ごとの連番だけでは端末内画像キャッシュで別案件と衝突するため、
-  // 端末コード＋時刻で一意になるIDを使う。
   return `I-${getDeviceCode()}-${Date.now()}`;
-}
-
-function setLocalPreview(photoId, blob) {
-  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
-  const previous = localPreviewUrls.get(photoId);
-  if (previous && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(previous);
-  localPreviewUrls.set(photoId, URL.createObjectURL(blob));
 }
 
 function openFilePicker(context) {
@@ -227,10 +255,7 @@ function externalImportContext() {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     const material = view.activeMaterial;
     if (!material) return null;
-    return {
-      photoType: PHOTO_TYPES.SAMPLING,
-      materialId: material.materialId
-    };
+    return { photoType: PHOTO_TYPES.SAMPLING, materialId: material.materialId };
   }
 
   const view = buildVisualPhotoView(state.selectedRoomUid);
@@ -262,8 +287,6 @@ async function addPickedFiles(fileList) {
       localCompletedStatus: 'saved'
     };
 
-    // 外部取込は未整理写真として保存する。
-    // original / completed は同じ生写真で開始し、必要な写真だけ後から看板編集でcompletedを再生成する。
     const record = photoWithEditedFields(createPhotoRecord(context.photoType === PHOTO_TYPES.VISUAL
       ? {
           ...common,
@@ -287,8 +310,6 @@ async function addPickedFiles(fileList) {
         }));
 
     await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
-
-    // Store通知より前に表示URLを確定し、最初の再描画から実画像を使う。
     setLocalPreview(photoId, file);
 
     const stored = photoRecordStore.set(record);
@@ -321,12 +342,6 @@ function samplingContextFromKey(key, shootingType) {
   };
 }
 
-/**
- * カメラへ渡す候補一覧。
- * 目視はfinishRecordから作られた部屋/部位ViewModelをそのまま利用するため、
- * 内部・外部それぞれの実部位候補と現在の仕上表構成が一致する。
- * 採取はmaterialRecordの採取数・採取場所1〜3から全撮影点を平坦化する。
- */
 function buildCameraOptions() {
   const visual = buildVisualPhotoView('');
   const visualRooms = visual.rooms.map((room) => {
@@ -356,8 +371,6 @@ function buildCameraOptions() {
 }
 
 async function registerCameraPreview({ record, completedBlob }) {
-  // photoRecordStore.set()の通知で再描画される前にObject URLを登録する。
-  // これにより撮影直後に一度カメラマークへ落ちる競合を防ぐ。
   setLocalPreview(record?.photoId, completedBlob);
 
   if (record?.photoId) {
@@ -367,26 +380,28 @@ async function registerCameraPreview({ record, completedBlob }) {
 }
 
 async function hydrateCurrentPhotoPreviews() {
-  // photoRecordの正本は現在案件Store。IndexedDBの全案件レコードをStoreへ戻さず、
-  // 現在Storeに存在するphotoIdのBlobだけを表示用に復元する。
   try {
     const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
-    for (const [photoId, url] of [...localPreviewUrls.entries()]) {
-      if (activeIds.has(photoId)) continue;
-      if (url && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
-      localPreviewUrls.delete(photoId);
+    for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
+      for (const photoId of [...map.keys()]) {
+        if (!activeIds.has(photoId)) revokePreviewUrl(map, photoId);
+      }
     }
 
     for (const record of photoRecordStore.getAll()) {
       if (localPreviewUrls.has(record.photoId)) continue;
       const blob = await getPhotoBlob(record.photoId, 'completed');
-      if (!blob || typeof URL.createObjectURL !== 'function') continue;
-      setLocalPreview(record.photoId, blob);
+      if (blob && typeof URL.createObjectURL === 'function') {
+        setLocalPreview(record.photoId, blob);
+        continue;
+      }
+      void ensureRemoteThumbnail(record);
     }
   } catch (error) {
-    console.warn('現在案件のローカル写真プレビュー復元に失敗しました', error);
+    console.warn('現在案件の写真プレビュー復元に失敗しました', error);
   }
 }
+
 function globalCameraContext() {
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
@@ -407,18 +422,11 @@ function globalCameraContext() {
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
 }
 
-/**
- * PhotoViewerで横送りする写真集合を返す。
- * 目視：同じ区分 + 部屋位置 + 部位枠。
- * 採取：同じ建材 + 同じ採取枝番（施工前/中/後/断面をまとめる）。
- */
 function photosForViewer(photoId) {
   const photo = photoById(photoId);
   if (!photo || photo.deleted) return [];
 
   if (photo.photoType === PHOTO_TYPES.VISUAL) {
-    // 未整理目視写真は正式な部位キー(partSlot=1..6)を持たない。
-    // 同じ部屋に属する未整理写真だけをViewerの横送り対象にする。
     const photos = isVisualPhotoUnorganized(photo)
       ? photoRecordStore.getActive().filter((item) => (
           item.photoType === PHOTO_TYPES.VISUAL
@@ -432,8 +440,6 @@ function photosForViewer(photoId) {
       .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
   }
 
-  // 採取の未整理写真も「検体(materialId)までは確定、箇所以降は未確定」として
-  // 同じ検体の未整理写真だけをViewerの横送り対象にする。
   const samplingPhotos = isSamplingPhotoUnorganized(photo)
     ? photoRecordStore.getActive().filter((item) => (
         item.photoType === PHOTO_TYPES.SAMPLING
@@ -450,9 +456,6 @@ function photosForViewer(photoId) {
     });
 }
 
-/** デモ写真だけはRecord外でSVGプレビューを生成する。OneDrive保存先には入れない。
- * v0.1.5.7A 固定デモ配色：SVG内の色はアプリテーマの対象外。
- */
 function demoPreviewSource(photo) {
   if (!String(photo?.photoId || '').startsWith('DEMO-PHOTO-')) return '';
   const label = photo.photoType === PHOTO_TYPES.VISUAL
@@ -462,7 +465,6 @@ function demoPreviewSource(photo) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/** PhotoViewerへ渡す表示URL。photoRecord自体へ一時URLは保存しない。 */
 function previewSourceForPhoto(photo) {
   const local = localPreviewUrls.get(photo.photoId);
   if (local) return local;
@@ -470,23 +472,51 @@ function previewSourceForPhoto(photo) {
   const demo = demoPreviewSource(photo);
   if (demo) return demo;
 
-  const remote = String(photo.completedPath || photo.originalPath || photo.oneDrivePath || '').trim();
-  if (/^(?:https?:|blob:|data:)/i.test(remote)) return remote;
-  return '';
+  return remoteThumbnailUrls.get(photo.photoId) || '';
 }
 
-function openViewerForThumb(photoId) {
-  if (!photoId || !photoById(photoId)) return;
+async function openViewerForThumb(photoId) {
+  const photo = photoById(photoId);
+  if (!photo || photo.deleted) return;
+
+  let completedBlob = await getPhotoBlob(photoId, 'completed');
+  if (!completedBlob && hasRemoteCompletedPhoto(photo)) {
+    try {
+      completedBlob = await fetchRemoteCompletedPhoto(photo);
+      if (completedBlob instanceof Blob) {
+        await saveRemoteCompletedPhoto({
+          record: photo,
+          blob: completedBlob,
+          projectId: String(getCurrentProject()?.projectId || '')
+        });
+        setLocalPreview(photoId, completedBlob);
+        render();
+      }
+    } catch (error) {
+      console.warn('他端末写真の完成画像取得に失敗しました', { photoId, error });
+      window.alert('写真本体を取得できませんでした。通信状態を確認してもう一度お試しください。');
+      return;
+    }
+  } else if (completedBlob && !localPreviewUrls.has(photoId)) {
+    setLocalPreview(photoId, completedBlob);
+  }
+
   openPhotoViewer(photoId);
 }
 
-function startEditSequence(photoIds) {
+async function startEditSequence(photoIds) {
   const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
   clearSelectionMode();
   if (!ids.length) return;
 
-  // 複数写真のドラフト保持・前後移動・一括保存はEditor側の1セッションへ集約する。
-  // Controller側には別の編集キューや保存経路を持たせない。
+  for (const photoId of ids) {
+    const original = await getPhotoBlob(photoId, 'original');
+    if (!original) {
+      window.alert('この写真は他端末で撮影されたため、この端末では看板編集できません。');
+      return;
+    }
+  }
+
   openPhotoBoardEditorSequence(ids).catch((error) => {
     console.error(error);
     window.alert(`看板編集を開始できませんでした。\n${error.message || error}`);
@@ -501,9 +531,8 @@ async function deleteSelectedPhotos(photoIds) {
   const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
   photoRecordStore.batch(() => {
     ids.forEach((photoId) => {
-      const localUrl = localPreviewUrls.get(photoId);
-      if (localUrl && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(localUrl);
-      localPreviewUrls.delete(photoId);
+      revokePreviewUrl(localPreviewUrls, photoId);
+      revokePreviewUrl(remoteThumbnailUrls, photoId);
       photoRecordStore.markDeleted(photoId);
     });
   });
@@ -558,7 +587,7 @@ function bindEvents() {
             window.alert(`写真の削除に失敗しました。\n${error.message || error}`);
           });
         } else {
-          startEditSequence(state.selectedPhotoIds);
+          void startEditSequence(state.selectedPhotoIds);
         }
       } else {
         state.selectionMode = requestedMode;
@@ -568,11 +597,9 @@ function bindEvents() {
       return;
     }
 
-    // 選択モード中でも専用の「拡大」ボタンはPhotoViewerを開く。
-    // カード本体のタップだけを選択ON/OFFに使い、拡大操作と競合させない。
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
-      openViewerForThumb(expandButton.dataset.photoExpand || '');
+      void openViewerForThumb(expandButton.dataset.photoExpand || '');
       return;
     }
 
@@ -703,13 +730,8 @@ function bindEvents() {
   });
 }
 
-/**
- * 複数Storeが同じ業務操作で連続通知しても、写真タブの再描画は1回へまとめる。
- * 通知元はStore.subscribe()だけに統一し、transaction専用DOMイベントは使わない。
- */
 function compareTargetsForViewer(context = {}) {
   const preferredMaterialId = String(context.preferredMaterialId || '').trim();
-  const materialsById = new Map(materialRecordStore.getAll().map((item) => [String(item.materialId || ''), item]));
   const roomInfo = new Map();
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
@@ -781,8 +803,11 @@ export function initializePhotoTab() {
     getPhotoSource: previewSourceForPhoto,
     getCompareTargets: compareTargetsForViewer,
     onEditPhoto: async (photoId) => {
-      // Viewerを先に閉じると、編集画面を開けなかった場合に写真だけ消えたように見える。
-      // Editorが正常に開いたことを確認してからViewerを閉じる。
+      const original = await getPhotoBlob(photoId, 'original');
+      if (!original) {
+        window.alert('この写真は他端末で撮影されたため、この端末では看板編集できません。');
+        return;
+      }
       const opened = await openPhotoBoardEditor(photoId);
       if (opened) closePhotoViewer();
     }
@@ -796,8 +821,6 @@ export function initializePhotoTab() {
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
     onSaved: async ({ items = [] } = {}) => {
-      // Editorが変更写真だけを既存の1枚保存処理で順番に確定した結果を受け取る。
-      // Controllerは各完成画像のプレビューURL更新だけを行い、保存ロジックは持たない。
       for (const item of items) await registerCameraPreview(item);
       render();
     }
@@ -805,6 +828,9 @@ export function initializePhotoTab() {
 
   render();
   hydrateCurrentPhotoPreviews().then(render);
+  window.addEventListener('online', () => {
+    hydrateCurrentPhotoPreviews().then(render);
+  });
 
   if (unsubscribePhotoStore) unsubscribePhotoStore();
   if (unsubscribeMaterialStore) unsubscribeMaterialStore();
