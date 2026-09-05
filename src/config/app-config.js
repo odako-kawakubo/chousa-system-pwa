@@ -4,6 +4,6 @@
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.6.5I',
+  version: '0.1.6.5J',
   mode: 'photo-onedrive-sync-review'
 };
