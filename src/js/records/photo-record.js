@@ -36,8 +36,11 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {string} photoId
  * @property {'visual'|'sampling'} photoType
  * @property {string} fileName
- * @property {string} oneDrivePath
- * @property {string} syncStatus
+ * @property {string} oneDrivePath 旧互換。新規OneDrive参照の正本には使わない。
+ * @property {string} oneDriveDriveId OneDrive物理ファイル参照用driveId
+ * @property {string} originalItemId 元画像のOneDrive itemId
+ * @property {string} completedItemId 完成画像のOneDrive itemId
+ * @property {string} syncStatus Firestore上のphotoRecord同期状態。画像本体のOneDrive送信状態とは分離する。
  * @property {boolean} isRepresentative
  * @property {string} capturedDevice
  * @property {string} capturedAt
@@ -178,6 +181,9 @@ export function createPhotoRecord(fields) {
     photoType,
     fileName: asText(fields.fileName),
     oneDrivePath: asText(fields.oneDrivePath),
+    oneDriveDriveId: asText(fields.oneDriveDriveId),
+    originalItemId: asText(fields.originalItemId),
+    completedItemId: asText(fields.completedItemId),
     syncStatus: asText(fields.syncStatus) || '未同期',
     isRepresentative: Boolean(fields.isRepresentative),
     capturedDevice: asText(fields.capturedDevice) || 'local',
