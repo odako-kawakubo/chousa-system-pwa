@@ -174,6 +174,24 @@ function renderSystemMemoCell_(td, memo) {
   td.title = '';
 }
 
+function renderOneDrivePathCell_(td, value, emptyAsDash = false) {
+  const url = String(value || '').trim();
+  td.classList.add('record-view-url');
+  if (!url) {
+    td.textContent = emptyAsDash ? '-' : '';
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.className = 'record-view-url-link';
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = url;
+  link.title = url;
+  td.replaceChildren(link);
+}
+
 function renderTable(columns, records, emptyMessage, options = {}) {
   const table = document.getElementById('recordViewTable');
   if (!table) return;
@@ -182,10 +200,11 @@ function renderTable(columns, records, emptyMessage, options = {}) {
 
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
-  columns.forEach(([, label], index) => {
+  columns.forEach(([key, label], index) => {
     const th = document.createElement('th');
     th.textContent = label;
     if (index === 0) th.classList.add('record-view-sticky-first');
+    if (key === 'oneDrivePath') th.classList.add('record-view-url');
     headerRow.appendChild(th);
   });
   thead.appendChild(headerRow);
@@ -208,17 +227,15 @@ function renderTable(columns, records, emptyMessage, options = {}) {
         const formatted = formatValue(key, record[key]);
         if (key === 'systemMemo') {
           renderSystemMemoCell_(td, record[key]);
+        } else if (key === 'oneDrivePath') {
+          renderOneDrivePathCell_(td, formatted, options.emptyAsDash);
         } else {
           td.textContent = options.emptyAsDash && formatted === '' ? '-' : formatted;
           td.title = td.textContent;
         }
         if (index === 0) td.classList.add('record-view-sticky-first');
-        if (key === 'note' || key === 'remarks' || key === 'usageLocation') {
-          td.classList.add('record-view-wrap');
-        }
-        if (key === 'finishId' || key === 'roomUid' || key === 'roomPosition' || key === 'position' || key === 'materialId') {
-          td.classList.add('record-view-code');
-        }
+        if (key === 'note' || key === 'remarks' || key === 'usageLocation') td.classList.add('record-view-wrap');
+        if (key === 'finishId' || key === 'roomUid' || key === 'roomPosition' || key === 'position' || key === 'materialId') td.classList.add('record-view-code');
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -228,9 +245,6 @@ function renderTable(columns, records, emptyMessage, options = {}) {
   table.appendChild(tbody);
 }
 
-/**
- * サブタブ、件数、ヒント、一覧表をまとめて描画する。
- */
 export function renderRecordView(viewModel) {
   document.querySelectorAll('[data-record-view-tab]').forEach((button) => {
     button.classList.toggle('active', button.dataset.recordViewTab === viewModel.type);
@@ -248,9 +262,7 @@ export function renderRecordView(viewModel) {
   if (representativePill) {
     const showRepresentative = viewModel.type === RECORD_VIEW_TABS.PHOTO;
     representativePill.style.display = showRepresentative ? '' : 'none';
-    if (showRepresentative) {
-      setText('recordViewRepresentativeCount', String(viewModel.representativeCount || 0));
-    }
+    if (showRepresentative) setText('recordViewRepresentativeCount', String(viewModel.representativeCount || 0));
   }
 
   if (viewModel.type === RECORD_VIEW_TABS.PHOTO) {
