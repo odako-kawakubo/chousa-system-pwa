@@ -6,6 +6,11 @@
  * - original / completed を photoId ごとに分離する。
  * - OneDrive送信状態も photoId × variant 単位でここへ永続化する。
  * - IndexedDB内部構造はこのモジュールだけが知り、送信側へはAPIだけを公開する。
+ *
+ * v0.1.6.5K:
+ * - 新規保存は保存時点でprojectIdを確定する。
+ * - 旧キャッシュ救済はprojectId空欄だけを対象にし、他案件の所属を上書きしない。
+ * - 未送信抽出・案件帰属・削除は既知photoIdのoriginal/completedキーだけを直接扱う。
  */
 
 const DB_NAME = 'chousa-system-pwa';
@@ -15,6 +20,7 @@ const RECORD_STORE = 'cameraPhotoRecords';
 
 let dbPromise = null;
 const listeners = [];
+let projectIdProvider = () => '';
 
 function publish() {
   listeners.slice().forEach((callback) => callback());
@@ -27,6 +33,20 @@ export function subscribePhotoLocalStore(callback) {
     const index = listeners.indexOf(callback);
     if (index >= 0) listeners.splice(index, 1);
   };
+}
+
+/**
+ * 写真生成側から現在案件の取得方法だけを注入する。
+ * local-store自身はproject-storeを直接参照しない。
+ */
+export function configurePhotoLocalStore(options = {}) {
+  projectIdProvider = typeof options.getProjectId === 'function'
+    ? options.getProjectId
+    : () => '';
+}
+
+function resolveProjectId(explicitProjectId = '') {
+  return String(explicitProjectId || projectIdProvider?.() || '').trim();
 }
 
 function openDb() {
@@ -116,6 +136,7 @@ export function blobKey(photoId, variant) {
 export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
   const key = blobKey(photoId, variant);
   const requestedStatus = metadata.uploadStatus || 'pending';
+  const requestedProjectId = resolveProjectId(metadata.projectId);
 
   await replaceBlobEntry(key, (existing) => {
     const nextFileName = metadata.fileName || existing?.fileName || '';
@@ -132,7 +153,7 @@ export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
       blob,
       mimeType: blob?.type || existing?.mimeType || 'image/jpeg',
       size: Number(blob?.size || 0),
-      projectId: String(metadata.projectId || existing?.projectId || ''),
+      projectId: String(requestedProjectId || existing?.projectId || ''),
       createdAt: metadata.createdAt || existing?.createdAt || new Date().toISOString(),
       fileName: nextFileName,
       uploadStatus: preserveOriginalUpload ? 'uploaded' : requestedStatus,
@@ -168,11 +189,45 @@ export async function listPhotoBlobEntries() {
   return (Array.isArray(rows) ? rows : []).map((row) => ({ ...row }));
 }
 
-/** 現案件の未送信variantだけ返す。 */
-export async function listPendingPhotoBlobEntries(projectId) {
+async function readBlobEntriesForPhotoIds(photoIds = []) {
+  const ids = [...new Set((Array.isArray(photoIds) ? photoIds : [])
+    .map((value) => String(value || ''))
+    .filter(Boolean))];
+  if (!ids.length) return [];
+
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(BLOB_STORE, 'readonly');
+    const store = tx.objectStore(BLOB_STORE);
+    const rows = [];
+    let pendingRequests = ids.length * 2;
+
+    const finishRequest = () => {
+      pendingRequests -= 1;
+      if (pendingRequests === 0) resolve(rows);
+    };
+
+    ids.forEach((photoId) => {
+      ['original', 'completed'].forEach((variant) => {
+        const request = store.get(blobKey(photoId, variant));
+        request.onsuccess = () => {
+          if (request.result) rows.push({ ...request.result });
+          finishRequest();
+        };
+        request.onerror = () => reject(request.error || new Error('写真キャッシュを取得できませんでした。'));
+      });
+    });
+
+    tx.onerror = () => reject(tx.error || new Error('写真キャッシュを取得できませんでした。'));
+    tx.onabort = () => reject(tx.error || new Error('写真キャッシュ取得を中止しました。'));
+  });
+}
+
+/** 現案件の既知photoIdに属する未送信variantだけ返す。 */
+export async function listPendingPhotoBlobEntries(projectId, photoIds = []) {
   const id = String(projectId || '');
   if (!id) return [];
-  const rows = await listPhotoBlobEntries();
+  const rows = await readBlobEntriesForPhotoIds(photoIds);
   return rows.filter((row) => (
     String(row.projectId || '') === id
     && row.uploadStatus !== 'uploaded'
@@ -182,9 +237,9 @@ export async function listPendingPhotoBlobEntries(projectId) {
 }
 
 /**
- * 既存写真キャッシュを案件へ帰属させる。
- * 旧キャッシュや撮影直後のBlobにはprojectIdが無い場合があるため、
- * 現案件のphotoRecordと照合できた時だけ明示的に付与する。
+ * 旧キャッシュ救済専用。
+ * 指定photoIdのoriginal/completedだけを直接確認し、projectIdが空欄の時だけ現在案件を補完する。
+ * すでに別案件projectIdが入っているBlobは絶対に書き換えない。
  */
 export async function assignPhotoProject(photoId, projectId) {
   const targetPhotoId = String(photoId || '');
@@ -196,17 +251,25 @@ export async function assignPhotoProject(photoId, projectId) {
   await new Promise((resolve, reject) => {
     const tx = db.transaction(BLOB_STORE, 'readwrite');
     const store = tx.objectStore(BLOB_STORE);
-    const request = store.getAll();
-    request.onsuccess = () => {
-      const rows = Array.isArray(request.result) ? request.result : [];
-      rows.forEach((row) => {
-        if (String(row?.photoId || '') !== targetPhotoId) return;
-        if (String(row.projectId || '') === targetProjectId) return;
-        store.put({ ...row, projectId: targetProjectId });
-        changed += 1;
-      });
+    let pendingRequests = 2;
+
+    const finishRequest = () => {
+      pendingRequests -= 1;
     };
-    request.onerror = () => reject(request.error || new Error('写真キャッシュの案件紐付けに失敗しました。'));
+
+    ['original', 'completed'].forEach((variant) => {
+      const request = store.get(blobKey(targetPhotoId, variant));
+      request.onsuccess = () => {
+        const row = request.result || null;
+        if (row && !String(row.projectId || '')) {
+          store.put({ ...row, projectId: targetProjectId });
+          changed += 1;
+        }
+        finishRequest();
+      };
+      request.onerror = () => reject(request.error || new Error('写真キャッシュの案件紐付けに失敗しました。'));
+    });
+
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('写真キャッシュの案件紐付けに失敗しました。'));
     tx.onabort = () => reject(tx.error || new Error('写真キャッシュの案件紐付けを中止しました。'));
@@ -280,8 +343,13 @@ export async function saveCapturedPhoto({ record, originalBlob, completedBlob, p
     throw new Error('保存対象の画像Blobがありません。');
   }
 
+  const resolvedProjectId = resolveProjectId(projectId);
+  if (!resolvedProjectId) {
+    throw new Error('写真の保存先案件を確認できませんでした。');
+  }
+
   const metadata = {
-    projectId,
+    projectId: resolvedProjectId,
     createdAt: record.capturedAt,
     fileName: record.fileName,
     uploadStatus: 'pending'
@@ -319,18 +387,11 @@ export async function deleteLocalPhotoData(photoIds = []) {
     ids.forEach((photoId) => {
       recordStore.delete(photoId);
       deletedRecords += 1;
+      blobStore.delete(blobKey(photoId, 'original'));
+      blobStore.delete(blobKey(photoId, 'completed'));
+      deletedBlobs += 2;
     });
 
-    const request = blobStore.getAll();
-    request.onsuccess = () => {
-      const rows = Array.isArray(request.result) ? request.result : [];
-      rows.forEach((row) => {
-        if (!ids.has(String(row?.photoId || ''))) return;
-        blobStore.delete(row.key);
-        deletedBlobs += 1;
-      });
-    };
-    request.onerror = () => reject(request.error || new Error('写真キャッシュの削除に失敗しました。'));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('写真キャッシュの削除に失敗しました。'));
     tx.onabort = () => reject(tx.error || new Error('写真キャッシュの削除に失敗しました。'));
