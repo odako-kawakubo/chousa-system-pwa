@@ -17,6 +17,7 @@ on:
       - v0.1.6.5G
       - v0.1.6.5H
       - v0.1.6.5I
+      - v0.1.6.5J
   workflow_dispatch:
 
 permissions:
@@ -74,16 +75,16 @@ jobs:
           node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5I consistency checks
+      - name: v0.1.6.5J consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5I'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5I"' src/version.json
-          grep -q "chousa-app-v0.1.6.5I" src/service-worker.js
+          grep -q "version: '0.1.6.5J'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5J"' src/version.json
+          grep -q "chousa-app-v0.1.6.5J" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -225,7 +226,7 @@ jobs:
           grep -q "systemFolderId" src/js/onedrive/system-data-backup.js
           grep -q "initializeSystemDataBackup" src/js/app-init.js
 
-          # I: 写真本体はIndexedDBを正本にphotoId×variant×projectIdで送る。
+          # I/J: 写真本体はIndexedDBを正本にphotoId×variant×projectIdで送る。
           grep -q "projectId" src/js/photos/photo-local-store.js
           grep -q "listPendingPhotoBlobEntries" src/js/photos/photo-local-store.js
           grep -q "markPhotoBlobUploaded" src/js/photos/photo-local-store.js
@@ -238,6 +239,8 @@ jobs:
           grep -q "completed" src/js/photos/photo-onedrive-sync.js
           grep -q "record.deleted" src/js/photos/photo-onedrive-sync.js
           grep -q "subscribeOneDriveState" src/js/photos/photo-onedrive-sync.js
+          grep -q "photoRecordStore.subscribe(requestSync)" src/js/photos/photo-onedrive-sync.js
+          grep -q "assignPhotoProject(record.photoId, project.projectId)" src/js/photos/photo-onedrive-sync.js
           grep -q "initializePhotoOneDriveSync" src/js/app-init.js
 
           # ヘッダーはFirestore通信だけ。未送信件数はまとめて同期側。
