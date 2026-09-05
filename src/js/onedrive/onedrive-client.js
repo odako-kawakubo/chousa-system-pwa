@@ -202,6 +202,17 @@ export async function downloadDriveFile(itemRef, { responseType = 'arrayBuffer' 
   return graphRequest(`${itemBasePath(ref)}/content`, { responseType });
 }
 
+/**
+ * OneDriveが生成する画像サムネイルを取得する。
+ * 写真一覧で他端末写真を軽量表示するため、完成画像本体の取得とは入口を分ける。
+ */
+export async function downloadDriveThumbnail(itemRef, { size = 'medium' } = {}) {
+  const ref = normalizeRef(itemRef);
+  if (!ref.itemId || ref.itemId === 'root') throw new Error('取得するOneDrive画像を特定できません。');
+  const safeSize = ['small', 'medium', 'large'].includes(size) ? size : 'medium';
+  return graphRequest(`${itemBasePath(ref)}/thumbnails/0/${safeSize}/content`, { responseType: 'blob' });
+}
+
 export async function uploadDriveFile(parentRef, fileName, content, contentType = 'application/octet-stream') {
   const encodedName = encodeURIComponent(String(fileName || ''));
   if (!encodedName) throw new Error('保存するファイル名が空です。');
