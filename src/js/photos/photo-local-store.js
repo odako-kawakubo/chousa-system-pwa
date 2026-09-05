@@ -11,6 +11,10 @@
  * - 新規保存は保存時点でprojectIdを確定する。
  * - 旧キャッシュ救済はprojectId空欄だけを対象にし、他案件の所属を上書きしない。
  * - 未送信抽出・案件帰属・削除は既知photoIdのoriginal/completedキーだけを直接扱う。
+ *
+ * v0.1.6.5L:
+ * - 他端末で拡大表示した完成画像をcompletedとして端末へ保持する。
+ * - OneDriveから取得済み画像は最初からuploadedとして保存し、再送対象にしない。
  */
 
 const DB_NAME = 'chousa-system-pwa';
@@ -251,11 +255,6 @@ export async function assignPhotoProject(photoId, projectId) {
   await new Promise((resolve, reject) => {
     const tx = db.transaction(BLOB_STORE, 'readwrite');
     const store = tx.objectStore(BLOB_STORE);
-    let pendingRequests = 2;
-
-    const finishRequest = () => {
-      pendingRequests -= 1;
-    };
 
     ['original', 'completed'].forEach((variant) => {
       const request = store.get(blobKey(targetPhotoId, variant));
@@ -265,7 +264,6 @@ export async function assignPhotoProject(photoId, projectId) {
           store.put({ ...row, projectId: targetProjectId });
           changed += 1;
         }
-        finishRequest();
       };
       request.onerror = () => reject(request.error || new Error('写真キャッシュの案件紐付けに失敗しました。'));
     });
@@ -310,6 +308,46 @@ export async function markPhotoBlobUploaded(photoId, variant, upload = {}) {
       lastUploadError: ''
     };
   });
+  if (next) publish();
+  return next;
+}
+
+/**
+ * 他端末で拡大表示した完成画像をローカルへ保持する。
+ * OneDriveから取得済みなのでpendingには戻さず、送信済みvariantとして保存する。
+ */
+export async function saveRemoteCompletedPhoto({ record, blob, projectId = '' }) {
+  if (!record?.photoId) throw new Error('photoIdがありません。');
+  if (!(blob instanceof Blob)) throw new Error('保存対象の完成画像Blobがありません。');
+
+  const resolvedProjectId = resolveProjectId(projectId);
+  if (!resolvedProjectId) throw new Error('写真の保存先案件を確認できませんでした。');
+
+  const driveId = String(record.oneDriveDriveId || '');
+  const itemId = String(record.completedItemId || '');
+  if (!driveId || !itemId) throw new Error('OneDrive完成画像を特定できません。');
+
+  const key = blobKey(record.photoId, 'completed');
+  const next = await replaceBlobEntry(key, (existing) => ({
+    ...(existing || {}),
+    key,
+    photoId: record.photoId,
+    variant: 'completed',
+    blob,
+    mimeType: blob.type || existing?.mimeType || 'image/jpeg',
+    size: Number(blob.size || 0),
+    projectId: resolvedProjectId,
+    createdAt: record.capturedAt || existing?.createdAt || new Date().toISOString(),
+    fileName: record.fileName || existing?.fileName || '',
+    uploadStatus: 'uploaded',
+    uploadedItemId: itemId,
+    uploadedDriveId: driveId,
+    uploadedFileName: record.fileName || existing?.uploadedFileName || '',
+    uploadedAt: existing?.uploadedAt || new Date().toISOString(),
+    supersededUploads: Array.isArray(existing?.supersededUploads) ? existing.supersededUploads : [],
+    lastUploadError: ''
+  }));
+
   if (next) publish();
   return next;
 }
