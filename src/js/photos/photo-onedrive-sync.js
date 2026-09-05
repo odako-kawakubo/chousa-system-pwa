@@ -6,7 +6,7 @@
  * - 現在案件のpendingだけを1件ずつ直列送信する。
  * - upload成功後、返却itemIdをgetDriveItem()で再確認してからuploadedへ進める。
  * - 失敗はpendingのまま残し、このモジュール自身では連続自動再試行しない。
- * - 再送トリガーは写真保存、案件切替、OneDrive実接続復帰。
+ * - 再送トリガーは写真Blob保存、photoRecord確定、案件切替、OneDrive実接続復帰。
  * - 月曜テスト段階ではOneDrive上の旧一時ファイル/旧名称ファイルを物理削除しない。
  */
 
@@ -23,7 +23,6 @@ import { getPhotoUploadFileName } from './photo-filename.js';
 import { PHOTO_TYPES } from '../records/photo-record.js';
 import {
   getCurrentProject,
-  getProject,
   getProjectSyncMeta,
   subscribe as subscribeProjects
 } from '../projects/project-store.js';
@@ -94,18 +93,13 @@ function stablePhotoOrder(entries = []) {
 }
 
 /**
- * 旧I以前のBlobにはprojectIdが無い。
- * 現在案件の保存Snapshotに実在するphotoIdだけを移行対象にし、案件切替直後のStore残留を誤帰属させない。
+ * photoRecordStoreは案件を開く時にreplaceAllされ、その後setされた写真は現在案件のもの。
+ * Blob保存がphotoRecord確定より先でも、photoRecordStoreの変更通知でこの処理を再実行する。
+ * その時点で有効なphotoRecordだけを現在案件のprojectIdへ帰属させる。
  */
 async function attachCurrentProjectToLocalBlobs(project) {
-  const snapshotIds = new Set(
-    (getProject(project.projectId)?.photoRecords || [])
-      .map((record) => String(record?.photoId || ''))
-      .filter(Boolean)
-  );
-
   for (const record of photoRecordStore.getAll()) {
-    if (record.deleted || !snapshotIds.has(String(record.photoId || ''))) continue;
+    if (record.deleted) continue;
     await assignPhotoProject(record.photoId, project.projectId);
   }
 }
@@ -166,8 +160,6 @@ async function uploadOneVariant(project, binding, entry) {
       throw new Error('OneDrive保存後のファイル実在確認に失敗しました。');
     }
 
-    // 物理ファイルの成功判定はOneDrive実在確認で完結する。
-    // Firestoreメタ情報保存が後で失敗しても、同じ画像本体を再アップロードしない。
     await markPhotoBlobUploaded(entry.photoId, entry.variant, {
       driveId: verified.driveId || uploadedRef.driveId,
       itemId: verified.itemId,
@@ -176,7 +168,7 @@ async function uploadOneVariant(project, binding, entry) {
     });
   } catch (error) {
     await recordPhotoBlobUploadError(entry.photoId, entry.variant, error);
-    console.warn('[v0.1.6.5I] 写真OneDrive送信失敗', {
+    console.warn('[v0.1.6.5J] 写真OneDrive送信失敗', {
       photoId: entry.photoId,
       variant: entry.variant,
       error
@@ -184,12 +176,10 @@ async function uploadOneVariant(project, binding, entry) {
     return { ok: false, error, photoId: entry.photoId, variant: entry.variant };
   }
 
-  // OneDrive上の物理保存成功後、共有用photoRecordへ参照情報を反映する。
-  // ここでFirestore保存に失敗してもBlobはuploadedのまま。既存のRecord保存基盤側で未送信として扱う。
   try {
     record = await persistUploadedReference(project, record, entry.variant, verified);
   } catch (error) {
-    console.warn('[v0.1.6.5I] 写真OneDrive参照情報の保存失敗', {
+    console.warn('[v0.1.6.5J] 写真OneDrive参照情報の保存失敗', {
       photoId: entry.photoId,
       variant: entry.variant,
       error
@@ -212,14 +202,10 @@ async function runCurrentProjectPhotoSync() {
 
   let uploaded = 0;
   for (const entry of pending) {
-    // 処理中に案件が変わった場合は誤送信を防ぐため、その場で止める。
     if (String(getCurrentProject()?.projectId || '') !== String(project.projectId)) break;
 
     const result = await uploadOneVariant(project, binding, entry);
     if (result?.uploaded) uploaded += 1;
-
-    // 1件失敗しても次variant/次写真は進める。
-    // 失敗variant自体はpendingのまま保持し、同一トリガー内では再試行しない。
   }
 
   return { ok: true, uploaded };
@@ -252,7 +238,7 @@ function requestSync() {
 
 /**
  * 案件画面で1回だけ初期化する。
- * photo-local-storeの変更通知が撮影/取込/編集保存の共通トリガーになるため、
+ * Blob保存とphotoRecord確定の両方を監視するため、撮影時の保存順に依存しない。
  * camera/photo-controller/editorへOneDrive処理を重複実装しない。
  */
 export function initializePhotoOneDriveSync() {
@@ -260,6 +246,7 @@ export function initializePhotoOneDriveSync() {
   initialized = true;
 
   subscribePhotoLocalStore(requestSync);
+  photoRecordStore.subscribe(requestSync);
   subscribeProjects(requestSync);
   subscribeOneDriveState((state) => {
     if (state?.phase === 'formal' || state?.phase === 'temporary') requestSync();
