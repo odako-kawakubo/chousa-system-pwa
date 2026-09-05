@@ -20,6 +20,7 @@ on:
       - v0.1.6.5J
       - v0.1.6.5K
       - v0.1.6.5L
+      - v0.1.6.5M
   workflow_dispatch:
 
 permissions:
@@ -41,6 +42,7 @@ jobs:
           node --check src/js/sync/sync-status.js
           node --check src/js/firestore/firestore-repository.js
           node --check src/js/firestore/firestore-project-list.js
+          node --check src/js/firestore/record-serializer.js
           node --check src/js/auth/microsoft-auth.js
           node --check src/js/auth/graph-session.js
           node --check src/js/projects/project-controller.js
@@ -66,6 +68,7 @@ jobs:
           node --check src/js/photos/photo-onedrive-sync.js
           node --check src/js/photos/photo-remote-reader.js
           node --check src/js/photos/photo-controller.js
+          node --check src/js/photos/photo-viewer.js
           node --check src/js/record-view/record-view-view-model.js
           node --check src/js/record-view/record-view-renderer.js
           node --check src/js/home/home-init.js
@@ -77,20 +80,23 @@ jobs:
           node --check src/js/ui/auth-ui.js
           node --check src/js/ui/sync-ui.js
           node --check src/js/ui/loading-ui.js
+          node --check src/js/app-version.js
           node --check src/js/app-init.js
           node --check src/js/app-update.js
           node --check src/service-worker.js
 
-      - name: v0.1.6.5L consistency checks
+      - name: v0.1.6.5M consistency checks
         shell: bash
         run: |
           if grep -R "network-session-guard" -n src; then
             echo "obsolete network-session-guard reference remains"
             exit 1
           fi
-          grep -q "version: '0.1.6.5L'" src/config/app-config.js
-          grep -q '"version": "0.1.6.5L"' src/version.json
-          grep -q "chousa-app-v0.1.6.5L" src/service-worker.js
+          grep -q "version: '0.1.6.5M'" src/config/app-config.js
+          grep -q "revision: 'M-r1'" src/config/app-config.js
+          grep -q '"version": "0.1.6.5M"' src/version.json
+          grep -q '"revision": "M-r1"' src/version.json
+          grep -q "chousa-app-v0.1.6.5M-M-r1" src/service-worker.js
 
           # v0.1.6.3で確定した同期基盤を継続して守る。
           grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
@@ -242,7 +248,10 @@ jobs:
           grep -q "PHOTO_UPLOAD_START" src/js/photos/photo-onedrive-sync.js
           grep -q "PHOTO_VERIFY_OK" src/js/photos/photo-onedrive-sync.js
 
-          # L: 他端末写真はサムネ即時取得、拡大時にcompleted本体を端末へ保存し再送しない。
+          # L/M: 他端末写真はOneDrive参照IDをFirestore経由で受け取り、サムネ/完成画像を読む。
+          grep -q "oneDriveDriveId: text(record.oneDriveDriveId)" src/js/firestore/record-serializer.js
+          grep -q "originalItemId: text(record.originalItemId)" src/js/firestore/record-serializer.js
+          grep -q "completedItemId: text(record.completedItemId)" src/js/firestore/record-serializer.js
           grep -q "export async function downloadDriveThumbnail" src/js/onedrive/onedrive-client.js
           grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
           grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
@@ -252,7 +261,21 @@ jobs:
           grep -q "ensureRemoteThumbnail" src/js/photos/photo-controller.js
           grep -q "他端末で撮影されたため、この端末では看板編集できません" src/js/photos/photo-controller.js
           grep -q "record-view-url-link" src/js/record-view/record-view-renderer.js src/css/record-view.css
-          grep -q "./js/photos/photo-remote-reader.js" src/service-worker.js
+
+          # M: 同一表示versionでもrevision差で更新可能。資材はnetwork-first、SW切替は明示操作。
+          grep -q "revision" src/js/app-update.js
+          grep -q "sameBuild" src/js/app-update.js
+          grep -q "cache: 'no-store'" src/js/app-update.js
+          grep -q "function networkFirstAppRequest" src/service-worker.js
+          grep -q "event.data?.type === 'SKIP_WAITING'" src/service-worker.js
+          if grep -q "then(() => self.skipWaiting())" src/service-worker.js; then
+            echo "service worker still auto activates on install"
+            exit 1
+          fi
+          grep -q "worker.postMessage({ type: 'SKIP_WAITING' })" src/js/pwa/pwa-controller.js
+          grep -q "./js/firestore/record-serializer.js" src/service-worker.js
+          grep -q "./js/photos/photo-controller.js" src/service-worker.js
+          grep -q "./js/photos/photo-viewer.js" src/service-worker.js
 
           # レコード確認の表示改善を維持する。
           grep -q "record.completedPath || record.originalPath || record.oneDrivePath" src/js/record-view/record-view-view-model.js
