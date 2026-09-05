@@ -7,7 +7,7 @@
  * - upload成功後、返却itemIdをgetDriveItem()で再確認してからuploadedへ進める。
  * - 失敗はpendingのまま残し、このモジュール自身では連続自動再試行しない。
  * - 再送トリガーは写真Blob保存、photoRecord確定、案件切替、OneDrive実接続復帰。
- * - 月曜テスト段階ではOneDrive上の旧一時ファイル/旧名称ファイルを物理削除しない。
+ * - 新規Blobは保存時点でprojectIdを持ち、assignPhotoProjectは旧空欄Blob救済だけに使う。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -30,6 +30,7 @@ import { getCurrentOneDriveState, subscribeOneDriveState } from '../onedrive/one
 import { getDriveItem, uploadDriveFile } from '../onedrive/onedrive-client.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
 let initialized = false;
 let running = false;
@@ -92,13 +93,9 @@ function stablePhotoOrder(entries = []) {
   });
 }
 
-/**
- * photoRecordStoreは案件を開く時にreplaceAllされ、その後setされた写真は現在案件のもの。
- * Blob保存がphotoRecord確定より先でも、photoRecordStoreの変更通知でこの処理を再実行する。
- * その時点で有効なphotoRecordだけを現在案件のprojectIdへ帰属させる。
- */
-async function attachCurrentProjectToLocalBlobs(project) {
-  for (const record of photoRecordStore.getAll()) {
+/** 旧projectId空欄Blobだけ現在案件へ救済する。 */
+async function attachLegacyBlobs(project, records) {
+  for (const record of records) {
     if (record.deleted) continue;
     await assignPhotoProject(record.photoId, project.projectId);
   }
@@ -132,16 +129,47 @@ async function persistUploadedReference(project, record, variant, verifiedItem) 
 
 async function uploadOneVariant(project, binding, entry) {
   let record = photoRecordStore.get(entry.photoId);
-  if (!record || record.deleted) return { ok: true, skipped: true, reason: 'deleted-or-missing' };
+  if (!record || record.deleted) {
+    syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      reason: 'deleted-or-missing'
+    });
+    return { ok: true, skipped: true, reason: 'deleted-or-missing' };
+  }
 
   const folderRef = folderRefFor(record, entry.variant, binding);
-  if (!folderRef) return { ok: false, skipped: true, reason: 'folder-unavailable' };
+  if (!folderRef) {
+    syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      reason: 'folder-unavailable'
+    });
+    return { ok: false, skipped: true, reason: 'folder-unavailable' };
+  }
 
   const fileName = getPhotoUploadFileName(record);
-  if (!fileName) return { ok: false, skipped: true, reason: 'filename-unavailable' };
+  if (!fileName) {
+    syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      reason: 'filename-unavailable'
+    });
+    return { ok: false, skipped: true, reason: 'filename-unavailable' };
+  }
 
   let verified = null;
   try {
+    syncDiagnosticLog('PHOTO_UPLOAD_START', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      fileName
+    });
+
     const uploaded = await uploadDriveFile(
       folderRef,
       fileName,
@@ -155,10 +183,26 @@ async function uploadOneVariant(project, binding, entry) {
     };
     if (!uploadedRef.itemId) throw new Error('OneDrive保存後のitemIdを確認できませんでした。');
 
+    syncDiagnosticLog('PHOTO_UPLOAD_OK', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      fileName,
+      itemId: uploadedRef.itemId
+    });
+
     verified = await getDriveItem(uploadedRef);
     if (!verified?.file || !verified?.itemId) {
       throw new Error('OneDrive保存後のファイル実在確認に失敗しました。');
     }
+
+    syncDiagnosticLog('PHOTO_VERIFY_OK', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      fileName: verified.name || fileName,
+      itemId: verified.itemId
+    });
 
     await markPhotoBlobUploaded(entry.photoId, entry.variant, {
       driveId: verified.driveId || uploadedRef.driveId,
@@ -168,7 +212,14 @@ async function uploadOneVariant(project, binding, entry) {
     });
   } catch (error) {
     await recordPhotoBlobUploadError(entry.photoId, entry.variant, error);
-    console.warn('[v0.1.6.5J] 写真OneDrive送信失敗', {
+    syncDiagnosticLog('PHOTO_UPLOAD_ERROR', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      fileName,
+      message: error?.message || String(error)
+    });
+    console.warn('[v0.1.6.5K] 写真OneDrive送信失敗', {
       photoId: entry.photoId,
       variant: entry.variant,
       error
@@ -179,7 +230,13 @@ async function uploadOneVariant(project, binding, entry) {
   try {
     record = await persistUploadedReference(project, record, entry.variant, verified);
   } catch (error) {
-    console.warn('[v0.1.6.5J] 写真OneDrive参照情報の保存失敗', {
+    syncDiagnosticLog('PHOTO_REFERENCE_SAVE_ERROR', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      message: error?.message || String(error)
+    });
+    console.warn('[v0.1.6.5K] 写真OneDrive参照情報の保存失敗', {
       photoId: entry.photoId,
       variant: entry.variant,
       error
@@ -193,21 +250,58 @@ async function runCurrentProjectPhotoSync() {
   const project = activeProject();
   if (!project) return { ok: false, reason: 'no-project' };
 
-  const binding = activeBinding(project);
-  if (!binding) return { ok: false, reason: 'onedrive-unavailable' };
+  syncDiagnosticLog('PHOTO_SYNC_START', { projectId: project.projectId });
 
-  await attachCurrentProjectToLocalBlobs(project);
-  const pending = stablePhotoOrder(await listPendingPhotoBlobEntries(project.projectId));
-  if (!pending.length) return { ok: true, uploaded: 0 };
+  const binding = activeBinding(project);
+  if (!binding) {
+    const oneDrive = getCurrentOneDriveState();
+    syncDiagnosticLog('PHOTO_SYNC_BINDING_MISSING', {
+      projectId: project.projectId,
+      phase: oneDrive?.phase || '',
+      label: oneDrive?.label || ''
+    });
+    return { ok: false, reason: 'onedrive-unavailable' };
+  }
+
+  const activeRecords = photoRecordStore.getAll().filter((record) => !record.deleted);
+  const photoIds = activeRecords.map((record) => record.photoId);
+
+  // I以前などprojectId空欄で残ったBlobだけ救済する。
+  await attachLegacyBlobs(project, activeRecords);
+
+  const pending = stablePhotoOrder(
+    await listPendingPhotoBlobEntries(project.projectId, photoIds)
+  );
+
+  syncDiagnosticLog('PHOTO_SYNC_PENDING', {
+    projectId: project.projectId,
+    photoCount: photoIds.length,
+    pendingCount: pending.length,
+    pending: pending.map((entry) => ({ photoId: entry.photoId, variant: entry.variant, fileName: entry.fileName || '' }))
+  });
+
+  if (!pending.length) {
+    syncDiagnosticLog('PHOTO_SYNC_END', { projectId: project.projectId, uploaded: 0 });
+    return { ok: true, uploaded: 0 };
+  }
 
   let uploaded = 0;
   for (const entry of pending) {
-    if (String(getCurrentProject()?.projectId || '') !== String(project.projectId)) break;
+    if (String(getCurrentProject()?.projectId || '') !== String(project.projectId)) {
+      syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+        projectId: project.projectId,
+        photoId: entry.photoId,
+        variant: entry.variant,
+        reason: 'project-changed'
+      });
+      break;
+    }
 
     const result = await uploadOneVariant(project, binding, entry);
     if (result?.uploaded) uploaded += 1;
   }
 
+  syncDiagnosticLog('PHOTO_SYNC_END', { projectId: project.projectId, uploaded });
   return { ok: true, uploaded };
 }
 
@@ -238,7 +332,7 @@ function requestSync() {
 
 /**
  * 案件画面で1回だけ初期化する。
- * Blob保存とphotoRecord確定の両方を監視するため、撮影時の保存順に依存しない。
+ * Blob保存とphotoRecord確定の両方を監視し、案件/OneDrive接続変化でも再判定する。
  * camera/photo-controller/editorへOneDrive処理を重複実装しない。
  */
 export function initializePhotoOneDriveSync() {
