@@ -16,6 +16,7 @@ import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { refreshPhotoTab } from '../photos/photo-controller.js';
+import { refreshPhotoForImpact, initializePhotoRefreshOnTabActivation } from '../photos/photo-refresh-policy.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 
@@ -70,9 +71,9 @@ export function refreshOpenProjectSessionViews() {
  * 仕上表は入力中DOMを守るため、外部同期由来の再描画だけrefresh guardを通す。
  * Store更新やFirestore送受信は止めず、編集終了後に最新Storeから1回だけ描画する。
  *
- * photoRecordの通常追加/更新はphotoRecordStore自身のsubscribeで写真タブへ反映されるため、
- * ここから同じrenderを重ねない。finish/material変更が写真ViewModelの構造・表示に
- * 影響する場合だけrefreshPhotoTab()を明示する。
+ * 写真は「Record種別が変わった」だけでは描画せず、現在表示している
+ * 目視／採取モードに実際に影響する時だけphoto-refresh-policyから更新する。
+ * 非表示中の写真タブは描画せず、タブを開いた時に最新Storeから再構築する。
  */
 export function refreshProjectViewsForChanges(impact = {}) {
   const finish = impact.finish || {};
@@ -94,9 +95,14 @@ export function refreshProjectViewsForChanges(impact = {}) {
     refreshRecordView();
   }
 
-  if (finish.photoVisual || material.photoVisual || material.photoSampling || photo.forceRefresh) {
-    refreshPhotoTab();
-  }
+  const photoTypes = photo.photoTypes instanceof Set
+    ? photo.photoTypes
+    : new Set(photo.photoTypes || []);
+  refreshPhotoForImpact({
+    visual: Boolean(finish.photoVisual || material.photoVisual || photoTypes.has('visual')),
+    sampling: Boolean(material.photoSampling || photoTypes.has('sampling')),
+    force: Boolean(photo.forceRefresh)
+  });
 }
 
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
@@ -114,6 +120,7 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   setProject(project);
 
   resetFinishTableForProject();
+  initializePhotoRefreshOnTabActivation();
   refreshOpenProjectSessionViews();
 
   const header = document.getElementById('caseHeaderTitle');
