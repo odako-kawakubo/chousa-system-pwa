@@ -6,6 +6,12 @@
  * - サムネイルはOneDriveの軽量サムネイルを自動取得する。
  * - 拡大時だけ完成画像本体を取得し、IndexedDBへ保持する。
  * - 一度取得した完成画像は以後ローカル表示を優先する。
+ *
+ * v0.1.6.6:
+ * - finish/material/photo Storeの汎用subscribe描画を廃止する。
+ * - 外部同期の描画判定はphoto-refresh-policyへ一本化する。
+ * - ローカル写真操作は、その操作自身が必要な描画を明示的に行う。
+ * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -73,10 +79,6 @@ function persistPhoto(record) {
 
 let root = null;
 let body = null;
-let unsubscribePhotoStore = null;
-let unsubscribeMaterialStore = null;
-let unsubscribeFinishStore = null;
-let storeRenderQueued = false;
 let renderedMode = 'visual';
 
 function rememberPhotoScroll(mode = renderedMode) {
@@ -316,6 +318,9 @@ async function addPickedFiles(fileList) {
     await updateCameraPhotoRecord(stored);
     await persistPhoto(stored);
   }
+
+  // 汎用Store subscribeは使わず、このローカル操作自身が1回だけ描画する。
+  render();
 }
 
 function visualContextFromKey(key) {
@@ -370,15 +375,22 @@ function buildCameraOptions() {
   return { visualRooms, samplingTargets };
 }
 
-async function registerCameraPreview({ record, completedBlob }) {
+async function registerCameraPreview({ record, completedBlob }, { renderAfter = true } = {}) {
   setLocalPreview(record?.photoId, completedBlob);
 
   if (record?.photoId) {
     await updateCameraPhotoRecord(record);
     await persistPhoto(record);
   }
+
+  if (renderAfter) render();
 }
 
+/**
+ * 現在案件の写真プレビューURLを復元する。
+ * ここではViewModel/一覧構造を作り直さない。画像URLが増えた後は
+ * hydrateThumbnailImages()だけで既存DOMへ差し込む。
+ */
 async function hydrateCurrentPhotoPreviews() {
   try {
     const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
@@ -490,7 +502,7 @@ async function openViewerForThumb(photoId) {
           projectId: String(getCurrentProject()?.projectId || '')
         });
         setLocalPreview(photoId, completedBlob);
-        render();
+        hydrateThumbnailImages();
       }
     } catch (error) {
       console.warn('他端末写真の完成画像取得に失敗しました', { photoId, error });
@@ -499,6 +511,7 @@ async function openViewerForThumb(photoId) {
     }
   } else if (completedBlob && !localPreviewUrls.has(photoId)) {
     setLocalPreview(photoId, completedBlob);
+    hydrateThumbnailImages();
   }
 
   openPhotoViewer(photoId);
@@ -675,6 +688,7 @@ function bindEvents() {
         });
         changed.push(next);
       });
+      render();
       Promise.all(changed.map((record) => persistPhoto(record))).catch((error) => {
         console.error('代表写真のFirestore保存に失敗しました', error);
       });
@@ -775,18 +789,13 @@ function compareTargetsForViewer(context = {}) {
   });
 }
 
-function scheduleStoreRender() {
-  if (storeRenderQueued) return;
-  storeRenderQueued = true;
-  queueMicrotask(() => {
-    storeRenderQueued = false;
-    render();
-  });
-}
-
+/**
+ * 写真タブ全体の明示refresh入口。
+ * まず構造を1回描画し、その後のプレビュー復元は既存DOMの画像だけを更新する。
+ */
 export function refreshPhotoTab() {
   render();
-  hydrateCurrentPhotoPreviews().then(render);
+  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
 }
 
 export function initializePhotoTab() {
@@ -821,22 +830,14 @@ export function initializePhotoTab() {
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
     onSaved: async ({ items = [] } = {}) => {
-      for (const item of items) await registerCameraPreview(item);
+      for (const item of items) await registerCameraPreview(item, { renderAfter: false });
       render();
     }
   });
 
   render();
-  hydrateCurrentPhotoPreviews().then(render);
+  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
   window.addEventListener('online', () => {
-    hydrateCurrentPhotoPreviews().then(render);
+    void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
   });
-
-  if (unsubscribePhotoStore) unsubscribePhotoStore();
-  if (unsubscribeMaterialStore) unsubscribeMaterialStore();
-  if (unsubscribeFinishStore) unsubscribeFinishStore();
-
-  unsubscribePhotoStore = photoRecordStore.subscribe(scheduleStoreRender);
-  unsubscribeMaterialStore = materialRecordStore.subscribe(scheduleStoreRender);
-  unsubscribeFinishStore = finishRecordStore.subscribe(scheduleStoreRender);
 }
