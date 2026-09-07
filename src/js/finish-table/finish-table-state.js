@@ -1,47 +1,94 @@
 /**
  * src/js/finish-table/finish-table-state.js
  *
- * 仕上表のUI専用状態だけを保持する。v0.1.5.1より前はここに部屋・建材の
- * 業務データ（floors/stairs/roof/externalRooms/materials/room.cells等）も
- * 同居していたが、正本はfinishRecordStore／materialRecordStore
- * （src/js/store/）へ移した。このファイルは、finishRecordStore／
- * materialRecordStoreの中身だけでは判定できない「今の画面状態」
- * （どのタブ・どの部屋・どの入力欄を見ているか、部屋コピーの途中経過等）
- * だけを持つ。
- *
- * 何を保持しているか：
- *   project（案件情報。今回のRecord移行の対象外）、activeAreaMode（内部／外部）、
- *   colorMode／chipInputMode／simpleListOpen（表示・操作モード）、
- *   activeRoomKey／activeGroupKey／focusedInputKey（選択・フォーカス）、
- *   selectedMaterialInputId（簡易リストのチップ選択）、roomCopy（部屋コピー
- *   専用状態。バックアップの中身はfinishRecordStoreのスナップショット）、
- *   collapsedFloors（階折りたたみ）、pendingCellNames（建材に未リンクの
- *   まま確定されたセルの表示名。finishRecordには保持しない一時キャッシュ）。
- *
- * Undo/Redo（戻る/進む）の対象にしないもの：
- *   このファイルが持つ状態はすべてUndo/Redoの対象外。対象は
- *   finishRecordStore／materialRecordStoreだけ（finish-table-controller.jsの
- *   getUndoableSnapshot()を参照）。
+ * 仕上表のUI専用状態だけを保持する。業務データの正本は
+ * finishRecordStore／materialRecordStore（src/js/store/）であり、ここでは
+ * 選択・フォーカス・表示モード・部屋コピー途中状態などだけを持つ。
  */
 
 import { getCurrentProject } from '../projects/project-store.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
 
 let state = null;
 const listeners = [];
 let tabChangeBound = false;
+let roomIdentityBound = false;
 
 function notify() {
   listeners.forEach((callback) => callback());
 }
 
 function emptyRoomCopyState() {
-  return { sourceRoomKey: null, backups: {}, done: {} };
+  return { sourceRoomKey: null, sourceStableKey: null, backups: {}, done: {} };
+}
+
+/** roomUidではなく、同期復元後も同じ論理部屋を指せる構造キー。 */
+function stableRoomKey(record) {
+  if (!record) return '';
+  const areaCode = String(record.areaCode || '');
+  const roomPosition = String(record.roomPosition || '');
+  return areaCode && roomPosition ? `${areaCode}|${roomPosition}` : '';
+}
+
+function recordForRoomUid(roomUid) {
+  return finishRecordStore.getAll().find((record) =>
+    record.status === 'active' && String(record.roomUid || '') === String(roomUid || '')
+  ) || null;
+}
+
+function roomUidForStableKey(key) {
+  if (!key) return '';
+  const record = finishRecordStore.getAll().find((item) =>
+    item.status === 'active' && stableRoomKey(item) === key
+  );
+  return String(record?.roomUid || '');
 }
 
 /**
- * v0.1.6.6: 仕上表から別タブへ移った時点でコピー操作を完全終了する。
- * コピー済みの業務データ自体は変更しない。コピー専用の「戻す」だけは終了するが、
- * 仕上表上部の通常Undo/Redo履歴は別管理なのでそのまま利用できる。
+ * Firestoreの疎finish復元でroomUidが再生成されても、コピー途中状態だけは
+ * areaCode + roomPosition を使って現在のroomUidへ付け替える。
+ * Store購読はUI再描画には使わず、状態の参照先補正だけを行う。
+ */
+function reconcileRoomCopyIdentity() {
+  if (!state?.roomCopy) return;
+  const copy = state.roomCopy;
+
+  if (copy.sourceStableKey) {
+    const nextSourceUid = roomUidForStableKey(copy.sourceStableKey);
+    if (nextSourceUid) copy.sourceRoomKey = nextSourceUid;
+  }
+
+  const nextBackups = {};
+  const nextDone = {};
+  Object.entries(copy.backups || {}).forEach(([oldUid, records]) => {
+    const anchor = Array.isArray(records) ? records[0] : null;
+    const key = stableRoomKey(anchor) || stableRoomKey(recordForRoomUid(oldUid));
+    const nextUid = roomUidForStableKey(key) || oldUid;
+    nextBackups[nextUid] = records;
+    if (copy.done?.[oldUid]) nextDone[nextUid] = true;
+  });
+  Object.keys(copy.done || {}).forEach((oldUid) => {
+    if (nextDone[oldUid]) return;
+    const key = stableRoomKey(recordForRoomUid(oldUid));
+    const nextUid = roomUidForStableKey(key) || oldUid;
+    nextDone[nextUid] = true;
+  });
+  copy.backups = nextBackups;
+  copy.done = nextDone;
+}
+
+function bindRoomIdentityReconciliation() {
+  if (roomIdentityBound) return;
+  roomIdentityBound = true;
+  finishRecordStore.subscribe(() => {
+    reconcileRoomCopyIdentity();
+  });
+}
+
+/**
+ * 仕上表から別タブへ移った時点でコピー操作を完全終了する。
+ * コピー済みデータ自体は変更しない。コピー専用「戻す」は終了するが、
+ * 上部の通常Undo/Redo履歴は別管理なので残る。
  */
 function bindTabChangeReset() {
   if (tabChangeBound) return;
@@ -63,15 +110,6 @@ function bindTabChangeReset() {
   });
 }
 
-/**
- * UI状態の変更を購読する。finishRecordStore／materialRecordStoreの
- * 購読とは別物（Storeの変更はfinish-table-controller.jsが個別のアクション
- * 呼び出し後に明示的な再描画で反映するため、Store側の購読を描画には
- * 使わない。詳細はfinish-table-actions.jsのrunRecordTransaction()を参照）。
- *
- * @param {() => void} callback
- * @returns {() => void} 購読解除関数
- */
 export function subscribe(callback) {
   listeners.push(callback);
   return () => {
@@ -83,25 +121,20 @@ export function subscribe(callback) {
 export function initFinishTableState() {
   state = {
     project: getCurrentProject(),
-
     activeAreaMode: 'internal',
     colorMode: false,
     chipInputMode: false,
     simpleListOpen: true,
-
     activeRoomKey: null,
     activeGroupKey: null,
     focusedInputKey: null,
     selectedMaterialInputId: null,
-
-    // 部屋コピー専用状態。入力選択状態（activeRoomKey等）とは意図的に分離する。
-    // backups[roomKey]はコピー実行前のfinishRecord[]、doneは「戻す」可能な対象。
     roomCopy: emptyRoomCopyState(),
-
     collapsedFloors: new Set(),
     pendingCellNames: new Map()
   };
   bindTabChangeReset();
+  bindRoomIdentityReconciliation();
   notify();
 }
 
@@ -197,11 +230,8 @@ export function getSelectedMaterialInputId() {
 
 export function toggleFloorCollapsed(floorKeyValue) {
   if (!floorKeyValue) return;
-  if (state.collapsedFloors.has(floorKeyValue)) {
-    state.collapsedFloors.delete(floorKeyValue);
-  } else {
-    state.collapsedFloors.add(floorKeyValue);
-  }
+  if (state.collapsedFloors.has(floorKeyValue)) state.collapsedFloors.delete(floorKeyValue);
+  else state.collapsedFloors.add(floorKeyValue);
   notify();
 }
 
@@ -214,19 +244,18 @@ export function isFloorCollapsed(floorKeyValue) {
    ============================================================ */
 
 export function getRoomCopyState() {
+  reconcileRoomCopyIdentity();
   return state.roomCopy;
 }
 
-/** コピー元として選択する。 */
+/** コピー元として選択する。同期復元に備え、構造キーも同時に保持する。 */
 export function startRoomCopySource(roomKeyValue) {
+  const anchor = recordForRoomUid(roomKeyValue);
   state.roomCopy.sourceRoomKey = roomKeyValue;
+  state.roomCopy.sourceStableKey = stableRoomKey(anchor) || null;
   notify();
 }
 
-/**
- * コピー元の選択を解除する。解除時はdone／backupsも含めてコピー関連状態を
- * 全てクリアする。コピー先セルに反映済みの値そのものは変更しない。
- */
 export function cancelRoomCopySource() {
   state.roomCopy = emptyRoomCopyState();
   notify();
@@ -245,6 +274,7 @@ export function clearRoomCopyBackup(roomKeyValue) {
 }
 
 export function getRoomCopyBackup(roomKeyValue) {
+  reconcileRoomCopyIdentity();
   return state.roomCopy.backups[roomKeyValue] || null;
 }
 
