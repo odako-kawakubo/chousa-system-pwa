@@ -12,6 +12,7 @@ import {
   requestFinishTableExternalRefresh,
   resetFinishTableExternalRefresh
 } from '../finish-table/finish-table-refresh-guard.js';
+import { resetFinishTableScrollState } from '../finish-table/finish-table-scroll-state.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
@@ -108,8 +109,9 @@ export function refreshProjectViewsForChanges(impact = {}) {
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
-  // 旧案件で保留中だった外部描画要求を、新案件へ持ち越さない。
+  // 旧案件で保留中だった外部描画要求・スクロール位置を、新案件へ持ち越さない。
   resetFinishTableExternalRefresh();
+  resetFinishTableScrollState();
 
   finishRecordStore.replaceAll(finishRecords, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
@@ -131,6 +133,7 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
 export function closeProjectSession() {
   saveCurrentProjectSession();
   resetFinishTableExternalRefresh();
+  resetFinishTableScrollState();
   setCurrentProject(null);
   const header = document.getElementById('caseHeaderTitle');
   if (header) header.textContent = '案件未選択';
