@@ -28,9 +28,39 @@ import { getCurrentProject } from '../projects/project-store.js';
 
 let state = null;
 const listeners = [];
+let tabChangeBound = false;
 
 function notify() {
   listeners.forEach((callback) => callback());
+}
+
+function emptyRoomCopyState() {
+  return { sourceRoomKey: null, backups: {}, done: {} };
+}
+
+/**
+ * v0.1.6.6: 仕上表から別タブへ移った時点でコピー操作を完全終了する。
+ * コピー済みの業務データ自体は変更しない。コピー専用の「戻す」だけは終了するが、
+ * 仕上表上部の通常Undo/Redo履歴は別管理なのでそのまま利用できる。
+ */
+function bindTabChangeReset() {
+  if (tabChangeBound) return;
+  tabChangeBound = true;
+  window.addEventListener('chousa:tab-change', (event) => {
+    if (!state) return;
+    const previousTab = String(event.detail?.previousTab || '');
+    const currentTab = String(event.detail?.currentTab || '');
+    if (previousTab !== 'finish' || currentTab === 'finish') return;
+
+    const copy = state.roomCopy || emptyRoomCopyState();
+    const copyActive = Boolean(copy.sourceRoomKey)
+      || Object.keys(copy.backups || {}).length > 0
+      || Object.keys(copy.done || {}).length > 0;
+    if (!copyActive) return;
+
+    state.roomCopy = emptyRoomCopyState();
+    notify();
+  });
 }
 
 /**
@@ -64,33 +94,20 @@ export function initFinishTableState() {
     focusedInputKey: null,
     selectedMaterialInputId: null,
 
-    // 部屋コピー専用状態。入力選択状態（activeRoomKey等）とは意図的に分離する
-    // （「部屋を選んでいるだけなのにコピーの色が付く」事故を防ぐための設計。
-    // v0.1.4までと変わらない）。backups[roomKey]は
-    // finish-table-actions.jsのsnapshotRoomRecords()が返すfinishRecordの
-    // 配列（旧room.cellsのスナップショットではない）。
-    roomCopy: {
-      sourceRoomKey: null,
-      backups: {}, // { [対象roomKey]: コピー実行前のfinishRecord[]スナップショット }
-      done: {}     // { [対象roomKey]: true } … 「戻す」操作が可能な対象
-    },
+    // 部屋コピー専用状態。入力選択状態（activeRoomKey等）とは意図的に分離する。
+    // backups[roomKey]はコピー実行前のfinishRecord[]、doneは「戻す」可能な対象。
+    roomCopy: emptyRoomCopyState(),
 
-    // 階の折りたたみ専用状態。floorGroupKey()の値の集合。表示の開閉だけに使う。
     collapsedFloors: new Set(),
-
-    // 建材に未リンクのまま確定された（「登録」ボタンが必要な）セルの表示名。
-    // finishRecordは意味のある内容（materialId等）を持たないレコードを
-    // 保持しないため、この名称はfinishRecordStoreへは書き込まず、ここへ
-    // 一時的に持たせる。real linkが成立した時点（ID一致・登録実行）で消す。
     pendingCellNames: new Map()
   };
+  bindTabChangeReset();
   notify();
 }
 
 export function getState() {
   return state;
 }
-
 
 export function setProject(project) {
   if (!state) return;
@@ -100,12 +117,11 @@ export function setProject(project) {
   state.activeGroupKey = null;
   state.focusedInputKey = null;
   state.selectedMaterialInputId = null;
-  state.roomCopy = { sourceRoomKey: null, backups: {}, done: {} };
+  state.roomCopy = emptyRoomCopyState();
   state.collapsedFloors = new Set();
   state.pendingCellNames = new Map();
   notify();
 }
-
 
 /* ============================================================
    表示モード
@@ -179,12 +195,6 @@ export function getSelectedMaterialInputId() {
    階折りたたみ
    ============================================================ */
 
-/**
- * 階見出し行の開閉。表示・非表示だけを切り替える操作であり、部屋・建材
- * データは変更しない。Undo/Redo（戻る/進む）の対象には含めない。
- *
- * @param {string} floorKeyValue floorGroupKey()の値
- */
 export function toggleFloorCollapsed(floorKeyValue) {
   if (!floorKeyValue) return;
   if (state.collapsedFloors.has(floorKeyValue)) {
@@ -215,29 +225,19 @@ export function startRoomCopySource(roomKeyValue) {
 
 /**
  * コピー元の選択を解除する。解除時はdone／backupsも含めてコピー関連状態を
- * 全てクリアする（「戻す」表示が解除後も残る不具合を防ぐ、v0.1.3からの
- * 既存仕様）。コピー先セルに既に反映済みの値そのものは変更しない
- * （元に戻す操作だけができなくなる）。
+ * 全てクリアする。コピー先セルに反映済みの値そのものは変更しない。
  */
 export function cancelRoomCopySource() {
-  state.roomCopy = { sourceRoomKey: null, backups: {}, done: {} };
+  state.roomCopy = emptyRoomCopyState();
   notify();
 }
 
-/**
- * コピー実行の直前に、対象部屋の現状（finish-table-actions.jsの
- * snapshotRoomRecords()の戻り値）をバックアップとして記録し、
- * 「戻す」操作を可能にする。
- * @param {string} roomKeyValue
- * @param {import('../records/finish-record.js').FinishRecord[]} records
- */
 export function recordRoomCopyBackup(roomKeyValue, records) {
   state.roomCopy.backups[roomKeyValue] = records;
   state.roomCopy.done[roomKeyValue] = true;
   notify();
 }
 
-/** 「戻す」実行後、その部屋のバックアップ・done状態を消す。 */
 export function clearRoomCopyBackup(roomKeyValue) {
   delete state.roomCopy.backups[roomKeyValue];
   delete state.roomCopy.done[roomKeyValue];
@@ -252,11 +252,6 @@ export function getRoomCopyBackup(roomKeyValue) {
    未登録建材名の一時表示（pending名）
    ============================================================ */
 
-/**
- * @param {string} cellKeyValue finish-table-view-model.jsのcellGroupKey()等と
- *   同じ形式で呼び出し側が組み立てるキー（roomKey|partIndex|row）。
- * @param {string} name
- */
 export function setPendingCellName(cellKeyValue, name) {
   if (!name) {
     state.pendingCellNames.delete(cellKeyValue);
