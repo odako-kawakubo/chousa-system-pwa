@@ -22,6 +22,7 @@ import { getProject, getCurrentProject } from './projects/project-store.js';
 import { bindModalEvents } from './ui/modal.js';
 import { bindAuthUiEvents } from './ui/auth-ui.js';
 import { initializeFinishTable } from './finish-table/finish-table-controller.js';
+import { initializeFinishTableScrollState } from './finish-table/finish-table-scroll-state.js';
 import { initializeRecordView } from './record-view/record-view-controller.js';
 import { initializeMaterialList } from './materials/material-list-controller.js';
 import { initializeMaterialOperations } from './materials/material-operations-controller.js';
@@ -85,6 +86,7 @@ async function initProjectApp() {
     });
 
     initializeFinishTable();
+    initializeFinishTableScrollState();
     initializeMaterialList();
     initializeMaterialOperations();
     initializeRecordView();
