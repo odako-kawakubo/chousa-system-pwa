@@ -4,8 +4,16 @@
  * 写真タブの状態・イベント・photoRecordStore更新を担当する。
  * v0.1.6.5Lでは他端末写真の表示経路を追加する。
  * - サムネイルはOneDriveの軽量サムネイルを自動取得する。
- * - 拡大時だけ完成画像本体を取得し、IndexedDBへ保持する。
+ * - Viewer表示時だけ完成画像本体を取得し、IndexedDBへ保持する。
  * - 一度取得した完成画像は以後ローカル表示を優先する。
+ *
+ * v0.1.6.6:
+ * - finish/material/photo Storeの汎用subscribe描画を廃止する。
+ * - 外部同期の描画判定はphoto-refresh-policyへ一本化する。
+ * - ローカル写真操作は、その操作自身が必要な描画を明示的に行う。
+ * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
+ * - 案件切替時に写真UIの選択・開閉・スクロール・プレビューURLをリセットする。
+ * - Viewerの完成画像解決はphoto-viewer/photo-viewer-sourceへ一本化する。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -16,8 +24,8 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, saveCapturedPhoto, saveRemoteCompletedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
-import { fetchRemoteCompletedPhoto, fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
+import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
+import { fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -41,6 +49,7 @@ const state = {
 const localPreviewUrls = new Map();
 const remoteThumbnailUrls = new Map();
 const remoteThumbnailFetches = new Map();
+let previewSessionId = 0;
 const SAMPLE_STAGE_ORDER = [
   SHOOTING_TYPES.BEFORE,
   SHOOTING_TYPES.DURING,
@@ -73,10 +82,6 @@ function persistPhoto(record) {
 
 let root = null;
 let body = null;
-let unsubscribePhotoStore = null;
-let unsubscribeMaterialStore = null;
-let unsubscribeFinishStore = null;
-let storeRenderQueued = false;
 let renderedMode = 'visual';
 
 function rememberPhotoScroll(mode = renderedMode) {
@@ -168,6 +173,12 @@ function revokePreviewUrl(map, photoId) {
   map.delete(photoId);
 }
 
+function clearPreviewUrls() {
+  for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
+    [...map.keys()].forEach((photoId) => revokePreviewUrl(map, photoId));
+  }
+}
+
 function setLocalPreview(photoId, blob) {
   if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
   revokePreviewUrl(localPreviewUrls, photoId);
@@ -187,14 +198,18 @@ async function ensureRemoteThumbnail(photo) {
   if (!photoId || photo.deleted || localPreviewUrls.has(photoId) || remoteThumbnailUrls.has(photoId)) return;
   if (!hasRemoteCompletedPhoto(photo) || remoteThumbnailFetches.has(photoId)) return;
 
+  const sessionId = previewSessionId;
   const fetchPromise = fetchRemotePhotoThumbnail(photo)
     .then((blob) => {
+      if (sessionId !== previewSessionId) return;
       if (!(blob instanceof Blob) || !photoById(photoId) || localPreviewUrls.has(photoId)) return;
       setRemoteThumbnail(photoId, blob);
       hydrateThumbnailImages();
     })
     .catch(() => undefined)
-    .finally(() => remoteThumbnailFetches.delete(photoId));
+    .finally(() => {
+      if (sessionId === previewSessionId) remoteThumbnailFetches.delete(photoId);
+    });
 
   remoteThumbnailFetches.set(photoId, fetchPromise);
   await fetchPromise;
@@ -316,6 +331,8 @@ async function addPickedFiles(fileList) {
     await updateCameraPhotoRecord(stored);
     await persistPhoto(stored);
   }
+
+  render();
 }
 
 function visualContextFromKey(key) {
@@ -370,16 +387,19 @@ function buildCameraOptions() {
   return { visualRooms, samplingTargets };
 }
 
-async function registerCameraPreview({ record, completedBlob }) {
+async function registerCameraPreview({ record, completedBlob }, { renderAfter = true } = {}) {
   setLocalPreview(record?.photoId, completedBlob);
 
   if (record?.photoId) {
     await updateCameraPhotoRecord(record);
     await persistPhoto(record);
   }
+
+  if (renderAfter) render();
 }
 
 async function hydrateCurrentPhotoPreviews() {
+  const sessionId = previewSessionId;
   try {
     const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
     for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
@@ -389,8 +409,10 @@ async function hydrateCurrentPhotoPreviews() {
     }
 
     for (const record of photoRecordStore.getAll()) {
+      if (sessionId !== previewSessionId) return;
       if (localPreviewUrls.has(record.photoId)) continue;
       const blob = await getPhotoBlob(record.photoId, 'completed');
+      if (sessionId !== previewSessionId) return;
       if (blob && typeof URL.createObjectURL === 'function') {
         setLocalPreview(record.photoId, blob);
         continue;
@@ -436,8 +458,7 @@ function photosForViewer(photoId) {
         ))
       : photoRecordStore.findVisual({ areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot });
 
-    return photos
-      .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
+    return photos.sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
   }
 
   const samplingPhotos = isSamplingPhotoUnorganized(photo)
@@ -448,12 +469,11 @@ function photosForViewer(photoId) {
       ))
     : photoRecordStore.findSampling({ materialId: photo.materialId, samplingBranch: photo.samplingBranch });
 
-  return samplingPhotos
-    .sort((a, b) => {
-      const stageDiff = SAMPLE_STAGE_ORDER.indexOf(a.shootingType) - SAMPLE_STAGE_ORDER.indexOf(b.shootingType);
-      if (stageDiff) return stageDiff;
-      return String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId));
-    });
+  return samplingPhotos.sort((a, b) => {
+    const stageDiff = SAMPLE_STAGE_ORDER.indexOf(a.shootingType) - SAMPLE_STAGE_ORDER.indexOf(b.shootingType);
+    if (stageDiff) return stageDiff;
+    return String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId));
+  });
 }
 
 function demoPreviewSource(photo) {
@@ -468,40 +488,9 @@ function demoPreviewSource(photo) {
 function previewSourceForPhoto(photo) {
   const local = localPreviewUrls.get(photo.photoId);
   if (local) return local;
-
   const demo = demoPreviewSource(photo);
   if (demo) return demo;
-
   return remoteThumbnailUrls.get(photo.photoId) || '';
-}
-
-async function openViewerForThumb(photoId) {
-  const photo = photoById(photoId);
-  if (!photo || photo.deleted) return;
-
-  let completedBlob = await getPhotoBlob(photoId, 'completed');
-  if (!completedBlob && hasRemoteCompletedPhoto(photo)) {
-    try {
-      completedBlob = await fetchRemoteCompletedPhoto(photo);
-      if (completedBlob instanceof Blob) {
-        await saveRemoteCompletedPhoto({
-          record: photo,
-          blob: completedBlob,
-          projectId: String(getCurrentProject()?.projectId || '')
-        });
-        setLocalPreview(photoId, completedBlob);
-        render();
-      }
-    } catch (error) {
-      console.warn('他端末写真の完成画像取得に失敗しました', { photoId, error });
-      window.alert('写真本体を取得できませんでした。通信状態を確認してもう一度お試しください。');
-      return;
-    }
-  } else if (completedBlob && !localPreviewUrls.has(photoId)) {
-    setLocalPreview(photoId, completedBlob);
-  }
-
-  openPhotoViewer(photoId);
 }
 
 async function startEditSequence(photoIds) {
@@ -544,10 +533,7 @@ async function deleteSelectedPhotos(photoIds) {
     if (Boolean(previous?.deleted) !== Boolean(record.deleted)) fields.push('deleted');
     if (Boolean(previous?.isRepresentative) !== Boolean(record.isRepresentative)) fields.push('isRepresentative');
     if (!fields.length) return;
-    const next = photoRecordStore.set({
-      ...record,
-      fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields)
-    });
+    const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields) });
     changed.push(next);
   });
 
@@ -599,7 +585,7 @@ function bindEvents() {
 
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
-      void openViewerForThumb(expandButton.dataset.photoExpand || '');
+      openPhotoViewer(expandButton.dataset.photoExpand || '');
       return;
     }
 
@@ -669,12 +655,10 @@ function bindEvents() {
       photoRecordStore.getAll().forEach((record) => {
         const previous = before.get(record.photoId);
         if (Boolean(previous?.isRepresentative) === Boolean(record.isRepresentative)) return;
-        const next = photoRecordStore.set({
-          ...record,
-          fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative')
-        });
+        const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative') });
         changed.push(next);
       });
+      render();
       Promise.all(changed.map((record) => persistPhoto(record))).catch((error) => {
         console.error('代表写真のFirestore保存に失敗しました', error);
       });
@@ -775,18 +759,35 @@ function compareTargetsForViewer(context = {}) {
   });
 }
 
-function scheduleStoreRender() {
-  if (storeRenderQueued) return;
-  storeRenderQueued = true;
-  queueMicrotask(() => {
-    storeRenderQueued = false;
-    render();
-  });
+/** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
+export function resetPhotoUiStateForProject() {
+  previewSessionId += 1;
+  remoteThumbnailFetches.clear();
+  clearPreviewUrls();
+
+  state.mode = 'visual';
+  state.selectedRoomUid = '';
+  state.selectedMaterialId = '';
+  state.openVisualKeys = new Set();
+  state.openSamplingKeys = new Set();
+  state.collapsedLocationGroups = new Set();
+  state.pendingImportContext = null;
+  state.listScrollTop = { visual: 0, sampling: 0 };
+  state.reviewScrollTop = { visual: 0, sampling: 0 };
+  state.selectionMode = null;
+  state.selectedPhotoIds = new Set();
+  renderedMode = 'visual';
+
+  const visual = buildVisualPhotoView('');
+  state.selectedRoomUid = visual.activeRoom?.roomUid || '';
+  if (state.selectedRoomUid) buildVisualPhotoView(state.selectedRoomUid);
+  const sampling = buildSamplingPhotoView('');
+  state.selectedMaterialId = sampling.activeMaterial?.materialId || '';
 }
 
 export function refreshPhotoTab() {
   render();
-  hydrateCurrentPhotoPreviews().then(render);
+  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
 }
 
 export function initializePhotoTab() {
@@ -821,22 +822,14 @@ export function initializePhotoTab() {
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
     onSaved: async ({ items = [] } = {}) => {
-      for (const item of items) await registerCameraPreview(item);
+      for (const item of items) await registerCameraPreview(item, { renderAfter: false });
       render();
     }
   });
 
   render();
-  hydrateCurrentPhotoPreviews().then(render);
+  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
   window.addEventListener('online', () => {
-    hydrateCurrentPhotoPreviews().then(render);
+    void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
   });
-
-  if (unsubscribePhotoStore) unsubscribePhotoStore();
-  if (unsubscribeMaterialStore) unsubscribeMaterialStore();
-  if (unsubscribeFinishStore) unsubscribeFinishStore();
-
-  unsubscribePhotoStore = photoRecordStore.subscribe(scheduleStoreRender);
-  unsubscribeMaterialStore = materialRecordStore.subscribe(scheduleStoreRender);
-  unsubscribeFinishStore = finishRecordStore.subscribe(scheduleStoreRender);
 }

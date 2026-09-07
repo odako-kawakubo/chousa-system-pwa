@@ -8,10 +8,16 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject, saveProjectSnapshot, setCurrentProject, formatProjectLabel } from './project-store.js';
 import { setProject } from '../finish-table/finish-table-state.js';
 import { refreshFinishTableFromStores, resetFinishTableForProject } from '../finish-table/finish-table-controller.js';
+import {
+  requestFinishTableExternalRefresh,
+  resetFinishTableExternalRefresh
+} from '../finish-table/finish-table-refresh-guard.js';
+import { resetFinishTableScrollState } from '../finish-table/finish-table-scroll-state.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
-import { refreshPhotoTab } from '../photos/photo-controller.js';
+import { refreshPhotoTab, resetPhotoUiStateForProject } from '../photos/photo-controller.js';
+import { refreshPhotoForImpact, initializePhotoRefreshOnTabActivation } from '../photos/photo-refresh-policy.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 
@@ -43,6 +49,11 @@ function refreshDerivedFinishInputIds() {
   if (changed) finishRecordStore.replaceAll(next, { notify: false });
 }
 
+/**
+ * 案件を開く時だけ使う全画面初期反映。
+ * リアルタイム同期では refreshProjectViewsForChanges() を使い、
+ * 関係のないタブまで再描画しない。
+ */
 export function refreshOpenProjectSessionViews() {
   refreshDerivedFinishInputIds();
   refreshFinishTableFromStores();
@@ -53,18 +64,61 @@ export function refreshOpenProjectSessionViews() {
   refreshSettingsTab();
 }
 
+/**
+ * Firestoreのリアルタイム変更を、影響する画面だけへ反映する。
+ * Recordの受信・Store更新そのものはproject-controller.jsで完了済みとし、
+ * ここではDOM更新の振り分けだけを担当する。
+ */
+export function refreshProjectViewsForChanges(impact = {}) {
+  const finish = impact.finish || {};
+  const material = impact.material || {};
+  const photo = impact.photo || {};
+
+  if (material.changed) refreshDerivedFinishInputIds();
+
+  if (finish.changed || material.finishView) {
+    requestFinishTableExternalRefresh(refreshFinishTableFromStores);
+  }
+
+  if (finish.materialView || material.changed) {
+    refreshMaterialList();
+    refreshMaterialOperations();
+  }
+
+  if (finish.changed || material.changed || photo.changed) {
+    refreshRecordView();
+  }
+
+  const photoTypes = photo.photoTypes instanceof Set
+    ? photo.photoTypes
+    : new Set(photo.photoTypes || []);
+  refreshPhotoForImpact({
+    visual: Boolean(finish.photoVisual || material.photoVisual || photoTypes.has('visual')),
+    sampling: Boolean(material.photoSampling || photoTypes.has('sampling')),
+    force: Boolean(photo.forceRefresh)
+  });
+}
+
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
+
+  resetFinishTableExternalRefresh();
+  resetFinishTableScrollState();
 
   finishRecordStore.replaceAll(finishRecords, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
+
+  // 写真タブの選択・開閉・スクロール・プレビューURLは案件ごとに独立させる。
+  // Storeを新案件へ置換した後に初期選択を解決する。
+  resetPhotoUiStateForProject();
 
   setCurrentProject(project);
   boardSettingsStore.activateProject(project);
   setProject(project);
 
   resetFinishTableForProject();
+  initializePhotoRefreshOnTabActivation();
   refreshOpenProjectSessionViews();
 
   const header = document.getElementById('caseHeaderTitle');
@@ -74,6 +128,9 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
 
 export function closeProjectSession() {
   saveCurrentProjectSession();
+  resetFinishTableExternalRefresh();
+  resetFinishTableScrollState();
+  resetPhotoUiStateForProject();
   setCurrentProject(null);
   const header = document.getElementById('caseHeaderTitle');
   if (header) header.textContent = '案件未選択';
