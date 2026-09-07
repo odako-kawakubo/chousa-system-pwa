@@ -7,7 +7,6 @@
 import {
   openProjectSession,
   saveCurrentProjectSession,
-  refreshOpenProjectSessionViews,
   refreshProjectViewsForChanges
 } from './project-session.js';
 import {
@@ -162,7 +161,7 @@ function updateProjectSyncCursors(projectId, cursors = {}, { completed = false, 
 
 function equalRecordValue(a, b) {
   if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a || []) === JSON.stringify(b || []);
-  if (a && typeof a === 'object' || b && typeof b === 'object') return JSON.stringify(a || {}) === JSON.stringify(b || {});
+  if ((a && typeof a === 'object') || (b && typeof b === 'object')) return JSON.stringify(a || {}) === JSON.stringify(b || {});
   return String(a ?? '') === String(b ?? '');
 }
 
@@ -196,6 +195,38 @@ function createEmptyViewImpact() {
     material: { changed: false, fields: new Set(), finishView: false, photoVisual: false, photoSampling: false },
     photo: { changed: false, photoTypes: new Set(), fields: new Set(), forceRefresh: false }
   };
+}
+
+function createFullTypeViewImpact(typeModes = {}, photoRecords = []) {
+  const impact = createEmptyViewImpact();
+
+  if (typeModes.finish === 'full') {
+    impact.finish.changed = true;
+    impact.finish.structural = true;
+    impact.finish.materialView = true;
+    impact.finish.photoVisual = true;
+    FINISH_IMPACT_FIELDS.forEach((field) => impact.finish.fields.add(field));
+  }
+
+  if (typeModes.material === 'full') {
+    impact.material.changed = true;
+    impact.material.finishView = true;
+    impact.material.photoVisual = true;
+    impact.material.photoSampling = true;
+    MATERIAL_IMPACT_FIELDS.forEach((field) => impact.material.fields.add(field));
+  }
+
+  if (typeModes.photo === 'full') {
+    impact.photo.changed = true;
+    photoRecords.forEach((record) => {
+      const photoType = String(record?.photoType || '');
+      if (photoType) impact.photo.photoTypes.add(photoType);
+    });
+    // 空一覧への置換でも現在の写真画面から既存写真を消す必要がある。
+    impact.photo.forceRefresh = true;
+  }
+
+  return impact;
 }
 
 function registerFinishImpact(impact, current, change) {
@@ -613,6 +644,8 @@ async function openFirestoreProjectSession(target) {
       refreshMaterialList();
     } else {
       let replacedFullType = false;
+      const fullImpact = createFullTypeViewImpact(typeModes, remote.photoRecords || []);
+
       if (typeModes.material === 'full') {
         materialRecordStore.replaceAll(remote.materialRecords || [], { notify: false });
         replacedFullType = true;
@@ -624,6 +657,8 @@ async function openFirestoreProjectSession(target) {
       if (typeModes.finish === 'full') {
         finishRecordStore.replaceAll(remote.finishRecords || [], { notify: false });
         replacedFullType = true;
+        // finish全件復元に伴う建材の使用箇所等を、画面振り分けより先に最新化する。
+        refreshMaterialUsageDerivedFields('remote-rebuild', { persist: false });
       }
 
       if (remote.changes?.length) applyProjectRecordChanges(project, remote.changes);
@@ -644,12 +679,8 @@ async function openFirestoreProjectSession(target) {
           },
           source: 'catchup-full-type-replace'
         });
-        refreshOpenProjectSessionViews();
-      }
-
-      if (typeModes.finish === 'full') {
-        refreshMaterialUsageDerivedFields('remote-rebuild', { persist: false });
-        refreshMaterialList();
+        // full取得でも全画面refreshへ戻さない。置換されたRecord種別の影響だけを反映する。
+        refreshProjectViewsForChanges(fullImpact);
       }
     }
 
