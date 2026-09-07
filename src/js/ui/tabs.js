@@ -26,57 +26,49 @@
  *   ・このファイルはタブ表示の切り替えだけを担当する。各タブ固有の描画は
  *     各担当モジュールが初期化・更新する。
  *   ・保存・Firestore同期・OneDrive連携は一切行わない。
+ *
+ * v0.1.6.6:
+ *   表示切替後に chousa:tab-change を通知する。
+ *   タブ固有処理はここへ直接書かず、各担当モジュールが通知を購読する。
  */
+
+/** 現在activeになっている上部タブIDを返す。 */
+function activeTabId() {
+  return document.querySelector('.tabs .tab[data-tab].active')?.dataset?.tab || '';
+}
 
 /**
  * 指定したタブだけを表示し、それ以外を隠す。
- *
- * 手順：
- * 1. すべての .content 要素を非表示にする
- * 2. 指定された id を持つ .content 要素だけを表示する
- * 3. タブボタンの active クラスを、クリックされたタブに合わせて切り替える
- *
- * 注意：
- * ・この関数はDOM表示の切り替えだけを行う。
- * ・タブ固有の描画処理は各担当モジュールへ分離する。
  *
  * @param {string} tabId 表示したいタブの id（例: 'finish', 'materials'）
  */
 export function showTab(tabId) {
   const requestedId = String(tabId || 'finish');
+  const previousId = activeTabId();
 
-  // 画面描画：すべてのタブ中身を一旦隠す
   document.querySelectorAll('.content').forEach((section) => {
     section.style.display = 'none';
   });
 
-  // 対象のタブ中身が存在しない場合は、既定として仕上表タブへフォールバックする
-  const target =
-    document.getElementById(requestedId) || document.getElementById('finish');
+  const target = document.getElementById(requestedId) || document.getElementById('finish');
   if (!target) return;
 
   target.style.display = 'block';
 
-  // 画面描画：タブボタンのハイライトを切り替える
   document.querySelectorAll('.tab').forEach((tabButton) => {
     tabButton.classList.toggle('active', tabButton.dataset.tab === target.id);
   });
 
-  // ここでは画面表示だけを行う。
-  // 各タブの中身（仕上表の表・建材リストの行など）を作る処理は
-  // 今後、対応するモジュールが実装された時点でここから呼び出す。
+  const nextId = target.id;
+  if (previousId !== nextId) {
+    window.dispatchEvent(new CustomEvent('chousa:tab-change', {
+      detail: { previousTab: previousId, currentTab: nextId }
+    }));
+  }
 }
 
 /**
  * タブボタンへクリックイベントを設定する。
- *
- * 手順：
- * 1. [data-tab] を持つ全ボタンを取得する
- * 2. クリック時に、そのボタンの data-tab 値で showTab() を呼ぶ
- *
- * 注意：
- * ・この関数はイベント設定のみを行い、初期表示（最初にどのタブを開くか）は
- *   app-init.js 側の責務とする。
  */
 export function bindTabEvents() {
   document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
