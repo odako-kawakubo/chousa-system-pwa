@@ -16,7 +16,7 @@ import { resetFinishTableScrollState } from '../finish-table/finish-table-scroll
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
-import { refreshPhotoTab } from '../photos/photo-controller.js';
+import { refreshPhotoTab, resetPhotoUiStateForProject } from '../photos/photo-controller.js';
 import { refreshPhotoForImpact, initializePhotoRefreshOnTabActivation } from '../photos/photo-refresh-policy.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
@@ -68,13 +68,6 @@ export function refreshOpenProjectSessionViews() {
  * Firestoreのリアルタイム変更を、影響する画面だけへ反映する。
  * Recordの受信・Store更新そのものはproject-controller.jsで完了済みとし、
  * ここではDOM更新の振り分けだけを担当する。
- *
- * 仕上表は入力中DOMを守るため、外部同期由来の再描画だけrefresh guardを通す。
- * Store更新やFirestore送受信は止めず、編集終了後に最新Storeから1回だけ描画する。
- *
- * 写真は「Record種別が変わった」だけでは描画せず、現在表示している
- * 目視／採取モードに実際に影響する時だけphoto-refresh-policyから更新する。
- * 非表示中の写真タブは描画せず、タブを開いた時に最新Storeから再構築する。
  */
 export function refreshProjectViewsForChanges(impact = {}) {
   const finish = impact.finish || {};
@@ -109,13 +102,16 @@ export function refreshProjectViewsForChanges(impact = {}) {
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
-  // 旧案件で保留中だった外部描画要求・スクロール位置を、新案件へ持ち越さない。
   resetFinishTableExternalRefresh();
   resetFinishTableScrollState();
 
   finishRecordStore.replaceAll(finishRecords, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
+
+  // 写真タブの選択・開閉・スクロール・プレビューURLは案件ごとに独立させる。
+  // Storeを新案件へ置換した後に初期選択を解決する。
+  resetPhotoUiStateForProject();
 
   setCurrentProject(project);
   boardSettingsStore.activateProject(project);
@@ -134,6 +130,7 @@ export function closeProjectSession() {
   saveCurrentProjectSession();
   resetFinishTableExternalRefresh();
   resetFinishTableScrollState();
+  resetPhotoUiStateForProject();
   setCurrentProject(null);
   const header = document.getElementById('caseHeaderTitle');
   if (header) header.textContent = '案件未選択';
