@@ -4,6 +4,11 @@
  * 共通PhotoViewer。
  * 通常表示に加え、v0.1.5.4Eで2〜4枠の比較モードへ拡張する。
  * 写真本体はRecordへ重複保持せず、getPhotoSource()で表示URLを解決する。
+ *
+ * v0.1.6.6:
+ * - Viewerで表示対象になった写真はpreparePhotoSource()へ解決を依頼する。
+ * - 通常表示・写真送り・比較表示を同じ遅延解決経路へ統一する。
+ * - PhotoViewer自身はOneDrive/IndexedDBを知らず、表示責務だけを維持する。
  */
 
 import { getVisualPhotoTargetKey } from '../records/photo-record.js';
@@ -11,11 +16,13 @@ import { getVisualPhotoTargetKey } from '../records/photo-record.js';
 let getPhotosForPhoto = () => [];
 let getPhotoSource = () => '';
 let getCompareTargets = () => [];
+let preparePhotoSource = async () => false;
 let onEditPhoto = null;
 let modal = null;
 let title = null;
 let body = null;
 let bound = false;
+let viewerSessionId = 0;
 
 const viewerState = {
   photos: [],
@@ -94,6 +101,55 @@ function renderImage(photo, className = 'photo-viewer-image') {
     return `<div class="photo-viewer-no-image"><div class="photo-preview-icon">📷</div><b>${esc(photo.fileName || photo.photoId)}</b><span>画像本体はまだ接続されていません。</span></div>`;
   }
   return `<img class="${className}" src="${esc(source)}" alt="${esc(photo.fileName || photo.photoId || '写真')}" draggable="false">`;
+}
+
+function updateStageImage(stage, photo, className = 'photo-viewer-image') {
+  if (!stage || !photo) return;
+  const source = sourceFor(photo);
+  const image = stage.querySelector('img');
+  if (image && source) {
+    if (image.getAttribute('src') !== source) image.src = source;
+    return;
+  }
+  stage.innerHTML = renderImage(photo, className);
+}
+
+async function prepareNormalPhotoSource(photo) {
+  if (!photo) return;
+  const sessionId = viewerSessionId;
+  const photoId = String(photo.photoId || '');
+  try {
+    await preparePhotoSource(photo);
+  } catch (error) {
+    console.warn('Viewer写真本体の解決に失敗しました', { photoId, error });
+    return;
+  }
+  if (sessionId !== viewerSessionId || viewerState.compareMode) return;
+  if (String(currentPhoto()?.photoId || '') !== photoId) return;
+  updateStageImage(body?.querySelector('[data-photo-viewer-stage]'), photo);
+  applyTransform(body?.querySelector('[data-photo-viewer-stage]'), viewerState.normalTransform);
+}
+
+async function prepareComparePhotoSource(paneIndex, photo) {
+  if (!photo) return;
+  const sessionId = viewerSessionId;
+  const photoId = String(photo.photoId || '');
+  const pane = comparePane(paneIndex);
+  if (!pane) return;
+  const paneKey = pane.key;
+  try {
+    await preparePhotoSource(photo);
+  } catch (error) {
+    console.warn('比較写真本体の解決に失敗しました', { photoId, error });
+    return;
+  }
+  if (sessionId !== viewerSessionId || !viewerState.compareMode) return;
+  const livePane = comparePane(paneIndex);
+  if (!livePane || livePane.key !== paneKey) return;
+  if (String(comparePhoto(paneIndex)?.photoId || '') !== photoId) return;
+  const stage = body?.querySelector(`[data-compare-stage="${paneIndex}"]`);
+  updateStageImage(stage, photo, 'photo-viewer-image photo-compare-image');
+  applyTransform(stage, livePane.transform);
 }
 
 function toggleZoom(stage, state) {
@@ -271,7 +327,9 @@ function renderNormal() {
     <button class="photo-viewer-nav photo-viewer-next" type="button" data-photo-viewer-next ${hasMultiple ? '' : 'hidden'}>›</button>
     <div class="photo-viewer-counter">${viewerState.index + 1} / ${viewerState.photos.length}</div>
   </div>`;
-  bindGestureStage(body.querySelector('[data-photo-viewer-stage]'), viewerState.normalTransform, { allowSwipe: true, onSwipe: moveNormal });
+  const stage = body.querySelector('[data-photo-viewer-stage]');
+  bindGestureStage(stage, viewerState.normalTransform, { allowSwipe: true, onSwipe: moveNormal });
+  void prepareNormalPhotoSource(photo);
 }
 
 function createComparePane(key = '') {
@@ -387,7 +445,9 @@ function renderCompare() {
   </div>`;
 
   viewerState.compare.panes.forEach((pane, index) => {
-    bindGestureStage(body.querySelector(`[data-compare-stage="${index}"]`), pane.transform);
+    const stage = body.querySelector(`[data-compare-stage="${index}"]`);
+    bindGestureStage(stage, pane.transform);
+    void prepareComparePhotoSource(index, comparePhoto(index));
   });
 }
 
@@ -455,6 +515,7 @@ export function initializePhotoViewer(options = {}) {
   getPhotosForPhoto = typeof options.getPhotosForPhoto === 'function' ? options.getPhotosForPhoto : (() => []);
   getPhotoSource = typeof options.getPhotoSource === 'function' ? options.getPhotoSource : (() => '');
   getCompareTargets = typeof options.getCompareTargets === 'function' ? options.getCompareTargets : (() => []);
+  preparePhotoSource = typeof options.preparePhotoSource === 'function' ? options.preparePhotoSource : (async () => false);
   onEditPhoto = typeof options.onEditPhoto === 'function' ? options.onEditPhoto : null;
   modal = document.getElementById('photoPreviewModal');
   title = document.getElementById('photoPreviewTitle');
@@ -468,6 +529,7 @@ export function openPhotoViewer(photoId, context = {}) {
   const photos = contextPhotos || getPhotosForPhoto(photoId) || [];
   const index = photos.findIndex((photo) => photo.photoId === photoId);
   if (!photos.length || index < 0) return;
+  viewerSessionId += 1;
   viewerState.photos = photos;
   viewerState.index = index;
   viewerState.context = { ...context };
@@ -478,6 +540,7 @@ export function openPhotoViewer(photoId, context = {}) {
 
 export function closePhotoViewer() {
   if (!modal) return;
+  viewerSessionId += 1;
   modal.classList.remove('open');
   viewerState.photos = [];
   viewerState.index = 0;
