@@ -4,7 +4,12 @@
  * 案件画面の保存・Firestore復元・リアルタイム購読の正式入口。
  * 案件一覧、新規作成、OneDrive案件選択などトップページ側の責務は持たない。
  */
-import { openProjectSession, saveCurrentProjectSession, refreshOpenProjectSessionViews } from './project-session.js';
+import {
+  openProjectSession,
+  saveCurrentProjectSession,
+  refreshOpenProjectSessionViews,
+  refreshProjectViewsForChanges
+} from './project-session.js';
 import {
   getCurrentProject,
   getProject,
@@ -155,6 +160,90 @@ function updateProjectSyncCursors(projectId, cursors = {}, { completed = false, 
   if (getCurrentProject()?.projectId === projectId) setLastSyncedAt(lastSyncedAt);
 }
 
+function equalRecordValue(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a || []) === JSON.stringify(b || []);
+  if (a && typeof a === 'object' || b && typeof b === 'object') return JSON.stringify(a || {}) === JSON.stringify(b || {});
+  return String(a ?? '') === String(b ?? '');
+}
+
+function changedFields(previous, next, fields = []) {
+  return fields.filter((field) => !equalRecordValue(previous?.[field], next?.[field]));
+}
+
+const FINISH_IMPACT_FIELDS = [
+  'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName', 'position',
+  'part', 'materialId', 'status'
+];
+const FINISH_STRUCTURAL_FIELDS = new Set(['areaCode', 'roomPosition', 'floor', 'position', 'status']);
+const FINISH_PHOTO_VISUAL_FIELDS = new Set(['areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName', 'position', 'part', 'materialId', 'status']);
+const FINISH_MATERIAL_VIEW_FIELDS = new Set(['areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName', 'position', 'part', 'materialId', 'status']);
+
+const MATERIAL_IMPACT_FIELDS = [
+  'status', 'inputId', 'materialNo', 'name', 'part', 'usageLocation', 'level', 'note',
+  'analysisRequired', 'sampleCount', 'sampleLocation1', 'sampleLocation2', 'sampleLocation3',
+  'samplePart', 'sampleDone', 'sampleDate', 'sampleName', 'analysisResult', 'remarks', 'color', 'photoCount'
+];
+const MATERIAL_FINISH_VIEW_FIELDS = new Set(['status', 'inputId', 'name', 'note', 'color']);
+const MATERIAL_PHOTO_VISUAL_FIELDS = new Set(['status', 'inputId', 'name']);
+const MATERIAL_PHOTO_SAMPLING_FIELDS = new Set([
+  'status', 'inputId', 'materialNo', 'name', 'part', 'analysisRequired', 'sampleCount',
+  'sampleLocation1', 'sampleLocation2', 'sampleLocation3', 'samplePart', 'color'
+]);
+
+function createEmptyViewImpact() {
+  return {
+    finish: { changed: false, fields: new Set(), structural: false, materialView: false, photoVisual: false },
+    material: { changed: false, fields: new Set(), finishView: false, photoVisual: false, photoSampling: false },
+    photo: { changed: false, photoTypes: new Set(), fields: new Set(), forceRefresh: false }
+  };
+}
+
+function registerFinishImpact(impact, current, change) {
+  const incoming = change.changeType === 'removed' ? null : change.record;
+  const fields = change.changeType === 'removed' || !current
+    ? FINISH_IMPACT_FIELDS
+    : changedFields(current, incoming, FINISH_IMPACT_FIELDS);
+  impact.finish.changed = true;
+  fields.forEach((field) => impact.finish.fields.add(field));
+  if (change.changeType === 'removed' || !current || fields.some((field) => FINISH_STRUCTURAL_FIELDS.has(field))) {
+    impact.finish.structural = true;
+  }
+  if (fields.some((field) => FINISH_MATERIAL_VIEW_FIELDS.has(field))) impact.finish.materialView = true;
+  if (fields.some((field) => FINISH_PHOTO_VISUAL_FIELDS.has(field))) impact.finish.photoVisual = true;
+}
+
+function registerMaterialImpact(impact, current, change) {
+  const incoming = change.changeType === 'removed' ? null : change.record;
+  const fields = change.changeType === 'removed' || !current
+    ? MATERIAL_IMPACT_FIELDS
+    : changedFields(current, incoming, MATERIAL_IMPACT_FIELDS);
+  impact.material.changed = true;
+  fields.forEach((field) => impact.material.fields.add(field));
+  if (fields.some((field) => MATERIAL_FINISH_VIEW_FIELDS.has(field))) impact.material.finishView = true;
+  if (fields.some((field) => MATERIAL_PHOTO_VISUAL_FIELDS.has(field))) impact.material.photoVisual = true;
+  if (fields.some((field) => MATERIAL_PHOTO_SAMPLING_FIELDS.has(field))) impact.material.photoSampling = true;
+}
+
+function registerPhotoImpact(impact, current, change) {
+  const incoming = change.changeType === 'removed' ? null : change.record;
+  impact.photo.changed = true;
+  const photoType = String(incoming?.photoType || current?.photoType || '');
+  if (photoType) impact.photo.photoTypes.add(photoType);
+  if (change.changeType === 'removed') impact.photo.forceRefresh = true;
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})]);
+  ['updatedAt', 'fieldEditedAt'].forEach((field) => keys.delete(field));
+  [...keys].filter((field) => !equalRecordValue(current?.[field], incoming?.[field]))
+    .forEach((field) => impact.photo.fields.add(field));
+}
+
+function serializableViewImpact(impact) {
+  return {
+    finish: { ...impact.finish, fields: [...impact.finish.fields] },
+    material: { ...impact.material, fields: [...impact.material.fields] },
+    photo: { ...impact.photo, photoTypes: [...impact.photo.photoTypes], fields: [...impact.photo.fields] }
+  };
+}
+
 function applyProjectRecordChanges(project, changes = []) {
   const currentProjectId = getCurrentProject()?.projectId || '';
   if (!project?.projectId || currentProjectId !== project.projectId) {
@@ -206,6 +295,7 @@ function applyProjectRecordChanges(project, changes = []) {
 
   let changed = false;
   let applied = 0;
+  const viewImpact = createEmptyViewImpact();
   const materialChanges = safeChanges.filter((item) => item.recordType === 'material');
   if (materialChanges.length) {
     let rawMaterials = materialRecordStore.exportSnapshot();
@@ -237,6 +327,7 @@ function applyProjectRecordChanges(project, changes = []) {
         });
         return;
       }
+      registerMaterialImpact(viewImpact, current, change);
       rawMaterials = rawMaterials.filter((record) => String(record.materialId) !== id);
       if (change.changeType !== 'removed' && change.record) rawMaterials.push(change.record);
       materialChanged = true;
@@ -283,6 +374,7 @@ function applyProjectRecordChanges(project, changes = []) {
       });
       return;
     }
+    registerFinishImpact(viewImpact, current, change);
     applyKnownFinishChange(project.projectId, change);
     finishChanged = true;
     applied += 1;
@@ -329,6 +421,7 @@ function applyProjectRecordChanges(project, changes = []) {
       });
       return;
     }
+    registerPhotoImpact(viewImpact, current, change);
     if (change.changeType === 'removed') {
       photoRecordStore.replaceAll(
         photoRecordStore.exportSnapshot().filter((record) => record.photoId !== id),
@@ -379,7 +472,8 @@ function applyProjectRecordChanges(project, changes = []) {
     photoCount: photoRecordStore.exportSnapshot().length,
     materialIds: materialRecordStore.exportSnapshot()
       .map((record) => String(record.materialId || ''))
-      .filter(Boolean)
+      .filter(Boolean),
+    viewImpact: serializableViewImpact(viewImpact)
   });
 
   if (!changed) return { applied, skipped, persisted: false };
@@ -390,8 +484,8 @@ function applyProjectRecordChanges(project, changes = []) {
     photoRecords: photoRecordStore.exportSnapshot(),
     source: 'listener-apply'
   });
-  refreshOpenProjectSessionViews();
-  return { applied, skipped, persisted: true };
+  refreshProjectViewsForChanges(viewImpact);
+  return { applied, skipped, persisted: true, impact: serializableViewImpact(viewImpact) };
 }
 
 function typeModeReasons(typeModes, storedCursors, target, remote) {
