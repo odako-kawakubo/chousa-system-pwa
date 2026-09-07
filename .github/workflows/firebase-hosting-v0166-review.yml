@@ -1,0 +1,67 @@
+name: Deploy v0.1.6.6 Review
+
+on:
+  push:
+    branches:
+      - v0.1.6.6
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-preview-v0166-review
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          find src/js -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --check src/service-worker.js
+
+      - name: v0.1.6.6 review consistency checks
+        shell: bash
+        run: |
+          grep -q "version: '0.1.6.6'" src/config/app-config.js
+          grep -q "revision: 'r1'" src/config/app-config.js
+          grep -q "mode: 'review'" src/config/app-config.js
+          grep -q '"version": "0.1.6.6"' src/version.json
+          grep -q '"revision": "r1"' src/version.json
+          grep -q "chousa-app-v0.1.6.6-r1" src/service-worker.js
+          grep -q "finish-table-refresh-guard.js" src/service-worker.js
+          grep -q "finish-table-scroll-state.js" src/service-worker.js
+          grep -q "photo-refresh-policy.js" src/service-worker.js
+          grep -q "photo-view-model.js" src/service-worker.js
+          grep -q "networkFirstAppRequest" src/service-worker.js
+          grep -q "SKIP_WAITING" src/service-worker.js src/js/pwa/pwa-controller.js
+          if grep -R "scheduleStoreRender" -n src/js/photos; then
+            echo "obsolete photo store-render path remains"
+            exit 1
+          fi
+          if grep -R "hydrateCurrentPhotoPreviews().then(render)" -n src/js/photos; then
+            echo "obsolete preview full-render path remains"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Deploy to Firebase Hosting review channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+          projectId: odako-chousa-system-pwa
+          channelId: v0163a
+          expires: 30d
