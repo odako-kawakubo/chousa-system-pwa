@@ -1,8 +1,8 @@
 /**
  * 独立トップ/案件サイドパネルの「既存案件を開く」OneDrive側。
  * OneDrive業務ルートはonedrive-connectionの正本のみを使用する。
- * 案件番号・案件名はOneDrive案件フォルダ名を正本とし、案件Excelは住所等の補完にだけ使用する。
- * Excelが見つからない/読めない場合でも、案件フォルダからFirestore案件を開ける。
+ * 案件番号・案件名はOneDrive案件フォルダ名を正本とする。
+ * v0.1.7.1では案件Excelの読取成立を確認するため、Excel読取失敗を握りつぶさない。
  */
 import { listDriveChildren } from '../onedrive/onedrive-client.js';
 import { getUsableSurveyRoot, getOneDriveConnectionState } from '../onedrive/onedrive-connection.js';
@@ -143,16 +143,34 @@ function bindOneDrive(projectId, folder, excelInfo = null) {
   });
 }
 
-async function tryReadProjectExcel(folder) {
+function excelReadErrorMessage(folder, error) {
+  const code = error?.code ? ` [${error.code}]` : '';
+  return `Excel読取失敗${code}: ${error?.message || '原因を確認できませんでした。'}\n対象案件: ${folder.projectNo}　${folder.projectName}`;
+}
+
+async function readRequiredProjectExcel(folder, loadingToken) {
+  updateLoading(loadingToken, '案件Excelを読み取っています…');
+  setStatus('案件Excelを読み取っています…');
   try {
-    return await readProjectExcelInfo(folder, folder.projectNo);
+    const excelInfo = await readProjectExcelInfo(folder, folder.projectNo);
+    console.info('案件Excel読取成功', {
+      projectNo: folder.projectNo,
+      excelFileName: excelInfo.excelFileName,
+      F2: excelInfo.projectNo,
+      K2: excelInfo.projectName,
+      L2: excelInfo.address
+    });
+    setStatus(`Excel読取成功: ${excelInfo.excelFileName} / 入力!F2=${excelInfo.projectNo} / K2=${excelInfo.projectName} / L2=${excelInfo.address || '(空)'}`);
+    return excelInfo;
   } catch (error) {
-    console.warn('案件Excelを読めないため、OneDrive案件フォルダ情報で続行します。', {
+    console.error('案件Excel読取失敗', {
       projectNo: folder.projectNo,
       projectName: folder.projectName,
-      message: error?.message || String(error)
+      code: error?.code || '',
+      message: error?.message || String(error),
+      error
     });
-    return null;
+    throw new Error(excelReadErrorMessage(folder, error), { cause: error });
   }
 }
 
@@ -164,18 +182,16 @@ async function openFolder(folderId) {
   setStatus('案件情報を確認しています…');
 
   try {
-    // 案件番号・案件名はOneDrive案件フォルダ名を正本とする。
-    // Excelは住所等の補完だけに使い、失敗しても案件を開く処理を止めない。
-    const excelInfo = await tryReadProjectExcel(folder);
+    // v0.1.7.1ではExcel読取を必須確認とする。
+    // 読めなかった場合は案件を開いて先へ進まず、失敗理由をモーダル上に残す。
+    const excelInfo = await readRequiredProjectExcel(folder, loadingToken);
     const projectInfo = {
       projectNo: folder.projectNo,
       projectName: folder.projectName,
-      address: excelInfo?.address || ''
+      address: excelInfo.address || ''
     };
 
     updateLoading(loadingToken, 'Firestoreの調査データを確認しています…');
-    setStatus('Firestoreの調査データを確認しています…');
-
     const firestoreProjects = await readFirestoreProjectList();
     let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === projectInfo.projectNo) || null;
 
