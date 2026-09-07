@@ -43,6 +43,11 @@ function refreshDerivedFinishInputIds() {
   if (changed) finishRecordStore.replaceAll(next, { notify: false });
 }
 
+/**
+ * 案件を開く時だけ使う全画面初期反映。
+ * リアルタイム同期では refreshProjectViewsForChanges() を使い、
+ * 関係のないタブまで再描画しない。
+ */
 export function refreshOpenProjectSessionViews() {
   refreshDerivedFinishInputIds();
   refreshFinishTableFromStores();
@@ -51,6 +56,40 @@ export function refreshOpenProjectSessionViews() {
   refreshRecordView();
   refreshPhotoTab();
   refreshSettingsTab();
+}
+
+/**
+ * Firestoreのリアルタイム変更を、影響する画面だけへ反映する。
+ * Recordの受信・Store更新そのものはproject-controller.jsで完了済みとし、
+ * ここではDOM更新の振り分けだけを担当する。
+ *
+ * photoRecordの通常追加/更新はphotoRecordStore自身のsubscribeで写真タブへ反映されるため、
+ * ここから同じrenderを重ねない。finish/material変更が写真ViewModelの構造・表示に
+ * 影響する場合だけrefreshPhotoTab()を明示する。
+ */
+export function refreshProjectViewsForChanges(impact = {}) {
+  const finish = impact.finish || {};
+  const material = impact.material || {};
+  const photo = impact.photo || {};
+
+  if (material.changed) refreshDerivedFinishInputIds();
+
+  if (finish.changed || material.finishView) {
+    refreshFinishTableFromStores();
+  }
+
+  if (finish.materialView || material.changed) {
+    refreshMaterialList();
+    refreshMaterialOperations();
+  }
+
+  if (finish.changed || material.changed || photo.changed) {
+    refreshRecordView();
+  }
+
+  if (finish.photoVisual || material.photoVisual || material.photoSampling || photo.forceRefresh) {
+    refreshPhotoTab();
+  }
 }
 
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
