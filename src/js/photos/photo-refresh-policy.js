@@ -17,25 +17,22 @@ function currentPhotoMode() {
 function photosTabIsActive() {
   const section = document.getElementById('photos');
   if (!section) return false;
-  if (section.hidden) return false;
-  if (section.classList.contains('active')) return true;
   const activeTab = document.querySelector('.tabs .tab[data-tab="photos"].active');
   return Boolean(activeTab);
 }
 
 /**
  * 写真タブを開いた瞬間は、裏で省略していた更新があっても最新Storeから再構築する。
- * これにより、非表示中は無駄に描画せず、表示時の古い画面も残さない。
+ * タブボタンへ個別listenerは張らず、tabs.jsが発行する共通tab-changeだけを購読する。
  */
 export function initializePhotoRefreshOnTabActivation() {
   if (tabActivationBound) return;
   tabActivationBound = true;
 
-  document.querySelectorAll('.tabs .tab[data-tab]').forEach((button) => {
-    button.addEventListener('click', () => {
-      if (button.dataset.tab !== 'photos') return;
-      queueMicrotask(() => refreshPhotoTab());
-    });
+  window.addEventListener('chousa:tab-change', (event) => {
+    const currentTab = String(event.detail?.currentTab || '');
+    if (currentTab !== 'photos') return;
+    refreshPhotoTab();
   });
 }
 
