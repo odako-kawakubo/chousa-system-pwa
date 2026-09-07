@@ -12,6 +12,7 @@
  * - 外部同期の描画判定はphoto-refresh-policyへ一本化する。
  * - ローカル写真操作は、その操作自身が必要な描画を明示的に行う。
  * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
+ * - 案件切替時に写真UIの選択・開閉・スクロール・プレビューURLをリセットする。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -47,6 +48,7 @@ const state = {
 const localPreviewUrls = new Map();
 const remoteThumbnailUrls = new Map();
 const remoteThumbnailFetches = new Map();
+let previewSessionId = 0;
 const SAMPLE_STAGE_ORDER = [
   SHOOTING_TYPES.BEFORE,
   SHOOTING_TYPES.DURING,
@@ -170,6 +172,12 @@ function revokePreviewUrl(map, photoId) {
   map.delete(photoId);
 }
 
+function clearPreviewUrls() {
+  for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
+    [...map.keys()].forEach((photoId) => revokePreviewUrl(map, photoId));
+  }
+}
+
 function setLocalPreview(photoId, blob) {
   if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
   revokePreviewUrl(localPreviewUrls, photoId);
@@ -189,14 +197,18 @@ async function ensureRemoteThumbnail(photo) {
   if (!photoId || photo.deleted || localPreviewUrls.has(photoId) || remoteThumbnailUrls.has(photoId)) return;
   if (!hasRemoteCompletedPhoto(photo) || remoteThumbnailFetches.has(photoId)) return;
 
+  const sessionId = previewSessionId;
   const fetchPromise = fetchRemotePhotoThumbnail(photo)
     .then((blob) => {
+      if (sessionId !== previewSessionId) return;
       if (!(blob instanceof Blob) || !photoById(photoId) || localPreviewUrls.has(photoId)) return;
       setRemoteThumbnail(photoId, blob);
       hydrateThumbnailImages();
     })
     .catch(() => undefined)
-    .finally(() => remoteThumbnailFetches.delete(photoId));
+    .finally(() => {
+      if (sessionId === previewSessionId) remoteThumbnailFetches.delete(photoId);
+    });
 
   remoteThumbnailFetches.set(photoId, fetchPromise);
   await fetchPromise;
@@ -319,7 +331,6 @@ async function addPickedFiles(fileList) {
     await persistPhoto(stored);
   }
 
-  // 汎用Store subscribeは使わず、このローカル操作自身が1回だけ描画する。
   render();
 }
 
@@ -386,12 +397,8 @@ async function registerCameraPreview({ record, completedBlob }, { renderAfter = 
   if (renderAfter) render();
 }
 
-/**
- * 現在案件の写真プレビューURLを復元する。
- * ここではViewModel/一覧構造を作り直さない。画像URLが増えた後は
- * hydrateThumbnailImages()だけで既存DOMへ差し込む。
- */
 async function hydrateCurrentPhotoPreviews() {
+  const sessionId = previewSessionId;
   try {
     const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
     for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
@@ -401,8 +408,10 @@ async function hydrateCurrentPhotoPreviews() {
     }
 
     for (const record of photoRecordStore.getAll()) {
+      if (sessionId !== previewSessionId) return;
       if (localPreviewUrls.has(record.photoId)) continue;
       const blob = await getPhotoBlob(record.photoId, 'completed');
+      if (sessionId !== previewSessionId) return;
       if (blob && typeof URL.createObjectURL === 'function') {
         setLocalPreview(record.photoId, blob);
         continue;
@@ -448,8 +457,7 @@ function photosForViewer(photoId) {
         ))
       : photoRecordStore.findVisual({ areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot });
 
-    return photos
-      .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
+    return photos.sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
   }
 
   const samplingPhotos = isSamplingPhotoUnorganized(photo)
@@ -460,12 +468,11 @@ function photosForViewer(photoId) {
       ))
     : photoRecordStore.findSampling({ materialId: photo.materialId, samplingBranch: photo.samplingBranch });
 
-  return samplingPhotos
-    .sort((a, b) => {
-      const stageDiff = SAMPLE_STAGE_ORDER.indexOf(a.shootingType) - SAMPLE_STAGE_ORDER.indexOf(b.shootingType);
-      if (stageDiff) return stageDiff;
-      return String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId));
-    });
+  return samplingPhotos.sort((a, b) => {
+    const stageDiff = SAMPLE_STAGE_ORDER.indexOf(a.shootingType) - SAMPLE_STAGE_ORDER.indexOf(b.shootingType);
+    if (stageDiff) return stageDiff;
+    return String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId));
+  });
 }
 
 function demoPreviewSource(photo) {
@@ -480,10 +487,8 @@ function demoPreviewSource(photo) {
 function previewSourceForPhoto(photo) {
   const local = localPreviewUrls.get(photo.photoId);
   if (local) return local;
-
   const demo = demoPreviewSource(photo);
   if (demo) return demo;
-
   return remoteThumbnailUrls.get(photo.photoId) || '';
 }
 
@@ -557,10 +562,7 @@ async function deleteSelectedPhotos(photoIds) {
     if (Boolean(previous?.deleted) !== Boolean(record.deleted)) fields.push('deleted');
     if (Boolean(previous?.isRepresentative) !== Boolean(record.isRepresentative)) fields.push('isRepresentative');
     if (!fields.length) return;
-    const next = photoRecordStore.set({
-      ...record,
-      fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields)
-    });
+    const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields) });
     changed.push(next);
   });
 
@@ -682,10 +684,7 @@ function bindEvents() {
       photoRecordStore.getAll().forEach((record) => {
         const previous = before.get(record.photoId);
         if (Boolean(previous?.isRepresentative) === Boolean(record.isRepresentative)) return;
-        const next = photoRecordStore.set({
-          ...record,
-          fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative')
-        });
+        const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative') });
         changed.push(next);
       });
       render();
@@ -789,10 +788,34 @@ function compareTargetsForViewer(context = {}) {
   });
 }
 
-/**
- * 写真タブ全体の明示refresh入口。
- * まず構造を1回描画し、その後のプレビュー復元は既存DOMの画像だけを更新する。
- */
+/** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
+export function resetPhotoUiStateForProject() {
+  previewSessionId += 1;
+  remoteThumbnailFetches.clear();
+  clearPreviewUrls();
+
+  state.mode = 'visual';
+  state.selectedRoomUid = '';
+  state.selectedMaterialId = '';
+  state.openVisualKeys = new Set();
+  state.openSamplingKeys = new Set();
+  state.collapsedLocationGroups = new Set();
+  state.pendingImportContext = null;
+  state.listScrollTop = { visual: 0, sampling: 0 };
+  state.reviewScrollTop = { visual: 0, sampling: 0 };
+  state.selectionMode = null;
+  state.selectedPhotoIds = new Set();
+  renderedMode = 'visual';
+
+  // 新案件のStoreが入った後に呼ばれるため、先頭部屋/先頭建材をここで確定する。
+  // 目視ViewModelは選択UIDを1度明示して、同期再構築用の安定部屋キーも新案件へ更新する。
+  const visual = buildVisualPhotoView('');
+  state.selectedRoomUid = visual.activeRoom?.roomUid || '';
+  if (state.selectedRoomUid) buildVisualPhotoView(state.selectedRoomUid);
+  const sampling = buildSamplingPhotoView('');
+  state.selectedMaterialId = sampling.activeMaterial?.materialId || '';
+}
+
 export function refreshPhotoTab() {
   render();
   void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
