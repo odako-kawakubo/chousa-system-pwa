@@ -8,6 +8,10 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject, saveProjectSnapshot, setCurrentProject, formatProjectLabel } from './project-store.js';
 import { setProject } from '../finish-table/finish-table-state.js';
 import { refreshFinishTableFromStores, resetFinishTableForProject } from '../finish-table/finish-table-controller.js';
+import {
+  requestFinishTableExternalRefresh,
+  resetFinishTableExternalRefresh
+} from '../finish-table/finish-table-refresh-guard.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
@@ -63,6 +67,9 @@ export function refreshOpenProjectSessionViews() {
  * Recordの受信・Store更新そのものはproject-controller.jsで完了済みとし、
  * ここではDOM更新の振り分けだけを担当する。
  *
+ * 仕上表は入力中DOMを守るため、外部同期由来の再描画だけrefresh guardを通す。
+ * Store更新やFirestore送受信は止めず、編集終了後に最新Storeから1回だけ描画する。
+ *
  * photoRecordの通常追加/更新はphotoRecordStore自身のsubscribeで写真タブへ反映されるため、
  * ここから同じrenderを重ねない。finish/material変更が写真ViewModelの構造・表示に
  * 影響する場合だけrefreshPhotoTab()を明示する。
@@ -75,7 +82,7 @@ export function refreshProjectViewsForChanges(impact = {}) {
   if (material.changed) refreshDerivedFinishInputIds();
 
   if (finish.changed || material.finishView) {
-    refreshFinishTableFromStores();
+    requestFinishTableExternalRefresh(refreshFinishTableFromStores);
   }
 
   if (finish.materialView || material.changed) {
@@ -95,6 +102,9 @@ export function refreshProjectViewsForChanges(impact = {}) {
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
+  // 旧案件で保留中だった外部描画要求を、新案件へ持ち越さない。
+  resetFinishTableExternalRefresh();
+
   finishRecordStore.replaceAll(finishRecords, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
@@ -113,6 +123,7 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
 
 export function closeProjectSession() {
   saveCurrentProjectSession();
+  resetFinishTableExternalRefresh();
   setCurrentProject(null);
   const header = document.getElementById('caseHeaderTitle');
   if (header) header.textContent = '案件未選択';
