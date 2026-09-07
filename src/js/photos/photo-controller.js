@@ -4,7 +4,7 @@
  * 写真タブの状態・イベント・photoRecordStore更新を担当する。
  * v0.1.6.5Lでは他端末写真の表示経路を追加する。
  * - サムネイルはOneDriveの軽量サムネイルを自動取得する。
- * - 拡大時だけ完成画像本体を取得し、IndexedDBへ保持する。
+ * - Viewer表示時だけ完成画像本体を取得し、IndexedDBへ保持する。
  * - 一度取得した完成画像は以後ローカル表示を優先する。
  *
  * v0.1.6.6:
@@ -13,6 +13,7 @@
  * - ローカル写真操作は、その操作自身が必要な描画を明示的に行う。
  * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
  * - 案件切替時に写真UIの選択・開閉・スクロール・プレビューURLをリセットする。
+ * - Viewerの完成画像解決はphoto-viewer/photo-viewer-sourceへ一本化する。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -23,8 +24,8 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, saveCapturedPhoto, saveRemoteCompletedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
-import { fetchRemoteCompletedPhoto, fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
+import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
+import { fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -492,36 +493,6 @@ function previewSourceForPhoto(photo) {
   return remoteThumbnailUrls.get(photo.photoId) || '';
 }
 
-async function openViewerForThumb(photoId) {
-  const photo = photoById(photoId);
-  if (!photo || photo.deleted) return;
-
-  let completedBlob = await getPhotoBlob(photoId, 'completed');
-  if (!completedBlob && hasRemoteCompletedPhoto(photo)) {
-    try {
-      completedBlob = await fetchRemoteCompletedPhoto(photo);
-      if (completedBlob instanceof Blob) {
-        await saveRemoteCompletedPhoto({
-          record: photo,
-          blob: completedBlob,
-          projectId: String(getCurrentProject()?.projectId || '')
-        });
-        setLocalPreview(photoId, completedBlob);
-        hydrateThumbnailImages();
-      }
-    } catch (error) {
-      console.warn('他端末写真の完成画像取得に失敗しました', { photoId, error });
-      window.alert('写真本体を取得できませんでした。通信状態を確認してもう一度お試しください。');
-      return;
-    }
-  } else if (completedBlob && !localPreviewUrls.has(photoId)) {
-    setLocalPreview(photoId, completedBlob);
-    hydrateThumbnailImages();
-  }
-
-  openPhotoViewer(photoId);
-}
-
 async function startEditSequence(photoIds) {
   const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
   clearSelectionMode();
@@ -614,7 +585,7 @@ function bindEvents() {
 
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
-      void openViewerForThumb(expandButton.dataset.photoExpand || '');
+      openPhotoViewer(expandButton.dataset.photoExpand || '');
       return;
     }
 
@@ -807,8 +778,6 @@ export function resetPhotoUiStateForProject() {
   state.selectedPhotoIds = new Set();
   renderedMode = 'visual';
 
-  // 新案件のStoreが入った後に呼ばれるため、先頭部屋/先頭建材をここで確定する。
-  // 目視ViewModelは選択UIDを1度明示して、同期再構築用の安定部屋キーも新案件へ更新する。
   const visual = buildVisualPhotoView('');
   state.selectedRoomUid = visual.activeRoom?.roomUid || '';
   if (state.selectedRoomUid) buildVisualPhotoView(state.selectedRoomUid);
