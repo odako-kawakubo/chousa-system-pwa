@@ -9,6 +9,7 @@
  * - 他タブへ移動しても値を保持する。
  * - 仕上表タブへ戻った時、同じ位置へ復元する。
  * - 案件切替時は旧案件の位置を引き継がない。
+ * - DOMの再取得時は旧hostのscroll listenerを外し、常に1本だけ保持する。
  */
 
 let scrollTop = 0;
@@ -26,14 +27,27 @@ function rememberFromHost(host = currentHost()) {
   scrollLeft = Number(host.scrollLeft || 0);
 }
 
+function handleHostScroll(event) {
+  rememberFromHost(event.currentTarget);
+}
+
+function unbindHostScroll() {
+  if (!boundHost) return;
+  boundHost.removeEventListener('scroll', handleHostScroll);
+  boundHost = null;
+}
+
 function bindHostScroll() {
   const host = currentHost();
-  if (!host || host === boundHost) return;
+  if (!host) {
+    unbindHostScroll();
+    return;
+  }
+  if (host === boundHost) return;
 
+  unbindHostScroll();
   boundHost = host;
-  host.addEventListener('scroll', () => {
-    rememberFromHost(host);
-  }, { passive: true });
+  boundHost.addEventListener('scroll', handleHostScroll, { passive: true });
 }
 
 function restoreToHost() {
@@ -43,6 +57,7 @@ function restoreToHost() {
 
   // タブ表示切替後のlayout確定を待ってから復元する。
   requestAnimationFrame(() => {
+    bindHostScroll();
     const liveHost = currentHost();
     if (!liveHost) return;
     liveHost.scrollTop = scrollTop;
@@ -73,7 +88,7 @@ export function initializeFinishTableScrollState() {
 export function resetFinishTableScrollState() {
   scrollTop = 0;
   scrollLeft = 0;
-  boundHost = null;
+  unbindHostScroll();
   bindHostScroll();
 }
 
