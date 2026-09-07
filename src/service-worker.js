@@ -1,12 +1,12 @@
 /*
- * v0.1.6.5 Service Worker
+ * v0.1.6.6 Service Worker
  *
  * 責任は「最新版を優先しつつ、圏外では直近キャッシュから起動できる状態を保つ」こと。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.6.5-r1';
+const APP_CACHE = 'chousa-app-v0.1.6.6-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -43,6 +43,7 @@ const APP_SHELL = [
   './js/ui/sync-ui.js',
   './js/ui/loading-ui.js',
   './js/ui/modal.js',
+  './js/ui/tabs.js',
   './js/firestore/firestore-repository.js',
   './js/firestore/firestore-project-list.js',
   './js/firestore/record-serializer.js',
@@ -59,6 +60,8 @@ const APP_SHELL = [
   './js/projects/firestore-project-browser.js',
   './js/projects/onedrive-project-browser.js',
   './js/projects/project-transfer.js',
+  './js/finish-table/finish-table-refresh-guard.js',
+  './js/finish-table/finish-table-scroll-state.js',
   './js/onedrive/onedrive-client.js',
   './js/onedrive/onedrive-root.js',
   './js/onedrive/onedrive-connection.js',
@@ -73,6 +76,8 @@ const APP_SHELL = [
   './js/photos/photo-onedrive-sync.js',
   './js/photos/photo-remote-reader.js',
   './js/photos/photo-controller.js',
+  './js/photos/photo-refresh-policy.js',
+  './js/photos/photo-view-model.js',
   './js/photos/photo-viewer.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
