@@ -1,4 +1,4 @@
-name: Deploy v0.1.6.6 Review
+name: Validate v0.1.6.6 Stable
 
 on:
   push:
@@ -26,15 +26,15 @@ jobs:
           find src/js -name '*.js' -print0 | xargs -0 -n1 node --check
           node --check src/service-worker.js
 
-      - name: v0.1.6.6 review consistency checks
+      - name: v0.1.6.6 stable consistency checks
         shell: bash
         run: |
           grep -q "version: '0.1.6.6'" src/config/app-config.js
-          grep -q "revision: 'r2'" src/config/app-config.js
-          grep -q "mode: 'review'" src/config/app-config.js
+          grep -q "revision: ''" src/config/app-config.js
+          grep -q "mode: 'stable'" src/config/app-config.js
           grep -q '"version": "0.1.6.6"' src/version.json
-          grep -q '"revision": "r2"' src/version.json
-          grep -q "chousa-app-v0.1.6.6-r2" src/service-worker.js
+          grep -q '"revision": ""' src/version.json
+          grep -q "chousa-app-v0.1.6.6-stable" src/service-worker.js
           grep -q "finish-table-refresh-guard.js" src/service-worker.js
           grep -q "finish-table-scroll-state.js" src/service-worker.js
           grep -q "photo-refresh-policy.js" src/service-worker.js
@@ -43,6 +43,10 @@ jobs:
           grep -q "resolveViewerCompletedPhoto" src/js/photos/photo-viewer.js src/js/photos/photo-viewer-source.js
           grep -q "networkFirstAppRequest" src/service-worker.js
           grep -q "SKIP_WAITING" src/service-worker.js src/js/pwa/pwa-controller.js
+          if grep -R "openViewerForThumb" -n src/js/photos; then
+            echo "legacy viewer preload path remains"
+            exit 1
+          fi
           if grep -R "scheduleStoreRender" -n src/js/photos; then
             echo "obsolete photo store-render path remains"
             exit 1
@@ -59,7 +63,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Deploy to Firebase Hosting review channel
+      - name: Deploy stable candidate to Firebase Hosting review channel
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
