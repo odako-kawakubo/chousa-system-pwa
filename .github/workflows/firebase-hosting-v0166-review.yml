@@ -30,15 +30,17 @@ jobs:
         shell: bash
         run: |
           grep -q "version: '0.1.6.6'" src/config/app-config.js
-          grep -q "revision: 'r1'" src/config/app-config.js
+          grep -q "revision: 'r2'" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.6.6"' src/version.json
-          grep -q '"revision": "r1"' src/version.json
-          grep -q "chousa-app-v0.1.6.6-r1" src/service-worker.js
+          grep -q '"revision": "r2"' src/version.json
+          grep -q "chousa-app-v0.1.6.6-r2" src/service-worker.js
           grep -q "finish-table-refresh-guard.js" src/service-worker.js
           grep -q "finish-table-scroll-state.js" src/service-worker.js
           grep -q "photo-refresh-policy.js" src/service-worker.js
           grep -q "photo-view-model.js" src/service-worker.js
+          grep -q "photo-viewer-source.js" src/service-worker.js
+          grep -q "resolveViewerCompletedPhoto" src/js/photos/photo-viewer.js src/js/photos/photo-viewer-source.js
           grep -q "networkFirstAppRequest" src/service-worker.js
           grep -q "SKIP_WAITING" src/service-worker.js src/js/pwa/pwa-controller.js
           if grep -R "scheduleStoreRender" -n src/js/photos; then
