@@ -6,6 +6,7 @@
  * 方針：
  * - 正本は materialRecordStore / finishRecordStore / photoRecordStore。
  * - 複数Store更新は runRecordTransaction() 内で1つの業務操作として完成させる。
+ * - 重要操作の完成直後に3Storeの現在形をproject-storeへ即Snapshot保存し、再起動耐性を持たせる。
  * - Firestoreへは途中状態を送らず、業務操作完了後の最終差分をRecordごとに1回だけ送る。
  * - 業務操作は、最終差分の各保存要求が「Firestore保存済み」または「未送信キュー登録済み」まで到達してから完了扱いにする。
  * - 統合元／削除元レコードは物理削除せず履歴として保持する。
@@ -23,7 +24,7 @@ import {
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
-import { getCurrentProject } from '../projects/project-store.js';
+import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
   persistFinishForProject,
@@ -73,6 +74,22 @@ function captureOperationSnapshot() {
     materialRecords: materialRecordStore.exportSnapshot(),
     photoRecords: photoRecordStore.exportSnapshot()
   };
+}
+
+/**
+ * 削除・統合・再登録のような複数Record重要操作は、Firestore保存より先に
+ * 完成済み3Storeを端末Snapshotへ即保存する。
+ * 通常の1セル編集までproject-store保存へ寄せる意図ではない。
+ */
+function saveOperationLocalSnapshot(source) {
+  const project = getCurrentProject();
+  if (!project?.projectId) return null;
+  const snapshot = captureOperationSnapshot();
+  return saveProjectSnapshot({
+    project,
+    ...snapshot,
+    source: `${source}-local-snapshot`
+  });
 }
 
 function isPersistenceSettled(result) {
@@ -356,6 +373,7 @@ export async function mergeMaterials(targetId, sourceIds) {
     resequenceActiveMaterials();
   });
 
+  saveOperationLocalSnapshot('material-merge-final');
   const persisted = await persistOperationSnapshotDiff(before, 'material-merge-final');
   return { targetId, sourceIds: sources.map((source) => source.materialId), persisted };
 }
@@ -393,6 +411,7 @@ export async function deleteMaterials(materialIds) {
     resequenceActiveMaterials();
   });
 
+  saveOperationLocalSnapshot('material-delete-final');
   const persisted = await persistOperationSnapshotDiff(before, 'material-delete-final');
   return { deletedIds: targets.map((target) => target.materialId), persisted };
 }
@@ -456,6 +475,7 @@ export async function reregisterDeletedMaterial(sourceMaterialId, insertPosition
     created = materialRecordStore.get(materialId) || created;
   });
 
+  saveOperationLocalSnapshot('material-reregister-final');
   const persisted = await persistOperationSnapshotDiff(before, 'material-reregister-final');
   return { material: created, sourceMaterialId: source.materialId, insertPosition: position, persisted };
 }
