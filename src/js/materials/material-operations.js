@@ -7,6 +7,7 @@
  * - 正本は materialRecordStore / finishRecordStore / photoRecordStore。
  * - 複数Store更新は runRecordTransaction() 内で1つの業務操作として完成させる。
  * - Firestoreへは途中状態を送らず、業務操作完了後の最終差分をRecordごとに1回だけ送る。
+ * - 業務操作は、最終差分の各保存要求が「Firestore保存済み」または「未送信キュー登録済み」まで到達してから完了扱いにする。
  * - 統合元／削除元レコードは物理削除せず履歴として保持する。
  * - 削除済み建材の「再登録」は旧Recordをactiveへ戻さず、新しいmaterialId/inputIdで新規作成する。
  * - 再登録では仕上表・写真の旧紐付けは復元しない。
@@ -74,30 +75,55 @@ function captureOperationSnapshot() {
   };
 }
 
+function isPersistenceSettled(result) {
+  return Boolean(result?.ok || result?.queued || result?.skipped);
+}
+
 /**
  * ローカルtransaction完成後の最終差分だけを既存1Record保存経路へ送る。
  * 統合・削除の途中で生じる派生値や再採番途中のRecordは送らない。
+ *
+ * 各保存Promiseを最後まで待ち、Firestore保存成功または未送信キュー登録済みを
+ * 確認してから業務操作を完了させる。保存経路がどちらにも到達しなかった場合は失敗扱い。
  */
-function persistOperationSnapshotDiff(before, source) {
+async function persistOperationSnapshotDiff(before, source) {
   const project = getCurrentProject();
   const finishChanges = changedRecords(before.finishRecords, finishRecordStore.exportSnapshot(), 'finishId');
   const materialChanges = changedRecords(before.materialRecords, materialRecordStore.exportSnapshot(), 'materialId');
   const photoChanges = changedRecords(before.photoRecords, photoRecordStore.exportSnapshot(), 'photoId');
 
-  finishChanges.forEach((record) => {
-    void persistFinishForProject(project, record, `${source}-finish`);
-  });
-  materialChanges.forEach((record) => {
-    void persistMaterialForProject(project, record, `${source}-material`);
-  });
-  photoChanges.forEach((record) => {
-    void persistPhotoForProject(project, record, `${source}-photo`);
-  });
+  const tasks = [
+    ...finishChanges.map(async (record) => ({
+      recordType: 'finish',
+      recordId: record.finishId,
+      result: await persistFinishForProject(project, record, `${source}-finish`)
+    })),
+    ...materialChanges.map(async (record) => ({
+      recordType: 'material',
+      recordId: record.materialId,
+      result: await persistMaterialForProject(project, record, `${source}-material`)
+    })),
+    ...photoChanges.map(async (record) => ({
+      recordType: 'photo',
+      recordId: record.photoId,
+      result: await persistPhotoForProject(project, record, `${source}-photo`)
+    }))
+  ];
+
+  const settled = await Promise.all(tasks);
+  const unresolved = settled.filter((entry) => !isPersistenceSettled(entry.result));
+  if (unresolved.length) {
+    const detail = unresolved.map((entry) => `${entry.recordType}:${entry.recordId}`).join(', ');
+    throw new Error(`建材操作の保存状態を確定できませんでした。${detail}`);
+  }
 
   return {
     finishCount: finishChanges.length,
     materialCount: materialChanges.length,
-    photoCount: photoChanges.length
+    photoCount: photoChanges.length,
+    queuedCount: settled.filter((entry) => entry.result?.queued).length,
+    savedCount: settled.filter((entry) => entry.result?.ok && !entry.result?.skipped).length,
+    skippedCount: settled.filter((entry) => entry.result?.skipped).length
   };
 }
 
@@ -131,9 +157,7 @@ export function getDeletedMaterialsForOperations() {
     });
 }
 
-/**
- * 使用中の仕上表箇所（部屋No.）を重複なしで返す。
- */
+/** 使用中の仕上表箇所（部屋No.）を重複なしで返す。 */
 export function getMaterialUsagePlaces(materialId) {
   const places = [];
   finishRecordStore.getAll().forEach((record) => {
@@ -171,9 +195,7 @@ function mergeSurveyNotes(targetNote, sourceNote) {
   return lines.join('\n');
 }
 
-/**
- * 建材統合で採取写真を未整理へ戻す前に、失われる採取情報をシステムメモへ残す。
- */
+/** 建材統合で採取写真を未整理へ戻す前に、失われる採取情報をシステムメモへ残す。 */
 function buildMergedPhotoMemo(photo, sourceMaterialId, targetMaterialId) {
   const shootingCode = ({
     [SHOOTING_TYPES.BEFORE]: '1',
@@ -268,10 +290,8 @@ function shiftMaterialsForInsert(position) {
   });
 }
 
-/**
- * 複数建材を1つの統合先へ統合する。
- */
-export function mergeMaterials(targetId, sourceIds) {
+/** 複数建材を1つの統合先へ統合する。 */
+export async function mergeMaterials(targetId, sourceIds) {
   const target = materialRecordStore.get(targetId);
   if (!target || target.status !== 'active') throw new Error('統合先の建材を取得できません。');
 
@@ -332,19 +352,16 @@ export function mergeMaterials(targetId, sourceIds) {
       systemMemo: nextTarget.systemMemo
     }, ['note', 'systemMemo'], updatedAt);
 
-    // 派生値はローカルで完成させる。Firestore保存はoperation最終差分へ一本化する。
     refreshMaterialUsageDerivedFields('material-merge-recalc', { persist: false });
     resequenceActiveMaterials();
   });
 
-  const persisted = persistOperationSnapshotDiff(before, 'material-merge-final');
+  const persisted = await persistOperationSnapshotDiff(before, 'material-merge-final');
   return { targetId, sourceIds: sources.map((source) => source.materialId), persisted };
 }
 
-/**
- * 建材を削除状態へする。写真レコードは触らず保持する。
- */
-export function deleteMaterials(materialIds) {
+/** 建材を削除状態へする。写真レコードは触らず保持する。 */
+export async function deleteMaterials(materialIds) {
   const uniqueIds = [...new Set(materialIds || [])].filter(Boolean);
   const targets = uniqueIds
     .map((id) => materialRecordStore.get(id))
@@ -376,7 +393,7 @@ export function deleteMaterials(materialIds) {
     resequenceActiveMaterials();
   });
 
-  const persisted = persistOperationSnapshotDiff(before, 'material-delete-final');
+  const persisted = await persistOperationSnapshotDiff(before, 'material-delete-final');
   return { deletedIds: targets.map((target) => target.materialId), persisted };
 }
 
@@ -388,7 +405,7 @@ export function deleteMaterials(materialIds) {
  * - 採取済み/採取日/試料名称/分析結果/分析後備考は履歴実績なので引き継がない。
  * - 仕上表・写真は触らない。
  */
-export function reregisterDeletedMaterial(sourceMaterialId, insertPosition) {
+export async function reregisterDeletedMaterial(sourceMaterialId, insertPosition) {
   const source = materialRecordStore.get(sourceMaterialId);
   if (!source || source.status !== 'deleted') throw new Error('削除済み建材を取得できません。');
 
@@ -439,6 +456,6 @@ export function reregisterDeletedMaterial(sourceMaterialId, insertPosition) {
     created = materialRecordStore.get(materialId) || created;
   });
 
-  const persisted = persistOperationSnapshotDiff(before, 'material-reregister-final');
+  const persisted = await persistOperationSnapshotDiff(before, 'material-reregister-final');
   return { material: created, sourceMaterialId: source.materialId, insertPosition: position, persisted };
 }
