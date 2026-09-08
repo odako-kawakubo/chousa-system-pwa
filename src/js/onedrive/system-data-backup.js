@@ -74,7 +74,7 @@ function pad2(value) {
 }
 
 function timestampToken(date = new Date()) {
-  return `${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}`;
+  return `${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`;
 }
 
 function generationPrefix(date = new Date()) {
@@ -125,12 +125,17 @@ function canUseOneDriveBackup() {
   );
 }
 
+function isGenerationJsonName(name, deviceCode = getDeviceCode()) {
+  const escaped = deviceCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 旧形式 MMDD-HHmm と 6.7以降 MMDD-HHmmss の両方を認識する。
+  return new RegExp(`^sd_${escaped}_\\d{4}-\\d{4}(?:\\d{2})?\\.json$`).test(String(name || ''));
+}
+
 async function trimOldGenerations(folderRef) {
   const deviceCode = getDeviceCode();
-  const pattern = new RegExp(`^sd_${deviceCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_\\d{4}-\\d{4}\\.json$`);
   const items = await listDriveChildren(folderRef);
   const jsonItems = items
-    .filter((item) => item.file && pattern.test(String(item.name || '')))
+    .filter((item) => item.file && isGenerationJsonName(item.name, deviceCode))
     .sort((a, b) => {
       const at = Date.parse(a.createdDateTime || a.lastModifiedDateTime || '') || 0;
       const bt = Date.parse(b.createdDateTime || b.lastModifiedDateTime || '') || 0;
@@ -155,10 +160,11 @@ async function saveGeneration(payload) {
   if (!folderRef) throw new Error('この案件のOneDrive保存先を確認できません。');
 
   const prefix = generationPrefix();
+  const savedAt = new Date().toISOString();
   const json = JSON.stringify({
     ...payload,
     systemData: {
-      savedAt: new Date().toISOString(),
+      savedAt,
       deviceCode: getDeviceCode(),
       generation: prefix
     }
@@ -182,7 +188,7 @@ async function saveCurrentSystemData({ requireChange = true } = {}) {
 
   const signature = payloadSignature(payload);
   if (!signature) return { ok: false, reason: 'no-data' };
-  if (requireChange && signature === lastSuccessfulSignature) {
+  if (requireChange && lastSuccessfulSignature && signature === lastSuccessfulSignature) {
     return { ok: true, saved: false, reason: 'unchanged' };
   }
 
@@ -215,14 +221,15 @@ function scheduleNext() {
 
 function resetForProject(projectId) {
   activeProjectId = String(projectId || '');
-  const payload = currentBackupPayload();
-  lastSuccessfulSignature = payloadSignature(payload);
+  // 案件を開いた直後の現在形は「まだこのセッションで保存成功していない」。
+  // 空文字から開始し、10分後の初回定期バックアップを必ず1世代作る。
+  lastSuccessfulSignature = '';
   scheduleNext();
 }
 
 /**
  * 案件を開いた後に1回だけ初期化する。
- * 初回保存は10分後。案件切替時はその時点を新しい比較基準にする。
+ * 初回保存は10分後。以後は現在形が変わった時だけ10分間隔で新世代を作る。
  */
 export function initializeSystemDataBackup() {
   if (initialized) return;
@@ -250,7 +257,7 @@ export async function listSystemDataBackups() {
   if (!folderRef || !canUseOneDriveBackup()) return [];
   const items = await listDriveChildren(folderRef);
   return items
-    .filter((item) => item.file && /^sd_.+_\d{4}-\d{4}\.json$/.test(String(item.name || '')))
+    .filter((item) => item.file && /^sd_.+_\d{4}-\d{4}(?:\d{2})?\.json$/.test(String(item.name || '')))
     .sort((a, b) => {
       const at = Date.parse(a.createdDateTime || a.lastModifiedDateTime || '') || 0;
       const bt = Date.parse(b.createdDateTime || b.lastModifiedDateTime || '') || 0;
