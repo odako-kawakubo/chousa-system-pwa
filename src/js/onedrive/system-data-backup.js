@@ -73,8 +73,12 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
+function pad3(value) {
+  return String(value).padStart(3, '0');
+}
+
 function timestampToken(date = new Date()) {
-  return `${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`;
+  return `${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}${pad3(date.getMilliseconds())}`;
 }
 
 function generationPrefix(date = new Date()) {
@@ -127,8 +131,8 @@ function canUseOneDriveBackup() {
 
 function isGenerationJsonName(name, deviceCode = getDeviceCode()) {
   const escaped = deviceCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // 旧形式 MMDD-HHmm と 6.7以降 MMDD-HHmmss の両方を認識する。
-  return new RegExp(`^sd_${escaped}_\\d{4}-\\d{4}(?:\\d{2})?\\.json$`).test(String(name || ''));
+  // 旧形式 MMDD-HHmm、6.7初期 MMDD-HHmmss、現行 MMDD-HHmmssSSS を認識する。
+  return new RegExp(`^sd_${escaped}_\\d{4}-\\d{4}(?:\\d{2}(?:\\d{3})?)?\\.json$`).test(String(name || ''));
 }
 
 async function trimOldGenerations(folderRef) {
@@ -155,6 +159,19 @@ async function trimOldGenerations(folderRef) {
   }
 }
 
+async function cleanupPartialGeneration(uploadedItems = []) {
+  for (const item of [...uploadedItems].reverse()) {
+    try {
+      await deleteDriveItem(item);
+    } catch (error) {
+      console.warn('[v0.1.6.7] 不完全なシステムデータ世代の削除に失敗', {
+        name: item?.name || '',
+        message: error?.message || String(error)
+      });
+    }
+  }
+}
+
 async function saveGeneration(payload) {
   const folderRef = systemFolderRef();
   if (!folderRef) throw new Error('この案件のOneDrive保存先を確認できません。');
@@ -169,14 +186,48 @@ async function saveGeneration(payload) {
       generation: prefix
     }
   }, null, 2);
+  const uploadedItems = [];
 
   // 4ファイルとも同じcurrentBackupPayload()から捕捉した1世代を使用する。
-  // JSONを世代の完成マーカーにするため、CSV3種を先に保存する。
-  await uploadDriveFile(folderRef, `${prefix}_finish.csv`, toCsv(payload.finishRecords), 'text/csv;charset=utf-8');
-  await uploadDriveFile(folderRef, `${prefix}_material.csv`, toCsv(payload.materialRecords), 'text/csv;charset=utf-8');
-  await uploadDriveFile(folderRef, `${prefix}_photo.csv`, toCsv(payload.photoRecords), 'text/csv;charset=utf-8');
-  await uploadDriveFile(folderRef, `${prefix}.json`, json, 'application/json;charset=utf-8');
-  await trimOldGenerations(folderRef);
+  // JSONを世代の完成マーカーにする。CSV3種またはJSONの途中で失敗した場合は、
+  // この試行で作成済みのファイルをベストエフォートで削除し、不完全世代を残さない。
+  try {
+    uploadedItems.push(await uploadDriveFile(
+      folderRef,
+      `${prefix}_finish.csv`,
+      toCsv(payload.finishRecords),
+      'text/csv;charset=utf-8'
+    ));
+    uploadedItems.push(await uploadDriveFile(
+      folderRef,
+      `${prefix}_material.csv`,
+      toCsv(payload.materialRecords),
+      'text/csv;charset=utf-8'
+    ));
+    uploadedItems.push(await uploadDriveFile(
+      folderRef,
+      `${prefix}_photo.csv`,
+      toCsv(payload.photoRecords),
+      'text/csv;charset=utf-8'
+    ));
+    uploadedItems.push(await uploadDriveFile(
+      folderRef,
+      `${prefix}.json`,
+      json,
+      'application/json;charset=utf-8'
+    ));
+  } catch (error) {
+    await cleanupPartialGeneration(uploadedItems);
+    throw error;
+  }
+
+  // JSONまで保存済みならこの世代は完成済み。世代整理の失敗は完成世代の保存失敗とは扱わない。
+  try {
+    await trimOldGenerations(folderRef);
+  } catch (error) {
+    console.warn('[v0.1.6.7] システムデータ旧世代の整理に失敗', error);
+  }
+
   return prefix;
 }
 
@@ -257,7 +308,7 @@ export async function listSystemDataBackups() {
   if (!folderRef || !canUseOneDriveBackup()) return [];
   const items = await listDriveChildren(folderRef);
   return items
-    .filter((item) => item.file && /^sd_.+_\d{4}-\d{4}(?:\d{2})?\.json$/.test(String(item.name || '')))
+    .filter((item) => item.file && /^sd_.+_\d{4}-\d{4}(?:\d{2}(?:\d{3})?)?\.json$/.test(String(item.name || '')))
     .sort((a, b) => {
       const at = Date.parse(a.createdDateTime || a.lastModifiedDateTime || '') || 0;
       const bt = Date.parse(b.createdDateTime || b.lastModifiedDateTime || '') || 0;
