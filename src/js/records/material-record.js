@@ -129,7 +129,6 @@ export function colorForInputId(inputId) {
   return MATERIAL_COLOR_PALETTE[index < 0 ? 0 : index];
 }
 
-
 /** 採取部位を重複なし配列へ正規化する。旧stringレコードも互換で受ける。 */
 export function normalizeSampleParts(value) {
   const source = Array.isArray(value) ? value : String(value ?? '').split(/[、,，]/);
@@ -158,12 +157,16 @@ export function createMaterialRecord(fields) {
   const sampleCount = analysisRequired === '採取・分析'
     ? Math.max(1, Math.min(3, Number.isFinite(rawSampleCount) && rawSampleCount > 0 ? rawSampleCount : 1))
     : Math.max(0, Math.min(3, Number.isFinite(rawSampleCount) ? rawSampleCount : 0));
+  const persistedSortOrder = Number(fields.sortOrder);
+  const materialNo = Number.isFinite(persistedSortOrder) && persistedSortOrder > 0
+    ? persistedSortOrder
+    : (fields.materialNo != null ? Number(fields.materialNo) : inputId);
 
   return {
     status: fields.status || 'active',
     materialId: fields.materialId,
     inputId,
-    materialNo: fields.materialNo != null ? Number(fields.materialNo) : inputId,
+    materialNo,
     name,
     part: String(fields.part ?? ''),
     usageLocation: String(fields.usageLocation ?? ''),
