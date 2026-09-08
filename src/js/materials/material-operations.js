@@ -1,19 +1,16 @@
 /**
  * src/js/materials/material-operations.js
  *
- * v0.1.5.2C 建材の「統合・削除」業務ロジック。
+ * 建材の「統合・削除・削除済み建材からの再登録」業務ロジック。
  *
  * 方針：
- * - v0.14.28で固まった操作感を参考にするが、旧state.materialsは使わない。
- * - 正本は materialRecordStore / finishRecordStore。
- * - 複数Store更新は runRecordTransaction() 内で1つの業務操作として行う。
- * - 統合先の分析・採取情報はそのまま採用し、統合元からは
- *   仕上表上の紐づき・使用箇所・調査備考を引き継ぐ。
+ * - 正本は materialRecordStore / finishRecordStore / photoRecordStore。
+ * - 複数Store更新は runRecordTransaction() 内で1つの業務操作として完成させる。
+ * - Firestoreへは途中状態を送らず、業務操作完了後の最終差分をRecordごとに1回だけ送る。
  * - 統合元／削除元レコードは物理削除せず履歴として保持する。
+ * - 削除済み建材の「再登録」は旧Recordをactiveへ戻さず、新しいmaterialId/inputIdで新規作成する。
+ * - 再登録では仕上表・写真の旧紐付けは復元しない。
  * - 処理後は active 建材の建材No.と同一ベース名の末尾英字を整理する。
- *
- * v0.1.5.8: 建材統合時は統合元の採取写真を統合先の未整理写真へ引き継ぐ。
- * 画像Blob・焼き込み済み看板・ファイル名はこの処理では変更しない。
  */
 
 import {
@@ -23,10 +20,15 @@ import {
   refreshMaterialUsageDerivedFields
 } from '../finish-table/finish-table-actions.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
+import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+import {
+  persistFinishForProject,
+  persistMaterialForProject,
+  persistPhotoForProject
+} from '../sync/project-record-persistence.js';
 
 function nowIso() {
   return new Date().toISOString();
@@ -50,6 +52,55 @@ function numberToSuffix(value) {
   return out;
 }
 
+function recordMap(records, idField) {
+  return new Map((records || []).map((record) => [String(record?.[idField] || ''), record]));
+}
+
+function changedRecords(beforeRecords, afterRecords, idField) {
+  const before = recordMap(beforeRecords, idField);
+  return (afterRecords || []).filter((record) => {
+    const id = String(record?.[idField] || '');
+    if (!id) return false;
+    const previous = before.get(id);
+    return !previous || JSON.stringify(previous) !== JSON.stringify(record);
+  });
+}
+
+function captureOperationSnapshot() {
+  return {
+    finishRecords: finishRecordStore.exportSnapshot(),
+    materialRecords: materialRecordStore.exportSnapshot(),
+    photoRecords: photoRecordStore.exportSnapshot()
+  };
+}
+
+/**
+ * ローカルtransaction完成後の最終差分だけを既存1Record保存経路へ送る。
+ * 統合・削除の途中で生じる派生値や再採番途中のRecordは送らない。
+ */
+function persistOperationSnapshotDiff(before, source) {
+  const project = getCurrentProject();
+  const finishChanges = changedRecords(before.finishRecords, finishRecordStore.exportSnapshot(), 'finishId');
+  const materialChanges = changedRecords(before.materialRecords, materialRecordStore.exportSnapshot(), 'materialId');
+  const photoChanges = changedRecords(before.photoRecords, photoRecordStore.exportSnapshot(), 'photoId');
+
+  finishChanges.forEach((record) => {
+    void persistFinishForProject(project, record, `${source}-finish`);
+  });
+  materialChanges.forEach((record) => {
+    void persistMaterialForProject(project, record, `${source}-material`);
+  });
+  photoChanges.forEach((record) => {
+    void persistPhotoForProject(project, record, `${source}-photo`);
+  });
+
+  return {
+    finishCount: finishChanges.length,
+    materialCount: materialChanges.length,
+    photoCount: photoChanges.length
+  };
+}
+
 function activeMaterialsSorted() {
   return materialRecordStore.getAll()
     .filter((record) => record.status === 'active')
@@ -67,9 +118,21 @@ export function getActiveMaterialsForOperations() {
   return activeMaterialsSorted();
 }
 
+/** 削除済み建材を旧inputId順で返す。統合済みは再登録候補に含めない。 */
+export function getDeletedMaterialsForOperations() {
+  return materialRecordStore.getAll()
+    .filter((record) => record.status === 'deleted')
+    .slice()
+    .sort((a, b) => {
+      const aId = Number(a.inputId) || Number.MAX_SAFE_INTEGER;
+      const bId = Number(b.inputId) || Number.MAX_SAFE_INTEGER;
+      if (aId !== bId) return aId - bId;
+      return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
+    });
+}
+
 /**
  * 使用中の仕上表箇所（部屋No.）を重複なしで返す。
- * 14.28の削除警告と同じく、どこで使われている建材かを確認するために使う。
  */
 export function getMaterialUsagePlaces(materialId) {
   const places = [];
@@ -108,10 +171,8 @@ function mergeSurveyNotes(targetNote, sourceNote) {
   return lines.join('\n');
 }
 
-
 /**
  * 建材統合で採取写真を未整理へ戻す前に、失われる採取情報をシステムメモへ残す。
- * 未整理判定は既存仕様どおり samplingBranch=0 または shootingType='' を使う。
  */
 function buildMergedPhotoMemo(photo, sourceMaterialId, targetMaterialId) {
   const shootingCode = ({
@@ -130,6 +191,24 @@ function buildMergedPhotoMemo(photo, sourceMaterialId, targetMaterialId) {
   ].join('\n');
 }
 
+function setMaterialPatch(record, patch, editedFields, updatedAt = nowIso()) {
+  materialRecordStore.set({
+    ...record,
+    ...patch,
+    fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, editedFields),
+    updatedAt
+  });
+}
+
+function setFinishPatch(record, patch, editedFields, updatedAt = nowIso()) {
+  finishRecordStore.set({
+    ...record,
+    ...patch,
+    fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, editedFields),
+    updatedAt
+  });
+}
+
 /**
  * active建材の現在位置に合わせて建材No.を1..Nへ振り直し、
  * 同一baseName内の末尾英字を A..Z,AA,AB... で整理する。
@@ -139,18 +218,12 @@ function resequenceActiveMaterials() {
   const ordered = activeMaterialsSorted();
   const updatedAt = nowIso();
 
-  // まず現在の一覧順を建材No.へ確定する。
   ordered.forEach((record, index) => {
     const nextNo = index + 1;
     if (Number(record.materialNo) === nextNo) return;
-    materialRecordStore.set({
-      ...record,
-      materialNo: nextNo,
-      updatedAt
-    });
+    setMaterialPatch(record, { materialNo: nextNo }, ['materialNo'], updatedAt);
   });
 
-  // materialNo.確定後のactiveレコードで同一ベース名ごとに末尾英字を整理する。
   const refreshed = activeMaterialsSorted();
   const groups = new Map();
   refreshed.forEach((record) => {
@@ -164,25 +237,39 @@ function resequenceActiveMaterials() {
       const suffixLetter = numberToSuffix(index + 1);
       const nextName = `${baseName}${suffixLetter}`;
       if (record.name === nextName && record.suffixLetter === suffixLetter) return;
-      materialRecordStore.set({
-        ...record,
+      setMaterialPatch(record, {
         name: nextName,
         suffixLetter,
-        systemMemo: appendSystemMemo(
-          record.systemMemo,
-          `末尾英字再採番：${record.name} → ${nextName}`
-        ),
-        updatedAt
-      });
+        systemMemo: appendSystemMemo(record.systemMemo, `末尾英字再採番：${record.name} → ${nextName}`)
+      }, ['name', 'suffixLetter', 'systemMemo'], updatedAt);
     });
+  });
+}
+
+function nextInputIdForMaterials() {
+  const ids = materialRecordStore.getAll().map((record) => Number(record.inputId) || 0);
+  return ids.length ? Math.max(...ids) + 1 : 1;
+}
+
+function normalizeInsertPosition(position, activeCount) {
+  const numeric = Number(position);
+  if (!Number.isFinite(numeric)) return activeCount + 1;
+  return Math.max(1, Math.min(activeCount + 1, Math.trunc(numeric)));
+}
+
+function shiftMaterialsForInsert(position) {
+  const ordered = activeMaterialsSorted();
+  const updatedAt = nowIso();
+  ordered.forEach((record, index) => {
+    const currentPosition = index + 1;
+    const nextNo = currentPosition >= position ? currentPosition + 1 : currentPosition;
+    if (Number(record.materialNo) === nextNo) return;
+    setMaterialPatch(record, { materialNo: nextNo }, ['materialNo'], updatedAt);
   });
 }
 
 /**
  * 複数建材を1つの統合先へ統合する。
- * @param {string} targetId 統合先materialId
- * @param {string[]} sourceIds 統合元materialId群
- * @returns {{targetId:string, sourceIds:string[]}}
  */
 export function mergeMaterials(targetId, sourceIds) {
   const target = materialRecordStore.get(targetId);
@@ -194,32 +281,25 @@ export function mergeMaterials(targetId, sourceIds) {
     .filter((record) => record && record.status === 'active');
   if (!sources.length) throw new Error('統合する建材を選択してください。');
 
+  const before = captureOperationSnapshot();
+
   runRecordTransaction(() => {
     const updatedAt = nowIso();
     let nextTarget = { ...target };
 
     sources.forEach((source) => {
-      // 仕上表上の統合元materialId/inputIdを統合先へ置換する。
       finishRecordStore.getAll().forEach((finish) => {
         if (finish.status !== 'active' || finish.materialId !== source.materialId) return;
-        finishRecordStore.set({
-          ...finish,
+        setFinishPatch(finish, {
           materialId: target.materialId,
           inputId: String(target.inputId),
-          systemMemo: appendSystemMemo(
-            finish.systemMemo,
-            `建材統合：${source.materialId} → ${target.materialId}`
-          ),
-          updatedAt
-        });
+          systemMemo: appendSystemMemo(finish.systemMemo, `建材統合：${source.materialId} → ${target.materialId}`)
+        }, ['materialId', 'systemMemo'], updatedAt);
       });
 
-      // 統合元の採取写真は、統合先建材の既存「未整理写真」へ移す。
-      // 採取場所等を自動で統合先へ割り当てると看板整理ロジックと衝突するため、
-      // 元情報をsystemMemoへ退避してから、既存未整理条件になる最小項目を空にする。
       photoRecordStore.getAll().forEach((photo) => {
         if (photo.photoType !== PHOTO_TYPES.SAMPLING || photo.deleted || photo.materialId !== source.materialId) return;
-        const nextPhoto = photoRecordStore.set({
+        photoRecordStore.set({
           ...photo,
           materialId: target.materialId,
           samplingPlace: '',
@@ -228,52 +308,41 @@ export function mergeMaterials(targetId, sourceIds) {
           sampleBaseNo: '',
           part: '',
           shootingType: '',
-          systemMemo: appendSystemMemo(
-            photo.systemMemo,
-            buildMergedPhotoMemo(photo, source.materialId, target.materialId)
-          ),
+          systemMemo: appendSystemMemo(photo.systemMemo, buildMergedPhotoMemo(photo, source.materialId, target.materialId)),
           fieldEditedAt: touchFieldEditedAt(photo.fieldEditedAt, [
             'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType', 'systemMemo'
           ])
         });
-        persistPhotoForProject(getCurrentProject(), nextPhoto, 'material-operation-photo-relink');
       });
 
-      // 調査備考だけは統合元から重複を除いて統合先へ引き継ぐ。
       nextTarget.note = mergeSurveyNotes(nextTarget.note, source.note);
-      nextTarget.systemMemo = appendSystemMemo(
-        nextTarget.systemMemo,
-        `建材統合受入：${source.materialId} ${source.name}`
-      );
+      nextTarget.systemMemo = appendSystemMemo(nextTarget.systemMemo, `建材統合受入：${source.materialId} ${source.name}`);
 
-      // 統合元は物理削除せず、統合済みの履歴レコードとして保持する。
-      materialRecordStore.set({
-        ...source,
+      setMaterialPatch(source, {
         status: 'merged',
         systemMemo: appendSystemMemo(
           source.systemMemo,
           `建材統合：${source.materialId} ${source.name} → ${target.materialId} ${target.name}`
-        ),
-        updatedAt
-      });
+        )
+      }, ['status', 'systemMemo'], updatedAt);
     });
 
-    materialRecordStore.set({ ...nextTarget, updatedAt });
+    setMaterialPatch(nextTarget, {
+      note: nextTarget.note,
+      systemMemo: nextTarget.systemMemo
+    }, ['note', 'systemMemo'], updatedAt);
 
-    // 仕上表を正として統合先の部位・使用箇所を再派生する。
-    refreshMaterialUsageDerivedFields('material-merge-recalc');
-
-    // 統合後のactive一覧に合わせて建材No.と末尾英字を整理する。
+    // 派生値はローカルで完成させる。Firestore保存はoperation最終差分へ一本化する。
+    refreshMaterialUsageDerivedFields('material-merge-recalc', { persist: false });
     resequenceActiveMaterials();
   });
 
-  return { targetId, sourceIds: sources.map((source) => source.materialId) };
+  const persisted = persistOperationSnapshotDiff(before, 'material-merge-final');
+  return { targetId, sourceIds: sources.map((source) => source.materialId), persisted };
 }
 
 /**
- * 建材を削除状態へする。写真レコードは触らず保持する前提。
- * @param {string[]} materialIds
- * @returns {{deletedIds:string[]}}
+ * 建材を削除状態へする。写真レコードは触らず保持する。
  */
 export function deleteMaterials(materialIds) {
   const uniqueIds = [...new Set(materialIds || [])].filter(Boolean);
@@ -282,36 +351,94 @@ export function deleteMaterials(materialIds) {
     .filter((record) => record && record.status === 'active');
   if (!targets.length) throw new Error('削除する建材を選択してください。');
 
+  const before = captureOperationSnapshot();
+
   runRecordTransaction(() => {
     const updatedAt = nowIso();
 
     targets.forEach((target) => {
-      // 仕上表レコード自体は残し、建材紐づきだけ解除する。
       finishRecordStore.getAll().forEach((finish) => {
         if (finish.status !== 'active' || finish.materialId !== target.materialId) return;
-        finishRecordStore.set({
-          ...finish,
+        setFinishPatch(finish, {
           materialId: '',
           inputId: '',
-          systemMemo: appendSystemMemo(
-            finish.systemMemo,
-            `建材削除：${target.materialId} ${target.name}`
-          ),
-          updatedAt
-        });
+          systemMemo: appendSystemMemo(finish.systemMemo, `建材削除：${target.materialId} ${target.name}`)
+        }, ['materialId', 'systemMemo'], updatedAt);
       });
 
-      materialRecordStore.set({
-        ...target,
+      setMaterialPatch(target, {
         status: 'deleted',
-        systemMemo: appendSystemMemo(target.systemMemo, `削除：${target.name} を建材リストから除外`),
-        updatedAt
-      });
+        systemMemo: appendSystemMemo(target.systemMemo, `削除：${target.name} を建材リストから除外`)
+      }, ['status', 'systemMemo'], updatedAt);
     });
 
-    refreshMaterialUsageDerivedFields('material-delete-recalc');
+    refreshMaterialUsageDerivedFields('material-delete-recalc', { persist: false });
     resequenceActiveMaterials();
   });
 
-  return { deletedIds: targets.map((target) => target.materialId) };
+  const persisted = persistOperationSnapshotDiff(before, 'material-delete-final');
+  return { deletedIds: targets.map((target) => target.materialId), persisted };
+}
+
+/**
+ * 削除済み建材を旧Recordの復帰ではなく、新しい建材として任意位置へ再登録する。
+ * - 旧deleted Recordは変更しない。
+ * - materialId / inputId / color は新規発番。
+ * - 名称・レベル・調査備考・分析要否・採取設定は引き継ぐ。
+ * - 採取済み/採取日/試料名称/分析結果/分析後備考は履歴実績なので引き継がない。
+ * - 仕上表・写真は触らない。
+ */
+export function reregisterDeletedMaterial(sourceMaterialId, insertPosition) {
+  const source = materialRecordStore.get(sourceMaterialId);
+  if (!source || source.status !== 'deleted') throw new Error('削除済み建材を取得できません。');
+
+  const activeCount = activeMaterialsSorted().length;
+  const position = normalizeInsertPosition(insertPosition, activeCount);
+  const before = captureOperationSnapshot();
+  let created = null;
+
+  runRecordTransaction(() => {
+    shiftMaterialsForInsert(position);
+
+    const inputId = nextInputIdForMaterials();
+    const materialId = nextMaterialId(materialRecordStore.getAll().map((record) => record.materialId));
+    const systemMemo = appendSystemMemo('', `削除済み建材 ${source.materialId} ${source.name} から新規再登録`);
+
+    created = createMaterialRecord({
+      status: 'active',
+      materialId,
+      inputId,
+      materialNo: position,
+      name: source.name,
+      baseName: source.baseName,
+      suffixLetter: source.suffixLetter,
+      part: '',
+      usageLocation: '',
+      level: source.level,
+      note: source.note,
+      analysisRequired: source.analysisRequired,
+      sampleCount: source.sampleCount,
+      sampleLocation1: source.sampleLocation1,
+      sampleLocation2: source.sampleLocation2,
+      sampleLocation3: source.sampleLocation3,
+      samplePart: source.samplePart,
+      sampleDone: false,
+      sampleDate: '',
+      sampleName: '',
+      analysisResult: '',
+      remarks: '',
+      systemMemo,
+      fieldEditedAt: touchFieldEditedAt({}, [
+        'status', 'materialNo', 'name', 'level', 'note', 'analysisRequired', 'sampleCount',
+        'sampleLocation1', 'sampleLocation2', 'sampleLocation3', 'samplePart', 'systemMemo'
+      ])
+    });
+    materialRecordStore.set(created);
+
+    resequenceActiveMaterials();
+    created = materialRecordStore.get(materialId) || created;
+  });
+
+  const persisted = persistOperationSnapshotDiff(before, 'material-reregister-final');
+  return { material: created, sourceMaterialId: source.materialId, insertPosition: position, persisted };
 }
