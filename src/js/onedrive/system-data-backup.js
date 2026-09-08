@@ -13,9 +13,11 @@ import {
 import { getCurrentOneDriveState } from './onedrive-project.js';
 import {
   getCurrentProject,
-  getProject,
   subscribe as subscribeProjects
 } from '../projects/project-store.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
 import { getDeviceCode } from '../device-code.js';
 import { isManualOffline } from '../sync/sync-status.js';
 import { appConfig } from '../../config/app-config.js';
@@ -41,10 +43,20 @@ function cloneForBackup(entry) {
   };
 }
 
+/**
+ * 現在開いている案件のバックアップは、その瞬間のライブStoreを直接Snapshot化する。
+ * project-storeは案件切替・圏外継続・再起動復元用の端末Snapshotであり、
+ * 作業中バックアップの取得元には使わない。
+ */
 function currentBackupPayload() {
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample) return null;
-  return cloneForBackup(getProject(project.projectId));
+  return cloneForBackup({
+    project,
+    finishRecords: finishRecordStore.exportSnapshot(),
+    materialRecords: materialRecordStore.exportSnapshot(),
+    photoRecords: photoRecordStore.exportSnapshot()
+  });
 }
 
 function payloadSignature(payload) {
@@ -152,6 +164,7 @@ async function saveGeneration(payload) {
     }
   }, null, 2);
 
+  // 4ファイルとも同じcurrentBackupPayload()から捕捉した1世代を使用する。
   // JSONを世代の完成マーカーにするため、CSV3種を先に保存する。
   await uploadDriveFile(folderRef, `${prefix}_finish.csv`, toCsv(payload.finishRecords), 'text/csv;charset=utf-8');
   await uploadDriveFile(folderRef, `${prefix}_material.csv`, toCsv(payload.materialRecords), 'text/csv;charset=utf-8');
@@ -187,7 +200,7 @@ async function runScheduledBackup() {
   try {
     await saveCurrentSystemData({ requireChange: true });
   } catch (error) {
-    console.warn('[v0.1.6.5H] システムデータ保存失敗', error);
+    console.warn('[v0.1.6.7] システムデータ保存失敗', error);
   }
 }
 
@@ -225,7 +238,7 @@ export function initializeSystemDataBackup() {
 
 /**
  * 設定 > 同期システム > システムデータの手動保存入口。
- * 定期保存と同じ生成処理を使い、変更有無にかかわらず明示的に1世代保存する。
+ * 定期保存と同じライブStore取得経路を使い、変更有無にかかわらず1世代保存する。
  */
 export async function saveSystemDataNow() {
   return saveCurrentSystemData({ requireChange: false });
