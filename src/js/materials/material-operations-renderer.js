@@ -1,8 +1,7 @@
 /**
  * src/js/materials/material-operations-renderer.js
  *
- * 建材リストの統合・削除UI描画。
- *
+ * 建材リストの統合・削除・削除済み建材からの再登録UI描画。
  * controllerから渡された選択状態・開閉状態をそのまま描画し、
  * Store更新やconfirm処理は一切行わない。
  */
@@ -13,6 +12,9 @@ export function renderMaterialOperations(root, materials, options = {}) {
   const targetId = options.targetId || '';
   const sourceIds = new Set(options.sourceIds || []);
   const deleteIds = new Set(options.deleteIds || []);
+  const deletedMaterials = options.deletedMaterials || [];
+  const reregisterSourceId = options.reregisterSourceId || '';
+  const reregisterPosition = options.reregisterPosition || '';
   const usageMap = options.usageMap || new Map();
   const openAccordion = options.openAccordion || '';
   const openPickerId = options.openPickerId || '';
@@ -21,7 +23,7 @@ export function renderMaterialOperations(root, materials, options = {}) {
   root.innerHTML = `
     <div class="drawer-box material-operations-box" id="drawerMaterialOps">
       <h4>建材リスト操作</h4>
-      <div class="hint">統合・削除は必要な時だけ開きます。選択中も開いている状態を保持します。</div>
+      <div class="hint">統合・削除・再登録は必要な時だけ開きます。</div>
 
       ${renderMergeAccordion(materials, target, sourceIds, {
         open: openAccordion === 'merge',
@@ -33,9 +35,9 @@ export function renderMaterialOperations(root, materials, options = {}) {
         openPickerId
       })}
 
-      <div class="picker-note material-photo-defer-note">
-        写真レコードは後続段階で接続します。現段階では仕上表・建材レコードを対象に統合／削除します。
-      </div>
+      ${renderReregisterAccordion(materials, deletedMaterials, reregisterSourceId, reregisterPosition, {
+        open: openAccordion === 'reregister'
+      })}
     </div>
   `;
 }
@@ -121,6 +123,55 @@ function renderDeleteAccordion(materials, deleteIds, usageMap, uiState) {
           <button type="button" class="btn danger" data-action="execute-material-delete" ${deleteIds.size ? '' : 'disabled'}>削除</button>
         </div>
         <div class="picker-note">削除候補は「仕上表で未使用」を先に表示します。使用中建材は削除時に確認します。</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReregisterAccordion(materials, deletedMaterials, sourceId, positionValue, uiState) {
+  const activeCount = materials.length;
+  const selected = deletedMaterials.find((material) => material.materialId === sourceId) || null;
+  const normalizedPosition = Number(positionValue) || activeCount + 1;
+
+  return `
+    <div class="material-op-accordion${uiState.open ? ' open' : ''}" data-material-op-accordion="reregister">
+      <button type="button" class="material-op-accordion-head" data-action="toggle-material-op-accordion">
+        <span><span class="material-op-arrow">${uiState.open ? '▼' : '▶'}</span> 削除済みから再登録</span>
+        <span class="material-op-open-label">${uiState.open ? '閉じる' : '開く'}</span>
+      </button>
+      <div class="material-op-accordion-body">
+        ${deletedMaterials.length ? `
+          <div class="hint">削除済み建材</div>
+          <select class="material-cell-input" data-material-reregister-source>
+            <option value="">選択してください</option>
+            ${deletedMaterials.map((material) => `
+              <option value="${escapeAttr(material.materialId)}" ${material.materialId === sourceId ? 'selected' : ''}>
+                ${escapeHtml(material.materialId)} ${escapeHtml(material.name)}
+              </option>
+            `).join('')}
+          </select>
+
+          <div class="hint material-op-section-gap">挿入位置</div>
+          <select class="material-cell-input" data-material-reregister-position>
+            ${Array.from({ length: activeCount + 1 }, (_, index) => {
+              const position = index + 1;
+              const label = position <= activeCount
+                ? `No.${position} の前`
+                : `最後（No.${position}）`;
+              return `<option value="${position}" ${position === normalizedPosition ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+            }).join('')}
+          </select>
+
+          ${selected ? `
+            <div class="picker-note">
+              ${escapeHtml(selected.materialId)} は削除済み履歴として残し、新しいIDで建材を作成します。仕上表・写真の紐付けは戻しません。
+            </div>
+          ` : ''}
+
+          <div class="drawer-material-actions">
+            <button type="button" class="btn primary" data-action="execute-material-reregister" ${sourceId ? '' : 'disabled'}>再登録</button>
+          </div>
+        ` : '<div class="hint">削除済み建材はありません。</div>'}
       </div>
     </div>
   `;
@@ -249,11 +300,6 @@ function renderMaterialPickLine(material) {
   `;
 }
 
-/**
- * ベース名ごとにまとめる。
- * preferredBaseNameがある場合、そのグループだけを先頭へ移動する。
- * 各グループ内はmaterialNo.の自然順を維持する。
- */
 function groupByBase(materials, preferredBaseName = '') {
   const map = new Map();
 
