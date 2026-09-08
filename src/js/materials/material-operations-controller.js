@@ -28,6 +28,7 @@ const mergeSourceIds = new Set();
 const deleteTargetIds = new Set();
 let reregisterSourceId = '';
 let reregisterPosition = '';
+let operationInFlight = false;
 
 const operationUiState = {
   openAccordion: '',
@@ -121,17 +122,17 @@ function bindOperationEvents() {
     }
 
     if (action === 'execute-material-merge') {
-      executeMerge();
+      void executeMerge();
       return;
     }
 
     if (action === 'execute-material-delete') {
-      executeDelete();
+      void executeDelete();
       return;
     }
 
     if (action === 'execute-material-reregister') {
-      executeReregister();
+      void executeReregister();
     }
   });
 
@@ -197,7 +198,9 @@ function normalizeSelectionState(activeIds, deletedIds = new Set()) {
   if (reregisterSourceId && !deletedIds.has(reregisterSourceId)) reregisterSourceId = '';
 }
 
-function executeMerge() {
+async function executeMerge() {
+  if (operationInFlight) return;
+
   const activeMaterials = getActiveMaterialsForOperations();
   const target = activeMaterials.find((m) => m.materialId === mergeTargetId);
   const sources = activeMaterials.filter((m) => mergeSourceIds.has(m.materialId));
@@ -219,8 +222,9 @@ function executeMerge() {
 
   if (!window.confirm(warning)) return;
 
+  operationInFlight = true;
   try {
-    mergeMaterials(target.materialId, sources.map((m) => m.materialId));
+    await mergeMaterials(target.materialId, sources.map((m) => m.materialId));
 
     mergeSourceIds.clear();
     deleteTargetIds.clear();
@@ -232,10 +236,14 @@ function executeMerge() {
   } catch (error) {
     console.error('建材統合失敗', error);
     window.alert(error?.message || '建材統合に失敗しました。');
+  } finally {
+    operationInFlight = false;
   }
 }
 
-function executeDelete() {
+async function executeDelete() {
+  if (operationInFlight) return;
+
   const targets = getActiveMaterialsForOperations().filter((m) => deleteTargetIds.has(m.materialId));
   if (!targets.length) {
     window.alert('削除する建材を選択してください。');
@@ -256,11 +264,12 @@ function executeDelete() {
 
   if (!window.confirm(message)) return;
 
+  operationInFlight = true;
   try {
     const selected = getSelectedMaterialId();
     const deletingSelected = selected && deleteTargetIds.has(selected);
 
-    deleteMaterials(targets.map((m) => m.materialId));
+    await deleteMaterials(targets.map((m) => m.materialId));
 
     if (deletingSelected) selectMaterialInList(null);
 
@@ -277,10 +286,14 @@ function executeDelete() {
   } catch (error) {
     console.error('建材削除失敗', error);
     window.alert(error?.message || '建材削除に失敗しました。');
+  } finally {
+    operationInFlight = false;
   }
 }
 
-function executeReregister() {
+async function executeReregister() {
+  if (operationInFlight) return;
+
   const source = getDeletedMaterialsForOperations().find((material) => material.materialId === reregisterSourceId);
   if (!source) {
     window.alert('再登録する削除済み建材を選択してください。');
@@ -292,8 +305,9 @@ function executeReregister() {
   const message = `${source.materialId} ${source.name} を新しい建材として No.${position} の位置へ再登録します。\n\n旧Recordは削除済みのまま履歴として残し、仕上表・写真の紐付けは戻しません。\n\n再登録しますか？`;
   if (!window.confirm(message)) return;
 
+  operationInFlight = true;
   try {
-    const result = reregisterDeletedMaterial(source.materialId, position);
+    const result = await reregisterDeletedMaterial(source.materialId, position);
     const created = result?.material;
     reregisterSourceId = '';
     reregisterPosition = '';
@@ -305,6 +319,8 @@ function executeReregister() {
   } catch (error) {
     console.error('削除済み建材の再登録失敗', error);
     window.alert(error?.message || '削除済み建材の再登録に失敗しました。');
+  } finally {
+    operationInFlight = false;
   }
 }
 
