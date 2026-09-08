@@ -1,26 +1,17 @@
 /**
  * src/js/materials/material-operations-controller.js
  *
- * v0.1.5.2C 建材リストの統合・削除UI入口。
- *
- * 役割：
- * - 統合先：1件
- * - 統合元：複数件
- * - 削除：複数件
- * - 統合／削除アコーディオンの開閉状態を保持
- * - 建材選択中もピッカーの開閉状態を保持
- * - 統合候補は、統合先と同じベース名を優先表示
- * - 削除候補は、仕上表で未使用の建材を優先表示
- *
- * Storeの更新本体はmaterial-operations.jsへ分離する。
+ * 建材リストの統合・削除・削除済み建材からの再登録UI入口。
  */
 
 import {
   deleteMaterials,
   getActiveMaterialsForOperations,
+  getDeletedMaterialsForOperations,
   getMaterialUsagePlaces,
   hasSamplingOrAnalysisData,
-  mergeMaterials
+  mergeMaterials,
+  reregisterDeletedMaterial
 } from './material-operations.js';
 import { renderMaterialOperations } from './material-operations-renderer.js';
 import {
@@ -35,9 +26,9 @@ let rootElement = null;
 let mergeTargetId = '';
 const mergeSourceIds = new Set();
 const deleteTargetIds = new Set();
+let reregisterSourceId = '';
+let reregisterPosition = '';
 
-// UIの開閉状態はデータ選択とは分離して保持する。
-// 選択変更で再描画しても、統合／削除の▶や選択パネルを閉じない。
 const operationUiState = {
   openAccordion: '',
   openPickerId: ''
@@ -49,8 +40,6 @@ export function initializeMaterialOperations() {
 
   bindOperationEvents();
 
-  // 操作パネルを開くたび、建材リストで現在選択中のactive建材を
-  // 統合先の初期値として使う。
   document.querySelectorAll('[data-drawer-open]').forEach((button) => {
     button.addEventListener('click', () => {
       const selected = getSelectedMaterialId();
@@ -69,8 +58,10 @@ export function refreshMaterialOperations() {
   if (!rootElement) return;
 
   const materials = getActiveMaterialsForOperations();
+  const deletedMaterials = getDeletedMaterialsForOperations();
   const activeIds = new Set(materials.map((m) => m.materialId));
-  normalizeSelectionState(activeIds);
+  const deletedIds = new Set(deletedMaterials.map((m) => m.materialId));
+  normalizeSelectionState(activeIds, deletedIds);
 
   const usageMap = new Map();
   materials.forEach((material) => {
@@ -81,6 +72,9 @@ export function refreshMaterialOperations() {
     targetId: mergeTargetId,
     sourceIds: mergeSourceIds,
     deleteIds: deleteTargetIds,
+    deletedMaterials,
+    reregisterSourceId,
+    reregisterPosition,
     usageMap,
     openAccordion: operationUiState.openAccordion,
     openPickerId: operationUiState.openPickerId
@@ -101,8 +95,6 @@ function bindOperationEvents() {
       const accordion = actionTarget.closest('[data-material-op-accordion]');
       const type = accordion?.dataset.materialOpAccordion || '';
       operationUiState.openAccordion = operationUiState.openAccordion === type ? '' : type;
-
-      // アコーディオンを閉じた場合、その中のピッカー状態も解除する。
       if (!operationUiState.openAccordion) operationUiState.openPickerId = '';
       refreshMaterialOperations();
       return;
@@ -135,16 +127,34 @@ function bindOperationEvents() {
 
     if (action === 'execute-material-delete') {
       executeDelete();
+      return;
+    }
+
+    if (action === 'execute-material-reregister') {
+      executeReregister();
     }
   });
 
   rootElement.addEventListener('change', (event) => {
     const input = event.target.closest('[data-material-op-choice]');
-    if (!input) return;
+    if (input) {
+      updateChoice(input);
+      refreshMaterialOperations();
+      return;
+    }
 
-    // 選択変更ではアコーディオン／ピッカーを閉じない。
-    updateChoice(input);
-    refreshMaterialOperations();
+    const reregisterSource = event.target.closest('[data-material-reregister-source]');
+    if (reregisterSource) {
+      reregisterSourceId = String(reregisterSource.value || '');
+      refreshMaterialOperations();
+      return;
+    }
+
+    const reregisterPositionInput = event.target.closest('[data-material-reregister-position]');
+    if (reregisterPositionInput) {
+      reregisterPosition = String(reregisterPositionInput.value || '');
+      refreshMaterialOperations();
+    }
   });
 }
 
@@ -173,7 +183,7 @@ function removeChoice(role, id) {
   if (role === 'delete-target') deleteTargetIds.delete(id);
 }
 
-function normalizeSelectionState(activeIds) {
+function normalizeSelectionState(activeIds, deletedIds = new Set()) {
   if (mergeTargetId && !activeIds.has(mergeTargetId)) mergeTargetId = '';
 
   [...mergeSourceIds].forEach((id) => {
@@ -183,6 +193,8 @@ function normalizeSelectionState(activeIds) {
   [...deleteTargetIds].forEach((id) => {
     if (!activeIds.has(id)) deleteTargetIds.delete(id);
   });
+
+  if (reregisterSourceId && !deletedIds.has(reregisterSourceId)) reregisterSourceId = '';
 }
 
 function executeMerge() {
@@ -265,6 +277,34 @@ function executeDelete() {
   } catch (error) {
     console.error('建材削除失敗', error);
     window.alert(error?.message || '建材削除に失敗しました。');
+  }
+}
+
+function executeReregister() {
+  const source = getDeletedMaterialsForOperations().find((material) => material.materialId === reregisterSourceId);
+  if (!source) {
+    window.alert('再登録する削除済み建材を選択してください。');
+    return;
+  }
+
+  const activeCount = getActiveMaterialsForOperations().length;
+  const position = Math.max(1, Math.min(activeCount + 1, Number(reregisterPosition) || activeCount + 1));
+  const message = `${source.materialId} ${source.name} を新しい建材として No.${position} の位置へ再登録します。\n\n旧Recordは削除済みのまま履歴として残し、仕上表・写真の紐付けは戻しません。\n\n再登録しますか？`;
+  if (!window.confirm(message)) return;
+
+  try {
+    const result = reregisterDeletedMaterial(source.materialId, position);
+    const created = result?.material;
+    reregisterSourceId = '';
+    reregisterPosition = '';
+    operationUiState.openPickerId = '';
+
+    if (created?.materialId) selectMaterialInList(created.materialId);
+    refreshAllConnectedViews();
+    refreshMaterialOperations();
+  } catch (error) {
+    console.error('削除済み建材の再登録失敗', error);
+    window.alert(error?.message || '削除済み建材の再登録に失敗しました。');
   }
 }
 
