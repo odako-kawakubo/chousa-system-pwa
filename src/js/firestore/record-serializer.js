@@ -39,6 +39,9 @@ export function serializeMaterialRecord(record, { updatedAt }) {
   return {
     status: text(record.status) || 'active',
     materialId: text(record.materialId),
+    // materialId/inputIdは固定識別子、sortOrderは建材リスト上の可変表示位置。
+    // 旧Firestore RecordにsortOrderが無い場合は読込側の従来順へフォールバックする。
+    sortOrder: Number(record.materialNo) || Number(record.inputId) || 0,
     name: text(record.name),
     part: text(record.part),
     usageLocation: text(record.usageLocation),
