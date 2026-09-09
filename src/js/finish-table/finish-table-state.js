@@ -86,9 +86,10 @@ function bindRoomIdentityReconciliation() {
 }
 
 /**
- * 仕上表から別タブへ移った時点でコピー操作を完全終了する。
- * コピー済みデータ自体は変更しない。コピー専用「戻す」は終了するが、
- * 上部の通常Undo/Redo履歴は別管理なので残る。
+ * 仕上表から別タブへ移った時点で、仕上表だけに意味を持つ一時操作を終了する。
+ * - 部屋コピー途中状態を破棄する（コピー済みデータ自体は変更しない）。
+ * - チップ入力モードをOFFにし、入力専用ターゲットだけを破棄する。
+ *   簡易リストの参照選択 selectedMaterialInputId は別責務なので保持する。
  */
 function bindTabChangeReset() {
   if (tabChangeBound) return;
@@ -99,14 +100,24 @@ function bindTabChangeReset() {
     const currentTab = String(event.detail?.currentTab || '');
     if (previousTab !== 'finish' || currentTab === 'finish') return;
 
+    let changed = false;
     const copy = state.roomCopy || emptyRoomCopyState();
     const copyActive = Boolean(copy.sourceRoomKey)
       || Object.keys(copy.backups || {}).length > 0
       || Object.keys(copy.done || {}).length > 0;
-    if (!copyActive) return;
 
-    state.roomCopy = emptyRoomCopyState();
-    notify();
+    if (copyActive) {
+      state.roomCopy = emptyRoomCopyState();
+      changed = true;
+    }
+
+    if (state.chipInputMode || state.chipInputMaterialInputId != null) {
+      state.chipInputMode = false;
+      state.chipInputMaterialInputId = null;
+      changed = true;
+    }
+
+    if (changed) notify();
   });
 }
 
@@ -124,10 +135,12 @@ export function initFinishTableState() {
     activeAreaMode: 'internal',
     colorMode: false,
     chipInputMode: false,
+    chipInputMaterialInputId: null,
     simpleListOpen: true,
     activeRoomKey: null,
     activeGroupKey: null,
     focusedInputKey: null,
+    // 簡易リストで備考・写真・使用箇所を見るための参照選択。
     selectedMaterialInputId: null,
     roomCopy: emptyRoomCopyState(),
     collapsedFloors: new Set(),
@@ -150,6 +163,8 @@ export function setProject(project) {
   state.activeGroupKey = null;
   state.focusedInputKey = null;
   state.selectedMaterialInputId = null;
+  state.chipInputMode = false;
+  state.chipInputMaterialInputId = null;
   state.roomCopy = emptyRoomCopyState();
   state.collapsedFloors = new Set();
   state.pendingCellNames = new Map();
@@ -176,8 +191,14 @@ export function getColorMode() {
   return !!state.colorMode;
 }
 
+/**
+ * チップ入力は一時入力モード。
+ * ON/OFFどちらへ切り替える場合も入力専用ターゲットは一旦空にし、
+ * ONにしただけで過去の参照選択がそのまま入力対象になることを防ぐ。
+ */
 export function toggleChipInputMode() {
   state.chipInputMode = !state.chipInputMode;
+  state.chipInputMaterialInputId = null;
   notify();
 }
 export function getChipInputMode() {
@@ -217,11 +238,22 @@ export function getFocusedInputKey() {
   return state.focusedInputKey;
 }
 
+/** 簡易リストの参照選択。チップ入力対象とは分離する。 */
 export function setSelectedMaterialInputId(inputId) {
   state.selectedMaterialInputId = inputId == null ? null : Number(inputId);
 }
 export function getSelectedMaterialInputId() {
   return state.selectedMaterialInputId;
+}
+
+/** チップ入力モード中だけ有効な一時入力ターゲット。 */
+export function setChipInputMaterialInputId(inputId) {
+  state.chipInputMaterialInputId = state.chipInputMode && inputId != null
+    ? Number(inputId)
+    : null;
+}
+export function getChipInputMaterialInputId() {
+  return state.chipInputMaterialInputId;
 }
 
 /* ============================================================
