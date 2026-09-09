@@ -731,13 +731,11 @@ function createCompletedCanvas(originalCanvas, boardData, snapshot) {
   // v64の断面モードは看板なし。ファイル区分は4として保持する。
   if (snapshot.photoType === PHOTO_TYPES.SAMPLING && snapshot.sectionMode) return canvas;
 
-  const previewWidth = root?.querySelector('.camera-capture-frame')?.clientWidth || 780;
   const boardRect = getBoardRect(
     canvas.width,
     canvas.height,
     snapshot.boardPosition,
-    snapshot.boardSize,
-    previewWidth
+    snapshot.boardSize
   );
   drawBoard(ctx, boardRect, boardData);
   return canvas;
