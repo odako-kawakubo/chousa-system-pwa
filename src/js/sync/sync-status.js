@@ -9,6 +9,7 @@
  * - 案件未選択（トップ）では手動オフラインを適用せず、実際のネットワーク状態を扱う。
  * - 案件を開く前にも target projectId を同期スコープとして先に有効化し、
  *   保存済みオフライン案件でFirestoreへ接続してからOFFになる経路を作らない。
+ * - 旧グローバルON設定は、アップデート後に最初に開いた案件へ1回だけ引き継ぐ。
  */
 
 import { listUnsent } from './unsent-queue.js';
@@ -20,7 +21,7 @@ const LEGACY_OFFLINE_KEY = 'chousa-manual-offline';
 const listeners = [];
 let activeProjectId = String(getCurrentProject()?.projectId || '');
 let state = {
-  phase: 'idle', // idle | local | connecting | ready | activity | reconnecting | error
+  phase: 'idle',
   lastSyncedAt: 0,
   serverConnected: false,
   error: null
@@ -47,6 +48,19 @@ function writeOfflineMap(map) {
   }
 }
 
+function migrateLegacyOfflineToProject(projectId) {
+  const id = String(projectId || '');
+  if (!id) return;
+  try {
+    if (localStorage.getItem(LEGACY_OFFLINE_KEY) !== '1') return;
+    const map = readOfflineMap();
+    if (map[id] !== true) map[id] = true;
+    writeOfflineMap(map);
+  } catch {
+    // 移行失敗時は旧キーを壊さず、通常の案件別設定処理へ任せる。
+  }
+}
+
 function resetActivityState() {
   activityDepth = 0;
   if (activityTimer) clearTimeout(activityTimer);
@@ -67,14 +81,12 @@ export function isNetworkOnline() {
   return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
 }
 
-/** 指定案件の端末ローカル手動オフライン設定を返す。案件未指定は常にfalse。 */
 export function isProjectManualOffline(projectId) {
   const id = String(projectId || '');
   if (!id) return false;
   return readOfflineMap()[id] === true;
 }
 
-/** 現在の同期スコープ案件にだけ手動オフラインを適用する。トップでは常にfalse。 */
 export function isManualOffline() {
   return activeProjectId ? isProjectManualOffline(activeProjectId) : false;
 }
@@ -149,12 +161,9 @@ export function subscribeSyncStatus(callback) {
   };
 }
 
-/**
- * 次に同期対象とする案件を明示する。案件を開く前に呼べることが重要。
- * 空文字はトップ／案件未選択を意味し、手動オフラインを適用しない。
- */
 export function activateProjectSyncStatus(projectId) {
   const id = String(projectId || '');
+  if (id) migrateLegacyOfflineToProject(id);
   activeProjectId = id;
   const manualOffline = id ? isProjectManualOffline(id) : false;
   resetActivityState();
@@ -166,7 +175,6 @@ export function activateProjectSyncStatus(projectId) {
   });
 }
 
-/** 現在の同期スコープ案件の手動オフライン設定を保存する。 */
 export function setManualOffline(enabled) {
   if (!activeProjectId) {
     activateProjectSyncStatus('');
