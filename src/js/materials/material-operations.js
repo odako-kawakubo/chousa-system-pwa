@@ -24,7 +24,7 @@ import {
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
-import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
+import { getCurrentProject, saveProjectSnapshotWithStatus } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
   persistFinishForProject,
@@ -80,16 +80,22 @@ function captureOperationSnapshot() {
  * 削除・統合・再登録のような複数Record重要操作は、Firestore保存より先に
  * 完成済み3Storeを端末Snapshotへ即保存する。
  * 通常の1セル編集までproject-store保存へ寄せる意図ではない。
+ * 重要操作ではlocalStorage永続化まで成功したことを確認し、失敗時は
+ * Firestore保存へ進まず、その場で操作失敗として返す。
  */
 function saveOperationLocalSnapshot(source) {
   const project = getCurrentProject();
-  if (!project?.projectId) return null;
+  if (!project?.projectId) throw new Error('案件情報を取得できません。');
   const snapshot = captureOperationSnapshot();
-  return saveProjectSnapshot({
+  const result = saveProjectSnapshotWithStatus({
     project,
     ...snapshot,
     source: `${source}-local-snapshot`
   });
+  if (!result?.snapshot || !result.persisted) {
+    throw new Error('端末内の保存領域へ変更を保存できませんでした。空き容量を確認してから再度お試しください。');
+  }
+  return result.snapshot;
 }
 
 function isPersistenceSettled(result) {
