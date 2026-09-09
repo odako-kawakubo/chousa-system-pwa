@@ -10,6 +10,7 @@
  * - Apple Pencilは単純タップを通常操作、ドラッグをスクロールとして判定する。
  * - 行選択だけでは一覧全体を再描画しない。
  * - 全体再描画が必要な場合でも、案件ごとの建材リストスクロール位置を保持する。
+ * - タブ離脱時に明示保存し、建材リストへ戻った時に復元する。
  */
 
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
@@ -26,6 +27,7 @@ import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.
 let rootElement = null;
 let selectedMaterialId = null;
 let outsideMultiSelectBound = false;
+let materialListTabScrollBound = false;
 let renderedProjectId = '';
 const scrollStateByProject = new Map();
 
@@ -83,12 +85,30 @@ function restoreMaterialListScroll(projectId) {
   wrap.scrollLeft = Number(saved.left || 0);
 }
 
+function bindMaterialListTabScrollState() {
+  if (materialListTabScrollBound) return;
+  materialListTabScrollBound = true;
+
+  window.addEventListener('chousa:tab-change', (event) => {
+    const previousTab = String(event.detail?.previousTab || '');
+    const currentTab = String(event.detail?.currentTab || '');
+
+    if (previousTab === 'materials') captureMaterialListScroll();
+    if (currentTab === 'materials') {
+      requestAnimationFrame(() => {
+        restoreMaterialListScroll(String(getCurrentProject()?.projectId || ''));
+      });
+    }
+  });
+}
+
 export function initializeMaterialList() {
   rootElement = document.getElementById('materials');
   if (!rootElement) return;
 
   bindMaterialListEvents();
   bindOutsideMultiSelectClose();
+  bindMaterialListTabScrollState();
   document.querySelector('.tabs .tab[data-tab="materials"]')?.addEventListener('click', refreshMaterialList);
   refreshMaterialList();
 }
