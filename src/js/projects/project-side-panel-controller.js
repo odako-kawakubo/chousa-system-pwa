@@ -17,6 +17,7 @@ import { closeModal } from '../ui/modal.js';
 import { closeProjectPanel } from '../ui/project-panel.js';
 import { beginLoading, endLoading } from '../ui/loading-ui.js';
 import { listUnsent, clearUnsentForProject } from '../sync/unsent-queue.js';
+import { activateProjectSyncStatus } from '../sync/sync-status.js';
 import { deleteTestProjectFromFirestore } from '../sync/project-record-persistence.js';
 import { deleteLocalPhotoData } from '../photos/photo-local-store.js';
 import { clearProjectBoardSettings } from '../settings/board-settings-store.js';
@@ -93,11 +94,13 @@ async function createNewProject() {
     const projectId = snapshot?.project?.projectId || '';
     if (!projectId) throw new Error('案件を作成できませんでした。');
     setOpenProjectId(projectId);
+    activateProjectSyncStatus(projectId);
     closeModal('newProjectModal');
     closeProjectPanel();
     clearNewProjectForm();
     await openProjectById(projectId);
   } catch (error) {
+    activateProjectSyncStatus(getCurrentProject()?.projectId || '');
     showNewProjectStatus(error?.message || '新規案件を作成できませんでした。', 'warn');
   } finally {
     endLoading(loadingToken);
@@ -136,6 +139,7 @@ async function deleteProject(projectId) {
     clearProjectBoardSettings(id);
     removeProject(id);
     if (current?.projectId === id) {
+      activateProjectSyncStatus('');
       openHomePage();
       return;
     }
@@ -155,11 +159,18 @@ async function switchProject(projectId) {
     closeProjectPanel();
     return;
   }
+  const previousProjectId = String(getCurrentProject()?.projectId || '');
   const loadingToken = beginLoading('案件を読み込んでいます…');
   try {
     captureInitialProjectSession();
     setOpenProjectId(id);
+    // target案件の保存済み手動オフライン設定を、Firestore読込判定より先に有効化する。
+    activateProjectSyncStatus(id);
     await openProjectById(id);
+    if (String(getCurrentProject()?.projectId || '') !== id) {
+      activateProjectSyncStatus(previousProjectId);
+      return;
+    }
     closeProjectPanel();
   } finally {
     endLoading(loadingToken);
