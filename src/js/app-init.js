@@ -35,7 +35,7 @@ import { bindSyncStatusUi } from './ui/sync-ui.js';
 import { bindDeviceUi } from './ui/device-ui.js';
 import { bindHeaderEditUi } from './ui/header-edit-ui.js';
 import { initializeDeviceIdentity } from './device-code.js';
-import { initializeNetworkStatusEvents } from './sync/sync-status.js';
+import { initializeNetworkStatusEvents, activateProjectSyncStatus } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
 import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js';
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
@@ -56,6 +56,7 @@ async function initProjectApp() {
     initializeDeviceIdentity();
     applyAppVersionDisplay();
     initializeNetworkStatusEvents();
+    activateProjectSyncStatus(projectId);
     bindSyncStatusUi();
     bindDeviceUi();
     bindHeaderEditUi();
@@ -79,8 +80,6 @@ async function initProjectApp() {
     initializeOneDriveConnection();
     initializeOneDriveProjectIntegration();
 
-    // 写真Blob保存時点で現在案件projectIdを確定する。
-    // camera / editor側へ案件Store依存を広げず、local-storeへ取得関数だけ注入する。
     configurePhotoLocalStore({
       getProjectId: () => String(getCurrentProject()?.projectId || '')
     });
@@ -98,11 +97,13 @@ async function initProjectApp() {
     showTab('finish');
 
     if (!getProject(projectId)) {
+      activateProjectSyncStatus('');
       openHomePage({ replace: true });
       return;
     }
 
     await openProjectById(projectId);
+    if (!getCurrentProject()?.projectId) activateProjectSyncStatus('');
     initializeSystemDataBackup();
     window.addEventListener('pagehide', captureInitialProjectSession);
   } finally {
