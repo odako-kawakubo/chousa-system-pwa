@@ -105,7 +105,7 @@ export function getProjectList() {
   });
 }
 
-export function saveProjectSnapshot({
+function saveProjectSnapshotInternal({
   project,
   finishRecords = [],
   materialRecords = [],
@@ -113,7 +113,7 @@ export function saveProjectSnapshot({
   syncMeta = null,
   source = 'unspecified'
 }) {
-  if (!project?.projectId) return null;
+  if (!project?.projectId) return { snapshot: null, persisted: false };
   const previous = projects.get(project.projectId);
   syncDiagnosticLog('LOCAL_SNAPSHOT_BEFORE_SAVE', {
     source,
@@ -145,7 +145,26 @@ export function saveProjectSnapshot({
     materialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
   });
   notify();
-  return getProject(project.projectId);
+  return {
+    snapshot: getProject(project.projectId),
+    persisted
+  };
+}
+
+/**
+ * 既存互換のSnapshot保存入口。
+ * 呼び出し側の既存契約を変えず、従来どおりSnapshot本体だけを返す。
+ */
+export function saveProjectSnapshot(options) {
+  return saveProjectSnapshotInternal(options).snapshot;
+}
+
+/**
+ * 削除・統合など、端末永続化の成功確認が必要な重要操作向け入口。
+ * Snapshot本体とlocalStorage永続化結果を同時に返す。
+ */
+export function saveProjectSnapshotWithStatus(options) {
+  return saveProjectSnapshotInternal(options);
 }
 
 export function updateProjectFields(projectId, patch = {}) {
