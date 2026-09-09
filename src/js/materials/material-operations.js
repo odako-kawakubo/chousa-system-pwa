@@ -77,13 +77,36 @@ function captureOperationSnapshot() {
 }
 
 /**
+ * 重要操作の端末Snapshot保存に失敗した場合、3Storeとproject-store上の案件Snapshotを
+ * 操作前へ戻す。localStorageへの書き込み自体が失敗した場合でも、少なくとも現在の
+ * メモリ状態が「失敗した操作後」のまま残らないようにする。
+ */
+function rollbackOperationSnapshot(snapshot, source) {
+  if (!snapshot) return;
+
+  runRecordTransaction(() => {
+    finishRecordStore.replaceAll(snapshot.finishRecords || []);
+    materialRecordStore.replaceAll(snapshot.materialRecords || []);
+    photoRecordStore.replaceAll(snapshot.photoRecords || [], { notify: false });
+  });
+
+  const project = getCurrentProject();
+  if (!project?.projectId) return;
+  saveProjectSnapshotWithStatus({
+    project,
+    ...snapshot,
+    source: `${source}-rollback`
+  });
+}
+
+/**
  * 削除・統合・再登録のような複数Record重要操作は、Firestore保存より先に
  * 完成済み3Storeを端末Snapshotへ即保存する。
  * 通常の1セル編集までproject-store保存へ寄せる意図ではない。
  * 重要操作ではlocalStorage永続化まで成功したことを確認し、失敗時は
- * Firestore保存へ進まず、その場で操作失敗として返す。
+ * 操作前Snapshotへ戻してから、Firestore保存へ進まず操作失敗として返す。
  */
-function saveOperationLocalSnapshot(source) {
+function saveOperationLocalSnapshot(source, before) {
   const project = getCurrentProject();
   if (!project?.projectId) throw new Error('案件情報を取得できません。');
   const snapshot = captureOperationSnapshot();
@@ -93,7 +116,8 @@ function saveOperationLocalSnapshot(source) {
     source: `${source}-local-snapshot`
   });
   if (!result?.snapshot || !result.persisted) {
-    throw new Error('端末内の保存領域へ変更を保存できませんでした。空き容量を確認してから再度お試しください。');
+    rollbackOperationSnapshot(before, source);
+    throw new Error('端末内の保存領域へ変更を保存できませんでした。操作前の状態へ戻しました。空き容量を確認してから再度お試しください。');
   }
   return result.snapshot;
 }
@@ -379,7 +403,7 @@ export async function mergeMaterials(targetId, sourceIds) {
     resequenceActiveMaterials();
   });
 
-  saveOperationLocalSnapshot('material-merge-final');
+  saveOperationLocalSnapshot('material-merge-final', before);
   const persisted = await persistOperationSnapshotDiff(before, 'material-merge-final');
   return { targetId, sourceIds: sources.map((source) => source.materialId), persisted };
 }
@@ -417,7 +441,7 @@ export async function deleteMaterials(materialIds) {
     resequenceActiveMaterials();
   });
 
-  saveOperationLocalSnapshot('material-delete-final');
+  saveOperationLocalSnapshot('material-delete-final', before);
   const persisted = await persistOperationSnapshotDiff(before, 'material-delete-final');
   return { deletedIds: targets.map((target) => target.materialId), persisted };
 }
@@ -481,7 +505,7 @@ export async function reregisterDeletedMaterial(sourceMaterialId, insertPosition
     created = materialRecordStore.get(materialId) || created;
   });
 
-  saveOperationLocalSnapshot('material-reregister-final');
+  saveOperationLocalSnapshot('material-reregister-final', before);
   const persisted = await persistOperationSnapshotDiff(before, 'material-reregister-final');
   return { material: created, sourceMaterialId: source.materialId, insertPosition: position, persisted };
 }
