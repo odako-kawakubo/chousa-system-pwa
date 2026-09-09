@@ -9,6 +9,7 @@
  * - 建材名称／調査備考の文字入力は、仕上表と同じく通常span・編集時だけinput。
  * - Apple Pencilは単純タップを通常操作、ドラッグをスクロールとして判定する。
  * - 行選択だけでは一覧全体を再描画しない。
+ * - 全体再描画が必要な場合でも、案件ごとの建材リストスクロール位置を保持する。
  */
 
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
@@ -25,6 +26,8 @@ import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.
 let rootElement = null;
 let selectedMaterialId = null;
 let outsideMultiSelectBound = false;
+let renderedProjectId = '';
+const scrollStateByProject = new Map();
 
 const MATERIAL_META_FIELDS = new Set(['updatedAt', 'updatedDevice', 'fieldEditedAt', 'color', 'photoCount', 'materialNo', 'inputId', 'baseName', 'suffixLetter', 'systemMemo']);
 
@@ -61,6 +64,25 @@ let penPointer = null;
 let ignoreNextPenClick = false;
 let ignorePenClickUntil = 0;
 
+function captureMaterialListScroll() {
+  if (!rootElement || !renderedProjectId) return;
+  const wrap = rootElement.querySelector('.material-list-table-wrap');
+  if (!wrap) return;
+  scrollStateByProject.set(renderedProjectId, {
+    top: Number(wrap.scrollTop || 0),
+    left: Number(wrap.scrollLeft || 0)
+  });
+}
+
+function restoreMaterialListScroll(projectId) {
+  if (!rootElement) return;
+  const wrap = rootElement.querySelector('.material-list-table-wrap');
+  if (!wrap) return;
+  const saved = scrollStateByProject.get(String(projectId || '')) || { top: 0, left: 0 };
+  wrap.scrollTop = Number(saved.top || 0);
+  wrap.scrollLeft = Number(saved.left || 0);
+}
+
 export function initializeMaterialList() {
   rootElement = document.getElementById('materials');
   if (!rootElement) return;
@@ -75,6 +97,10 @@ export function refreshMaterialList() {
   if (!rootElement) rootElement = document.getElementById('materials');
   if (!rootElement) return;
 
+  // rendererはroot.innerHTMLを置き換えるため、再描画の直前に現在のscrollを退避する。
+  // 案件切替時はrenderedProjectIdが旧案件を指すので、旧案件の位置を正しく保存できる。
+  captureMaterialListScroll();
+
   // 使用箇所・部位が1候補だけの場合、未入力の採取欄へ自動補完する。
   // 候補が複数の場合や既存値がある場合は触らない。
   applySamplingAutofill();
@@ -83,7 +109,11 @@ export function refreshMaterialList() {
   if (selectedMaterialId && !rows.some((row) => row.materialId === selectedMaterialId)) {
     selectedMaterialId = null;
   }
+
+  const projectId = String(getCurrentProject()?.projectId || '');
   renderMaterialList(rootElement, rows, selectedMaterialId, { colorMode: materialListColorMode });
+  renderedProjectId = projectId;
+  restoreMaterialListScroll(projectId);
 }
 
 function bindMaterialListEvents() {
@@ -365,7 +395,6 @@ function updateMaterialControl(control) {
   refreshMaterialList();
   refreshRecordView();
 }
-
 
 function updateSamplePartsFromChecklist(materialId) {
   const record = materialRecordStore.get(materialId);
