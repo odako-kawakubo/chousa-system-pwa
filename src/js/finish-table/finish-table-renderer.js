@@ -7,6 +7,18 @@
  *
  * 通常時の編集欄はspanとして描画し、実際に編集を開始した欄だけinputへ差し替える。
  * これによりApple Pencilでスクロール中にScribbleが編集欄へ反応することを避ける。
+ *
+ * v0.1.5.1でのデータ層移行：
+ *   描画対象の業務データ（部屋・建材の構造）の取得元を、finish-table-state.js
+ *   （旧: state.floors等の業務データ）からfinish-table-view-model.js
+ *   （finishRecordStore／materialRecordStoreから毎回再構築するViewModel）へ
+ *   切り替えた。DOM構造・CSS・イベント配線の対象（クラス名・data属性）は
+ *   変更していない。renderRooms()の先頭でViewModelを1回だけ構築し、
+ *   モジュール内のcurrentViewModelへ保持して、同じ描画中の内部関数
+ *   （currentRooms/renderInternalRows等）が使い回す（Store・ViewModelの
+ *   再構築を1回の描画で複数回行わない）。
+ *   UI専用状態（選択・フォーカス・表示モード等）は引き続き
+ *   finish-table-state.jsから読む。
  */
 
 import {
@@ -37,6 +49,7 @@ import { formatProjectLabel } from '../projects/project-store.js';
 
 const OTHER_PART_INDEXES = new Set([5, 6]);
 
+/** コピーボタンの状態→表示ラベル対応（4状態＋通常）。 */
 const COPY_STATE_LABEL = {
   idle: 'コピー',
   source: 'コピー元',
@@ -45,6 +58,12 @@ const COPY_STATE_LABEL = {
   'target-overwrite': '上書き'
 };
 
+/**
+ * 直近に構築したViewModel。renderRooms()の先頭で毎回作り直す（Records→
+ * ViewModelの再構築は1回の描画につき1回だけ）。currentRooms()・
+ * renderInternalRows()・renderExternalRows()・renderPartCells()等、同じ
+ * renderRooms()呼び出しの中で動く内部関数が参照する。
+ */
 let currentViewModel = null;
 
 function escapeHtml(value) {
@@ -60,31 +79,50 @@ export function renderFinishTab(container) {
   container.innerHTML = `
     <div class="finish-tab-root">
       <div class="finish-project-banner" id="finishProjectBanner"></div>
+
       <div class="finish-toolbar" id="finishToolbar">
         <div class="finish-toolbar-group" id="finishAreaToggle">
           <button type="button" class="btn small finish-area-btn" data-area-mode="internal">内部</button>
           <button type="button" class="btn small finish-area-btn" data-area-mode="external">外部</button>
         </div>
+
         <div class="finish-toolbar-spacer"></div>
+
         <div class="finish-toolbar-group">
           <button type="button" class="btn small finish-mode-btn" id="finishColorToggleBtn"></button>
           <button type="button" class="btn small finish-mode-btn" id="finishChipInputToggleBtn"></button>
         </div>
+
         <div class="finish-toolbar-spacer"></div>
+
+        <!-- 仕上表全体のUndo/Redo。コピー専用の「戻す」とは別物。 -->
         <div class="finish-toolbar-group">
           <button type="button" class="btn small" id="finishUndoBtn" disabled>戻る</button>
           <button type="button" class="btn small" id="finishRedoBtn" disabled>進む</button>
         </div>
+
         <div class="finish-toolbar-spacer"></div>
+
         <div class="finish-toolbar-group">
           <button type="button" class="btn small finish-mode-btn" id="finishSimpleListToggleBtn"></button>
         </div>
+
         <div class="finish-toolbar-fill"></div>
       </div>
+
+      <!-- 簡易リストは仕上表の上に表示する -->
       <section class="finish-simple-list-panel" id="finishSimpleListPanel"></section>
+
+      <!--
+        仕上表は1個の2Dスクロール領域で動かす。
+        左側は1部屋=1固定ブロック、右側だけが入力行を持つ。
+        空固定セル・rowspan・clone overlay・JS横同期は使わない。
+      -->
       <div class="finish-table-scroll" id="finishTableScroll">
         <div class="finish-table-host" id="finishRoomsArea"></div>
       </div>
+
+      <!-- v0.1.5.4B: iPadでも自由入力を邪魔しない、入力セル追従型の候補ポップ。 -->
       <div class="finish-candidate-popup" id="finishCandidatePopup" hidden></div>
     </div>
   `;
@@ -116,7 +154,9 @@ export function renderToolbarState() {
   }
 
   const listBtn = document.getElementById('finishSimpleListToggleBtn');
-  if (listBtn) listBtn.textContent = `簡易リスト ${state.simpleListOpen ? '▼' : '▶'}`;
+  if (listBtn) {
+    listBtn.textContent = `簡易リスト ${state.simpleListOpen ? '▼' : '▶'}`;
+  }
 }
 
 function currentRooms() {
@@ -125,11 +165,31 @@ function currentRooms() {
   return orderedInternalGroups(currentViewModel).flatMap((group) => group.rooms);
 }
 
+/** 階／コピー/部屋名の各固定列の幅（px）。部屋No.列だけが可変。 */
 const FLOOR_COL_WIDTH = 30;
 const COPY_COL_WIDTH = 38;
 const ROOM_NAME_COL_WIDTH = 70;
+/** ID列の幅（px）。建材名称・その他部位の列だけがセル内容に応じて可変。 */
 const ID_COL_WIDTH = 30;
 
+/**
+ * 列構成・列幅・仕上表全体幅を一箇所で計算する。
+ * ヘッダー・左固定ペイン・右入力領域は、この関数の1回の呼び出し結果だけから
+ * 幅を組み立てる（別々に計算しない）。ブラウザの内容依存の自動幅計算には
+ * 任せず、全て明示的なpx幅で揃える。
+ *
+ * @returns {{
+ *   parts: string[],
+ *   roomNoWidth: number,
+ *   floorWidth: number,
+ *   copyWidth: number,
+ *   roomNameWidth: number,
+ *   fixedRegionWidth: number,
+ *   materialRegionWidth: number,
+ *   totalTableWidth: number,
+ *   groups: Array<{ label: string, groupWidth: number, cols: Array<{ kind: 'id'|'part'|'name', width: number }> }>
+ * }}
+ */
 function computeColumnLayout() {
   const areaCode = getState().activeAreaMode === 'external' ? 'E' : 'I';
   const parts = getPartsForAreaCode(areaCode);
@@ -148,9 +208,15 @@ function computeColumnLayout() {
     }
   });
 
+  // 部屋No.列は内部・外部とも内容に応じて可変。
+  // 最小幅はヘッダ「部屋No.」が切れない幅を確保し、長い文字列だけ自然に広げる。
   const longestRoomNo = rooms.reduce((max, room) => Math.max(max, String(room.roomNo || '').length), 0);
   const roomNoWidth = Math.max(54, Math.min(160, 22 + longestRoomNo * 8));
+
   const fixedRegionWidth = FLOOR_COL_WIDTH + roomNoWidth + COPY_COL_WIDTH + ROOM_NAME_COL_WIDTH;
+
+  // 建材ごとの列グループ（ID／[部位]／建材名称）。
+  // ヘッダー・右入力行は、どちらもこの配列から同じgrid幅を組み立てる。
   const groups = parts.map((label, index) => {
     const item = widths[index];
     const cols = [{ kind: 'id', width: ID_COL_WIDTH }];
@@ -159,6 +225,7 @@ function computeColumnLayout() {
     const groupWidth = cols.reduce((sum, col) => sum + col.width, 0);
     return { label, groupWidth, cols };
   });
+
   const materialRegionWidth = groups.reduce((sum, group) => sum + group.groupWidth, 0);
   const totalTableWidth = fixedRegionWidth + materialRegionWidth;
 
@@ -175,11 +242,22 @@ function computeColumnLayout() {
   };
 }
 
+/**
+ * 仕上表を「1個の2Dスクロール領域 + 部屋単位ブロック」で再描画する。
+ *
+ * 現在の描画構造：
+ * ・ヘッダーと本体は同じ .finish-sheet 幅・同じ computeColumnLayout() を共有する
+ * ・左固定領域は、各入力行に空セルを作る方式を廃止する
+ * ・左側は 1部屋 = 1つの .finish-room-fixed として生成する
+ * ・右側だけが rowCount 分の入力行を持つ
+ * ・部屋固定領域そのものを left:0 でstickyにし、4列個別stickyは使わない
+ */
 export function renderRooms() {
   const host = document.getElementById('finishRoomsArea');
   if (!host) return;
 
   currentViewModel = buildFinishTableViewModel();
+
   const state = getState();
   const layout = computeColumnLayout();
   const { roomNoWidth, totalTableWidth } = layout;
@@ -197,6 +275,11 @@ export function renderRooms() {
   applyVisualState();
 }
 
+/**
+ * 仕上表ヘッダー。
+ * 左固定4列は1つの固定ペイン、建材側は同じ列幅定義のgridとして描画する。
+ * 両方とも同じ2Dスクロール領域内にあるため、JS横同期は不要。
+ */
 function renderTableHeader(layout) {
   const fixedColumns = `${layout.floorWidth}px ${layout.roomNoWidth}px ${layout.copyWidth}px ${layout.roomNameWidth}px`;
   const materialColumns = layout.groups.flatMap((group) => group.cols.map((col) => `${col.width}px`)).join(' ');
@@ -248,12 +331,14 @@ function renderExternalRows(layout) {
     rooms: currentViewModel.externalRooms,
     virtual: true
   };
+  // 外部は「階」の概念を持たないため、階見出し行（折りたたみ）の対象外とする。
   return renderGroupRows(group, layout, false, false);
 }
 
 function renderGroupRows(group, layout, isLastNormalFloor, showHeading) {
   const heading = showHeading ? renderFloorHeadingRow(group, layout.totalTableWidth) : '';
   if (!group.rooms.length) return heading;
+
   if (showHeading && isFloorCollapsed(floorGroupKey(group))) return heading;
 
   const rooms = group.rooms.map((room, roomIndex) => {
@@ -263,6 +348,11 @@ function renderGroupRows(group, layout, isLastNormalFloor, showHeading) {
   return heading + rooms;
 }
 
+/**
+ * 階見出し行。
+ * tableのcolspanは使わず、仕上表全幅を持つ1ブロックとして描画する。
+ * ラベルだけleft:0へstickyさせ、横スクロールしても階名を見失わない。
+ */
 function renderFloorHeadingRow(group, totalTableWidth) {
   const key = floorGroupKey(group);
   const collapsed = isFloorCollapsed(key);
@@ -278,6 +368,11 @@ function renderFloorHeadingRow(group, totalTableWidth) {
   `;
 }
 
+/**
+ * 1部屋を、左固定ペイン1個 + 右入力行群として描画する。
+ * 左側には2行目以降の空セルを一切作らない。rowCountが増えた場合は、
+ * .finish-room-fixed 自体が右側の入力行群と同じ高さまで伸びる。
+ */
 function renderRoomBlock(room, group, layout, roomIsLast, isLastNormalFloor) {
   const key = roomKey(room);
   const floorText = group.areaCode === 'S' ? '階段' : group.areaCode === 'R' ? 'R階' : group.label;
@@ -295,12 +390,23 @@ function renderRoomBlock(room, group, layout, roomIsLast, isLastNormalFloor) {
 
   return `
     <div class="finish-room-block" data-room-key="${escapeHtml(key)}" style="grid-template-columns:${layout.fixedRegionWidth}px ${layout.materialRegionWidth}px">
-      ${renderRoomFixedPane(room, group, { key, floorText, fixedColumns, roomIsLast, isLastNormalFloor })}
+      ${renderRoomFixedPane(room, group, {
+        key,
+        floorText,
+        fixedColumns,
+        roomIsLast,
+        isLastNormalFloor
+      })}
       <div class="finish-room-materials">${materialRows}</div>
     </div>
   `;
 }
 
+/**
+ * 左固定領域は1部屋につきこの1要素だけを生成する。
+ * 右側の入力行数と同じ高さは親gridのstretchで自動的に共有するため、
+ * rowCount×28pxのabsolute重ね合わせや空セル生成は行わない。
+ */
 function renderRoomFixedPane(room, group, ctx) {
   const { key, floorText, fixedColumns, roomIsLast, isLastNormalFloor } = ctx;
   return `
@@ -320,7 +426,9 @@ function renderRoomFixedPane(room, group, ctx) {
           </div>
         </div>
       </div>
-      <div class="finish-meta copy-cell">${renderCopyButton(key)}</div>
+      <div class="finish-meta copy-cell">
+        ${renderCopyButton(key)}
+      </div>
       <div class="finish-meta room-name-cell">
         <div class="room-control room-name-control">
           ${renderRoomFieldControl(room, 'room-name')}
@@ -331,12 +439,14 @@ function renderRoomFixedPane(room, group, ctx) {
   `;
 }
 
+/** ＋階：通常階の最終部屋の階セルにだけ表示する。 */
 function renderFloorAddButton(group, isLastNormalFloor, roomIsLast) {
   const state = getState();
   if (state.activeAreaMode !== 'internal' || !isLastNormalFloor || !roomIsLast || group.areaCode !== 'I') return '';
   return '<button type="button" class="room-mini-btn floor-add" data-action="add-normal-floor">＋階</button>';
 }
 
+/** ＋B階（地下階追加）ショートカット：「1-1」ブロックの階セルにだけ表示する。 */
 function renderBasementShortcutButton(room, group) {
   const state = getState();
   if (state.activeAreaMode !== 'internal') return '';
@@ -344,6 +454,10 @@ function renderBasementShortcutButton(room, group) {
   return '<button type="button" class="room-mini-btn basement-add" data-action="add-basement-floor">＋B階</button>';
 }
 
+/**
+ * 部屋コピー用ボタン。4状態（コピー元／コピー可／上書き／戻す）＋
+ * 通常時の「コピー」を、状態ごとのCSSクラス（state-xxx）で描き分ける。
+ */
 function renderCopyButton(key) {
   const status = getRoomCopyButtonState(key);
   const label = COPY_STATE_LABEL[status] || 'コピー';
@@ -354,6 +468,16 @@ function renderCopyButton(key) {
   `;
 }
 
+/**
+ * 部屋No./部屋名の欄。
+ *
+ * 編集中（focusedInputKeyがこの欄のroomFieldKeyと一致する）
+ * のときだけ<input>を描画し、それ以外は表示専用の<span class="finish-cell-display">
+ * を描画する（常時<input>構造の廃止。ファイル冒頭のコメント参照）。
+ *
+ * @param {object} room
+ * @param {'room-no'|'room-name'} field
+ */
 function renderRoomFieldControl(room, field) {
   const key = roomKey(room);
   const fieldKey = roomFieldKey(room, field);
@@ -366,9 +490,25 @@ function renderRoomFieldControl(room, field) {
   if (getFocusedInputKey() === fieldKey) {
     return `<input class="finish-cell-input ${inputClass}" ${common} value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(label)}">`;
   }
+
   return renderDisplaySpan(value, placeholder, inputClass, common, label);
 }
 
+/**
+ * データセル1枠（ID／部位／建材名称のいずれか）を組み立てる。
+ *
+ * 編集中（focusedInputKeyがこの欄のinputKeyと一致する）
+ * のときだけ<input>を描画し、それ以外は表示専用の<span class="finish-cell-display">
+ * を描画する（常時<input>構造の廃止。ファイル冒頭のコメント参照）。
+ *
+ * @param {object} room
+ * @param {number} partIndex
+ * @param {number} row
+ * @param {'id'|'part'|'name'} kind
+ * @param {string} value
+ * @param {string} placeholder
+ * @param {string} inputClass
+ */
 function renderFieldControl(room, partIndex, row, kind, value, placeholder, inputClass) {
   const fieldKey = inputKey(room, partIndex, row, kind);
   const roomKeyValue = roomKey(room);
@@ -378,9 +518,22 @@ function renderFieldControl(room, partIndex, row, kind, value, placeholder, inpu
     const inputMode = kind === 'id' ? ' inputmode="numeric"' : '';
     return `<input class="finish-cell-input ${inputClass}" ${common} value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}"${inputMode}>`;
   }
+
   return renderDisplaySpan(value, placeholder, inputClass, common);
 }
 
+/**
+ * 表示専用<span class="finish-cell-display">を組み立てる共通処理。
+ * 値が空のときはplaceholder文字列を薄く表示する（CSS側の.is-placeholder）。
+ * data-placeholder属性は、swapDisplayToInput()がinputへ差し替える際に
+ * placeholder属性として引き継ぐために持たせてある。
+ *
+ * @param {string} value
+ * @param {string} placeholder
+ * @param {string} inputClass
+ * @param {string} commonAttrs すでに組み立て済みのdata-*属性文字列
+ * @param {string} [label] aria-label（未指定なら付与しない）
+ */
 function renderDisplaySpan(value, placeholder, inputClass, commonAttrs, label) {
   const hasValue = value != null && String(value) !== '';
   const displayText = hasValue ? String(value) : placeholder;
@@ -419,14 +572,34 @@ function renderPartCells(room, partIndex, row) {
   return html;
 }
 
+/**
+ * 表示専用の<span class="finish-cell-display">を<input>へ差し替え、
+ * フォーカスできる状態で返す。
+ *
+ * finish-table-controller.jsが編集開始と判定したタップ時に呼ぶ。
+ * Pencilも単純タップなら指・マウスと同じ処理を使う。ドラッグ時は呼ばない。
+ * テーブル全体を再描画せず対象フィールドだけを差し替えることで、
+ * 選択のたびに全体再描画される負荷とちらつきを避ける。
+ *
+ * spanがis-placeholder（値が空でplaceholder文字列を表示中）の場合、
+ * textContentはplaceholder文字列そのものなので、そのままinput.valueへ
+ * コピーすると空欄のはずの欄にplaceholder文字列が実値として入ってしまう。
+ * この場合はinput.valueを空文字にする。
+ *
+ * @param {HTMLElement} displaySpan .finish-cell-display要素
+ * @returns {HTMLInputElement|null} 差し替え後のinput要素（対象でなければnull）
+ */
 export function swapDisplayToInput(displaySpan) {
   if (!displaySpan || !displaySpan.classList.contains('finish-cell-display')) return null;
 
   const input = document.createElement('input');
   input.className = displaySpan.className.replace('finish-cell-display', 'finish-cell-input').replace(/\s*is-placeholder\s*/, ' ').trim();
   Array.from(displaySpan.attributes).forEach((attr) => {
-    if (attr.name === 'data-placeholder') input.setAttribute('placeholder', attr.value);
-    else if (attr.name.startsWith('data-') || attr.name === 'aria-label') input.setAttribute(attr.name, attr.value);
+    if (attr.name === 'data-placeholder') {
+      input.setAttribute('placeholder', attr.value);
+    } else if (attr.name.startsWith('data-') || attr.name === 'aria-label') {
+      input.setAttribute(attr.name, attr.value);
+    }
   });
   input.value = displaySpan.classList.contains('is-placeholder') ? '' : displaySpan.textContent;
   if (displaySpan.dataset.kind === 'id') input.setAttribute('inputmode', 'numeric');
@@ -434,6 +607,11 @@ export function swapDisplayToInput(displaySpan) {
   displaySpan.replaceWith(input);
   return input;
 }
+
+/* ============================================================
+   選択表示の再適用
+   前回対象だった要素だけを覚えておき、その差分だけクラスを付け外しする。
+   ============================================================ */
 
 let lastRoomRows = [];
 let lastGroupCells = [];
@@ -444,6 +622,7 @@ function findTable() {
   return document.getElementById('finishTable');
 }
 
+/** 部屋選択（部屋全体の薄い水色表示）だけを更新する。 */
 export function applyRoomSelection() {
   const table = findTable();
   if (!table) return;
@@ -460,6 +639,7 @@ export function applyRoomSelection() {
   lastRoomRows.forEach((row) => row.classList.add('is-room-selected'));
 }
 
+/** 入力グループ選択（外周枠）だけを更新する。 */
 export function applyGroupSelection() {
   const table = findTable();
   if (!table) return;
@@ -471,13 +651,18 @@ export function applyGroupSelection() {
 }
 
 /**
- * 通常時は簡易リストの参照選択、チップ入力ON時は実際にarmされた入力ターゲットを
- * 一致強調へ使う。ON直後で入力ターゲット未選択なら、過去の参照選択は強調しない。
+ * 通常時は簡易リストの参照選択、チップ入力ON時は実際にarmされた入力ターゲットと
+ * 一致するセルの強調（is-material-match）だけを更新する。
+ * ON直後で入力ターゲット未選択なら、過去の参照選択は強調しない。
+ * 値の一致判定が必要なため、全セル走査が必要（IDの値を読むため）。
+ * ID表示は編集中でなければ<span>（.finish-id-input兼用）になっているため、
+ * value属性ではなくtextContentを読む。
  */
 export function applyMaterialMatchHighlight() {
   const table = findTable();
   if (!table) return;
 
+  // 前回の強調を解除する。
   lastMatchCells.forEach((cell) => cell.classList.remove('is-material-match'));
   lastMatchCells = [];
 
@@ -486,7 +671,19 @@ export function applyMaterialMatchHighlight() {
     : getSelectedMaterialInputId();
   if (selectedMaterial == null) return;
 
+  /*
+   * 選択値は入力IDなので、まず各入力グループのIDセルだけを確認する。
+   * 一致したら、そのセル単体ではなく同じ data-group-key を持つセル全部へ
+   * is-material-match を付ける。
+   *
+   * 通常部位: ID + 建材名称
+   * その他:   ID + 部位 + 建材名称
+   *
+   * これにより group-first / group-middle / group-last のCSSが連続して効き、
+   * 1つの建材入力枠全体を1本の一致枠として表示できる。
+   */
   const matchedGroupKeys = new Set();
+
   table.querySelectorAll('[data-group-key]').forEach((cell) => {
     const idField = cell.querySelector('.finish-id-input');
     if (!idField) return;
@@ -499,12 +696,22 @@ export function applyMaterialMatchHighlight() {
   });
 
   matchedGroupKeys.forEach((groupKey) => {
-    const groupCells = Array.from(table.querySelectorAll(`[data-group-key="${CSS.escape(groupKey)}"]`));
+    const groupCells = Array.from(
+      table.querySelectorAll(`[data-group-key="${CSS.escape(groupKey)}"]`),
+    );
+
     groupCells.forEach((cell) => cell.classList.add('is-material-match'));
     lastMatchCells.push(...groupCells);
   });
 }
 
+/**
+ * 入力中セルの青枠（is-focused-input）だけを更新する。
+ *
+ * データセル（data-input-key）・部屋No./部屋名欄（data-field-key）の
+ * どちらも同じfocusedInputKeyを共用する（finish-table-view-model.jsの
+ * roomFieldKey()を参照）ため、両方の属性を対象にする。
+ */
 export function applyFocusedInputHighlight() {
   const table = findTable();
   if (!table) return;
@@ -521,11 +728,15 @@ export function applyFocusedInputHighlight() {
   if (lastFocusedInputEl) lastFocusedInputEl.classList.add('is-focused-input');
 }
 
+/**
+ * DOM再構築後（renderRooms()実行直後など）に、選択表示をすべて再適用する。
+ */
 export function applyVisualState() {
   const table = findTable();
   if (!table) return;
 
   table.classList.toggle('color-mode', getState().colorMode);
+
   lastRoomRows = [];
   lastGroupCells = [];
   lastMatchCells = [];
@@ -537,6 +748,19 @@ export function applyVisualState() {
   applyFocusedInputHighlight();
 }
 
+/**
+ * 操作バー・簡易リストの実際の高さを測定し、sticky位置用のCSS変数を更新する。
+ *
+ *   --finish-page-stack-h … アプリ既存ヘッダー＋上部タブバーの高さ。
+ *   --finish-toolbar-h    … 仕上表の操作バー自身の高さ。
+ *   --finish-list-h       … 簡易リストパネルの高さ（閉じていれば0）。
+ *
+ * .finish-table-scroll の最大高さは、この3変数を使って「画面内の残り高さ」
+ * から算出する。仕上表ヘッダー自体はscroll領域内で top:0 にstickyするため、
+ * ページ基準の大きなtop値は使わない。
+ *
+ * @param {HTMLElement} root #finish セクション要素
+ */
 export function updateStickyMetrics(root) {
   const toolbar = root.querySelector('.finish-toolbar');
   const list = root.querySelector('.finish-simple-list-panel');
@@ -547,9 +771,16 @@ export function updateStickyMetrics(root) {
   const pageStackHeight = (appHeader ? appHeader.offsetHeight : 0)
     + (appToolbar ? appToolbar.offsetHeight : 0);
   root.style.setProperty('--finish-page-stack-h', `${pageStackHeight}px`);
+
   root.style.setProperty('--finish-toolbar-h', `${toolbar.offsetHeight}px`);
   root.style.setProperty('--finish-list-h', `${list ? list.offsetHeight : 0}px`);
 }
+
+/* ============================================================
+   部屋コピー用の確認ダイアログ
+   ブラウザ標準のconfirm()は使わず、自前の小型モーダルで完結させる。
+   src/js/ui/modal.js（既存の汎用モーダル開閉）は使用・変更しない。
+   ============================================================ */
 
 let pendingConfirmResolve = null;
 
@@ -587,6 +818,13 @@ function resolveConfirm(result) {
   if (resolve) resolve(result);
 }
 
+/**
+ * 部屋コピーの確認ダイアログを表示し、キャンセル／確定の結果をPromiseで返す。
+ *
+ * @param {string} message 確認文言（改行は\nで指定）
+ * @param {string} okLabel 確定ボタンの文字列
+ * @returns {Promise<boolean>}
+ */
 export function showFinishConfirm(message, okLabel) {
   ensureConfirmModal();
 
