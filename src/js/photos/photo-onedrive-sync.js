@@ -29,6 +29,7 @@ import {
 import { getCurrentOneDriveState, subscribeOneDriveState } from '../onedrive/onedrive-project.js';
 import { getDriveItem, uploadDriveFile } from '../onedrive/onedrive-client.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+import { isManualOffline, subscribeSyncStatus } from '../sync/sync-status.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
@@ -36,6 +37,7 @@ let initialized = false;
 let running = false;
 let rerunRequested = false;
 let scheduleTimer = null;
+let lastManualOffline = null;
 
 function activeProject() {
   const project = getCurrentProject();
@@ -250,6 +252,14 @@ async function runCurrentProjectPhotoSync() {
   const project = activeProject();
   if (!project) return { ok: false, reason: 'no-project' };
 
+  if (isManualOffline()) {
+    syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+      projectId: project.projectId,
+      reason: 'manual-offline'
+    });
+    return { ok: false, reason: 'manual-offline' };
+  }
+
   syncDiagnosticLog('PHOTO_SYNC_START', { projectId: project.projectId });
 
   const binding = activeBinding(project);
@@ -293,6 +303,16 @@ async function runCurrentProjectPhotoSync() {
         photoId: entry.photoId,
         variant: entry.variant,
         reason: 'project-changed'
+      });
+      break;
+    }
+
+    if (isManualOffline()) {
+      syncDiagnosticLog('PHOTO_SYNC_SKIP', {
+        projectId: project.projectId,
+        photoId: entry.photoId,
+        variant: entry.variant,
+        reason: 'manual-offline'
       });
       break;
     }
@@ -344,6 +364,12 @@ export function initializePhotoOneDriveSync() {
   subscribeProjects(requestSync);
   subscribeOneDriveState((state) => {
     if (state?.phase === 'formal' || state?.phase === 'temporary') requestSync();
+  });
+  subscribeSyncStatus((status) => {
+    const manualOffline = Boolean(status?.manualOffline);
+    const resumed = lastManualOffline === true && manualOffline === false;
+    lastManualOffline = manualOffline;
+    if (resumed) requestSync();
   });
 
   requestSync();
