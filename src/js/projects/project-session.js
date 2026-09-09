@@ -20,6 +20,7 @@ import { refreshPhotoTab, resetPhotoUiStateForProject } from '../photos/photo-co
 import { refreshPhotoForImpact, initializePhotoRefreshOnTabActivation } from '../photos/photo-refresh-policy.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
+import { activateProjectSyncStatus } from '../sync/sync-status.js';
 
 export function saveCurrentProjectSession() {
   const project = getCurrentProject();
@@ -109,11 +110,10 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
 
-  // 写真タブの選択・開閉・スクロール・プレビューURLは案件ごとに独立させる。
-  // Storeを新案件へ置換した後に初期選択を解決する。
   resetPhotoUiStateForProject();
 
   setCurrentProject(project);
+  activateProjectSyncStatus(project.projectId);
   boardSettingsStore.activateProject(project);
   setProject(project);
 
@@ -132,6 +132,7 @@ export function closeProjectSession() {
   resetFinishTableScrollState();
   resetPhotoUiStateForProject();
   setCurrentProject(null);
+  activateProjectSyncStatus('');
   const header = document.getElementById('caseHeaderTitle');
   if (header) header.textContent = '案件未選択';
 }
