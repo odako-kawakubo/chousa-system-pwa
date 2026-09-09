@@ -9,13 +9,20 @@
  * - 断面(code=4)は撮影区分として保持するが、看板区分欄には表示しない。
  * - 目視は「試料No.」ラベルを表示せず、2行目に撮影部位だけを表示する。
  * - 部屋No.は写真タブから渡された roomNo を表示し、roomPosition を表示値に使わない。
- * - プレビューと完成画像で同じ drawBoard() を使う。
+ * - プレビューと完成画像で同じ drawBoard() / getBoardRect() を使う。
  */
 
 // v0.1.5.7A 業務固定色：電子看板として写真へ焼き込む黒/白。
 // アプリのライト/ダークテーマでは変更しない。
 const BOARD_BASE = Object.freeze({ width: 390, height: 242 });
 const BOARD_SCALE = Object.freeze({ small: 0.8, medium: 1.0, large: 1.2 });
+
+// v0.1.6.7A 看板サイズ正本。
+// 現行の内部カメラ実機保存で確認できる中サイズ相当（390 / 900 = 約43.33%）を基準に固定する。
+// 小・大は従来どおり中サイズの0.8倍 / 1.2倍。実機確認後はこの定数だけを調整する。
+const BOARD_MEDIUM_WIDTH_RATIO = 390 / 900;
+const BOARD_MARGIN_RATIO = 4 / 900;
+
 const BOARD_STATUS_ITEMS = Object.freeze([
   { code: '5', label: '目視' },
   { code: '1', label: '施工前' },
@@ -276,16 +283,15 @@ export function drawBoard(ctx, rect, data) {
 }
 
 /**
- * 完成画像用の看板位置計算。
- * プレビュー基準幅を使い、画面と保存画像で同じ相対サイズになるようにする。
+ * 看板位置・サイズの唯一の計算入口。
+ * 端末や画面幅ではなく、対象写真/Canvas自体の幅に対する固定比率で計算する。
+ * これにより、内部カメラ保存・看板編集保存・各プレビューで同じ小/中/大になる。
  */
-export function getBoardRect(canvasWidth, canvasHeight, position = 'bottom-left', size = 'medium', previewWidth = 0) {
+export function getBoardRect(canvasWidth, canvasHeight, position = 'bottom-left', size = 'medium') {
   const scale = BOARD_SCALE[size] ?? BOARD_SCALE.medium;
-  const referenceWidth = previewWidth > 0 ? previewWidth : canvasWidth;
-  const mediumRatio = Math.min(0.45, BOARD_BASE.width / Math.max(referenceWidth, BOARD_BASE.width));
-  const width = Math.min(canvasWidth * mediumRatio * scale, canvasWidth * 0.72);
+  const width = Math.min(canvasWidth * BOARD_MEDIUM_WIDTH_RATIO * scale, canvasWidth * 0.72);
   const height = width * (BOARD_BASE.height / BOARD_BASE.width);
-  const margin = Math.max(8, canvasWidth * (4 / Math.max(referenceWidth, 1)));
+  const margin = Math.max(1, canvasWidth * BOARD_MARGIN_RATIO);
 
   const left = margin;
   const right = canvasWidth - width - margin;
@@ -316,24 +322,8 @@ export function renderBoardPreview(canvas, data, position, size) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const scale = BOARD_SCALE[size] ?? BOARD_SCALE.medium;
-  const mediumWidth = Math.min(BOARD_BASE.width * dpr, canvas.width * 0.55);
-  const boardWidth = mediumWidth * scale;
-  const boardHeight = boardWidth * (BOARD_BASE.height / BOARD_BASE.width);
-  const margin = 4 * dpr;
-
-  const left = margin;
-  const right = canvas.width - boardWidth - margin;
-  const top = margin;
-  const bottom = canvas.height - boardHeight - margin;
-  const positions = {
-    'top-left': [left, top],
-    'top-right': [right, top],
-    'bottom-right': [right, bottom],
-    'bottom-left': [left, bottom]
-  };
-  const [x, y] = positions[position] || positions['bottom-left'];
-  drawBoard(ctx, { x, y, width: boardWidth, height: boardHeight }, data);
+  const boardRect = getBoardRect(canvas.width, canvas.height, position, size);
+  drawBoard(ctx, boardRect, data);
 }
 
 
@@ -353,5 +343,3 @@ export function renderBoardSample(canvas, data) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBoard(ctx, { x: 0, y: 0, width: canvas.width, height: canvas.height }, data);
 }
-
-
