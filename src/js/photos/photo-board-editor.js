@@ -399,7 +399,7 @@ function renderPreview() {
     else { dh=canvas.height; dw=dh*ir; dy=0; dx=(canvas.width-dw)/2; }
     ctx.drawImage(originalImage, dx, dy, dw, dh);
     if (!(active.record.photoType === PHOTO_TYPES.SAMPLING && active.draft.shootingType === SHOOTING_TYPES.SECTION)) {
-      const rect = getBoardRect(dw, dh, active.draft.boardPosition, active.draft.boardSize, wrap.clientWidth || 780);
+      const rect = getBoardRect(dw, dh, active.draft.boardPosition, active.draft.boardSize);
       drawBoard(ctx, { x: dx+rect.x, y: dy+rect.y, width: rect.width, height: rect.height }, boardData(active));
     }
   });
@@ -465,7 +465,7 @@ async function composeCompletedBlob_(entry) {
   const ctx = out.getContext('2d');
   ctx.drawImage(img,0,0);
   if (!(entry.record.photoType === PHOTO_TYPES.SAMPLING && entry.draft.shootingType === SHOOTING_TYPES.SECTION)) {
-    const rect = getBoardRect(out.width,out.height,entry.draft.boardPosition,entry.draft.boardSize,780);
+    const rect = getBoardRect(out.width,out.height,entry.draft.boardPosition,entry.draft.boardSize);
     drawBoard(ctx,rect,boardData(entry));
   }
   return new Promise((resolve,reject)=>out.toBlob((blob)=>blob?resolve(blob):reject(new Error('完成画像を生成できませんでした。')),'image/jpeg',0.82));
