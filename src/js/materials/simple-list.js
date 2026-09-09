@@ -2,23 +2,24 @@
  * src/js/materials/simple-list.js
  *
  * 簡易リスト専用モジュール。
- * チップ選択は「参照状態」として保持し、チップ入力ONのときだけ
- * controller側が仕上表へ建材を反映する。
+ * 参照選択とチップ入力対象を分離する。
+ * - selectedMaterialInputId: 使用箇所・調査備考・写真を見るための参照選択。
+ * - chipInputMaterialInputId: チップ入力ON中だけ有効な一時入力ターゲット。
+ *
+ * チップ入力ONにしただけでは過去の参照選択を入力対象にせず、
+ * ON中に建材チップを明示選択して初めて入力ターゲットとしてarmする。
  *
  * チップ選択時は仕上表全体を再描画せず、建材の一致強調だけを更新する。
  * 部屋選択・入力グループ選択・フォーカス枠とは独立した表示状態として扱う。
- *
- * v0.1.5.1でのデータ層移行：
- *   建材データの取得元を、state.materials（旧: finish-table-state.jsが持つ
- *   業務データ）からmaterialRecordStore（正本）へ切り替えた。
- *   チップ選択自体（selectedMaterialInputId）は引き続きUI専用状態
- *   （finish-table-state.js）のまま。
  */
 
 import {
   getState,
   getSelectedMaterialInputId,
-  setSelectedMaterialInputId
+  setSelectedMaterialInputId,
+  getChipInputMode,
+  getChipInputMaterialInputId,
+  setChipInputMaterialInputId
 } from '../finish-table/finish-table-state.js';
 import { materialRecordStore, getMaterialUsageRoomNos } from '../finish-table/finish-table-actions.js';
 import { applyMaterialMatchHighlight } from '../finish-table/finish-table-renderer.js';
@@ -56,10 +57,31 @@ export function initSimpleList(container) {
     const chip = event.target.closest('.finish-simple-item');
     if (chip) {
       const inputId = Number(chip.dataset.inputId);
-      const current = getSelectedMaterialInputId();
+      const currentReference = getSelectedMaterialInputId();
+      const currentInputTarget = getChipInputMaterialInputId();
 
-      // 同じチップをもう一度押したら選択解除。
-      setSelectedMaterialInputId(current === inputId ? null : inputId);
+      if (getChipInputMode()) {
+        if (currentReference === inputId) {
+          if (currentInputTarget === inputId) {
+            // 同じ入力ターゲットをもう一度押したら、参照選択ごと解除する。
+            setSelectedMaterialInputId(null);
+            setChipInputMaterialInputId(null);
+          } else {
+            // 参照選択が残っていても、チップ入力ON直後は未arm。
+            // 同じチップを1回明示タップした時点で初めて入力ターゲットにする。
+            setChipInputMaterialInputId(inputId);
+          }
+        } else {
+          // チップ入力ON中に別建材を選んだ場合は、参照選択と入力ターゲットを同時更新。
+          setSelectedMaterialInputId(inputId);
+          setChipInputMaterialInputId(inputId);
+        }
+      } else {
+        // 通常時は従来どおり参照選択だけを切り替える。
+        setSelectedMaterialInputId(currentReference === inputId ? null : inputId);
+        setChipInputMaterialInputId(null);
+      }
+
       noteEditorOpen = false;
       renderSimpleList();
       applyMaterialMatchHighlight();
@@ -111,22 +133,37 @@ export function renderSimpleList() {
     return;
   }
 
-  const selected = getSelectedMaterialInputId();
+  const selectedReference = getSelectedMaterialInputId();
+  const chipInputTarget = getChipInputMaterialInputId();
+  const chipInputMode = getChipInputMode();
+
   container.innerHTML = `
     <div class="finish-simple-list-items" id="finishSimpleListItems">
       ${materialRecordStore.getAll()
         .filter((material) => material.status === 'active')
-        .map((material) => renderChip(material, selected, state.colorMode))
+        .map((material) => renderChip(
+          material,
+          selectedReference,
+          state.colorMode,
+          chipInputMode,
+          chipInputTarget
+        ))
         .join('')}
     </div>
-    <div class="finish-selected-info">${renderSelectedInfo(selected)}</div>
+    <div class="finish-selected-info">${renderSelectedInfo(selectedReference)}</div>
   `;
 }
 
-function renderChip(material, selectedInputId, colorMode) {
-  const selected = Number(selectedInputId) === Number(material.inputId);
+function renderChip(material, selectedReferenceInputId, colorMode, chipInputMode, chipInputTarget) {
+  // 通常時は参照選択を、チップ入力ON時は実際にarmされた入力ターゲットを
+  // selected表示に使う。これにより、ONにしただけで古い参照選択が入力対象に
+  // 見えることを防ぐ。
+  const visuallySelected = chipInputMode
+    ? Number(chipInputTarget) === Number(material.inputId)
+    : Number(selectedReferenceInputId) === Number(material.inputId);
+
   const classes = ['finish-simple-item'];
-  if (selected) classes.push('selected');
+  if (visuallySelected) classes.push('selected');
   if (colorMode) classes.push('color-on');
 
   const style = colorMode ? ` style="--chip-bg:${material.color}"` : '';
