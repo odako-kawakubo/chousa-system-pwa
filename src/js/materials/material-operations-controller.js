@@ -21,6 +21,7 @@ import {
 } from './material-list-controller.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
+import { refreshPhotoTab } from '../photos/photo-controller.js';
 
 let rootElement = null;
 let mergeTargetId = '';
@@ -328,4 +329,5 @@ function refreshAllConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();
   refreshRecordView();
+  refreshPhotoTab();
 }
