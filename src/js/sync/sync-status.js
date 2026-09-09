@@ -7,7 +7,8 @@
  * v0.1.6.7A:
  * - 手動オフラインは端末全体ではなく projectId ごとの端末ローカル設定として保持する。
  * - 案件未選択（トップ）では手動オフラインを適用せず、実際のネットワーク状態を扱う。
- * - 案件A/Bは互いに独立し、再度開いた時にその案件の設定だけを復元する。
+ * - 案件を開く前にも target projectId を同期スコープとして先に有効化し、
+ *   保存済みオフライン案件でFirestoreへ接続してからOFFになる経路を作らない。
  */
 
 import { listUnsent } from './unsent-queue.js';
@@ -17,6 +18,7 @@ const OFFLINE_BY_PROJECT_KEY = 'chousa-manual-offline-by-project';
 const LEGACY_OFFLINE_KEY = 'chousa-manual-offline';
 
 const listeners = [];
+let activeProjectId = String(getCurrentProject()?.projectId || '');
 let state = {
   phase: 'idle', // idle | local | connecting | ready | activity | reconnecting | error
   lastSyncedAt: 0,
@@ -38,7 +40,6 @@ function readOfflineMap() {
 function writeOfflineMap(map) {
   try {
     localStorage.setItem(OFFLINE_BY_PROJECT_KEY, JSON.stringify(map || {}));
-    // 旧グローバル設定は6.7以降の判定には使わない。新形式へ書いた時点で掃除する。
     localStorage.removeItem(LEGACY_OFFLINE_KEY);
     return true;
   } catch {
@@ -73,10 +74,9 @@ export function isProjectManualOffline(projectId) {
   return readOfflineMap()[id] === true;
 }
 
-/** 現在開いている案件にだけ手動オフラインを適用する。トップでは常にfalse。 */
+/** 現在の同期スコープ案件にだけ手動オフラインを適用する。トップでは常にfalse。 */
 export function isManualOffline() {
-  const currentProjectId = String(getCurrentProject()?.projectId || '');
-  return currentProjectId ? isProjectManualOffline(currentProjectId) : false;
+  return activeProjectId ? isProjectManualOffline(activeProjectId) : false;
 }
 
 export function canUseFirestoreForProject(projectId) {
@@ -84,17 +84,17 @@ export function canUseFirestoreForProject(projectId) {
 }
 
 export function canUseFirestore() {
-  const currentProjectId = String(getCurrentProject()?.projectId || '');
-  if (!currentProjectId) return isNetworkOnline();
-  return canUseFirestoreForProject(currentProjectId);
+  if (!activeProjectId) return isNetworkOnline();
+  return canUseFirestoreForProject(activeProjectId);
 }
 
 export function getSyncStatus() {
   const networkOnline = isNetworkOnline();
   const currentProject = getCurrentProject();
   const currentProjectId = currentProject?.projectId || '';
-  const manualOffline = currentProjectId ? isProjectManualOffline(currentProjectId) : false;
-  const unsentCount = currentProjectId ? listUnsent({ projectId: currentProjectId }).length : 0;
+  const manualOffline = activeProjectId ? isProjectManualOffline(activeProjectId) : false;
+  const unsentProjectId = currentProjectId && currentProjectId === activeProjectId ? currentProjectId : '';
+  const unsentCount = unsentProjectId ? listUnsent({ projectId: unsentProjectId }).length : 0;
   let lamp = 'neutral';
   let text = '未接続';
   let blinking = false;
@@ -102,7 +102,7 @@ export function getSyncStatus() {
   if (manualOffline) {
     lamp = 'offline-mode';
     text = 'オフライン';
-  } else if (currentProject?.isSample || state.phase === 'local' && !currentProjectId) {
+  } else if (currentProject?.isSample || state.phase === 'local' && !activeProjectId) {
     lamp = 'neutral';
     text = '対象外';
   } else if (!networkOnline) {
@@ -129,6 +129,7 @@ export function getSyncStatus() {
 
   return {
     ...state,
+    activeProjectId,
     manualOffline,
     networkOnline,
     firestoreAvailable: !manualOffline && networkOnline,
@@ -149,11 +150,12 @@ export function subscribeSyncStatus(callback) {
 }
 
 /**
- * 現在案件が切り替わった時に同期表示・通信状態をその案件向けへ切り替える。
- * 保存済みの手動オフライン設定自体は変更しない。
+ * 次に同期対象とする案件を明示する。案件を開く前に呼べることが重要。
+ * 空文字はトップ／案件未選択を意味し、手動オフラインを適用しない。
  */
 export function activateProjectSyncStatus(projectId) {
   const id = String(projectId || '');
+  activeProjectId = id;
   const manualOffline = id ? isProjectManualOffline(id) : false;
   resetActivityState();
   setState({
@@ -164,18 +166,17 @@ export function activateProjectSyncStatus(projectId) {
   });
 }
 
-/** 現在案件の手動オフライン設定を保存する。案件未選択時は保存しない。 */
+/** 現在の同期スコープ案件の手動オフライン設定を保存する。 */
 export function setManualOffline(enabled) {
-  const currentProjectId = String(getCurrentProject()?.projectId || '');
-  if (!currentProjectId) {
+  if (!activeProjectId) {
     activateProjectSyncStatus('');
     return false;
   }
 
   const next = Boolean(enabled);
   const map = readOfflineMap();
-  if (next) map[currentProjectId] = true;
-  else delete map[currentProjectId];
+  if (next) map[activeProjectId] = true;
+  else delete map[activeProjectId];
   writeOfflineMap(map);
 
   resetActivityState();
@@ -266,6 +267,6 @@ export function initializeNetworkStatusEvents() {
   });
   window.addEventListener('online', () => {
     if (isManualOffline()) return;
-    setState({ phase: getCurrentProject()?.projectId ? 'reconnecting' : 'idle', serverConnected: false, error: null });
+    setState({ phase: activeProjectId ? 'reconnecting' : 'idle', serverConnected: false, error: null });
   });
 }
