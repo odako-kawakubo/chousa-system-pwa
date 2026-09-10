@@ -222,11 +222,16 @@ function hydrateMaterialRecords(rawRecords = []) {
     .map((raw, index) => {
       const materialId = String(raw.materialId || raw.id || '');
       const inputId = inputIdFromMaterialId(materialId, index);
+      const persistedSortOrder = Number(raw.sortOrder);
+      const localMaterialNo = Number(raw.materialNo);
+      const materialNo = Number.isFinite(persistedSortOrder) && persistedSortOrder > 0
+        ? persistedSortOrder
+        : (Number.isFinite(localMaterialNo) && localMaterialNo > 0 ? localMaterialNo : index + 1);
       return createMaterialRecord({
         ...raw,
         materialId,
         inputId,
-        materialNo: index + 1,
+        materialNo,
         color: colorForInputId(inputId),
         updatedAt: raw.updatedAt || '',
         fieldEditedAt: raw.fieldEditedAt || {}
