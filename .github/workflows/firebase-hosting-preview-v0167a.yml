@@ -1,9 +1,9 @@
-name: Deploy v0.1.6.7A Preview
+name: Deploy v0.1.6.7B Preview
 
 on:
   push:
     branches:
-      - v0.1.6.7A
+      - v0.1.6.7B
   workflow_dispatch:
 
 permissions:
