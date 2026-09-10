@@ -4,7 +4,8 @@
  * 写真本体のOneDrive送信だけを担当する。
  * - 送信単位は photoId × variant(original/completed)。
  * - 現在案件のpendingだけを1件ずつ直列送信する。
- * - upload成功後、返却itemIdをgetDriveItem()で再確認してからuploadedへ進める。
+ * - upload成功後、返却itemIdをgetDriveItem()で再確認する。
+ * - OneDrive参照をphotoRecordへ保存済み、または未送信キューへ確定してからBlobをuploadedへ進める。
  * - 失敗はpendingのまま残し、このモジュール自身では連続自動再試行しない。
  * - 再送トリガーは写真Blob保存、photoRecord確定、案件切替、OneDrive実接続復帰。
  * - 新規Blobは保存時点でprojectIdを持ち、assignPhotoProjectは旧空欄Blob救済だけに使う。
@@ -103,6 +104,15 @@ async function attachLegacyBlobs(project, records) {
   }
 }
 
+function isReferencePersistenceSettled(result) {
+  return Boolean(result?.ok || result?.queued || result?.skipped);
+}
+
+/**
+ * OneDrive側のファイル実在確認が取れた後、その参照をまずphotoRecordへ確定する。
+ * Firestoreへ即保存できない場合でも未送信キューへ登録済みなら、他端末へ後送できるため確定扱い。
+ * 保存済み/未送信キューのどちらにも到達しなければBlobをuploadedへ進めない。
+ */
 async function persistUploadedReference(project, record, variant, verifiedItem) {
   const pathField = pathFieldForVariant(variant);
   const itemIdField = itemIdFieldForVariant(variant);
@@ -125,7 +135,10 @@ async function persistUploadedReference(project, record, variant, verifiedItem) 
   });
 
   await updateCameraPhotoRecord(stored);
-  await persistPhotoForProject(project, stored, `photo-onedrive-${variant}-reference`);
+  const persisted = await persistPhotoForProject(project, stored, `photo-onedrive-${variant}-reference`);
+  if (!isReferencePersistenceSettled(persisted)) {
+    throw new Error('OneDrive写真の参照情報を保存済み状態または未送信状態へ確定できませんでした。');
+  }
   return stored;
 }
 
@@ -163,7 +176,6 @@ async function uploadOneVariant(project, binding, entry) {
     return { ok: false, skipped: true, reason: 'filename-unavailable' };
   }
 
-  let verified = null;
   try {
     syncDiagnosticLog('PHOTO_UPLOAD_START', {
       projectId: project.projectId,
@@ -193,7 +205,7 @@ async function uploadOneVariant(project, binding, entry) {
       itemId: uploadedRef.itemId
     });
 
-    verified = await getDriveItem(uploadedRef);
+    const verified = await getDriveItem(uploadedRef);
     if (!verified?.file || !verified?.itemId) {
       throw new Error('OneDrive保存後のファイル実在確認に失敗しました。');
     }
@@ -206,12 +218,25 @@ async function uploadOneVariant(project, binding, entry) {
       itemId: verified.itemId
     });
 
+    // Blobをuploadedへ進める前に、photoRecord側へOneDrive参照を確定する。
+    // ここが失敗した場合はBlobをpendingのまま残し、次回再送で回復できるようにする。
+    record = await persistUploadedReference(project, record, entry.variant, verified);
+
     await markPhotoBlobUploaded(entry.photoId, entry.variant, {
       driveId: verified.driveId || uploadedRef.driveId,
       itemId: verified.itemId,
       fileName: verified.name || fileName,
       uploadedAt: new Date().toISOString()
     });
+
+    syncDiagnosticLog('PHOTO_SYNC_VARIANT_SETTLED', {
+      projectId: project.projectId,
+      photoId: entry.photoId,
+      variant: entry.variant,
+      itemId: verified.itemId
+    });
+
+    return { ok: true, uploaded: true, photoId: entry.photoId, variant: entry.variant };
   } catch (error) {
     await recordPhotoBlobUploadError(entry.photoId, entry.variant, error);
     syncDiagnosticLog('PHOTO_UPLOAD_ERROR', {
@@ -221,31 +246,13 @@ async function uploadOneVariant(project, binding, entry) {
       fileName,
       message: error?.message || String(error)
     });
-    console.warn('[v0.1.6.5K] 写真OneDrive送信失敗', {
+    console.warn('[v0.1.6.7B] 写真OneDrive送信または参照確定失敗', {
       photoId: entry.photoId,
       variant: entry.variant,
       error
     });
     return { ok: false, error, photoId: entry.photoId, variant: entry.variant };
   }
-
-  try {
-    record = await persistUploadedReference(project, record, entry.variant, verified);
-  } catch (error) {
-    syncDiagnosticLog('PHOTO_REFERENCE_SAVE_ERROR', {
-      projectId: project.projectId,
-      photoId: entry.photoId,
-      variant: entry.variant,
-      message: error?.message || String(error)
-    });
-    console.warn('[v0.1.6.5K] 写真OneDrive参照情報の保存失敗', {
-      photoId: entry.photoId,
-      variant: entry.variant,
-      error
-    });
-  }
-
-  return { ok: true, uploaded: true, photoId: entry.photoId, variant: entry.variant };
 }
 
 async function runCurrentProjectPhotoSync() {
