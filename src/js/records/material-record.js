@@ -157,10 +157,15 @@ export function createMaterialRecord(fields) {
   const sampleCount = analysisRequired === '採取・分析'
     ? Math.max(1, Math.min(3, Number.isFinite(rawSampleCount) && rawSampleCount > 0 ? rawSampleCount : 1))
     : Math.max(0, Math.min(3, Number.isFinite(rawSampleCount) ? rawSampleCount : 0));
+
+  // 端末Snapshotの materialNo と Firestore の sortOrder は同じ「表示順」を表す。
+  // delta受信時は端末Recordに materialNo、受信Recordに sortOrder が入るため、
+  // どちらか一方でも有効な値があれば再計算せずその値を維持する。
+  const localMaterialNo = Number(fields.materialNo);
   const persistedSortOrder = Number(fields.sortOrder);
-  const materialNo = Number.isFinite(persistedSortOrder) && persistedSortOrder > 0
-    ? persistedSortOrder
-    : (fields.materialNo != null ? Number(fields.materialNo) : inputId);
+  const materialNo = Number.isFinite(localMaterialNo) && localMaterialNo > 0
+    ? localMaterialNo
+    : (Number.isFinite(persistedSortOrder) && persistedSortOrder > 0 ? persistedSortOrder : inputId);
 
   return {
     status: fields.status || 'active',
