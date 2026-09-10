@@ -4,16 +4,17 @@
  * Firestoreとの通信・同期状態を1か所で管理する。
  * ヘッダーと設定タブはこの状態だけを参照し、各所で独自判定しない。
  *
- * v0.1.6.7A:
+ * v0.1.6.7:
  * - 手動オフラインは端末全体ではなく projectId ごとの端末ローカル設定として保持する。
  * - 案件未選択（トップ）では手動オフラインを適用せず、実際のネットワーク状態を扱う。
- * - 案件を開く前にも target projectId を同期スコープとして先に有効化し、
- *   保存済みオフライン案件でFirestoreへ接続してからOFFになる経路を作らない。
+ * - 案件を開く前は sessionStorage の遷移先projectIdも同期スコープ判定へ使い、
+ *   呼び出し側のactivate順序に依存せず保存済みOFFLINE案件へ誤接続しない。
  * - 旧グローバルON設定は、アップデート後に最初に開いた案件へ1回だけ引き継ぐ。
  */
 
 import { listUnsent } from './unsent-queue.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { getOpenProjectId } from '../projects/project-navigation.js';
 
 const OFFLINE_BY_PROJECT_KEY = 'chousa-manual-offline-by-project';
 const LEGACY_OFFLINE_KEY = 'chousa-manual-offline';
@@ -61,6 +62,19 @@ function migrateLegacyOfflineToProject(projectId) {
   }
 }
 
+/**
+ * 同期判定に使う案件ID。
+ * 通常はactiveProjectIdを使うが、案件遷移中だけはsessionStorageの遷移先を優先する。
+ * これにより openProjectById() の呼び出し側が activateProjectSyncStatus() を先に呼び忘れても、
+ * 前案件のOFFLINE設定で次案件のFirestore接続可否を判定しない。
+ */
+function effectiveProjectId() {
+  const currentProjectId = String(getCurrentProject()?.projectId || '');
+  const navigationTargetId = String(getOpenProjectId() || '');
+  if (navigationTargetId && navigationTargetId !== currentProjectId) return navigationTargetId;
+  return String(activeProjectId || currentProjectId || navigationTargetId || '');
+}
+
 function resetActivityState() {
   activityDepth = 0;
   if (activityTimer) clearTimeout(activityTimer);
@@ -88,7 +102,8 @@ export function isProjectManualOffline(projectId) {
 }
 
 export function isManualOffline() {
-  return activeProjectId ? isProjectManualOffline(activeProjectId) : false;
+  const id = effectiveProjectId();
+  return id ? isProjectManualOffline(id) : false;
 }
 
 export function canUseFirestoreForProject(projectId) {
@@ -96,16 +111,17 @@ export function canUseFirestoreForProject(projectId) {
 }
 
 export function canUseFirestore() {
-  if (!activeProjectId) return isNetworkOnline();
-  return canUseFirestoreForProject(activeProjectId);
+  const id = effectiveProjectId();
+  return id ? canUseFirestoreForProject(id) : isNetworkOnline();
 }
 
 export function getSyncStatus() {
   const networkOnline = isNetworkOnline();
   const currentProject = getCurrentProject();
-  const currentProjectId = currentProject?.projectId || '';
-  const manualOffline = activeProjectId ? isProjectManualOffline(activeProjectId) : false;
-  const unsentProjectId = currentProjectId && currentProjectId === activeProjectId ? currentProjectId : '';
+  const currentProjectId = String(currentProject?.projectId || '');
+  const scopedProjectId = effectiveProjectId();
+  const manualOffline = scopedProjectId ? isProjectManualOffline(scopedProjectId) : false;
+  const unsentProjectId = currentProjectId && currentProjectId === scopedProjectId ? currentProjectId : '';
   const unsentCount = unsentProjectId ? listUnsent({ projectId: unsentProjectId }).length : 0;
   let lamp = 'neutral';
   let text = '未接続';
@@ -114,7 +130,7 @@ export function getSyncStatus() {
   if (manualOffline) {
     lamp = 'offline-mode';
     text = 'オフライン';
-  } else if (currentProject?.isSample || state.phase === 'local' && !activeProjectId) {
+  } else if (currentProject?.isSample || state.phase === 'local' && !scopedProjectId) {
     lamp = 'neutral';
     text = '対象外';
   } else if (!networkOnline) {
@@ -141,7 +157,7 @@ export function getSyncStatus() {
 
   return {
     ...state,
-    activeProjectId,
+    activeProjectId: scopedProjectId,
     manualOffline,
     networkOnline,
     firestoreAvailable: !manualOffline && networkOnline,
@@ -275,6 +291,6 @@ export function initializeNetworkStatusEvents() {
   });
   window.addEventListener('online', () => {
     if (isManualOffline()) return;
-    setState({ phase: activeProjectId ? 'reconnecting' : 'idle', serverConnected: false, error: null });
+    setState({ phase: effectiveProjectId() ? 'reconnecting' : 'idle', serverConnected: false, error: null });
   });
 }
