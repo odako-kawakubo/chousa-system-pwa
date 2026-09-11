@@ -6,7 +6,7 @@
  * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.3-r3';
+const APP_CACHE = 'chousa-app-v0.1.7.3-r4';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
