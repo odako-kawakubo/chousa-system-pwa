@@ -7,15 +7,16 @@
  * - 設定シートのデフォルト候補を正本として保持する。
  * - 仕上表で候補を出す時は、案件内の実使用データを優先して動的に合成する。
  * - 建材候補の表示優先度：
- *     1. この案件で、その部位に実際に使われている建材（【入力ID】建材名称）
- *     2. その建材のベース名
- *     3. 設定シートのデフォルト建材ベース名
+ *     1. この案件で、その部位に実際に使われている登録建材（【入力ID】建材名称）
+ *     2. その登録建材のベース名
+ *     3. 仕上表上で、その部位に入力済みの未登録建材
+ *     4. 設定シートのデフォルト建材ベース名
  * - その他部位候補の表示優先度：
  *     1. この案件でその他1/2に実際に使われている部位
  *     2. 設定シートのデフォルト部位候補
  * - 採取部位候補はこのStoreから出さない。建材の実使用部位から生成する。
  *
- * Firebase永続化は未実装。v0.1.5.4Bではローカルメモリ上の設定として扱う。
+ * Firebase永続化は未実装。設定候補はローカルメモリ上の設定として扱う。
  */
 
 import * as finishRecordStore from './finish-record-store.js';
@@ -206,13 +207,38 @@ export function getMaterialOptions(part, options = {}) {
     (item) => normalizeMaterialName(item.value)
   );
 
-  const usedBaseSet = new Set(usedBases.map((item) => normalizeMaterialName(item.baseName)));
+  const usedNameSet = new Set([
+    ...used.map((item) => normalizeMaterialName(item.name)),
+    ...usedBases.map((item) => normalizeMaterialName(item.baseName))
+  ]);
+
+  const unregistered = uniqueBy(
+    finishRecordStore.getAll()
+      .filter((record) => record.status === 'active' && !record.materialId)
+      .filter((record) => normalizeText(record.part) === wantedPart)
+      .map((record) => normalizeMaterialName(record.materialName))
+      .filter(Boolean)
+      .filter((name) => !usedNameSet.has(name))
+      .map((name) => ({
+        kind: 'unregistered',
+        value: name,
+        name,
+        baseName: name,
+        part: wantedPart
+      })),
+    (item) => normalizeMaterialName(item.value)
+  );
+
+  const existingNameSet = new Set([
+    ...usedBases.map((item) => normalizeMaterialName(item.baseName)),
+    ...unregistered.map((item) => normalizeMaterialName(item.name))
+  ]);
   const defaults = uniqueBy(
     materialCandidates
       .filter((item) => normalizeText(item.part) === configuredPart)
       .map((item) => normalizeMaterialName(item.baseName))
       .filter(Boolean)
-      .filter((baseName) => !usedBaseSet.has(baseName))
+      .filter((baseName) => !existingNameSet.has(baseName))
       .map((baseName) => ({
         kind: 'default',
         value: baseName,
@@ -223,17 +249,16 @@ export function getMaterialOptions(part, options = {}) {
     (item) => normalizeMaterialName(item.value)
   );
 
-  return [...used, ...usedBases, ...defaults];
+  return [...used, ...usedBases, ...unregistered, ...defaults];
 }
-
 
 /**
  * その他1/2の建材候補。
  * 2枠を共通候補として扱い、案件内の実使用を優先して返す。
  * 表示順：
  *  1. 【入力ID】実部位/実建材名称
- *  2. 実部位/ベース名
- *  3. ベース名
+ *  2. 登録建材の実部位/ベース名、ベース名
+ *  3. 仕上表上の未登録「実部位/建材名称」
  *  4. 設定シートの「その他」デフォルト候補
  */
 export function getOtherMaterialOptions() {
@@ -300,7 +325,35 @@ export function getOtherMaterialOptions() {
     (item) => normalizeMaterialName(item.baseName)
   );
 
-  const usedBaseSet = new Set(bases.map((item) => normalizeMaterialName(item.baseName)));
+  const registeredPairSet = new Set([
+    ...exact.map((item) => `${normalizeText(item.part)}|${normalizeMaterialName(item.name)}`),
+    ...partBases.map((item) => `${normalizeText(item.part)}|${normalizeMaterialName(item.name)}`)
+  ]);
+  const unregistered = uniqueBy(
+    finishRecordStore.getAll()
+      .filter((record) => record.status === 'active' && !record.materialId)
+      .filter((record) => Math.floor(Number(record.position || 0) / 100) >= 5)
+      .map((record) => ({
+        part: normalizeText(record.part),
+        name: normalizeMaterialName(record.materialName)
+      }))
+      .filter((item) => item.part && item.name)
+      .filter((item) => !registeredPairSet.has(`${item.part}|${item.name}`))
+      .map((item) => ({
+        kind: 'unregistered-other',
+        value: `${item.part}/${item.name}`,
+        name: item.name,
+        baseName: item.name,
+        part: item.part,
+        applyPart: true
+      })),
+    (item) => `${normalizeText(item.part)}|${normalizeMaterialName(item.name)}`
+  );
+
+  const usedBaseSet = new Set([
+    ...bases.map((item) => normalizeMaterialName(item.baseName)),
+    ...unregistered.map((item) => normalizeMaterialName(item.name))
+  ]);
   const defaults = uniqueBy(
     materialCandidates
       .filter((item) => normalizeText(item.part) === 'その他')
@@ -318,7 +371,7 @@ export function getOtherMaterialOptions() {
     (item) => normalizeMaterialName(item.value)
   );
 
-  return [...exact, ...partBases, ...bases, ...defaults];
+  return [...exact, ...partBases, ...bases, ...unregistered, ...defaults];
 }
 
 /**
