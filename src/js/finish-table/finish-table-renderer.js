@@ -52,7 +52,7 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
 
@@ -140,7 +140,7 @@ function currentRooms() {
 const FLOOR_COL_WIDTH = 30;
 const COPY_COL_WIDTH = 38;
 const ROOM_NAME_COL_WIDTH = 70;
-const ROOM_NOTE_COL_WIDTH = 110;
+const ROOM_NOTE_COL_WIDTH = 38;
 const ID_COL_WIDTH = 30;
 
 function computeColumnLayout() {
@@ -356,9 +356,9 @@ function renderRoomFixedPane(room, group, ctx) {
           ${roomIsLast ? `<button type="button" class="room-mini-btn" data-action="add-room" data-room-key="${escapeHtml(key)}" data-floor-key="${escapeHtml(floorGroupKey(group))}">＋部屋</button>` : ''}
         </div>
       </div>
-      <div class="finish-meta room-name-cell room-note-cell">
-        <div class="room-control room-name-control">
-          ${renderRoomFieldControl(room, 'room-note')}
+      <div class="finish-meta room-note-cell">
+        <div class="room-control">
+          <button type="button" class="room-note-btn ${room.note ? 'has-note' : ''}" data-action="edit-room-note" data-room-key="${escapeHtml(key)}" title="${escapeHtml(room.note || '部屋備考を入力')}">備考</button>
         </div>
       </div>
     </div>
@@ -388,15 +388,12 @@ function renderCopyButton(key) {
   `;
 }
 
-/** roomNo / roomName / roomNote は同じ部屋共通編集経路を使う。 */
 function renderRoomFieldControl(room, field) {
   const key = roomKey(room);
   const fieldKey = roomFieldKey(room, field);
   const fieldConfig = {
     'room-no': { value: room.roomNo, inputClass: 'room-no-input', label: '部屋No.', placeholder: '' },
-    'room-name': { value: room.name, inputClass: 'room-name-input', label: '部屋名', placeholder: '部屋名' },
-    // controllerの既存room-name-inputイベント経路を共用し、data-fieldだけroom-noteにする。
-    'room-note': { value: room.note, inputClass: 'room-name-input room-note-input', label: '備考', placeholder: '備考' }
+    'room-name': { value: room.name, inputClass: 'room-name-input', label: '部屋名', placeholder: '部屋名' }
   };
   const config = fieldConfig[field];
   if (!config) return '';
