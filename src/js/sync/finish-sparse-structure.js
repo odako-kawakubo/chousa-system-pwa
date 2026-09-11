@@ -31,17 +31,18 @@ function defaultPartName(areaCode, partIndex) {
 }
 
 function roomDefaults(areaCode, floor, index) {
-  if (areaCode === 'I') return { roomNo: `${floor}-${index}`, roomName: '' };
-  if (areaCode === 'B') return { roomNo: `B${floor}-${index}`, roomName: '' };
-  if (areaCode === 'S') return { roomNo: `S-${index}`, roomName: index <= DEFAULT_STAIRS_COUNT ? '' : `階段${index}` };
-  if (areaCode === 'R') return { roomNo: `R-${index}`, roomName: index <= DEFAULT_ROOF_COUNT ? '' : (index === 1 ? '屋上' : `屋上${index}`) };
+  if (areaCode === 'I') return { roomNo: `${floor}-${index}`, roomName: '', roomNote: '' };
+  if (areaCode === 'B') return { roomNo: `B${floor}-${index}`, roomName: '', roomNote: '' };
+  if (areaCode === 'S') return { roomNo: `S-${index}`, roomName: index <= DEFAULT_STAIRS_COUNT ? '' : `階段${index}`, roomNote: '' };
+  if (areaCode === 'R') return { roomNo: `R-${index}`, roomName: index <= DEFAULT_ROOF_COUNT ? '' : (index === 1 ? '屋上' : `屋上${index}`), roomNote: '' };
   if (areaCode === 'E') {
     return {
       roomNo: DEFAULT_FINISH_STRUCTURE.externalRoomNos[index - 1] || `面${index}`,
-      roomName: ''
+      roomName: '',
+      roomNote: ''
     };
   }
-  return { roomNo: '', roomName: '' };
+  return { roomNo: '', roomName: '', roomNote: '' };
 }
 
 function roomPositionFor(areaCode, floor, index) {
@@ -66,6 +67,7 @@ function addRoomToMap(map, { areaCode, floor = null, index, rowCount = INITIAL_R
         floor,
         roomNo: defaults.roomNo,
         roomName: defaults.roomName,
+        roomNote: defaults.roomNote,
         position,
         part: defaultPartName(areaCode, partIndex),
         roomUid
@@ -126,7 +128,7 @@ function ensureStructureFromSparse(map, sparseRecords) {
 }
 
 function carrierForRoom(records) {
-  // 部屋No. / 部屋名は標準末尾602だけを正として扱う。
+  // 部屋No. / 部屋名 / 備考は標準末尾602だけを正として扱う。
   // 603以降は＋行の存在を示す構造レコードなので、部屋共通情報を上書きさせない。
   const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
   return records.find((record) => Number(record.position) === standardCarrierPosition) || null;
@@ -144,7 +146,7 @@ export function restoreFinishRecordsFromSparse(rawSparseRecords = []) {
     map.set(raw.finishId, base ? { ...base, ...raw, finishId: raw.finishId, roomUid: base.roomUid } : { ...raw, finishId: raw.finishId });
   });
 
-  // roomNo / roomName は部屋共通情報。6番目部位の最終行を優先して部屋全体へ展開する。
+  // roomNo / roomName / roomNote は部屋共通情報。6番目部位の標準末尾602を部屋全体へ展開する。
   const sparseByRoom = new Map();
   sparse.forEach((record) => {
     const key = roomKey(record);
@@ -159,7 +161,8 @@ export function restoreFinishRecordsFromSparse(rawSparseRecords = []) {
       map.set(finishId, {
         ...record,
         roomNo: String(carrier.roomNo ?? record.roomNo ?? ''),
-        roomName: String(carrier.roomName ?? record.roomName ?? '')
+        roomName: String(carrier.roomName ?? record.roomName ?? ''),
+        roomNote: String(carrier.roomNote ?? record.roomNote ?? '')
       });
     });
   });
