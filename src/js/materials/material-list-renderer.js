@@ -17,11 +17,12 @@ export function renderMaterialList(root, rows, selectedMaterialId, options = {})
 
   const stats = buildMaterialListStats(rows);
   const colorMode = options.colorMode !== false;
+  const roomNameMode = Boolean(options.roomNameMode);
   const partWidth = computePartColumnWidth(rows);
 
   root.innerHTML = `
     <div class="panel material-list-panel">
-      ${renderToolbar(rows, selectedMaterialId, stats, colorMode)}
+      ${renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode)}
       <div class="material-list-table-wrap">
         <table
           class="material-list-table${colorMode ? ' color-mode' : ''}"
@@ -36,12 +37,15 @@ export function renderMaterialList(root, rows, selectedMaterialId, options = {})
   `;
 }
 
-function renderToolbar(rows, selectedMaterialId, stats, colorMode) {
+function renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode) {
   return `
     <div class="material-list-toolbar">
       <div class="material-list-toolbar-left">
         <button type="button" class="btn small material-list-color-toggle" data-action="toggle-material-color">
           カラー表示 ${colorMode ? 'ON' : 'OFF'}
+        </button>
+        <button type="button" class="btn small material-list-room-name-toggle" data-action="toggle-material-room-name">
+          部屋名表示 ${roomNameMode ? 'ON' : 'OFF'}
         </button>
         <span class="pill">対象建材 <b>${stats.total}</b>件</span>
         <span class="pill">採取 <b>${stats.sample}</b></span>
@@ -101,7 +105,7 @@ function renderRows(rows, selectedMaterialId, colorMode) {
         <td class="col-name material-color-cell material-edit-cell">
           ${renderTextDisplay(row, 'name', row.name, '建材名称')}
         </td>
-        <td class="col-place"><div class="wrap2">${displayText(row.usageLocation)}</div></td>
+        <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
         <td class="col-level material-control-cell">
           ${renderSelect(row, 'level', MATERIAL_LEVEL_OPTIONS, row.level)}
         </td>
@@ -206,7 +210,6 @@ function renderSamplePlaceCell(row, index) {
     </td>
   `;
 }
-
 
 function renderSamplePartMultiSelect(row, disabled = false) {
   const selected = Array.isArray(row.samplePart) ? row.samplePart : [];
