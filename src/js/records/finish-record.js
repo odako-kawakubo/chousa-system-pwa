@@ -8,6 +8,7 @@
  * - 未入力の入力枠も active レコードとして実在する
  * - finishId は「区分コード-部屋位置-位置」で、現在位置を表す可変ID
  * - 部屋構成は finishRecord の集合から復元する（独立した部屋レコードは作らない）
+ * - materialName は登録前の建材名称だけを保持し、登録済み建材は materialId を正とする
  *
  * roomUid はUIが同一部屋を追跡するための内部補助ID。業務上の仕上表IDとは別物で、
  * 部屋挿入によって finishId / roomPosition が変わっても同じ部屋を追跡するためだけに使う。
@@ -26,6 +27,7 @@
  * @property {number} position
  * @property {string} part
  * @property {string} materialId
+ * @property {string} materialName 登録前の建材名称。登録済みの場合は空文字。
  * @property {string} inputId
  * @property {'active'|'deleted'} status
  * @property {string} systemMemo
@@ -94,6 +96,7 @@ export function createFinishRecord(fields) {
     position,
     part: String(fields.part ?? ''),
     materialId: String(fields.materialId ?? ''),
+    materialName: String(fields.materialName ?? ''),
     inputId: String(fields.inputId ?? ''),
     status: fields.status || 'active',
     systemMemo: String(fields.systemMemo ?? ''),
