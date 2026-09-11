@@ -71,7 +71,7 @@ function buildRoom(roomRecords, materialById) {
     const pendingKey = `${anchor.roomUid}|${partIndex}|${row}`;
     const materialName = record.materialId
       ? (materialById.get(record.materialId)?.name || '')
-      : (getPendingCellName(pendingKey) || '');
+      : (String(record.materialName || '').trim() || getPendingCellName(pendingKey) || '');
     cells[`${partIndex}-${row}`] = {
       inputId: record.inputId || '',
       materialId: record.materialId || '',
