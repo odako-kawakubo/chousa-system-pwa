@@ -15,6 +15,10 @@
  * - 登録ボタンを押していない建材名称もfinishRecordのmaterialNameへ保持する。
  * - materialNameは建材登録状態を増やすための別レコードではなく、仕上表セル自身の入力値。
  * - 通常部位はmaterialNameがあれば疎保存対象、その他はpart + materialNameが揃った時だけ疎保存対象とする。
+ *
+ * v0.1.7.2:
+ * - roomNoteをroomNo / roomNameと同じ部屋共通情報として扱う。
+ * - ローカルでは同一部屋の全finishRecordへ反映し、Firestoreは標準carrier 602だけを正として疎保存する。
  */
 
 import {
@@ -62,7 +66,7 @@ import {
 
 const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
-const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'part', 'materialId', 'materialName']);
+const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'roomNote', 'part', 'materialId', 'materialName']);
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
 function nowIso() { return new Date().toISOString(); }
@@ -73,20 +77,14 @@ function partsForArea(areaCode) {
 
 function defaultPartName(areaCode, partIndex) {
   const raw = partsForArea(areaCode)[partIndex - 1] || '';
-
-  // その他1/2は、建材の有無に関係なく実部位が未入力なら空欄のまま保持する。
-  // 業務上の「その他」扱いはmaterialRecordの部位集計時だけ行う。
   return partIndex >= 5 ? '' : raw;
 }
 
 function normalizeCandidateMaterialInput(rawValue) {
   const normalized = normalizeMaterialName(rawValue);
-  // 候補の優先1は「【入力ID】建材名称」で表示するため、確定時は表示用IDを外して名称だけ扱う。
   return normalized.replace(/^【\d+】\s*/, '');
 }
 
-
-/** materialRecord.part を仕上表で選択できる実部位一覧へ分解する。 */
 export function getMaterialPartOptions(materialRecord) {
   return [...new Set(
     String(materialRecord?.part || '')
@@ -96,11 +94,6 @@ export function getMaterialPartOptions(materialRecord) {
   )];
 }
 
-/**
- * その他1/2へ既存建材を紐付けるときの部位反映。
- * 1部位なら自動反映、複数部位なら既存の有効選択だけを維持し、
- * 未選択・不一致なら空欄にしてUI側で選択させる。
- */
 function partPatchForExistingMaterial(currentCell, partIndex, materialRecord) {
   if (partIndex < 5) return {};
   const parts = getMaterialPartOptions(materialRecord);
@@ -118,16 +111,8 @@ function appendSystemMemo(existing, message) {
   return text ? `${text}\n${line}` : line;
 }
 
-/* ============================================================
-   部屋識別・取得
-   ============================================================ */
-
 export function roomKeyOf(record) { return record?.roomUid || ''; }
 
-/**
- * 互換API名。旧「代表レコード」ではなく、roomUidに属する最初の有効レコードを返す。
- * controller/view-model側の呼び出し名を変えず、内部設計だけ正式仕様へ置き換える。
- */
 export function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
   return finishRecordStore.getAll().find((record) => record.roomUid === roomKey && record.status === 'active') || null;
@@ -157,8 +142,11 @@ export function snapshotRoomRecords(roomKey) {
 
 export function roomHasRecordedContent(roomKey) {
   return getRoomRecords(roomKey).some((record) => {
-    if (record.materialId || record.inputId || record.materialName) return true;
+    if (record.materialId || record.inputId) return true;
     const partIndex = partIndexFromPosition(record.position);
+    const materialName = String(record.materialName || '').trim();
+    if (partIndex < 5 && materialName) return true;
+    if (partIndex >= 5 && materialName && String(record.part || '').trim()) return true;
     return partIndex >= 5 && record.part && record.part !== 'その他';
   });
 }
@@ -173,11 +161,7 @@ function uniqueRoomAnchors(areaCode, floor = undefined) {
   return Array.from(byRoom.values());
 }
 
-/* ============================================================
-   finishRecord生成
-   ============================================================ */
-
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, rowCount = INITIAL_ROW_COUNT, roomUid = nextRoomUid() }) {
+function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT, roomUid = nextRoomUid() }) {
   const records = [];
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= rowCount; row += 1) {
@@ -187,6 +171,7 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, ro
         floor,
         roomNo,
         roomName,
+        roomNote,
         position: computeCellPosition(partIndex, row),
         part: defaultPartName(areaCode, partIndex),
         roomUid
@@ -200,7 +185,7 @@ function buildFloorRoomSeed(areaCode, floor, index) {
   const roomPosition = buildFloorRoomPosition(floor, index);
   const prefix = areaCode === 'B' ? `B${floor}` : String(floor);
   const label = `${prefix}-${index}`;
-  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: '' });
+  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: '', roomNote: '' });
 }
 
 function buildFlatRoomSeed(areaCode, index, customName = '') {
@@ -210,7 +195,7 @@ function buildFlatRoomSeed(areaCode, index, customName = '') {
   if (!customName && areaCode === 'S') { roomNo = `S-${index}`; roomName = `階段${index}`; }
   if (!customName && areaCode === 'R') { roomNo = `R-${index}`; roomName = index === 1 ? '屋上' : `屋上${index}`; }
   if (!customName && areaCode === 'E') { roomNo = `面${index}`; roomName = ''; }
-  return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName });
+  return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
 }
 
 function rekeyRecordToRoomPosition(record, newRoomPosition) {
@@ -225,13 +210,7 @@ function rekeyRecordToRoomPosition(record, newRoomPosition) {
   };
 }
 
-/* ============================================================
-   Firestore疎保存
-   ============================================================ */
-
 function roomCarrierRecord(roomRecords = []) {
-  // 部屋No. / 部屋名と、＋階／＋部屋の構造保持は標準末尾602へ集約する。
-  // ＋行の603以降は行構造専用であり、部屋共通情報のcarrierにはしない。
   const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
   return roomRecords.find((record) => Number(record.position) === standardCarrierPosition) || null;
 }
@@ -243,12 +222,9 @@ function isFinishCellAtDefault(record) {
   const materialName = String(record.materialName || '').trim();
   const partIndex = partIndexFromPosition(record.position);
   if (partIndex >= 5) {
-    // その他の未登録入力は「部位 + 建材名称」が揃って初めて保存対象。
-    // 部位だけ／名称だけでは未完成入力として疎保存しない。
     return !(materialName && String(record.part || '').trim());
   }
 
-  // 通常部位は建材名称があれば未登録でも保存対象。
   if (materialName) return false;
   return String(record.part || '') === String(defaultPartForRecord(record) || '');
 }
@@ -257,7 +233,8 @@ function hasRoomCommonDifference(record) {
   if (!record) return false;
   const defaults = defaultRoomFieldsForRecord(record);
   return String(record.roomNo || '') !== String(defaults.roomNo || '')
-    || String(record.roomName || '') !== String(defaults.roomName || '');
+    || String(record.roomName || '') !== String(defaults.roomName || '')
+    || String(record.roomNote || '') !== String(defaults.roomNote || '');
 }
 
 function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.getAll()) {
@@ -276,7 +253,6 @@ function persistSparseFinishRecord(project, record, allRecords = finishRecordSto
     persistFinishForProject(project, record, 'finish-sparse-cell');
     return;
   }
-  // Firestoreに存在しない初期レコードはdelete自体を送らない。
   if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
 }
 
@@ -287,12 +263,8 @@ function persistAddedStructureMarker(records = []) {
   if (marker) persistFinishForProject(project, marker, 'finish-structure-marker');
 }
 
-/* ============================================================
-   構造変更
-   ============================================================ */
-
 const STRUCTURE_COMPARE_FIELDS = Object.freeze([
-  'finishId', 'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName',
+  'finishId', 'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName', 'roomNote',
   'position', 'part', 'materialId', 'materialName'
 ]);
 
@@ -301,10 +273,6 @@ function sameStructureRecord(a, b) {
   return STRUCTURE_COMPARE_FIELDS.every((field) => String(a[field] ?? '') === String(b[field] ?? ''));
 }
 
-/**
- * ＋階／＋部屋／＋行／コピーなど、複数finishRecordを一度に変える操作の共通保存。
- * 新規・変更Recordはset、構造から消えたRecordだけdeleteする。
- */
 function persistFinishStructureChange(beforeRecords, afterRecords) {
   const project = getCurrentProject();
   if (!project?.projectId || project.isSample) return;
@@ -318,8 +286,6 @@ function persistFinishStructureChange(beforeRecords, afterRecords) {
     return !previous || !sameStructureRecord(previous, record);
   });
 
-  // H: ローカルの完全構造をそのままFirestoreへ複製しない。
-  // 入力差分または復元に必要な構造保持レコードだけを残す。
   changed.forEach((record) => persistSparseFinishRecord(project, record, afterRecords));
   removed.forEach((record) => {
     if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
@@ -414,7 +380,6 @@ export function addRoomAfter(roomKey) {
   }
 }
 
-/** 6部位すべてに「次の入力行」の空レコードを1件ずつ生成する。 */
 export function addInputRow(roomKey) {
   const before = finishRecordStore.getAll();
   const roomRecords = getRoomRecords(roomKey);
@@ -430,6 +395,7 @@ export function addInputRow(roomKey) {
       floor: anchor.floor,
       roomNo: anchor.roomNo,
       roomName: anchor.roomName,
+      roomNote: anchor.roomNote,
       position: computeCellPosition(partIndex, nextRow),
       part: defaultPartName(anchor.areaCode, partIndex),
       roomUid: anchor.roomUid
@@ -440,17 +406,22 @@ export function addInputRow(roomKey) {
   if (marker) persistFinishForProject(getCurrentProject(), marker, 'finish-structure-marker');
 }
 
-/* ============================================================
-   部屋情報変更
-   ============================================================ */
-
 export function commitRoomField(roomKey, field, rawValue) {
   const records = getRoomRecords(roomKey);
   if (!records.length) return;
-  const value = field === 'room-no' ? String(rawValue ?? '').trim() : String(rawValue ?? '');
-  const dataField = field === 'room-no' ? 'roomNo' : 'roomName';
+
+  const fieldMap = {
+    'room-no': 'roomNo',
+    'room-name': 'roomName',
+    'room-note': 'roomNote'
+  };
+  const dataField = fieldMap[field];
+  if (!dataField) return;
+
+  const value = dataField === 'roomNo' ? String(rawValue ?? '').trim() : String(rawValue ?? '');
   const changed = records.filter((record) => String(record[dataField] ?? '') !== value);
   if (!changed.length) return;
+
   const confirmedAt = Date.now();
   const nextRecords = changed.map((record) => ({
     ...record,
@@ -458,16 +429,16 @@ export function commitRoomField(roomKey, field, rawValue) {
     fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, dataField, confirmedAt)
   }));
   finishRecordStore.batch(() => nextRecords.forEach((record) => finishRecordStore.set(record)));
+
   const project = getCurrentProject();
   const currentRoomRecords = getRoomRecords(roomKey);
   const carrier = roomCarrierRecord(currentRoomRecords);
   if (carrier) persistSparseFinishRecord(project, carrier, finishRecordStore.getAll());
-  refreshMaterialUsageDerivedFields('room-common-edit');
-}
 
-/* ============================================================
-   セル編集
-   ============================================================ */
+  if (dataField === 'roomNo' || dataField === 'roomName') {
+    refreshMaterialUsageDerivedFields('room-common-edit');
+  }
+}
 
 function cellFinishId(anchor, partIndex, row) {
   return computeFinishId(anchor.areaCode, anchor.roomPosition, computeCellPosition(partIndex, row));
@@ -476,15 +447,12 @@ function cellFinishId(anchor, partIndex, row) {
 function writeCellPatch(anchor, partIndex, row, patch, options = {}) {
   const finishId = cellFinishId(anchor, partIndex, row);
   const existing = finishRecordStore.get(finishId);
-  if (!existing) {
-    throw new Error(`仕上表レコードが存在しません: ${finishId}`);
-  }
+  if (!existing) throw new Error(`仕上表レコードが存在しません: ${finishId}`);
+
   const changedFields = Object.keys(patch).filter((field) => String(existing[field] ?? '') !== String(patch[field] ?? ''));
   if (!changedFields.length) return existing;
   const syncFields = changedFields.filter((field) => PERSISTED_FINISH_EDIT_FIELDS.has(field));
 
-  // その他1/2のpartも入力値をそのまま保持する。
-  // ただし未登録のその他はpart + materialNameが揃うまでFirestoreへは疎保存しない。
   const next = {
     ...existing,
     ...patch,
@@ -505,8 +473,6 @@ export function commitCellId(roomKey, partIndex, row, rawInputId) {
   const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
 
   if (!inputId) {
-    // その他1/2は建材ID解除を「この入力枠を初期状態へ戻す」操作として扱い、
-    // 建材紐付けだけでなく実部位も同時に空欄へ戻す。
     writeCellPatch(anchor, partIndex, row, {
       inputId: '',
       materialId: '',
@@ -549,8 +515,6 @@ export function commitCellName(roomKey, partIndex, row, rawName) {
     return material;
   }
 
-  // 未登録名称は仕上表セル自身の入力値としてfinishRecordへ保持する。
-  // 登録ボタンを押すまではmaterialRecordを作らず、建材リストにも出さない。
   writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '', materialName: name });
   return null;
 }
@@ -559,9 +523,6 @@ export function commitCellActualPart(roomKey, partIndex, row, rawValue) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor) return;
   writeCellPatch(anchor, partIndex, row, { part: String(rawValue ?? '') });
-
-  // その他部位を変更したら建材Recordの使用部位も同時に再集計する。
-  // これにより次に開く建材候補の優先1/2が最新部位へ追従する。
   refreshMaterialUsageDerivedFields('actual-part-edit');
 }
 
@@ -589,10 +550,6 @@ function nextInputIdForMaterials() {
   return ids.length ? Math.max(...ids) + 1 : 1;
 }
 
-/**
- * 登録ボタンによる新規建材登録。
- * 明示末尾英字が無い場合だけ、同一ベース名の既存建材を見て次サフィックスを自動採番する。
- */
 export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   const normalized = normalizeCandidateMaterialInput(rawName);
@@ -629,9 +586,6 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
       }
     }
 
-    // その他1/2では、建材を正式登録する時点で実部位が未入力なら
-    // 業務上の部位として「その他」を確定する。
-    // タップしただけ／空欄のまま編集終了／部屋コピーでは補完しない。
     const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
     const finishPatch = {
       inputId: String(material.inputId),
@@ -642,12 +596,8 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
       finishPatch.part = 'その他';
     }
 
-    // 登録操作中はfinishRecord自体は通常どおり保存するが、
-    // そこから派生するmaterialの途中状態はFirestoreへ送らない。
     writeCellPatch(anchor, partIndex, row, finishPatch, { persistMaterialDerived: false });
 
-    // finishRecordを正として更新済みの最新materialへ、採取設定の自動補完も
-    // ローカルで完了させる。ここでもFirestoreへはまだ送らない。
     const derivedMaterial = materialRecordStore.get(material.materialId) || material;
     const finalMaterial = { ...derivedMaterial };
     const autofillFields = applySingleRecordSamplingAutofill(finalMaterial);
@@ -658,8 +608,6 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
 
     material = materialRecordStore.get(material.materialId) || finalMaterial;
 
-    // 新規建材、または既存建材でも今回の紐付けで派生値が変わった場合だけ、
-    // 完成したmaterialRecordを既存の1レコード保存経路から1回だけ送る。
     const materialChanged = createdNewMaterial
       || !beforeMaterial
       || String(beforeMaterial.part ?? '') !== String(material.part ?? '')
@@ -672,11 +620,6 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
   return material;
 }
 
-/* ============================================================
-   建材レコード派生値
-   ============================================================ */
-
-/** finishRecordStoreを正として、全建材の部位・使用箇所を再計算する。 */
 export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
   const shouldPersist = options.persist !== false;
   const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active' && record.materialId);
@@ -684,9 +627,6 @@ export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc
   finishRecords.forEach((record) => {
     if (!byMaterial.has(record.materialId)) byMaterial.set(record.materialId, { parts: [], places: [] });
     const item = byMaterial.get(record.materialId);
-    // その他1/2の部位未選択（空欄）は、複数部位建材の選択途中を表すことがある。
-    // 新規登録時の「その他」は登録確定処理で明示的に入るため、ここで空欄を
-    // 勝手に「その他」へ変換せず、確定済みの実部位だけを建材Recordへ集計する。
     const part = String(record.part || '').trim();
     const place = String(record.roomNo || record.roomName || '').trim();
     if (part && !item.parts.includes(part)) item.parts.push(part);
@@ -715,9 +655,6 @@ function materialUsageSortKey(record) {
   const areaCode = String(record?.areaCode || '');
   const floor = Number(record?.floor);
   const position = String(record?.roomPosition || '');
-
-  // 使用箇所は現場で見る順を固定する。
-  // 外部 → 地下 → 1階 → 階段 → 2階以降 → 屋上。
   if (areaCode === 'E') return [0, 0, position];
   if (areaCode === 'B') return [1, Number.isFinite(floor) ? floor : 0, position];
   if (areaCode === 'I' && floor === 1) return [2, 1, position];
@@ -737,11 +674,6 @@ function compareMaterialUsageRecords(a, b) {
   return 0;
 }
 
-/**
- * 建材使用箇所の表示用部屋名一覧。
- * preferRoomName=false は従来どおり部屋No.、true は部屋名を優先し空欄なら部屋No.へ戻す。
- * materialRecord.usageLocation自体は変更せず、表示切替だけを行う。
- */
 export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } = {}) {
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) return [];
@@ -766,10 +698,6 @@ export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } =
 export function getMaterialUsageRoomNos(inputId) {
   return getMaterialUsageRoomLabels(inputId, { preferRoomName: false });
 }
-
-/* ============================================================
-   部屋コピー
-   ============================================================ */
 
 function sameAreaFamily(a, b) {
   const familyOf = (code) => (code === 'E' ? 'external' : 'internal');
@@ -804,15 +732,11 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
   const target = targetRecords[0];
   if (!sourceRecords.length || !target) return;
 
-  // コピー先には、既に存在するfinishRecordへ値だけを書き込む。
-  // コピー元の方が行数が多い場合だけ不足する入力枠を新規生成し、
-  // コピー元の方が少ない場合は余分な入力枠を除いて行構成を一致させる。
   const sourcePositions = new Set(sourceRecords.map((record) => record.position));
   const targetByPosition = new Map(targetRecords.map((record) => [record.position, record]));
   const confirmedAt = Date.now();
 
   finishRecordStore.batch(() => {
-    // コピー元に存在しない余分な行は、コピー後の行構成から外す。
     targetRecords.forEach((record) => {
       if (!sourcePositions.has(record.position)) finishRecordStore.remove(record.finishId);
     });
@@ -823,7 +747,6 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
       const existing = targetByPosition.get(source.position);
 
       if (existing) {
-        // 既存のコピー先レコードはID・位置情報を維持し、入力内容だけ上書きする。
         const changedFields = [];
         if (String(existing.part || '') !== String(part || '')) changedFields.push('part');
         if (String(existing.materialId || '') !== String(source.materialId || '')) changedFields.push('materialId');
@@ -842,13 +765,13 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         return;
       }
 
-      // コピー元の行数が多い場合のみ、コピー先に不足するfinishRecordを追加する。
       finishRecordStore.set(createFinishRecord({
         areaCode: target.areaCode,
         roomPosition: target.roomPosition,
         floor: target.floor,
         roomNo: target.roomNo,
         roomName: target.roomName,
+        roomNote: target.roomNote,
         position: source.position,
         part,
         materialId: source.materialId,
@@ -875,15 +798,8 @@ export function restoreRoomCopy(roomKey, backupRecords) {
   refreshMaterialUsageDerivedFields('room-copy-restore');
 }
 
-/* ============================================================
-   初期投入
-   ============================================================ */
-
 export function seedInitialMaterials() {
   const records = SAMPLE_MATERIALS_SEED.map(([materialId, inputId, name, note, photoCount]) => {
-    // v0.1.5.3B 写真タブの建材採取UIを実機確認できるよう、
-    // demoデータのうち2件だけ採取対象として初期設定する。
-    // 本番の採取条件・保存処理とは切り離したサンプル値。
     const samplingDemo = materialId === 'R001'
       ? { analysisRequired: '採取・分析', sampleCount: 2, sampleLocation1: '1-1', sampleLocation2: '1-2', samplePart: '壁' }
       : materialId === 'R002'
@@ -903,17 +819,10 @@ export function seedInitialMaterials() {
   materialRecordStore.batch(() => records.forEach((record) => materialRecordStore.set(record)));
 }
 
-/**
- * 初期確認用：テスト建材を仕上表へランダム風に配置する。
- * Math.random()は使わず固定シードを使うため、同じレビュー版では毎回同じ配置になる。
- * 本番データ生成とは切り離したdemo専用処理。
- */
 function assignSampleMaterialsToFinishRecords(records) {
   const materials = materialRecordStore.getAll().filter((material) => material.status === 'active');
   if (!materials.length || !records.length) return records;
 
-  // その他1/2へテスト建材が入る場合に使う実部位候補。
-  // 本番の候補設定とは無関係な、レビュー用demoデータだけの値。
   const sampleOtherParts = ['窓枠', '配管', '梁', '柱', '貫通部', '床下', '壁部'];
 
   let seed = 15103;
@@ -931,15 +840,12 @@ function assignSampleMaterialsToFinishRecords(records) {
       inputId: String(material.inputId)
     };
 
-    // ランダム配置済みの「その他」建材は、実部位入力ありの状態も確認できるようにする。
-    // その他1/2というスロット名はpartへ保存せず、実部位名を保存する。
     if (partIndex >= 5) {
       next.part = sampleOtherParts[Math.floor(random() * sampleOtherParts.length)];
     }
     return next;
   };
 
-  // 全20件が少なくとも1回は確認できるよう、候補セルを固定シードでシャッフルして先に割り当てる。
   const indices = records.map((_, index) => index);
   for (let i = indices.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1));
@@ -953,7 +859,6 @@ function assignSampleMaterialsToFinishRecords(records) {
     used.add(index);
   });
 
-  // 残りは約28%を追加で埋め、同じ建材が複数部屋・複数部位に出る状態も確認できるようにする。
   records.forEach((record, index) => {
     if (used.has(index) || random() >= 0.28) return;
     const material = materials[Math.floor(random() * materials.length)];
@@ -978,14 +883,7 @@ export function seedInitialFinishRecords() {
   refreshMaterialUsageDerivedFields('seed-initial-finish');
 }
 
-/* ============================================================
-   複数Store transaction
-   ============================================================ */
-
 export function runRecordTransaction(mutate) {
-  // Store更新通知は各Storeのbatch()へ一本化する。
-  // 仕上表・建材・写真をまたぐ業務操作も同じtransaction入口を使い、
-  // 変更されたStoreだけがbatch終了時に通常のsubscribe通知を1回発火する。
   finishRecordStore.batch(() => {
     materialRecordStore.batch(() => {
       photoRecordStore.batch(() => mutate());
