@@ -24,6 +24,7 @@ export function serializeFinishRecord(record, { updatedAt }) {
     floor: record.floor ?? null,
     roomNo: text(record.roomNo),
     roomName: text(record.roomName),
+    roomNote: text(record.roomNote),
     position: Number(record.position) || 0,
     part: text(record.part),
     materialId: text(record.materialId),
