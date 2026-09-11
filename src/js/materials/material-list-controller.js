@@ -11,10 +11,11 @@
  * - 行選択だけでは一覧全体を再描画しない。
  * - 全体再描画が必要な場合でも、案件ごとの建材リストスクロール位置を保持する。
  * - タブ離脱時に明示保存し、建材リストへ戻った時に復元する。
+ * - v0.1.7.1 使用箇所は部屋No.を基本表示とし、部屋名表示ON時だけfinishRecordから表示値を再計算する。
  */
 
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
-import { materialRecordStore } from '../finish-table/finish-table-actions.js';
+import { materialRecordStore, getMaterialUsageRoomLabels } from '../finish-table/finish-table-actions.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
@@ -56,9 +57,10 @@ function setAndPersistMaterial(previous, candidate, source = 'material-list-edit
   return next;
 }
 
-// 建材リスト専用のカラー表示状態。仕上表／簡易リストとは独立して切り替える。
-// 初期状態は色なし（OFF）。
+// 建材リスト専用の表示状態。仕上表／簡易リストとは独立して切り替える。
 let materialListColorMode = false;
+// OFF=部屋No.、ON=部屋名優先。部屋名空欄は常に部屋No.へフォールバックする。
+let materialListRoomNameMode = false;
 
 const PEN_DRAG_THRESHOLD_PX = 12;
 const PEN_CLICK_SUPPRESS_MS = 500;
@@ -117,21 +119,26 @@ export function refreshMaterialList() {
   if (!rootElement) rootElement = document.getElementById('materials');
   if (!rootElement) return;
 
-  // rendererはroot.innerHTMLを置き換えるため、再描画の直前に現在のscrollを退避する。
-  // 案件切替時はrenderedProjectIdが旧案件を指すので、旧案件の位置を正しく保存できる。
   captureMaterialListScroll();
-
-  // 使用箇所・部位が1候補だけの場合、未入力の採取欄へ自動補完する。
-  // 候補が複数の場合や既存値がある場合は触らない。
   applySamplingAutofill();
 
-  const rows = buildMaterialListRows(materialRecordStore.getAll());
+  // usageLocation正本は従来どおり部屋No.のまま維持する。
+  // 部屋名表示は画面表示用だけfinishRecordから組み立て、採取場所候補等へ波及させない。
+  const rows = buildMaterialListRows(materialRecordStore.getAll()).map((row) => ({
+    ...row,
+    usageLocationDisplay: getMaterialUsageRoomLabels(row.inputId, {
+      preferRoomName: materialListRoomNameMode
+    }).join('、') || row.usageLocation
+  }));
   if (selectedMaterialId && !rows.some((row) => row.materialId === selectedMaterialId)) {
     selectedMaterialId = null;
   }
 
   const projectId = String(getCurrentProject()?.projectId || '');
-  renderMaterialList(rootElement, rows, selectedMaterialId, { colorMode: materialListColorMode });
+  renderMaterialList(rootElement, rows, selectedMaterialId, {
+    colorMode: materialListColorMode,
+    roomNameMode: materialListRoomNameMode
+  });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
 }
@@ -172,7 +179,6 @@ function bindMaterialListEvents() {
       return;
     }
 
-    // 表示spanへキーボードで入る場合もEnter/Spaceで編集開始する。
     if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-material-text-display]')) {
       event.preventDefault();
       activateTextDisplay(event.target);
@@ -266,8 +272,6 @@ function handlePenPointerCancel(event) {
 }
 
 function handleMaterialActivation(target, options = {}) {
-  // 採取部位ポップの閉じるボタンは、指のclickだけでなくApple Pencilの
-  // pointerup直処理からも同じ経路で確実に閉じる。
   const closeMultiSelect = target.closest('[data-action="close-material-multi-select"]');
   if (closeMultiSelect) {
     closeMultiSelect.closest('[data-material-multi-select]')?.removeAttribute('open');
@@ -276,8 +280,14 @@ function handleMaterialActivation(target, options = {}) {
 
   const colorButton = target.closest('[data-action="toggle-material-color"]');
   if (colorButton) {
-    // 建材リストだけを切り替える。仕上表／簡易リスト側のカラー状態は変更しない。
     materialListColorMode = !materialListColorMode;
+    refreshMaterialList();
+    return;
+  }
+
+  const roomNameButton = target.closest('[data-action="toggle-material-room-name"]');
+  if (roomNameButton) {
+    materialListRoomNameMode = !materialListRoomNameMode;
     refreshMaterialList();
     return;
   }
@@ -291,8 +301,6 @@ function handleMaterialActivation(target, options = {}) {
     return;
   }
 
-  // Pencil単純タップ時はSafariの後続clickを抑止するため、native controlの
-  // 通常動作をここで1回だけ起動する。ドラッグ時にはこの処理へ来ない。
   if (options.fromPen) {
     const control = target.closest('[data-material-control]');
     if (control && !control.disabled) activateNativeControl(control);
@@ -337,7 +345,6 @@ function activateTextDisplay(display) {
 
   display.replaceWith(input);
   input.focus();
-  // select()は呼ばない。タップ位置・キーボード操作で通常の部分編集を可能にする。
 }
 
 function commitTextEditor(input) {
@@ -382,8 +389,6 @@ function updateMaterialControl(control) {
       break;
     case 'analysisRequired':
       next.analysisRequired = String(control.value || '採取・分析');
-      // 採取・分析では採取数1が最低条件。既存の2/3は維持し、
-      // 未設定・0・不正値だけ1へ補完する。
       if (next.analysisRequired === '採取・分析') {
         const currentCount = Number(next.sampleCount);
         if (!Number.isFinite(currentCount) || currentCount < 1) next.sampleCount = 1;
@@ -392,10 +397,8 @@ function updateMaterialControl(control) {
       }
       break;
     case 'sampleCount':
-      // 採取・分析中は1〜3のみ。0/「-」は許可しない。
       next.sampleCount = Math.max(1, Math.min(3, Number(control.value) || 1));
       applySingleRecordSamplingAutofill(next);
-      // 採取数を減らしても2・3の既存値は消さない。表示だけグレーアウトする。
       break;
     case 'sampleLocation1':
     case 'sampleLocation2':
@@ -435,8 +438,6 @@ function updateSamplePartsFromChecklist(materialId) {
     samplePart: selected
   });
 
-  // 複数選択中に一覧全体を再描画するとdetailsが閉じてしまうため、
-  // 現在セルの表示だけ更新する。Store通知により写真タブは即時更新される。
   const details = inputs[0]?.closest('[data-material-multi-select]');
   const summary = details?.querySelector('.material-multi-select-summary');
   if (summary) {
@@ -510,11 +511,6 @@ function applySamplingAutofill() {
   materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterial(previous, next, 'sampling-autofill')));
 }
 
-/**
- * 使用箇所が1つなら、採取数で有効な採取場所の空欄へ同じ値を自動入力する。
- * 使用部位が1つなら採取部位の空欄へ自動入力する。
- * 既存値は上書きしない。
- */
 function refreshConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();
@@ -536,15 +532,10 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`;
 }
 
-/** 操作パネル等から現在の建材リスト選択を参照するための公開API。 */
 export function getSelectedMaterialId() {
   return selectedMaterialId;
 }
 
-/**
- * 統合・削除後など、建材リスト外の操作から選択状態を更新する。
- * 一覧全体の再描画は呼び出し側で行い、ここでは選択値だけを確定する。
- */
 export function selectMaterialInList(materialId) {
   selectedMaterialId = materialId || null;
   applySelectedRowState();
