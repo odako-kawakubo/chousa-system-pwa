@@ -76,7 +76,6 @@ function buildRoom(roomRecords, materialById) {
       inputId: record.inputId || '',
       materialId: record.materialId || '',
       materialName,
-      // その他1/2の実部位未入力時はRecord正本の「その他」を画面にも表示する。
       actualPart: partIndex >= 5 ? (record.part || '') : ''
     };
   });
@@ -91,6 +90,7 @@ function buildRoom(roomRecords, materialById) {
     index: isFloorRoom ? undefined : Number(anchor.roomPosition),
     roomNo: anchor.roomNo,
     name: anchor.roomName,
+    note: anchor.roomNote || '',
     rowCount,
     cells
   };
