@@ -27,6 +27,8 @@ export function serializeFinishRecord(record, { updatedAt }) {
     position: Number(record.position) || 0,
     part: text(record.part),
     materialId: text(record.materialId),
+    // materialNameは未登録建材の仕上表入力値。登録後はmaterialIdを正として空文字になる。
+    materialName: text(record.materialName),
     systemMemo: text(record.systemMemo),
     updatedDevice: text(record.updatedDevice) || 'local',
     fieldEditedAt: normalizeFieldEditedAt(record.fieldEditedAt),
