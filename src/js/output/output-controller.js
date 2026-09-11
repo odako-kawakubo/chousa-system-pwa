@@ -3,11 +3,15 @@
  * 「出力」タブの表示とStore購読を担当する。
  * 旧「同期」タブのDOM枠を再利用し、出力専用の保存状態は持たない。
  * 帳票プレビューは既存報告書の「調査対象建材リスト」「部屋別調査対象建材リスト」の書式を基準にする。
+ * 画面上でもA4を1ページ単位で分割し、印刷時と同じページ境界を確認できるようにする。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { buildOutputViewModel } from './output-view-model.js';
+
+const MATERIAL_ROWS_PER_PAGE = 24;
+const ROOM_ROWS_PER_PAGE = 24;
 
 let activeView = 'materials';
 let initialized = false;
@@ -32,13 +36,78 @@ function ensureOutputStyles() {
 
 function outputRoot() { return document.getElementById('sync'); }
 
+function chunkRows(rows, size) {
+  if (!rows.length) return [[]];
+  const pages = [];
+  for (let index = 0; index < rows.length; index += size) pages.push(rows.slice(index, index + size));
+  return pages;
+}
+
+function roomGroupKey(row) {
+  return `${row.floor}\u0000${row.roomNo}`;
+}
+
+/**
+ * 部屋別リストは原則として同一部屋を同じページへ置く。
+ * 1部屋だけで上限を超える場合に限り、その部屋内で分割する。
+ */
+function paginateRoomRows(rows) {
+  if (!rows.length) return [[]];
+
+  const groups = [];
+  let current = [];
+  let currentKey = null;
+  rows.forEach((row) => {
+    const key = roomGroupKey(row);
+    if (current.length && key !== currentKey) {
+      groups.push(current);
+      current = [];
+    }
+    currentKey = key;
+    current.push(row);
+  });
+  if (current.length) groups.push(current);
+
+  const pages = [];
+  let page = [];
+
+  groups.forEach((group) => {
+    if (group.length > ROOM_ROWS_PER_PAGE) {
+      if (page.length) {
+        pages.push(page);
+        page = [];
+      }
+      for (let index = 0; index < group.length; index += ROOM_ROWS_PER_PAGE) {
+        pages.push(group.slice(index, index + ROOM_ROWS_PER_PAGE));
+      }
+      return;
+    }
+
+    if (page.length && page.length + group.length > ROOM_ROWS_PER_PAGE) {
+      pages.push(page);
+      page = [];
+    }
+    page.push(...group);
+  });
+
+  if (page.length) pages.push(page);
+  return pages.length ? pages : [[]];
+}
+
+function renderPageShell(content, pageIndex, pageCount) {
+  return `
+    <section class="output-page-shell">
+      <div class="output-page-label">${pageIndex + 1} / ${pageCount}</div>
+      ${content}
+    </section>`;
+}
+
 function emptyMaterialRows(count) {
   return Array.from({ length: count }, () => '<tr class="output-blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>').join('');
 }
 
-function renderMaterialTable(rows) {
-  const minimumRows = 24;
-  const blankCount = Math.max(0, minimumRows - rows.length);
+function renderMaterialPage(rows) {
+  const blankCount = Math.max(0, MATERIAL_ROWS_PER_PAGE - rows.length);
   return `
     <article class="output-paper output-paper-material">
       <h2 class="output-report-title">調査対象建材リスト</h2>
@@ -77,6 +146,11 @@ function renderMaterialTable(rows) {
     </article>`;
 }
 
+function renderMaterialTable(rows) {
+  const pages = chunkRows(rows, MATERIAL_ROWS_PER_PAGE);
+  return `<div class="output-pages">${pages.map((pageRows, index) => renderPageShell(renderMaterialPage(pageRows), index, pages.length)).join('')}</div>`;
+}
+
 function spanLength(rows, index, key, parentKey = null) {
   const value = rows[index]?.[key];
   const parentValue = parentKey ? rows[index]?.[parentKey] : null;
@@ -95,7 +169,7 @@ function shouldRenderGroupedCell(rows, index, key, parentKey = null) {
   return Boolean(parentKey && rows[index - 1]?.[parentKey] !== rows[index]?.[parentKey]);
 }
 
-function renderRoomTable(rows) {
+function renderRoomPage(rows) {
   return `
     <article class="output-paper output-paper-room">
       <h2 class="output-report-title">部屋別調査対象建材リスト</h2>
@@ -130,8 +204,14 @@ function renderRoomTable(rows) {
     </article>`;
 }
 
+function renderRoomTable(rows) {
+  const pages = paginateRoomRows(rows);
+  return `<div class="output-pages">${pages.map((pageRows, index) => renderPageShell(renderRoomPage(pageRows), index, pages.length)).join('')}</div>`;
+}
+
 function renderPhotoPlaceholder(title, count, description) {
-  return `<article class="output-paper output-placeholder-sheet"><h2 class="output-report-title">${escapeHtml(title)}</h2><div class="output-placeholder-count">写真レコード ${count}件</div><div class="output-empty">${escapeHtml(description)}<br>帳票レイアウトは次段階で接続します。</div></article>`;
+  const page = `<article class="output-paper output-placeholder-sheet"><h2 class="output-report-title">${escapeHtml(title)}</h2><div class="output-placeholder-count">写真レコード ${count}件</div><div class="output-empty">${escapeHtml(description)}<br>帳票レイアウトは次段階で接続します。</div></article>`;
+  return `<div class="output-pages">${renderPageShell(page, 0, 1)}</div>`;
 }
 
 export function renderOutputTab() {
