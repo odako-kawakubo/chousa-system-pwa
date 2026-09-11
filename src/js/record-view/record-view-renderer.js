@@ -66,6 +66,7 @@ const FINISH_COLUMNS = [
   ['floor', '階'],
   ['roomNo', '部屋No.'],
   ['roomName', '部屋名'],
+  ['roomNote', '部屋備考'],
   ['position', '位置'],
   ['part', '部位'],
   ['materialId', '建材ID'],
@@ -234,7 +235,7 @@ function renderTable(columns, records, emptyMessage, options = {}) {
           td.title = td.textContent;
         }
         if (index === 0) td.classList.add('record-view-sticky-first');
-        if (key === 'note' || key === 'remarks' || key === 'usageLocation') td.classList.add('record-view-wrap');
+        if (key === 'note' || key === 'remarks' || key === 'usageLocation' || key === 'roomNote') td.classList.add('record-view-wrap');
         if (key === 'finishId' || key === 'roomUid' || key === 'roomPosition' || key === 'position' || key === 'materialId') td.classList.add('record-view-code');
         tr.appendChild(td);
       });
