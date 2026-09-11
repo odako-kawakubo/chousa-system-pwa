@@ -56,7 +56,10 @@ export function buildFinishRecordView() {
   const records = finishRecordStore.getAll()
     .map((record) => ({
       ...record,
-      materialName: record.materialId ? (materialById.get(record.materialId)?.name || '') : ''
+      // 登録済みはmaterialRecordの名称を正とし、未登録はfinishRecord自身のmaterialNameを表示する。
+      materialName: record.materialId
+        ? (materialById.get(record.materialId)?.name || '')
+        : String(record.materialName || '')
     }))
     .sort(compareFinishRecords);
 
@@ -65,7 +68,7 @@ export function buildFinishRecordView() {
     label: '仕上表',
     totalCount: records.length,
     activeCount: records.filter((record) => record.status === 'active').length,
-    hint: '1入力枠 = 1仕上表レコード。表示順は外部 → 地下 → 地上階 → 階段 → 屋上です。',
+    hint: '1入力枠 = 1仕上表レコード。部屋No.・部屋名・部屋備考は部屋共通情報です。表示順は外部 → 地下 → 地上階 → 階段 → 屋上です。',
     records
   };
 }
@@ -110,7 +113,6 @@ export function buildPhotoRecordView() {
       roomNo: record.roomNo || photoRoomNo(record),
       photoTypeLabel: record.photoType === 'visual' ? '目視' : '採取',
       shootingTypeLabel: getShootingTypeLabel(record.shootingType),
-      // レコード構造は増やさず、表示用だけ完成画像→元画像→旧互換の順で1列へまとめる。
       oneDrivePath: record.completedPath || record.originalPath || record.oneDrivePath || ''
     }))
     .sort(comparePhotoRecords);
