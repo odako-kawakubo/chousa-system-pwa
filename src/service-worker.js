@@ -1,12 +1,12 @@
 /*
- * v0.1.7.2 Service Worker
+ * v0.1.7.3 Service Worker
  *
  * 責任は「最新版を優先しつつ、圏外では直近キャッシュから起動できる状態を保つ」こと。
  * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
  * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.2-r1';
+const APP_CACHE = 'chousa-app-v0.1.7.3-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -28,6 +28,7 @@ const APP_SHELL = [
   './css/camera.css',
   './css/settings.css',
   './css/pwa-offline.css',
+  './css/output.css',
   './assets/microsoft-symbol.svg',
   './js/home/home-init.js',
   './js/home/home-controller.js',
@@ -80,6 +81,8 @@ const APP_SHELL = [
   './js/photos/photo-view-model.js',
   './js/photos/photo-viewer-source.js',
   './js/photos/photo-viewer.js',
+  './js/output/output-controller.js',
+  './js/output/output-view-model.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
   './config/app-config.js',
