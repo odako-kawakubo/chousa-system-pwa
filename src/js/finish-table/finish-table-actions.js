@@ -10,6 +10,11 @@
  * - 部屋追加・入力行追加は、必要なfinishRecordそのものを生成する。
  * - 建材の部位・使用箇所はfinishRecordStoreから派生してmaterialRecordへ反映する。
  * - 新規建材登録は登録ボタンをトリガーとし、末尾英字を A..Z, AA, AB... で自動採番する。
+ *
+ * v0.1.7.1:
+ * - 登録ボタンを押していない建材名称もfinishRecordのmaterialNameへ保持する。
+ * - materialNameは建材登録状態を増やすための別レコードではなく、仕上表セル自身の入力値。
+ * - 通常部位はmaterialNameがあれば疎保存対象、その他はpart + materialNameが揃った時だけ疎保存対象とする。
  */
 
 import {
@@ -57,7 +62,7 @@ import {
 
 const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
-const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'part', 'materialId']);
+const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'part', 'materialId', 'materialName']);
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
 function nowIso() { return new Date().toISOString(); }
@@ -152,7 +157,7 @@ export function snapshotRoomRecords(roomKey) {
 
 export function roomHasRecordedContent(roomKey) {
   return getRoomRecords(roomKey).some((record) => {
-    if (record.materialId || record.inputId) return true;
+    if (record.materialId || record.inputId || record.materialName) return true;
     const partIndex = partIndexFromPosition(record.position);
     return partIndex >= 5 && record.part && record.part !== 'その他';
   });
@@ -233,7 +238,19 @@ function roomCarrierRecord(roomRecords = []) {
 
 function isFinishCellAtDefault(record) {
   if (!record) return true;
-  return !String(record.materialId || '') && String(record.part || '') === String(defaultPartForRecord(record) || '');
+  if (String(record.materialId || '')) return false;
+
+  const materialName = String(record.materialName || '').trim();
+  const partIndex = partIndexFromPosition(record.position);
+  if (partIndex >= 5) {
+    // その他の未登録入力は「部位 + 建材名称」が揃って初めて保存対象。
+    // 部位だけ／名称だけでは未完成入力として疎保存しない。
+    return !(materialName && String(record.part || '').trim());
+  }
+
+  // 通常部位は建材名称があれば未登録でも保存対象。
+  if (materialName) return false;
+  return String(record.part || '') === String(defaultPartForRecord(record) || '');
 }
 
 function hasRoomCommonDifference(record) {
@@ -276,7 +293,7 @@ function persistAddedStructureMarker(records = []) {
 
 const STRUCTURE_COMPARE_FIELDS = Object.freeze([
   'finishId', 'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName',
-  'position', 'part', 'materialId'
+  'position', 'part', 'materialId', 'materialName'
 ]);
 
 function sameStructureRecord(a, b) {
@@ -467,7 +484,7 @@ function writeCellPatch(anchor, partIndex, row, patch, options = {}) {
   const syncFields = changedFields.filter((field) => PERSISTED_FINISH_EDIT_FIELDS.has(field));
 
   // その他1/2のpartも入力値をそのまま保持する。
-  // 空欄をタップしただけ・空欄のまま編集終了しただけで「その他」を実データ化しない。
+  // ただし未登録のその他はpart + materialNameが揃うまでFirestoreへは疎保存しない。
   const next = {
     ...existing,
     ...patch,
@@ -493,6 +510,7 @@ export function commitCellId(roomKey, partIndex, row, rawInputId) {
     writeCellPatch(anchor, partIndex, row, {
       inputId: '',
       materialId: '',
+      materialName: '',
       ...(partIndex >= 5 ? { part: '' } : {})
     });
     return null;
@@ -500,13 +518,14 @@ export function commitCellId(roomKey, partIndex, row, rawInputId) {
 
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) {
-    writeCellPatch(anchor, partIndex, row, { inputId, materialId: '' });
+    writeCellPatch(anchor, partIndex, row, { inputId, materialId: '', materialName: '' });
     return null;
   }
 
   writeCellPatch(anchor, partIndex, row, {
     inputId: String(material.inputId),
     materialId: material.materialId,
+    materialName: '',
     ...partPatchForExistingMaterial(currentCell, partIndex, material)
   });
   return material;
@@ -517,16 +536,22 @@ export function commitCellName(roomKey, partIndex, row, rawName) {
   if (!anchor) return null;
   const name = normalizeCandidateMaterialInput(rawName);
   if (!name) {
-    writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '' });
+    writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '', materialName: '' });
     return null;
   }
   const material = materialRecordStore.findByName(name);
   if (material) {
-    writeCellPatch(anchor, partIndex, row, { inputId: String(material.inputId), materialId: material.materialId });
+    writeCellPatch(anchor, partIndex, row, {
+      inputId: String(material.inputId),
+      materialId: material.materialId,
+      materialName: ''
+    });
     return material;
   }
-  // 未登録名称自体はUIのpending状態で保持し、正式finishRecordは未リンク状態のまま。
-  writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '' });
+
+  // 未登録名称は仕上表セル自身の入力値としてfinishRecordへ保持する。
+  // 登録ボタンを押すまではmaterialRecordを作らず、建材リストにも出さない。
+  writeCellPatch(anchor, partIndex, row, { inputId: '', materialId: '', materialName: name });
   return null;
 }
 
@@ -544,7 +569,7 @@ export function isCellPendingRegistration(roomKey, partIndex, row) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   if (!anchor) return false;
   const record = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
-  return Boolean(record) && !record.materialId;
+  return Boolean(record?.materialName) && !record.materialId;
 }
 
 export function applyMaterialToCell(roomKey, partIndex, row, materialRecord) {
@@ -554,6 +579,7 @@ export function applyMaterialToCell(roomKey, partIndex, row, materialRecord) {
   writeCellPatch(anchor, partIndex, row, {
     inputId: String(materialRecord.inputId),
     materialId: materialRecord.materialId,
+    materialName: '',
     ...partPatchForExistingMaterial(currentCell, partIndex, materialRecord)
   });
 }
@@ -609,7 +635,8 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName) {
     const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
     const finishPatch = {
       inputId: String(material.inputId),
-      materialId: material.materialId
+      materialId: material.materialId,
+      materialName: ''
     };
     if (partIndex >= 5 && !String(currentCell?.part || '').trim()) {
       finishPatch.part = 'その他';
@@ -700,12 +727,25 @@ function materialUsageSortKey(record) {
   return [6, Number.isFinite(floor) ? floor : 9999, position];
 }
 
-export function getMaterialUsageRoomNos(inputId) {
+function compareMaterialUsageRecords(a, b) {
+  const ak = materialUsageSortKey(a);
+  const bk = materialUsageSortKey(b);
+  for (let i = 0; i < ak.length; i += 1) {
+    if (ak[i] < bk[i]) return -1;
+    if (ak[i] > bk[i]) return 1;
+  }
+  return 0;
+}
+
+/**
+ * 建材使用箇所の表示用部屋名一覧。
+ * preferRoomName=false は従来どおり部屋No.、true は部屋名を優先し空欄なら部屋No.へ戻す。
+ * materialRecord.usageLocation自体は変更せず、表示切替だけを行う。
+ */
+export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } = {}) {
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) return [];
 
-  // 1入力枠ごとのfinishRecordを、そのままroomNoへmapすると登録順になるため、
-  // roomUid単位で代表Recordを1件にまとめてから業務上の表示順で並べる。
   const byRoom = new Map();
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || record.materialId !== material.materialId) return;
@@ -714,17 +754,17 @@ export function getMaterialUsageRoomNos(inputId) {
   });
 
   return [...byRoom.values()]
-    .sort((a, b) => {
-      const ak = materialUsageSortKey(a);
-      const bk = materialUsageSortKey(b);
-      for (let i = 0; i < ak.length; i += 1) {
-        if (ak[i] < bk[i]) return -1;
-        if (ak[i] > bk[i]) return 1;
-      }
-      return 0;
+    .sort(compareMaterialUsageRecords)
+    .map((record) => {
+      const roomNo = String(record.roomNo || '').trim();
+      const roomName = String(record.roomName || '').trim();
+      return preferRoomName ? (roomName || roomNo) : roomNo;
     })
-    .map((record) => String(record.roomNo || '').trim())
     .filter(Boolean);
+}
+
+export function getMaterialUsageRoomNos(inputId) {
+  return getMaterialUsageRoomLabels(inputId, { preferRoomName: false });
 }
 
 /* ============================================================
@@ -787,10 +827,12 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         const changedFields = [];
         if (String(existing.part || '') !== String(part || '')) changedFields.push('part');
         if (String(existing.materialId || '') !== String(source.materialId || '')) changedFields.push('materialId');
+        if (String(existing.materialName || '') !== String(source.materialName || '')) changedFields.push('materialName');
         finishRecordStore.set({
           ...existing,
           part,
           materialId: source.materialId,
+          materialName: String(source.materialName || ''),
           inputId: source.inputId,
           fieldEditedAt: changedFields.length
             ? touchFieldEditedAt(existing.fieldEditedAt, changedFields, confirmedAt)
@@ -810,8 +852,9 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         position: source.position,
         part,
         materialId: source.materialId,
+        materialName: String(source.materialName || ''),
         inputId: source.inputId,
-        fieldEditedAt: touchFieldEditedAt({}, ['part', 'materialId'], confirmedAt),
+        fieldEditedAt: touchFieldEditedAt({}, ['part', 'materialId', 'materialName'], confirmedAt),
         roomUid: target.roomUid
       }));
     });
@@ -884,6 +927,7 @@ function assignSampleMaterialsToFinishRecords(records) {
     const next = {
       ...record,
       materialId: material.materialId,
+      materialName: '',
       inputId: String(material.inputId)
     };
 
