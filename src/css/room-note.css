@@ -1,0 +1,36 @@
+/* src/css/room-note.css */
+.room-note-cell { font-size:9px; }
+.room-note-btn {
+  width:calc(100% - 4px);
+  min-width:0;
+  padding:2px 1px;
+  border:1px solid var(--line-strong);
+  border-radius:4px;
+  background:var(--panel);
+  color:var(--text-secondary);
+  font-size:9px;
+  font-weight:600;
+  cursor:pointer;
+}
+.room-note-btn.has-note {
+  background:var(--main-soft-alt);
+  border-color:var(--main-border-pale);
+  color:var(--main);
+  font-weight:700;
+}
+.room-note-card { width:min(420px,calc(100vw - 24px)); }
+.room-note-head { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+.room-note-room { min-width:0; color:var(--text-subtle); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.room-note-textarea {
+  width:100%;
+  min-height:110px;
+  box-sizing:border-box;
+  resize:vertical;
+  border:1px solid var(--line-strong);
+  border-radius:6px;
+  background:var(--panel);
+  color:var(--text);
+  padding:8px;
+  font:inherit;
+  line-height:1.5;
+}
