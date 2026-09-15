@@ -49,7 +49,7 @@ export function buildMaterialListOutput() {
   return activeMaterials().map((record) => ({
     materialNo: record.materialNo || record.inputId || '', name: text(record.name), part: text(record.part),
     usageLocation: text(record.usageLocation), level: text(record.level) || '-', analysisRequired: text(record.analysisRequired),
-    analysisResult: text(record.analysisResult), note: text(record.note || record.remarks)
+    analysisResult: text(record.analysisResult), note: text(record.remarks || record.note)
   }));
 }
 
@@ -64,7 +64,7 @@ export function buildRoomMaterialOutput() {
         floor: floorLabel(record), roomNo: text(record.roomNo), roomName: text(record.roomName), roomNote: text(record.roomNote),
         part: partIndex >= 5 ? (text(record.part) || 'その他') : text(record.part),
         materialNo: material ? (material.materialNo || material.inputId || '') : '',
-        materialName: material ? text(material.name) : text(record.materialName), note: material ? text(material.note || material.remarks) : '',
+        materialName: material ? text(material.name) : text(record.materialName), note: material ? text(material.remarks || material.note) : '',
         level: material ? (text(material.level) || '-') : '-', analysisResult: material ? text(material.analysisResult) : '調査対象外',
         registered: Boolean(material)
       };
@@ -132,7 +132,10 @@ export function buildSamplingPhotoOutput() {
         selectedSamplingStage(material.materialId, branch, SHOOTING_TYPES.DURING, '施工中'),
         selectedSamplingStage(material.materialId, branch, SHOOTING_TYPES.AFTER, '施工後')
       ];
-      const firstPhoto = stages.find((stage) => stage.photoId)?.candidates.find((photo) => photo.photoId === stages.find((s) => s.photoId)?.photoId) || null;
+      const firstSelectedStage = stages.find((stage) => stage.photoId) || null;
+      const firstPhoto = firstSelectedStage
+        ? firstSelectedStage.candidates.find((photo) => String(photo.photoId) === String(firstSelectedStage.photoId)) || null
+        : null;
       const recordSampleNo = text(firstPhoto?.sampleNo);
       pages.push({
         materialId: material.materialId, materialNo: material.materialNo || material.inputId || '', sampleNo: recordSampleNo || String(materialIndex + 1), branch,
