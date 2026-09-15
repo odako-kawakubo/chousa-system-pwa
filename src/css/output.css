@@ -59,7 +59,6 @@
 .output-room-report tr.is-unregistered td { font-style:normal; }
 .output-report-footer { margin-top:2mm; font-size:7px; text-align:left; }
 
-/* PDF 5〜6ページ相当：2列×4段。 */
 .output-photo-book-paper { padding-top:10mm; }
 .output-visual-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(4,1fr); gap:4mm 5mm; height:252mm; }
 .output-visual-slot { min-width:0; min-height:0; display:flex; flex-direction:column; }
@@ -73,7 +72,6 @@
 .output-visual-caption b { white-space:nowrap; }
 .output-visual-caption span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-/* PDF 19〜25ページ相当：1試料1ページ、施工前/中/後の3段。 */
 .output-sampling-paper { padding-top:10mm; }
 .output-sampling-meta { width:100%; border-collapse:collapse; font-size:8.5px; margin-bottom:3mm; }
 .output-sampling-meta th,.output-sampling-meta td { padding:.8mm 1.2mm; text-align:left; vertical-align:middle; font-weight:400; }
@@ -86,14 +84,28 @@
 .output-empty { padding:28px; text-align:center; color:#666; }
 .output-placeholder-count { padding:14px 18px 0; font-size:12px; font-weight:700; }
 
+.output-export-modal { position:fixed; inset:0; z-index:1200; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.36); }
+.output-export-modal.open { display:flex; }
+.output-export-card { width:min(520px,100%); border:1px solid var(--line-strong); border-radius:10px; background:var(--panel); box-shadow:0 14px 40px rgba(0,0,0,.24); overflow:hidden; }
+.output-export-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line); }
+.output-export-targets { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:14px; }
+.output-export-targets label,.output-export-combine { display:flex; align-items:center; gap:8px; min-height:36px; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--surface-soft); }
+.output-export-combine { margin:0 14px 12px; }
+.output-export-status { min-height:34px; padding:0 14px 8px; font-size:12px; color:var(--text-subtle); }
+.output-export-progress { width:calc(100% - 28px); height:8px; margin:0 14px 12px; }
+.output-export-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--line); }
+.output-export-render-host { position:fixed; left:-20000px; top:0; width:210mm; background:#fff; z-index:-1; }
+.output-export-render-host .output-photo-expand { display:none !important; }
+
 @media (max-width: 900px) {
   .output-preview { padding:4px; }
   .output-page-shell,.output-paper { margin:0; }
+  .output-export-targets { grid-template-columns:1fr; }
 }
 
 @media print {
   body { background:#fff !important; }
-  .app-header-compact,.toolbar,.output-toolbar,.output-page-label,.output-photo-expand { display:none !important; }
+  .app-header-compact,.toolbar,.output-toolbar,.output-page-label,.output-photo-expand,.output-export-modal { display:none !important; }
   .output-preview,.output-pages { overflow:visible; padding:0; margin:0; background:#fff; gap:0; display:block; }
   .output-pages.is-single-page .output-page-shell { display:block !important; }
   .output-page-shell { margin:0; break-after:page; page-break-after:always; }
