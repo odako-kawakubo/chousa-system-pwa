@@ -1,8 +1,6 @@
 /**
  * src/js/app-init.js
  * 案件画面(app.html)専用の初期化入口。
- * 独立トップ(index.html)で選択された projectId が無い場合はトップへ戻す。
- * 案件画面内の案件サイドパネルはトップと重複する作業中導線として維持する。
  */
 import { applyAppVersionDisplay } from './app-version.js';
 import { bindAppUpdateEvents } from './app-update.js';
@@ -31,6 +29,7 @@ import { initializePhotoTab } from './photos/photo-controller.js';
 import { configurePhotoLocalStore } from './photos/photo-local-store.js';
 import { initializePhotoOneDriveSync } from './photos/photo-onedrive-sync.js';
 import { initializeOutputTab } from './output/output-controller.js';
+import { initializeAnalysisImport } from './analysis/analysis-import-controller.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
@@ -95,6 +94,7 @@ async function initProjectApp() {
     initializePhotoTab();
     initializePhotoOneDriveSync();
     initializeOutputTab();
+    initializeAnalysisImport();
     initializeSettingsTab();
 
     ensureHomeReturnControl();
