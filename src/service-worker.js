@@ -1,12 +1,9 @@
 /*
- * v0.1.7.3 Service Worker
- *
- * 責任は「最新版を優先しつつ、圏外では直近キャッシュから起動できる状態を保つ」こと。
- * 案件データ、IndexedDB、localStorage、未送信キュー、Firestore同期処理は扱わない。
- * 同一version内でもrevisionを上げるたびAPP_CACHEを更新し、資材世代を分離する。
+ * v0.1.7.4 Service Worker
+ * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.3-r4';
+const APP_CACHE = 'chousa-app-v0.1.7.4-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -30,6 +27,7 @@ const APP_SHELL = [
   './css/pwa-offline.css',
   './css/output.css',
   './css/room-note.css',
+  './css/analysis-import.css',
   './assets/microsoft-symbol.svg',
   './js/home/home-init.js',
   './js/home/home-controller.js',
@@ -85,6 +83,12 @@ const APP_SHELL = [
   './js/photos/photo-viewer.js',
   './js/output/output-controller.js',
   './js/output/output-view-model.js',
+  './js/output/output-state.js',
+  './js/output/output-photo-selection.js',
+  './js/output/output-report-renderer.js',
+  './js/output/output-export-controller.js',
+  './js/analysis/analysis-import-controller.js',
+  './js/materials/material-sample-name.js',
   './js/demo/sample-session.js',
   './js/materials/simple-list.js',
   './config/app-config.js',
@@ -100,12 +104,9 @@ function appCacheKey(request) {
 async function networkFirstAppRequest(request) {
   const cache = await caches.open(APP_CACHE);
   const cacheKey = appCacheKey(request);
-
   try {
     const response = await fetch(request);
-    if (response && response.ok) {
-      await cache.put(cacheKey, response.clone());
-    }
+    if (response && response.ok) await cache.put(cacheKey, response.clone());
     return response;
   } catch (error) {
     const cached = await cache.match(cacheKey);
@@ -115,16 +116,11 @@ async function networkFirstAppRequest(request) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(APP_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
-  );
+  event.waitUntil(caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL)));
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -146,7 +142,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
 
   if (url.origin === self.location.origin) {
@@ -159,7 +154,6 @@ self.addEventListener('fetch', (event) => {
       caches.open(FIREBASE_SDK_CACHE).then(async (cache) => {
         const cached = await cache.match(request);
         if (cached) return cached;
-
         const response = await fetch(request);
         cache.put(request, response.clone());
         return response;
