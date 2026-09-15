@@ -1,0 +1,19 @@
+/* 分析結果取込 */
+.analysis-import-modal { position:fixed; inset:0; z-index:1250; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.38); }
+.analysis-import-modal.open { display:flex; }
+.analysis-import-card { width:min(1100px,96vw); max-height:90vh; display:flex; flex-direction:column; border:1px solid var(--line-strong); border-radius:10px; background:var(--panel); box-shadow:0 14px 44px rgba(0,0,0,.28); overflow:hidden; }
+.analysis-import-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line); }
+.analysis-import-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; border-bottom:1px solid var(--line); }
+.analysis-import-table-wrap { overflow:auto; }
+.analysis-import-table { width:100%; border-collapse:collapse; font-size:12px; }
+.analysis-import-table th,.analysis-import-table td { border-bottom:1px solid var(--line); border-right:1px solid var(--line); padding:7px 8px; text-align:left; vertical-align:top; }
+.analysis-import-table th { position:sticky; top:0; z-index:2; background:var(--surface-table-head); white-space:nowrap; }
+.analysis-import-table th:first-child,.analysis-import-table td:first-child { width:48px; text-align:center; }
+.analysis-import-status { display:inline-flex; align-items:center; min-height:22px; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
+.analysis-import-status.matched { background:var(--surface-ok, #e8f5e9); }
+.analysis-import-status.review { background:#fff3cd; color:#7a5a00; }
+.analysis-import-status.unmatched { background:#f3f4f6; color:#666; }
+.analysis-import-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--line); }
+@media (max-width: 800px) {
+  .analysis-import-meta { align-items:flex-start; flex-direction:column; }
+}
