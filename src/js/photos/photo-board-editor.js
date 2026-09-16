@@ -1,20 +1,22 @@
 /**
  * src/js/photos/photo-board-editor.js
  *
- * v0.1.7.5 撮影済み写真の電子看板編集。
+ * v0.1.7.6 撮影済み写真の電子看板編集。
  *
  * - 複数写真編集は写真ごとの draft / Undo・Redo履歴 / dirty状態を保持する。
  * - 左右スワイプは表示写真の切替だけを行い、永続保存は発生させない。
  * - 「保存」押下時だけ、変更された写真を既存の1枚保存経路で順番に確定する。
  * - 看板日付は capturedAt と分離した boardDate（YYYY-MM-DD）として編集・同期する。
  * - 旧写真に boardDate が無い場合だけ capturedAt の日付へフォールバックする。
+ * - 看板編集に必要な元画像はローカル優先、無ければOneDriveから取得してIndexedDBへ保持する。
  *
  * 確定経路は増やさず、persistEntry_() を全保存の唯一の入口とする。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES, getShootingTypeLabel, getVisualPhotoRoomKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
-import { getPhotoBlob, savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import {
   BOARD_POSITION_LABELS,
   BOARD_SIZE_LABELS,
@@ -361,7 +363,7 @@ async function loadImageFromBlob(blob) {
 }
 
 async function loadOriginalImageForEntry_(entry) {
-  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
+  const originalBlob = await resolveEditorOriginalPhoto(entry.record);
   if (!originalBlob) return false;
   originalImage = await loadImageFromBlob(originalBlob);
   return true;
@@ -443,8 +445,8 @@ function updateDraftFromEvent(target) {
 }
 
 async function composeCompletedBlob_(entry) {
-  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
-  if (!originalBlob) throw new Error(`元写真が端末内にありません。 (${entry.record.photoId})`);
+  const originalBlob = await resolveEditorOriginalPhoto(entry.record);
+  if (!originalBlob) throw new Error(`元写真を取得できませんでした。 (${entry.record.photoId})`);
   const img = await loadImageFromBlob(originalBlob);
   const out = document.createElement('canvas');
   out.width = img.width;
@@ -459,8 +461,8 @@ async function composeCompletedBlob_(entry) {
 }
 
 async function persistEntry_(entry) {
-  const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
-  if (!originalBlob) throw new Error(`元写真が端末内にありません。 (${entry.record.photoId})`);
+  const originalBlob = await resolveEditorOriginalPhoto(entry.record);
+  if (!originalBlob) throw new Error(`元写真を取得できませんでした。 (${entry.record.photoId})`);
 
   const completedBlob = await composeCompletedBlob_(entry);
   const now = new Date().toISOString();
@@ -560,7 +562,7 @@ async function activateIndex_(index) {
   try {
     const loaded = await loadOriginalImageForEntry_(entry);
     if (!loaded) {
-      window.alert('この写真の元写真が端末内にありません。');
+      window.alert('元写真を取得できませんでした。OneDrive上の元画像を確認してください。');
       return false;
     }
     session.index = index;
