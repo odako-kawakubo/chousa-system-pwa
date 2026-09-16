@@ -15,7 +15,13 @@
  * v0.1.6.5L:
  * - 他端末で拡大表示した完成画像をcompletedとして端末へ保持する。
  * - OneDriveから取得済み画像は最初からuploadedとして保存し、再送対象にしない。
+ *
+ * v0.1.7.6 r4:
+ * - ローカル生成completedは保存入口で長辺1500px / JPEG 0.82へ統一する。
+ * - originalとOneDriveから取得したremote completedは再圧縮しない。
  */
+
+import { normalizeCompletedPhotoBlob } from './photo-completed-image.js';
 
 const DB_NAME = 'chousa-system-pwa';
 const DB_VERSION = 1;
@@ -134,6 +140,7 @@ export function blobKey(photoId, variant) {
 
 /**
  * Blobを保存する。
+ * ローカル生成completedだけはここで軽量化し、撮影/看板編集で別実装を持たせない。
  * 看板編集で元画像の内容と保存名が変わらない場合、originalのuploaded状態は維持する。
  * 未整理→正式整理など保存名が変わる時はoriginalもpendingへ戻し、完成画像と同じ正式名へ揃える。
  */
@@ -141,6 +148,9 @@ export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
   const key = blobKey(photoId, variant);
   const requestedStatus = metadata.uploadStatus || 'pending';
   const requestedProjectId = resolveProjectId(metadata.projectId);
+  const storedBlob = variant === 'completed'
+    ? await normalizeCompletedPhotoBlob(blob)
+    : blob;
 
   await replaceBlobEntry(key, (existing) => {
     const nextFileName = metadata.fileName || existing?.fileName || '';
@@ -154,9 +164,9 @@ export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
       key,
       photoId,
       variant,
-      blob,
-      mimeType: blob?.type || existing?.mimeType || 'image/jpeg',
-      size: Number(blob?.size || 0),
+      blob: storedBlob,
+      mimeType: storedBlob?.type || existing?.mimeType || 'image/jpeg',
+      size: Number(storedBlob?.size || 0),
       projectId: String(requestedProjectId || existing?.projectId || ''),
       createdAt: metadata.createdAt || existing?.createdAt || new Date().toISOString(),
       fileName: nextFileName,
