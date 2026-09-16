@@ -7,10 +7,7 @@
 
 import { normalizeFieldEditedAt } from '../sync/field-edit-meta.js';
 
-function text(value) {
-  return String(value ?? '');
-}
-
+function text(value) { return String(value ?? ''); }
 function stringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => text(item)).filter(Boolean);
@@ -28,7 +25,6 @@ export function serializeFinishRecord(record, { updatedAt }) {
     position: Number(record.position) || 0,
     part: text(record.part),
     materialId: text(record.materialId),
-    // materialNameは未登録建材の仕上表入力値。登録後はmaterialIdを正として空文字になる。
     materialName: text(record.materialName),
     systemMemo: text(record.systemMemo),
     updatedDevice: text(record.updatedDevice) || 'local',
@@ -42,8 +38,6 @@ export function serializeMaterialRecord(record, { updatedAt }) {
   return {
     status: text(record.status) || 'active',
     materialId: text(record.materialId),
-    // materialId/inputIdは固定識別子、sortOrderは建材リスト上の可変表示位置。
-    // 旧Firestore RecordにsortOrderが無い場合は読込側の従来順へフォールバックする。
     sortOrder: Number(record.materialNo) || Number(record.inputId) || 0,
     name: text(record.name),
     part: text(record.part),
@@ -77,6 +71,7 @@ export function serializePhotoRecord(record, { updatedAt }) {
     isRepresentative: Boolean(record.isRepresentative),
     capturedDevice: text(record.capturedDevice) || 'local',
     capturedAt: text(record.capturedAt),
+    boardDate: text(record.boardDate),
     isEdited: Boolean(record.isEdited),
     lastEditedDevice: text(record.lastEditedDevice),
     lastEditedAt: text(record.lastEditedAt),
