@@ -9,6 +9,7 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { buildOutputViewModel } from './output-view-model.js';
 import { renderOutputTarget } from './output-report-renderer.js';
 import { fitOutputPhotoImage } from './output-photo-layout.js';
+import { setSamplingOutputMemo } from './output-state.js';
 import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import {
   initializeOutputPhotoSelectionBridge,
@@ -112,6 +113,17 @@ function openSamplingSelection(materialId, branch, shootingType) {
     onSelection:() => renderOutputTab()
   });
 }
+function saveSamplingMemoFromLine(line) {
+  const materialId = line.dataset.outputMaterialId;
+  const branch = Number(line.dataset.outputBranch) || 0;
+  const stage = line.dataset.outputStage || '';
+  const container = line.closest('.output-sampling-memo-lines');
+  if (!materialId || !branch || !stage || !container) return;
+  const values = [...container.querySelectorAll('[data-output-sampling-memo-line]')]
+    .map((node) => String(node.textContent || '').replace(/\n/g, ' ').trimEnd());
+  while (values.length && !values[values.length - 1]) values.pop();
+  setSamplingOutputMemo(materialId, branch, stage, values.join('\n'));
+}
 
 export function renderOutputTab() {
   const root = outputRoot();
@@ -163,6 +175,14 @@ export function initializeOutputTab() {
     if (visual) { openVisualSelection(visual.dataset.outputVisualExpand); return; }
     const sampling = event.target.closest('[data-output-sampling-expand]');
     if (sampling) { openSamplingSelection(sampling.dataset.outputSamplingExpand, Number(sampling.dataset.outputBranch), sampling.dataset.outputStage); return; }
+  });
+  root.addEventListener('input', (event) => {
+    const line = event.target.closest?.('[data-output-sampling-memo-line]');
+    if (line) saveSamplingMemoFromLine(line);
+  });
+  root.addEventListener('keydown', (event) => {
+    const line = event.target.closest?.('[data-output-sampling-memo-line]');
+    if (line && event.key === 'Enter') event.preventDefault();
   });
   root.addEventListener('pointerdown', (event) => {
     if (pageMode !== 'single' || event.pointerType === 'mouse') return;
