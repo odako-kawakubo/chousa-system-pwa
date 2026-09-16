@@ -3,7 +3,7 @@
  *
  * 出力専用の端末設定。
  * 写真タブの代表写真(isRepresentative)とは分離し、案件ごとに
- * 「今回の帳票へ採用する写真」を保持する。
+ * 「今回の帳票へ採用する写真」と採取写真帳のメモを保持する。
  * Firestoreの3レコード正本には混ぜない。
  */
 import { getCurrentProject } from '../projects/project-store.js';
@@ -27,18 +27,19 @@ function saveAll(value) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   } catch {
-    // 出力選択の保存失敗で通常の調査入力を止めない。
+    // 出力設定の保存失敗で通常の調査入力を止めない。
   }
 }
 
 function projectState() {
   const id = projectId();
-  if (!id) return { visual: {}, sampling: {} };
+  if (!id) return { visual: {}, sampling: {}, samplingMemo: {} };
   const all = loadAll();
   const current = all[id] || {};
   return {
     visual: { ...(current.visual || {}) },
-    sampling: { ...(current.sampling || {}) }
+    sampling: { ...(current.sampling || {}) },
+    samplingMemo: { ...(current.samplingMemo || {}) }
   };
 }
 
@@ -48,7 +49,8 @@ function updateProjectState(mutator) {
   const all = loadAll();
   const current = {
     visual: { ...(all[id]?.visual || {}) },
-    sampling: { ...(all[id]?.sampling || {}) }
+    sampling: { ...(all[id]?.sampling || {}) },
+    samplingMemo: { ...(all[id]?.samplingMemo || {}) }
   };
   mutator(current);
   all[id] = current;
@@ -81,6 +83,19 @@ export function setSamplingOutputPhotoId(materialId, branch, shootingType, photo
   updateProjectState((state) => {
     if (photoId) state.sampling[key] = String(photoId);
     else delete state.sampling[key];
+  });
+}
+
+export function getSamplingOutputMemo(materialId, branch, shootingType) {
+  return String(projectState().samplingMemo[samplingKey(materialId, branch, shootingType)] || '');
+}
+
+export function setSamplingOutputMemo(materialId, branch, shootingType, value) {
+  const key = samplingKey(materialId, branch, shootingType);
+  updateProjectState((state) => {
+    const next = String(value ?? '').replace(/\r/g, '').replace(/\n{10,}/g, '\n'.repeat(9));
+    if (next.trim()) state.samplingMemo[key] = next;
+    else delete state.samplingMemo[key];
   });
 }
 
