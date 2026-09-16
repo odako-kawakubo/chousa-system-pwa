@@ -1,14 +1,13 @@
 /**
  * src/js/photos/photo-board-editor.js
  *
- * v0.1.5.6H 撮影済み写真の電子看板編集。
+ * v0.1.7.5 撮影済み写真の電子看板編集。
  *
- * Hでの主な変更：
- * - 複数写真編集は「移動時保存」を廃止し、写真ごとのドラフトを編集セッション中に保持する。
+ * - 複数写真編集は写真ごとの draft / Undo・Redo履歴 / dirty状態を保持する。
  * - 左右スワイプは表示写真の切替だけを行い、永続保存は発生させない。
- * - 各写真ごとに draft / Undo・Redo履歴 / dirty状態を保持する。
  * - 「保存」押下時だけ、変更された写真を既存の1枚保存経路で順番に確定する。
- * - 閉じる時に未保存変更があれば確認してから破棄する。
+ * - 看板日付は capturedAt と分離した boardDate（YYYY-MM-DD）として編集・同期する。
+ * - 旧写真に boardDate が無い場合だけ capturedAt の日付へフォールバックする。
  *
  * 確定経路は増やさず、persistEntry_() を全保存の唯一の入口とする。
  */
@@ -34,7 +33,7 @@ const MARKS = { 1: '①', 2: '②', 3: '③' };
 
 const PHOTO_SYNC_EDIT_FIELDS = new Set([
   'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
-  'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'originalPath', 'completedPath',
+  'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'boardDate', 'originalPath', 'completedPath',
   'areaCode', 'roomPosition', 'partSlot',
   'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
 ]);
@@ -51,31 +50,39 @@ let saving = false;
 let switching = false;
 let swipeStart = null;
 
-/**
- * 編集セッション。
- * entries は写真ごとに独立した draft / history / dirty を持つ。
- * スワイプで写真を移動しても内容はここに残るため、前の写真へ戻しても復元できる。
- */
 let session = createEmptySession_();
 let active = null;
 
 function createEmptySession_() {
-  return {
-    ids: [],
-    index: -1,
-    entries: new Map()
-  };
+  return { ids: [], index: -1, entries: new Map() };
 }
 
-// v0.1.5.7A 業務固定色：完成写真へ合成する電子看板色。
-// アプリのライト/ダークテーマでは変更しない。
 function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function sameDraft_(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-function dateText(value) {
-  const d = value ? new Date(value) : new Date();
-  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+
+function dateInputValue(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
+
+function boardDateFromRecord(record) {
+  return dateInputValue(record?.boardDate) || dateInputValue(record?.capturedAt) || dateInputValue(new Date());
+}
+
+function dateText(value) {
+  const iso = dateInputValue(value);
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
 function sampleDisplay(base, branch) { return `${base || ''}${MARKS[branch] ? `-${MARKS[branch]}` : ''}`; }
 
 function memoValue_(value) {
@@ -90,10 +97,6 @@ function appendSystemMemo_(currentMemo, message) {
   return current ? `${current}\n${line}` : line;
 }
 
-/**
- * 保存確定時に、Editor上で利用者が認識できる変更だけを1イベントへまとめる。
- * 内部で連動する materialId / samplingPlace / part 等は個別履歴に展開しない。
- */
 function buildBoardEditMemo_(entry) {
   const before = entry.initialDraft || {};
   const after = entry.draft || {};
@@ -101,30 +104,25 @@ function buildBoardEditMemo_(entry) {
 
   if (entry.record.photoType === PHOTO_TYPES.VISUAL) {
     const roomChanged = before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
-    if (roomChanged) {
-      lines.push(`部屋：${memoValue_(before.roomNo || before.roomPosition)} → ${memoValue_(after.roomNo || after.roomPosition)}`);
-    }
+    if (roomChanged) lines.push(`部屋：${memoValue_(before.roomNo || before.roomPosition)} → ${memoValue_(after.roomNo || after.roomPosition)}`);
 
     const partChanged = Number(before.partSlot || 0) !== Number(after.partSlot || 0) || before.part !== after.part;
-    if (partChanged) {
-      lines.push(`部位：${before.part ? memoValue_(before.part) : '未整理'} → ${after.part ? memoValue_(after.part) : '未整理'}`);
-    }
+    if (partChanged) lines.push(`部位：${before.part ? memoValue_(before.part) : '未整理'} → ${after.part ? memoValue_(after.part) : '未整理'}`);
   } else {
     const materialChanged = before.materialId !== after.materialId || before.sampleBaseNo !== after.sampleBaseNo;
-    if (materialChanged) {
-      lines.push(`検体No.：${memoValue_(before.sampleBaseNo)} → ${memoValue_(after.sampleBaseNo)}`);
-    }
+    if (materialChanged) lines.push(`検体No.：${memoValue_(before.sampleBaseNo)} → ${memoValue_(after.sampleBaseNo)}`);
 
     const branchChanged = Number(before.samplingBranch || 0) !== Number(after.samplingBranch || 0);
-    if (branchChanged) {
-      lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue_(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue_(after.samplingBranch) : '未整理'}`);
-    }
+    if (branchChanged) lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue_(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue_(after.samplingBranch) : '未整理'}`);
 
     if (before.shootingType !== after.shootingType) {
       lines.push(`撮影区分：${before.shootingType ? memoValue_(getShootingTypeLabel(before.shootingType)) : '未整理'} → ${after.shootingType ? memoValue_(getShootingTypeLabel(after.shootingType)) : '未整理'}`);
     }
   }
 
+  if (before.boardDate !== after.boardDate) {
+    lines.push(`日付：${memoValue_(dateText(before.boardDate))} → ${memoValue_(dateText(after.boardDate))}`);
+  }
   if (before.boardPosition !== after.boardPosition) {
     lines.push(`看板位置：${memoValue_(BOARD_POSITION_LABELS[before.boardPosition])} → ${memoValue_(BOARD_POSITION_LABELS[after.boardPosition])}`);
   }
@@ -155,7 +153,7 @@ function boardData(entry = active) {
     samplingPlace: entry.draft.samplingPlace,
     sampleNo: sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
     statusCode: currentStatusCode(entry),
-    date: dateText(entry.record.capturedAt)
+    date: dateText(entry.draft.boardDate)
   };
 }
 
@@ -178,17 +176,15 @@ function samplingMaterials() {
 function snapshotVisualFromRecord_(record) {
   const room = visualRoomByIdentity(record);
   const unorganized = isVisualPhotoUnorganized(record);
-  const target = unorganized
-    ? null
-    : room?.targets?.find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0)) || null;
+  const target = unorganized ? null : room?.targets?.find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0)) || null;
 
   return {
-    // 未整理でも「どの部屋の写真か」は保持する。候補一覧から別の部屋へ勝手に補完しない。
     areaCode: record.areaCode || room?.areaCode || '',
     roomPosition: record.roomPosition || room?.roomPosition || '',
     partSlot: Number(record.partSlot || 0),
     roomNo: record.roomNo || room?.roomNo || '',
     part: record.part || target?.part || '',
+    boardDate: boardDateFromRecord(record),
     boardPosition: record.boardPosition || 'bottom-left',
     boardSize: record.boardSize || 'medium'
   };
@@ -199,28 +195,23 @@ function snapshotSamplingFromRecord_(record) {
   const material = materials.find((item) => item.materialId === record.materialId) || null;
   const targets = samplingMaterialTargets(record.materialId);
   const unorganized = isSamplingPhotoUnorganized(record);
-  const target = unorganized
-    ? null
-    : targets.find((item) => Number(item.branch) === Number(record.samplingBranch)) || null;
+  const target = unorganized ? null : targets.find((item) => Number(item.branch) === Number(record.samplingBranch)) || null;
 
   return {
-    // 未整理でも「どの検体の写真か」はmaterialIdで確定している。
-    // sampleBaseNoはそのmaterialIdに対応する表示用検体No.だけを解決し、箇所・撮影区分は補完しない。
     materialId: record.materialId || material?.materialId || '',
     sampleBaseNo: record.sampleBaseNo || String(record.sampleNo || '').split('-')[0] || material?.sampleBaseNo || '',
     samplingBranch: Number(record.samplingBranch || 0),
     samplingPlace: record.samplingPlace || target?.samplingPlace || '',
     part: record.part || target?.part || '',
     shootingType: record.shootingType || '',
+    boardDate: boardDateFromRecord(record),
     boardPosition: record.boardPosition || 'bottom-left',
     boardSize: record.boardSize || 'medium'
   };
 }
 
 function snapshotFromRecord(record) {
-  return record.photoType === PHOTO_TYPES.VISUAL
-    ? snapshotVisualFromRecord_(record)
-    : snapshotSamplingFromRecord_(record);
+  return record.photoType === PHOTO_TYPES.VISUAL ? snapshotVisualFromRecord_(record) : snapshotSamplingFromRecord_(record);
 }
 
 function createEntry_(record) {
@@ -239,10 +230,7 @@ function refreshDirty_(entry = active) {
   if (!entry) return;
   entry.dirty = !sameDraft_(entry.draft, entry.initialDraft);
 }
-
-function hasUnsavedChanges_() {
-  return [...session.entries.values()].some((entry) => entry.dirty);
-}
+function hasUnsavedChanges_() { return [...session.entries.values()].some((entry) => entry.dirty); }
 
 function pushHistory() {
   if (!active) return;
@@ -296,6 +284,7 @@ function ensureRoot() {
         <div class="photo-board-editor-sequence-hint" data-editor-sequence-hint hidden></div>
         <div data-editor-fields></div>
         <div class="photo-board-editor-common">
+          <label>日付<input type="date" data-editor-date></label>
           <label>看板位置<select data-editor-position>${BOARD_POSITIONS.map((v)=>`<option value="${v}">${BOARD_POSITION_LABELS[v] || v}</option>`).join('')}</select></label>
           <label>看板サイズ<select data-editor-size>${BOARD_SIZES.map((v)=>`<option value="${v}">${BOARD_SIZE_LABELS[v] || v}</option>`).join('')}</select></label>
         </div>
@@ -356,6 +345,7 @@ function samplingFields() {
 function renderControls() {
   if (!active || !root) return;
   root.querySelector('[data-editor-fields]').innerHTML = active.record.photoType === PHOTO_TYPES.VISUAL ? visualFields() : samplingFields();
+  root.querySelector('[data-editor-date]').value = active.draft.boardDate || '';
   root.querySelector('[data-editor-position]').value = active.draft.boardPosition;
   root.querySelector('[data-editor-size]').value = active.draft.boardSize;
   updateNavigationHint_();
@@ -420,15 +410,12 @@ function updateDraftFromEvent(target) {
     active.draft.areaCode = room?.areaCode || '';
     active.draft.roomPosition = room?.roomPosition || '';
     active.draft.roomNo = room?.roomNo || '';
-    // 部屋変更時に先頭部位へ自動整理しない。部位は利用者が明示選択する。
     active.draft.partSlot = 0;
     active.draft.part = '';
     renderControls();
   } else if (target.matches('[data-editor-part]')) {
     const room = visualRoomByIdentity(active.draft);
-    const partTarget = target.value
-      ? room?.targets?.find((item) => Number(item.partSlot || 0) === Number(target.value)) || null
-      : null;
+    const partTarget = target.value ? room?.targets?.find((item) => Number(item.partSlot || 0) === Number(target.value)) || null : null;
     active.draft.partSlot = Number(partTarget?.partSlot || 0);
     active.draft.part = partTarget?.part || '';
   }
@@ -436,7 +423,6 @@ function updateDraftFromEvent(target) {
     const material = samplingMaterials().find((m)=>m.materialId===target.value);
     active.draft.materialId = material?.materialId || target.value;
     active.draft.sampleBaseNo = material?.sampleBaseNo || '';
-    // 検体変更時に箇所1へ自動整理しない。箇所は利用者が明示選択する。
     active.draft.samplingBranch = 0;
     active.draft.samplingPlace = '';
     active.draft.part = '';
@@ -448,6 +434,7 @@ function updateDraftFromEvent(target) {
     else { active.draft.samplingPlace = ''; active.draft.part = ''; }
   }
   else if (target.matches('[data-editor-stage]')) active.draft.shootingType = target.value;
+  else if (target.matches('[data-editor-date]')) active.draft.boardDate = dateInputValue(target.value);
   else if (target.matches('[data-editor-position]')) active.draft.boardPosition = target.value;
   else if (target.matches('[data-editor-size]')) active.draft.boardSize = target.value;
   else return;
@@ -471,10 +458,6 @@ async function composeCompletedBlob_(entry) {
   return new Promise((resolve,reject)=>out.toBlob((blob)=>blob?resolve(blob):reject(new Error('完成画像を生成できませんでした。')),'image/jpeg',0.82));
 }
 
-/**
- * 1枚分の正式な保存処理。
- * 単独編集も複数編集の一括保存も必ずこの関数だけを通す。
- */
 async function persistEntry_(entry) {
   const originalBlob = await getPhotoBlob(entry.record.photoId, 'original');
   if (!originalBlob) throw new Error(`元写真が端末内にありません。 (${entry.record.photoId})`);
@@ -499,12 +482,12 @@ async function persistEntry_(entry) {
     entry.record.photoId
   );
   const editMemo = buildBoardEditMemo_(entry);
-
   const nextSystemMemo = editMemo ? appendSystemMemo_(entry.record.systemMemo, editMemo) : entry.record.systemMemo;
   const nextRecordFields = {
     ...nextFields,
     fileName,
     systemMemo: nextSystemMemo,
+    boardDate:entry.draft.boardDate,
     boardPosition:entry.draft.boardPosition,
     boardSize:entry.draft.boardSize,
     isEdited:true,
@@ -538,28 +521,16 @@ async function persistEntry_(entry) {
   return { record, completedBlob };
 }
 
-/**
- * 保存ボタンの処理。
- * 変更された写真だけを、上の1枚保存処理へ順番に渡す。
- */
 async function saveSession_() {
   if (!active || saving) return;
   saving = true;
   try {
-    const dirtyEntries = session.ids
-      .map((photoId) => session.entries.get(photoId))
-      .filter((entry) => entry?.dirty);
-
+    const dirtyEntries = session.ids.map((photoId) => session.entries.get(photoId)).filter((entry) => entry?.dirty);
     const items = [];
-    for (const entry of dirtyEntries) {
-      items.push(await persistEntry_(entry));
-    }
-
+    for (const entry of dirtyEntries) items.push(await persistEntry_(entry));
     closeEditorInternal_('saved');
     await onSaved?.({ items });
   } catch (error) {
-    // 一括保存の途中で失敗しても、現在編集中写真のプレビューへ戻してEditorを維持する。
-    // 既に確定した写真はdirty=falseになっているため、再度「保存」しても二重保存しない。
     if (active) {
       await loadOriginalImageForEntry_(active);
       renderControls();
@@ -581,7 +552,6 @@ function canNavigate(direction) {
 async function activateIndex_(index) {
   if (switching || saving) return false;
   if (index < 0 || index >= session.ids.length) return false;
-
   const photoId = session.ids[index];
   const entry = session.entries.get(photoId);
   if (!entry) return false;
@@ -618,12 +588,9 @@ function handleEditorSwipeEnd(event) {
   const dx = event.clientX - swipeStart.x;
   const dy = event.clientY - swipeStart.y;
   swipeStart = null;
-
   if (Math.abs(dx) < 70 || Math.abs(dx) <= Math.abs(dy) * 1.2) return;
   const direction = dx < 0 ? 1 : -1;
   if (!canNavigate(direction)) return;
-
-  // Hではスワイプは表示切替だけ。永続保存は保存ボタンでのみ行う。
   activateIndex_(session.index + direction).catch((error) => {
     console.error(error);
     window.alert(`写真の切り替えに失敗しました。\n${error.message || error}`);
@@ -690,15 +657,8 @@ async function startSession_(photoIds) {
   return true;
 }
 
-/** 単独写真編集。PhotoViewerからの編集もこの経路を使う。 */
-export function openPhotoBoardEditor(photoId) {
-  return startSession_([photoId]);
-}
-
-/** 複数写真編集。写真ごとのドラフトと履歴を1セッション内で保持する。 */
-export function openPhotoBoardEditorSequence(photoIds) {
-  return startSession_(photoIds);
-}
+export function openPhotoBoardEditor(photoId) { return startSession_([photoId]); }
+export function openPhotoBoardEditorSequence(photoIds) { return startSession_(photoIds); }
 
 function closeEditorInternal_(reason = 'cancel') {
   if (!root) return;
@@ -713,7 +673,6 @@ function closeEditorInternal_(reason = 'cancel') {
   onClosed?.(reason);
 }
 
-/** 外部から強制的に閉じる必要がある場合の既存互換入口。 */
 export function closePhotoBoardEditor(reason = 'cancel') {
   if (reason === 'cancel') return requestClose_();
   closeEditorInternal_(reason);
