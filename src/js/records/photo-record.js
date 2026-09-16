@@ -4,12 +4,6 @@
  * photoRecordの正式な型・生成・判定だけを持つ純粋モジュール。
  * 写真データ本体ではなく、写真1枚ごとのメタ情報を1レコードとして扱う。
  * 正本（Map<photoId, photoRecord>）はphoto-record-store.jsが保持する。
- *
- * v0.1.5.3A:
- * - 旧仮定義（kind / finishId / caption / sampleName等）を廃止。
- * - 目視写真は areaCode + roomPosition + partSlot で紐付け、materialIdを持たない。
- * - 採取写真は materialId + samplingBranch + shootingType を軸に管理する。
- * - 写真削除はdeleted=trueの論理削除とし、物理削除は行わない。
  */
 
 export const PHOTO_TYPES = Object.freeze({
@@ -44,6 +38,7 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {boolean} isRepresentative
  * @property {string} capturedDevice
  * @property {string} capturedAt
+ * @property {string} boardDate 看板表示専用日付（YYYY-MM-DD）。capturedAtとは分離する。
  * @property {boolean} isEdited
  * @property {string} lastEditedDevice
  * @property {string} lastEditedAt
@@ -59,119 +54,45 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
  */
 
-/**
- * 目視写真。
- * 建材は現在のfinishRecordから解決するため、materialIdは保持しない。
- * @typedef {PhotoRecordCommon & {
- *   photoType: 'visual',
- *   areaCode: string,
- *   roomPosition: string,
- *   partSlot: number,
- *   roomNo: string,
- *   part: string,
- *   materialId: '',
- *   samplingPlace: '',
- *   samplingBranch: 0,
- *   sampleNo: '',
- *   shootingType: ''
- * }} VisualPhotoRecord
- */
-
-/**
- * 採取写真。
- * 同じ採取場所を複数枝番で選べる仕様のため、samplingBranchを独立して保持する。
- * @typedef {PhotoRecordCommon & {
- *   photoType: 'sampling',
- *   areaCode: '',
- *   roomPosition: '',
- *   partSlot: 0,
- *   roomNo: '',
- *   materialId: string,
- *   samplingPlace: string,
- *   samplingBranch: number,
- *   sampleNo: string,
- *   sampleBaseNo: string,
- *   part: string,
- *   shootingType: 'before'|'during'|'after'|'section'
- * }} SamplingPhotoRecord
- */
-
+/** @typedef {PhotoRecordCommon & {photoType:'visual',areaCode:string,roomPosition:string,partSlot:number,roomNo:string,part:string,materialId:'',samplingPlace:'',samplingBranch:0,sampleNo:'',shootingType:''}} VisualPhotoRecord */
+/** @typedef {PhotoRecordCommon & {photoType:'sampling',areaCode:'',roomPosition:'',partSlot:0,roomNo:'',materialId:string,samplingPlace:string,samplingBranch:number,sampleNo:string,sampleBaseNo:string,part:string,shootingType:'before'|'during'|'after'|'section'}} SamplingPhotoRecord */
 /** @typedef {VisualPhotoRecord|SamplingPhotoRecord} PhotoRecord */
 
-function asText(value) {
-  return String(value ?? '').trim();
-}
-
+function asText(value) { return String(value ?? '').trim(); }
 function normalizeSamplingBranch(value) {
   const branch = Number(value);
   return Number.isInteger(branch) && branch >= 1 && branch <= 3 ? branch : 0;
 }
-
 function normalizeVisualPartSlot(value) {
   const slot = Number(value);
   return Number.isInteger(slot) && slot >= 1 && slot <= 6 ? slot : 0;
 }
 
-/**
- * 目視写真の部屋キー。
- * areaCodeを含め、外部 / 階段 / 屋上などで同じroomPositionが存在しても衝突させない。
- */
 export function getVisualPhotoRoomKey({ areaCode, roomPosition } = {}) {
   const area = asText(areaCode);
   const room = asText(roomPosition);
   return area && room ? `${area}|${room}` : '';
 }
 
-/**
- * 目視写真の正式な紐付けキー。
- * 仕上表IDを丸ごと複製せず、写真が属する「区分 + 部屋位置 + 部位枠」だけを保持して使う。
- *
- * 注意:
- * このキーはroomPositionが不変である現在運用を前提にしている。
- * ＋挿入機能を将来UIから再度有効化する場合は、roomUid基準の紐付け方式と
- * roomUidの永続的な発番方式を合わせて再設計すること。
- */
 export function getVisualPhotoTargetKey({ areaCode, roomPosition, partSlot } = {}) {
   const roomKey = getVisualPhotoRoomKey({ areaCode, roomPosition });
   const slot = normalizeVisualPartSlot(partSlot);
   return roomKey && slot ? `visual|${roomKey}|${slot}` : '';
 }
 
-/**
- * 目視写真が未整理かを一元判定する。
- * 整理先の正本は areaCode + roomPosition + partSlot の物理キー。
- * part は表示用の部位名称であり、空欄でも有効なpartSlotへ紐付いていれば未整理には戻さない。
- * これにより、同じphotoRecordが「部位ブロック」と「未整理写真」の両方へ重複表示される状態を防ぐ。
- * Viewer / Editor / 写真タブで同じ定義を使い、判定式を重複させない。
- * @param {Partial<PhotoRecord>} record
- */
 export function isVisualPhotoUnorganized(record = {}) {
   if (record.photoType && record.photoType !== PHOTO_TYPES.VISUAL) return false;
   return !getVisualPhotoTargetKey(record);
 }
 
-/**
- * 採取写真が未整理かを一元判定する。
- * 建材（検体）までは確定していてよく、採取枝番または撮影区分が未確定なら未整理とする。
- * Viewer / Editor / 写真タブで同じ定義を使い、判定式を重複させない。
- * @param {Partial<PhotoRecord>} record
- */
 export function isSamplingPhotoUnorganized(record = {}) {
   if (record.photoType && record.photoType !== PHOTO_TYPES.SAMPLING) return false;
   return normalizeSamplingBranch(record.samplingBranch) === 0 || !asText(record.shootingType);
 }
 
-/**
- * photoRecordを1件生成する。
- * 該当しない種別固有項目は空値へ正規化し、Record形状を一定に保つ。
- * @param {Partial<PhotoRecord> & { photoId:string, photoType:'visual'|'sampling' }} fields
- * @returns {PhotoRecord}
- */
 export function createPhotoRecord(fields) {
   const photoType = fields.photoType;
-  if (!Object.values(PHOTO_TYPES).includes(photoType)) {
-    throw new Error(`未対応のphotoTypeです: ${photoType}`);
-  }
+  if (!Object.values(PHOTO_TYPES).includes(photoType)) throw new Error(`未対応のphotoTypeです: ${photoType}`);
 
   const photoId = asText(fields.photoId);
   if (!photoId) throw new Error('photoIdは必須です。');
@@ -188,6 +109,7 @@ export function createPhotoRecord(fields) {
     isRepresentative: Boolean(fields.isRepresentative),
     capturedDevice: asText(fields.capturedDevice) || 'local',
     capturedAt: asText(fields.capturedAt),
+    boardDate: asText(fields.boardDate),
     isEdited: Boolean(fields.isEdited),
     lastEditedDevice: asText(fields.lastEditedDevice),
     lastEditedAt: asText(fields.lastEditedAt),
@@ -211,26 +133,16 @@ export function createPhotoRecord(fields) {
       partSlot: normalizeVisualPartSlot(fields.partSlot),
       roomNo: asText(fields.roomNo),
       part: asText(fields.part),
-      materialId: '',
-      samplingPlace: '',
-      samplingBranch: 0,
-      sampleNo: '',
-      sampleBaseNo: '',
-      shootingType: ''
+      materialId: '', samplingPlace: '', samplingBranch: 0, sampleNo: '', sampleBaseNo: '', shootingType: ''
     };
   }
 
   const shootingType = asText(fields.shootingType);
-  if (shootingType && !Object.values(SHOOTING_TYPES).includes(shootingType)) {
-    throw new Error(`未対応のshootingTypeです: ${shootingType}`);
-  }
+  if (shootingType && !Object.values(SHOOTING_TYPES).includes(shootingType)) throw new Error(`未対応のshootingTypeです: ${shootingType}`);
 
   return {
     ...common,
-    areaCode: '',
-    roomPosition: '',
-    partSlot: 0,
-    roomNo: '',
+    areaCode: '', roomPosition: '', partSlot: 0, roomNo: '',
     materialId: asText(fields.materialId),
     samplingPlace: asText(fields.samplingPlace),
     samplingBranch: normalizeSamplingBranch(fields.samplingBranch),
@@ -241,27 +153,10 @@ export function createPhotoRecord(fields) {
   };
 }
 
-/**
- * 代表写真を共有するグループキーをRecordから導出する。
- * 目視: 同じ区分 + 部屋位置 + 部位枠
- * 採取: 同じ建材 + 採取枝番 + 撮影区分
- *
- * 採取場所は同じ値を複数枝番で選択できるため、枝番をグループ識別に使う。
- * @param {PhotoRecord} record
- */
 export function getPhotoRepresentativeGroupKey(record) {
-  if (record.photoType === PHOTO_TYPES.VISUAL) {
-    return getVisualPhotoTargetKey(record) || `visual-unlinked|${record.photoId}`;
-  }
+  if (record.photoType === PHOTO_TYPES.VISUAL) return getVisualPhotoTargetKey(record) || `visual-unlinked|${record.photoId}`;
   return `sampling|${record.materialId}|${record.samplingBranch}|${record.shootingType}`;
 }
 
-/** @param {PhotoRecord} record */
-export function isActivePhotoRecord(record) {
-  return !record.deleted;
-}
-
-/** @param {string} shootingType */
-export function getShootingTypeLabel(shootingType) {
-  return SHOOTING_TYPE_LABELS[shootingType] || '';
-}
+export function isActivePhotoRecord(record) { return !record.deleted; }
+export function getShootingTypeLabel(shootingType) { return SHOOTING_TYPE_LABELS[shootingType] || ''; }
