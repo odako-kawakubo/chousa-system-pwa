@@ -2,7 +2,8 @@
  * src/js/output/output-report-renderer.js
  *
  * 出力4帳票のHTML生成を一元化する。
- * 画面プレビュー・PDF・印刷は必ずこのレンダラーを共用する。
+ * 画面プレビュー・印刷はこのレンダラーを共用する。
+ * PDFは同じViewModelを使う専用ベクターレンダラーで出力する。
  */
 
 export const OUTPUT_TARGETS = Object.freeze({
@@ -72,7 +73,7 @@ function emptyMaterialRows(count) {
 }
 function materialPage(rows) {
   const blankCount = Math.max(0, MATERIAL_ROWS_PER_PAGE - rows.length);
-  return `<article class="output-paper output-paper-material"><h2 class="output-report-title">調査対象建材リスト</h2><table class="output-report-table output-material-report"><colgroup><col class="col-no"><col class="col-name"><col class="col-part"><col class="col-place"><col class="col-level"><col class="col-analysis"><col class="col-result"><col class="col-note"></colgroup><thead><tr><th>建材<br>No.</th><th>建材名</th><th>部位</th><th class="output-place-head"><span class="output-place-head-top">施工範囲</span><span class="output-place-head-bottom">部屋No.</span></th><th>建材<br>レベル</th><th>分析の要否</th><th>石綿含有<br>の有無</th><th>調査備考</th></tr></thead><tbody>${rows.map((row) => `<tr class="${isAsbestosPositive(row.analysisResult) ? 'is-asbestos-positive' : ''}"><td class="center">${esc(row.materialNo)}</td><td>${esc(row.name)}</td><td class="center">${esc(row.part)}</td><td>${esc(row.usageLocation)}</td><td class="center">${esc(row.level)}</td><td class="center">${esc(row.analysisRequired)}</td><td class="center">${esc(row.analysisResult)}</td><td>${esc(row.note)}</td></tr>`).join('')}${emptyMaterialRows(blankCount)}</tbody></table></article>`;
+  return `<article class="output-paper output-paper-material"><h2 class="output-report-title">調査対象建材リスト</h2><table class="output-report-table output-material-report"><colgroup><col class="col-no"><col class="col-name"><col class="col-part"><col class="col-place"><col class="col-level"><col class="col-analysis"><col class="col-result"><col class="col-note"></colgroup><thead><tr><th>建<br>材<br>No.</th><th>建材名</th><th>部位</th><th class="output-place-head"><span class="output-place-head-top">施工範囲</span><span class="output-place-head-bottom">部屋No.</span></th><th>建<br>材<br>Lv.</th><th>分析の要否</th><th>石綿含有<br>の有無</th><th>調査備考</th></tr></thead><tbody>${rows.map((row) => `<tr class="${isAsbestosPositive(row.analysisResult) ? 'is-asbestos-positive' : ''}"><td class="center">${esc(row.materialNo)}</td><td>${esc(row.name)}</td><td class="center">${esc(row.part)}</td><td>${esc(row.usageLocation)}</td><td class="center">${esc(row.level)}</td><td class="center">${esc(row.analysisRequired)}</td><td class="center">${esc(row.analysisResult)}</td><td>${esc(row.note)}</td></tr>`).join('')}${emptyMaterialRows(blankCount)}</tbody></table></article>`;
 }
 function spanLength(rows, index, key, parentKey = null) {
   const value = rows[index]?.[key];
@@ -91,7 +92,7 @@ function shouldRenderGroupedCell(rows, index, key, parentKey = null) {
   return Boolean(parentKey && rows[index - 1]?.[parentKey] !== rows[index]?.[parentKey]);
 }
 function roomPage(rows) {
-  return `<article class="output-paper output-paper-room"><h2 class="output-report-title">部屋別調査対象建材リスト</h2><table class="output-report-table output-room-report"><colgroup><col class="col-floor"><col class="col-room-no"><col class="col-room-name"><col class="col-part"><col class="col-no"><col class="col-name"><col class="col-note"><col class="col-level"><col class="col-result"><col class="col-room-note"></colgroup><thead><tr><th>階</th><th>部屋No.</th><th>部屋名</th><th>部位</th><th>建材<br>No.</th><th>建材名称</th><th>調査備考</th><th>建材<br>レベル</th><th>分析結果</th><th>部屋備考</th></tr></thead><tbody>${rows.map((row, index) => {
+  return `<article class="output-paper output-paper-room"><h2 class="output-report-title">部屋別調査対象建材リスト</h2><table class="output-report-table output-room-report"><colgroup><col class="col-floor"><col class="col-room-no"><col class="col-room-name"><col class="col-part"><col class="col-no"><col class="col-name"><col class="col-note"><col class="col-level"><col class="col-result"><col class="col-room-note"></colgroup><thead><tr><th>階</th><th>部屋No.</th><th>部屋名</th><th>部位</th><th>建<br>材<br>No.</th><th>建材名称</th><th>調査備考</th><th>建<br>材<br>Lv.</th><th>分析結果</th><th>部屋備考</th></tr></thead><tbody>${rows.map((row, index) => {
     const floorCell = shouldRenderGroupedCell(rows, index, 'floor') ? `<td class="center group-cell" rowspan="${spanLength(rows, index, 'floor')}">${esc(row.floor)}</td>` : '';
     const renderRoom = shouldRenderGroupedCell(rows, index, 'roomNo', 'floor');
     const roomSpan = renderRoom ? spanLength(rows, index, 'roomNo', 'floor') : 0;
@@ -126,12 +127,17 @@ function samplingMemo(item, stage) {
   while (values.length < SAMPLING_MEMO_LINES) values.push('');
   return `<div class="output-sampling-memo"><div class="output-stage-label">撮影状況：${esc(stage.label)}</div><div class="output-sampling-memo-lines">${values.map((value, lineIndex) => `<div class="output-sampling-memo-line" contenteditable="true" spellcheck="false" data-output-sampling-memo-line data-output-material-id="${esc(item.materialId)}" data-output-branch="${Number(item.branch) || 0}" data-output-stage="${esc(stage.type)}" data-output-line-index="${lineIndex}">${esc(value)}</div>`).join('')}</div></div>`;
 }
+function sampleCode(item) {
+  const projectNo = String(item.projectNo ?? '').trim();
+  const sampleNo = String(item.sampleNo ?? '').trim();
+  const branch = String(item.branch ?? '').trim();
+  return `${projectNo}${sampleNo}${branch ? `-${branch}` : ''}`;
+}
 function samplingPages(items, photoSources) {
   const safe = items.length ? items : [{ materialId:'', branch:0, projectName:'', projectNo:'', sampleNo:'', sampleName:'', samplingPlace:'', capturedDate:'', stages:[] }];
   return safe.map((item) => {
     const stageMap = new Map((item.stages || []).map((stage) => [stage.type, stage]));
-    const sampleCode = [item.projectNo, item.sampleNo, item.branch].filter((value) => String(value ?? '').trim()).join('-');
-    return `<article class="output-paper output-sampling-paper"><h2 class="output-report-title">試料採取写真</h2><div class="output-sampling-meta"><div class="output-sampling-meta-left"><div><b>件名：</b><span>${esc(item.projectName)}</span></div><div><b>試料：</b><span>${esc(item.sampleName)}</span></div><div><b>場所：</b><span>${item.samplingPlace ? `部屋No.${esc(item.samplingPlace)}` : ''}</span></div></div><div class="output-sampling-meta-right"><div><span>${esc(sampleCode)}</span></div><div><b>採取日：</b><span>${esc(item.capturedDate)}</span></div></div></div><div class="output-sampling-stages">${['before','during','after'].map((type) => {
+    return `<article class="output-paper output-sampling-paper"><h2 class="output-report-title">試料採取写真</h2><div class="output-sampling-meta"><div class="output-sampling-meta-left"><div><b>件名：</b><span>${esc(item.projectName)}</span></div><div><b>試料：</b><span>${esc(item.sampleName)}</span></div><div><b>場所：</b><span>${item.samplingPlace ? `部屋No.${esc(item.samplingPlace)}` : ''}</span></div></div><div class="output-sampling-meta-right"><div><span>${esc(sampleCode(item))}</span></div><div><b>採取日：</b><span>${esc(item.capturedDate)}</span></div></div></div><div class="output-sampling-stages">${['before','during','after'].map((type) => {
       const stage = stageMap.get(type) || { type, label:type === 'before' ? '施工前' : type === 'during' ? '施工中' : '施工後', photoId:'', candidates:[], memo:'' };
       const canSelect = stage.candidates?.length > 0;
       return `<div class="output-sampling-stage"><div class="output-photo-frame-wrap output-sampling-frame-wrap">${photoFrame(stage.photoId, photoSources, 'output-sampling-frame')}${canSelect ? `<button class="output-photo-expand" type="button" data-output-sampling-expand="${esc(item.materialId)}" data-output-branch="${Number(item.branch)||0}" data-output-stage="${esc(type)}">拡大</button>` : ''}</div>${samplingMemo(item, stage)}</div>`;
