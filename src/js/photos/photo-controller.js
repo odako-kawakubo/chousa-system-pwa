@@ -14,6 +14,10 @@
  * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
  * - 案件切替時に写真UIの選択・開閉・スクロール・プレビューURLをリセットする。
  * - Viewerの完成画像解決はphoto-viewer/photo-viewer-sourceへ一本化する。
+ *
+ * v0.1.7.6:
+ * - 看板編集開始前の「元画像がこの端末にあること」条件を廃止する。
+ * - 元画像のローカル/OneDrive解決はphoto-board-editor側へ一本化する。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -498,14 +502,8 @@ async function startEditSequence(photoIds) {
   clearSelectionMode();
   if (!ids.length) return;
 
-  for (const photoId of ids) {
-    const original = await getPhotoBlob(photoId, 'original');
-    if (!original) {
-      window.alert('この写真は他端末で撮影されたため、この端末では看板編集できません。');
-      return;
-    }
-  }
-
+  // 元画像の所在判定・OneDrive取得はEditor自身へ一本化する。
+  // ここでは編集対象だけ確定し、他端末撮影写真もそのままEditorへ渡す。
   openPhotoBoardEditorSequence(ids).catch((error) => {
     console.error(error);
     window.alert(`看板編集を開始できませんでした。\n${error.message || error}`);
@@ -804,11 +802,6 @@ export function initializePhotoTab() {
     getPhotoSource: previewSourceForPhoto,
     getCompareTargets: compareTargetsForViewer,
     onEditPhoto: async (photoId) => {
-      const original = await getPhotoBlob(photoId, 'original');
-      if (!original) {
-        window.alert('この写真は他端末で撮影されたため、この端末では看板編集できません。');
-        return;
-      }
       const opened = await openPhotoBoardEditor(photoId);
       if (opened) closePhotoViewer();
     }
