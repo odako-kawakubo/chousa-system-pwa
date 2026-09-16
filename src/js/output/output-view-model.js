@@ -95,8 +95,9 @@ export function buildVisualPhotoOutput() {
     const storedId = getVisualOutputPhotoId(material.materialId);
     const selected = candidates.find((candidate) => candidate.photoId === storedId) || candidates[0] || null;
     return {
+      // 建材写真帳の表示文字は建材レコードを正本とする。
       materialNo: material.materialNo || material.inputId || '', materialId: material.materialId,
-      name: text(material.name), part: text(material.part || selected?.part),
+      name: text(material.name), part: text(material.part),
       photoId: text(selected?.photoId), fileName: text(selected?.photo?.fileName), roomNo: text(selected?.roomNo),
       candidates
     };
