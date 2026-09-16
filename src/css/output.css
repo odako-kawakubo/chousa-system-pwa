@@ -40,9 +40,11 @@
   background:#e6e6e6;
   color:#111;
   text-align:center;
+  font-size:7px;
+  line-height:1;
   font-weight:700;
   white-space:normal;
-  padding:.65mm .8mm;
+  padding:.2mm .3mm;
 }
 .output-report-table th span { font-size:inherit; font-weight:inherit; }
 .output-report-table td.center { text-align:center; }
@@ -59,12 +61,12 @@
 .output-material-report .col-analysis { width:19mm; }
 .output-material-report .col-result { width:19mm; }
 .output-material-report .col-note { width:55mm; }
-.output-material-report thead tr { height:5.5mm; }
+.output-material-report thead tr { height:5mm; }
 .output-material-report tbody tr,.output-material-report .output-blank-row td { height:6.8mm; }
-.output-place-head { padding:0 !important; height:5.5mm; }
-.output-place-head > span { display:flex; align-items:center; justify-content:center; width:100%; }
-.output-place-head-top { height:33.333%; border-bottom:1px solid #111; font-size:7px !important; line-height:1; }
-.output-place-head-bottom { height:66.667%; font-size:8.5px !important; line-height:1; }
+.output-place-head { padding:0 !important; height:5mm; }
+.output-place-head > span { display:flex; align-items:center; justify-content:center; width:100%; overflow:hidden; }
+.output-place-head-top { height:33.333%; border-bottom:1px solid #111; font-size:5px !important; line-height:.9; }
+.output-place-head-bottom { height:66.667%; font-size:7px !important; line-height:1; }
 .output-blank-label { display:block; font-size:7px; line-height:1.1; font-weight:400; color:#111; }
 
 /* 部屋別リスト: 部屋名・部屋備考を独立列にし、合計190mmで固定する。 */
@@ -78,7 +80,7 @@
 .output-room-report .col-level { width:6mm; }
 .output-room-report .col-result { width:19mm; }
 .output-room-report .col-room-note { width:30mm; }
-.output-room-report thead tr { height:5.5mm; }
+.output-room-report thead tr { height:5mm; }
 .output-room-report tbody tr { height:8mm; }
 .output-room-report tr.is-unregistered td { font-style:normal; }
 
@@ -172,9 +174,6 @@
 .output-export-status { min-height:34px; padding:0 14px 8px; font-size:12px; color:var(--text-subtle); }
 .output-export-progress { width:calc(100% - 28px); height:8px; margin:0 14px 12px; }
 .output-export-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--line); }
-.output-export-render-host { position:fixed; left:-20000px; top:0; width:210mm; background:#fff; z-index:-1; }
-.output-export-render-host .output-photo-expand { display:none !important; }
-.output-export-render-host .output-sampling-memo-line:focus { background:transparent; }
 
 @media (max-width: 900px) {
   .output-preview { padding:4px; }
