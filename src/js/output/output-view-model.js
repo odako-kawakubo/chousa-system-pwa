@@ -9,7 +9,13 @@ import { partIndexFromPosition } from '../records/finish-record.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { samplePartsToText } from '../records/material-record.js';
 import { SHOOTING_TYPES } from '../records/photo-record.js';
-import { getVisualOutputPhotoId, getSamplingOutputPhotoId, clearInvalidOutputSelections } from './output-state.js';
+import { buildMaterialSampleName } from '../materials/material-sample-name.js';
+import {
+  getVisualOutputPhotoId,
+  getSamplingOutputPhotoId,
+  getSamplingOutputMemo,
+  clearInvalidOutputSelections
+} from './output-state.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
 
@@ -95,7 +101,6 @@ export function buildVisualPhotoOutput() {
     const storedId = getVisualOutputPhotoId(material.materialId);
     const selected = candidates.find((candidate) => candidate.photoId === storedId) || candidates[0] || null;
     return {
-      // 建材写真帳の表示文字は建材レコードを正本とする。
       materialNo: material.materialNo || material.inputId || '', materialId: material.materialId,
       name: text(material.name), part: text(material.part),
       photoId: text(selected?.photoId), fileName: text(selected?.photo?.fileName), roomNo: text(selected?.roomNo),
@@ -111,7 +116,14 @@ function selectedSamplingStage(materialId, branch, shootingType, label) {
   const candidates = samplingStageCandidates(materialId, branch, shootingType);
   const storedId = getSamplingOutputPhotoId(materialId, branch, shootingType);
   const selected = candidates.find((photo) => photo.photoId === storedId) || candidates[0] || null;
-  return { type: shootingType, label, photoId: text(selected?.photoId), fileName: text(selected?.fileName), candidates };
+  return {
+    type: shootingType,
+    label,
+    photoId: text(selected?.photoId),
+    fileName: text(selected?.fileName),
+    candidates,
+    memo: getSamplingOutputMemo(materialId, branch, shootingType)
+  };
 }
 function formatCapturedDate(photo) {
   const raw = text(photo?.capturedAt);
@@ -139,10 +151,18 @@ export function buildSamplingPhotoOutput() {
         : null;
       const recordSampleNo = text(firstPhoto?.sampleNo);
       pages.push({
-        materialId: material.materialId, materialNo: material.materialNo || material.inputId || '', sampleNo: recordSampleNo || String(materialIndex + 1), branch,
-        projectName: text(getCurrentProject()?.projectName), projectNo: text(getCurrentProject()?.projectNo || getCurrentProject()?.projectId),
-        materialName: text(material.name), part: samplePartsToText(material.samplePart) || text(material.part),
-        samplingPlace: text(material[`sampleLocation${branch}`]), capturedDate: formatCapturedDate(firstPhoto), stages
+        materialId: material.materialId,
+        materialNo: material.materialNo || material.inputId || '',
+        sampleNo: recordSampleNo || String(materialIndex + 1),
+        sampleName: buildMaterialSampleName(material),
+        branch,
+        projectName: text(getCurrentProject()?.projectName),
+        projectNo: text(getCurrentProject()?.projectNo || getCurrentProject()?.projectId),
+        materialName: text(material.name),
+        part: samplePartsToText(material.samplePart) || text(material.part),
+        samplingPlace: text(material[`sampleLocation${branch}`]),
+        capturedDate: formatCapturedDate(firstPhoto),
+        stages
       });
     }
   });
