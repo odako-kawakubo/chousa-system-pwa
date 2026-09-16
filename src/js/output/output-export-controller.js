@@ -2,12 +2,14 @@
  * src/js/output/output-export-controller.js
  * PDF / 印刷 / Excel の共通選択画面と出力実行。
  *
- * v0.1.7.5:
- * - PDF/印刷の写真は、html2canvas任せの object-fit ではなく、元画像比率から実寸を計算して枠内へ配置する。
- * - 横写真・縦写真とも縦横比を維持し、余りは余白にする。
+ * v0.1.7.6 r2:
+ * - 写真配置はoutput-photo-layout.jsへ一本化する。
+ * - PDFは報告書用途として約300dpi相当の高画質レンダリングへ上げる。
+ * - Excelの建材/部屋別列名も画面帳票と揃える。
  */
 import { buildOutputViewModel } from './output-view-model.js';
 import { buildOutputPaperHtml, OUTPUT_TARGETS } from './output-report-renderer.js';
+import { fitOutputPhotoImages } from './output-photo-layout.js';
 import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -132,33 +134,6 @@ async function waitForImages(container) {
   const images = [...container.querySelectorAll('img')];
   await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
 }
-
-/**
- * html2canvas / 印刷へ渡す前に、写真の実描画サイズを元画像比率から固定する。
- * CSS object-fit の解釈差で写真が枠いっぱいに引き伸ばされるのを防ぐ。
- */
-function fitPhotoImages(container) {
-  [...container.querySelectorAll('.output-photo-frame img')].forEach((img) => {
-    const frame = img.closest('.output-photo-frame');
-    if (!frame || !(img.naturalWidth > 0 && img.naturalHeight > 0)) return;
-    const frameRect = frame.getBoundingClientRect();
-    const maxW = frameRect.width;
-    const maxH = frameRect.height;
-    if (!(maxW > 0 && maxH > 0)) return;
-
-    const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
-    const width = Math.max(1, img.naturalWidth * scale);
-    const height = Math.max(1, img.naturalHeight * scale);
-
-    img.style.width = `${width}px`;
-    img.style.height = `${height}px`;
-    img.style.maxWidth = 'none';
-    img.style.maxHeight = 'none';
-    img.style.objectFit = 'fill';
-    img.style.flex = '0 0 auto';
-  });
-}
-
 function createRenderHost(papers) {
   const host = document.createElement('div');
   host.className = 'output-export-render-host';
@@ -174,15 +149,15 @@ async function makePdfFromPapers(papers, filename) {
   const host = createRenderHost(papers);
   try {
     await waitForImages(host);
-    fitPhotoImages(host);
+    fitOutputPhotoImages(host);
     const nodes = [...host.querySelectorAll('.output-paper')];
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
     for (let index = 0; index < nodes.length; index += 1) {
       setStatus(`PDFを作成中 ${index + 1} / ${nodes.length}`, (index + 1) / Math.max(1, nodes.length));
-      const canvas = await window.html2canvas(nodes[index], { scale:1.5, useCORS:true, backgroundColor:'#ffffff', logging:false });
+      const canvas = await window.html2canvas(nodes[index], { scale:3, useCORS:true, backgroundColor:'#ffffff', logging:false });
       if (index > 0) pdf.addPage('a4', 'portrait');
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.97), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
     }
     pdf.save(filename);
   } finally {
@@ -210,7 +185,7 @@ async function exportPrint(targets, vm, photoSources) {
   await new Promise((resolve) => setTimeout(resolve, 500));
   const images = [...popup.document.images];
   await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
-  fitPhotoImages(popup.document);
+  fitOutputPhotoImages(popup.document);
   popup.focus();
   popup.print();
 }
@@ -223,17 +198,17 @@ function addExcelImage(workbook, sheet, dataUrl, range) {
 function styleHeader(row) { row.font = { bold:true }; row.alignment = { vertical:'middle', horizontal:'center', wrapText:true }; }
 function addMaterialSheet(workbook, rows) {
   const sheet = workbook.addWorksheet('建材リスト');
-  sheet.addRow(['建材No.','建材名','部位','施工範囲（部屋No.）','建材レベル','分析の要否','石綿含有の有無','備考']);
+  sheet.addRow(['建材No.','建材名','部位','施工範囲（部屋No.）','建材レベル','分析の要否','石綿含有の有無','調査備考']);
   styleHeader(sheet.getRow(1));
   rows.forEach((r) => sheet.addRow([r.materialNo,r.name,r.part,r.usageLocation,r.level,r.analysisRequired,r.analysisResult,r.note]));
   sheet.columns = [{width:10},{width:24},{width:12},{width:28},{width:12},{width:16},{width:18},{width:34}];
 }
 function addRoomSheet(workbook, rows) {
   const sheet = workbook.addWorksheet('部屋別リスト');
-  sheet.addRow(['階','部屋No.','部位','建材No.','建材名称','備考','建材レベル','分析結果']);
+  sheet.addRow(['階','部屋No.','部屋名','部位','建材No.','建材名称','調査備考','建材レベル','分析結果','部屋備考']);
   styleHeader(sheet.getRow(1));
-  rows.forEach((r) => sheet.addRow([r.floor,r.roomNo,r.part,r.materialNo,r.materialName,r.note,r.level,r.analysisResult]));
-  sheet.columns = [{width:10},{width:14},{width:14},{width:10},{width:28},{width:34},{width:12},{width:20}];
+  rows.forEach((r) => sheet.addRow([r.floor,r.roomNo,r.roomName,r.part,r.materialNo,r.materialName,r.note,r.level,r.analysisResult,r.roomNote]));
+  sheet.columns = [{width:8},{width:10},{width:18},{width:10},{width:8},{width:24},{width:30},{width:10},{width:16},{width:24}];
 }
 function addVisualPhotoSheet(workbook, items, photoSources) {
   const sheet = workbook.addWorksheet('建材写真帳');
@@ -254,10 +229,12 @@ function addSamplingPhotoSheet(workbook, pages, photoSources) {
   let row = 1;
   pages.forEach((page) => {
     sheet.getCell(row,1).value = '件名'; sheet.getCell(row,2).value = page.projectName; row += 1;
-    sheet.getCell(row,1).value = '試料'; sheet.getCell(row,2).value = `${page.projectNo}${page.projectNo && page.sampleNo ? '-' : ''}${page.sampleNo}`; row += 1;
-    sheet.getCell(row,1).value = '場所'; sheet.getCell(row,2).value = `${page.part}　${page.materialName}${page.samplingPlace ? `　部屋No.${page.samplingPlace}` : ''}`; row += 2;
+    sheet.getCell(row,1).value = '試料'; sheet.getCell(row,2).value = `${page.part}　${page.materialName}`; row += 1;
+    sheet.getCell(row,1).value = '試料No.'; sheet.getCell(row,2).value = `${page.projectNo}${page.projectNo && page.sampleNo ? '-' : ''}${page.sampleNo}`; row += 1;
+    sheet.getCell(row,1).value = '採取日'; sheet.getCell(row,2).value = page.capturedDate; row += 1;
+    sheet.getCell(row,1).value = '場所'; sheet.getCell(row,2).value = page.samplingPlace ? `部屋No.${page.samplingPlace}` : ''; row += 2;
     (page.stages || []).forEach((stage) => {
-      sheet.getCell(row,1).value = stage.label;
+      sheet.getCell(row,1).value = `撮影状況：${stage.label}`;
       const start = row;
       for (let r = start; r < start + 14; r += 1) sheet.getRow(r).height = 18;
       const dataUrl = photoSources.get(String(stage.photoId || ''));
