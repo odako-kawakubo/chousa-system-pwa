@@ -1,25 +1,31 @@
 /**
  * src/js/camera/camera-board.js
  *
- * v0.1.5.5 電子看板描画。
+ * v0.1.7.5 電子看板描画。
  *
- * 本開発ルール：旧描画へパッチを重ねず、v64 の看板構造を基準に全面再構成する。
+ * 撮影・看板編集・各プレビューで同じ見た目になるよう、
+ * 看板そのものは固定解像度の共通ラスタへ一度だけ描画し、
+ * その共通ラスタを各写真上の看板領域へ合成する。
+ *
  * - 中サイズは v64 の 390 x 242 を基準にする。
  * - 区分欄は常に「目視 / 施工前 / 施工中 / 施工後」の4項目。
  * - 断面(code=4)は撮影区分として保持するが、看板区分欄には表示しない。
  * - 目視は「試料No.」ラベルを表示せず、2行目に撮影部位だけを表示する。
  * - 部屋No.は写真タブから渡された roomNo を表示し、roomPosition を表示値に使わない。
- * - プレビューと完成画像で同じ drawBoard() / getBoardRect() を使う。
+ * - 撮影・編集・プレビューで同じ drawBoard() / getBoardRect() を使う。
  */
 
-// v0.1.5.7A 業務固定色：電子看板として写真へ焼き込む黒/白。
-// アプリのライト/ダークテーマでは変更しない。
+// 業務固定色・基準寸法。アプリのライト/ダークテーマでは変更しない。
 const BOARD_BASE = Object.freeze({ width: 390, height: 242 });
 const BOARD_SCALE = Object.freeze({ small: 0.8, medium: 1.0, large: 1.2 });
 
-// v0.1.6.7A 看板サイズ正本。
-// 現行の内部カメラ実機保存で確認できる中サイズ相当（390 / 900 = 約43.33%）を基準に固定する。
-// 小・大は従来どおり中サイズの0.8倍 / 1.2倍。実機確認後はこの定数だけを調整する。
+// 看板の見た目を呼び出し元Canvasの解像度へ依存させないため、
+// 390 x 242 の基準看板を4倍解像度で共通ラスタ化してから写真へ合成する。
+const BOARD_RASTER_SCALE = 4;
+
+// 看板サイズ正本。
+// 中サイズ相当（390 / 900 = 約43.33%）を基準に固定する。
+// 小・大は中サイズの0.8倍 / 1.2倍。
 const BOARD_MEDIUM_WIDTH_RATIO = 390 / 900;
 const BOARD_MARGIN_RATIO = 4 / 900;
 
@@ -173,20 +179,10 @@ function drawStatusRow(ctx, x, y, width, height, activeCode) {
 }
 
 /**
- * v64 の二重枠・表構造を基準に看板を描画する。
- * @param {CanvasRenderingContext2D} ctx
- * @param {{x:number,y:number,width:number,height:number}} rect
- * @param {object} data
+ * 390 x 242 の基準座標へ看板内容を描く低レベル処理。
+ * 呼び出し元の写真解像度には依存しない。
  */
-export function drawBoard(ctx, rect, data) {
-  const { x, y, width, height } = rect;
-  const scaleX = width / BOARD_BASE.width;
-  const scaleY = height / BOARD_BASE.height;
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scaleX, scaleY);
-
+function paintBoardBase(ctx, data) {
   const boardW = BOARD_BASE.width;
   const boardH = BOARD_BASE.height;
   const outerLine = 2;
@@ -262,7 +258,6 @@ export function drawBoard(ctx, rect, data) {
       24
     );
   } else {
-    // 目視は「試料No.」ラベルを表示しない。撮影部位だけを中央表示する。
     drawCenteredText(ctx, data.part || '-', tableX + leftW, contentY + rowRoom, rightW, rowSecond, 24, {
       padding: 8,
       minSize: 10
@@ -279,13 +274,41 @@ export function drawBoard(ctx, rect, data) {
   );
 
   drawCenteredText(ctx, data.date || '', tableX + leftW, contentY + rowContent, rightW, rowDate, 22);
+}
+
+/**
+ * 固定解像度の共通看板ラスタを生成する。
+ * 撮影元画像が3024pxでも取込画像が2048pxでも、
+ * 外枠・内枠・文字はまず同じラスタ条件で生成される。
+ */
+function createBoardRaster(data) {
+  const canvas = document.createElement('canvas');
+  canvas.width = BOARD_BASE.width * BOARD_RASTER_SCALE;
+  canvas.height = BOARD_BASE.height * BOARD_RASTER_SCALE;
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.scale(BOARD_RASTER_SCALE, BOARD_RASTER_SCALE);
+  paintBoardBase(ctx, data);
+  ctx.restore();
+  return canvas;
+}
+
+/**
+ * 電子看板を指定領域へ描画する共通入口。
+ * 看板内容を呼び出し元Canvasへ直接ベクタ描画せず、共通ラスタを高品質で縮放して合成する。
+ */
+export function drawBoard(ctx, rect, data) {
+  const boardRaster = createBoardRaster(data);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(boardRaster, rect.x, rect.y, rect.width, rect.height);
   ctx.restore();
 }
 
 /**
  * 看板位置・サイズの唯一の計算入口。
  * 端末や画面幅ではなく、対象写真/Canvas自体の幅に対する固定比率で計算する。
- * これにより、内部カメラ保存・看板編集保存・各プレビューで同じ小/中/大になる。
  */
 export function getBoardRect(canvasWidth, canvasHeight, position = 'bottom-left', size = 'medium') {
   const scale = BOARD_SCALE[size] ?? BOARD_SCALE.medium;
@@ -325,7 +348,6 @@ export function renderBoardPreview(canvas, data, position, size) {
   const boardRect = getBoardRect(canvas.width, canvas.height, position, size);
   drawBoard(ctx, boardRect, data);
 }
-
 
 /**
  * 設定タブ・看板編集画面で看板単体を描画する。
