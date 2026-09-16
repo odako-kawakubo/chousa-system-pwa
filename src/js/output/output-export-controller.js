@@ -2,14 +2,15 @@
  * src/js/output/output-export-controller.js
  * PDF / 印刷 / Excel の共通選択画面と出力実行。
  *
- * v0.1.7.6 r3:
- * - 写真配置はoutput-photo-layout.jsを共用する。
- * - PDFはscale 4 + PNGで高画質化する。
- * - Excelの表示名も画面帳票と揃える。
+ * v0.1.7.6 r4:
+ * - PDFは専用ベクターレンダラーへ切替。
+ * - html2canvasによるA4全面画像化は廃止。
+ * - 印刷はHTML/CSS、ExcelはExcelJSの既存経路を維持する。
  */
 import { buildOutputViewModel } from './output-view-model.js';
 import { buildOutputPaperHtml, OUTPUT_TARGETS } from './output-report-renderer.js';
 import { fitOutputPhotoImages } from './output-photo-layout.js';
+import { exportVectorPdf } from './output-pdf-renderer.js';
 import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -130,48 +131,27 @@ function openModal(nextMethod) {
 function allPaperHtml(targets, vm, photoSources) {
   return targets.flatMap((target) => buildOutputPaperHtml(target, vm, { photoSources }));
 }
-async function waitForImages(container) {
-  const images = [...container.querySelectorAll('img')];
-  await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
-}
-function createRenderHost(papers) {
-  const host = document.createElement('div');
-  host.className = 'output-export-render-host';
-  host.innerHTML = papers.join('');
-  document.body.appendChild(host);
-  return host;
-}
-async function makePdfFromPapers(papers, filename) {
-  await Promise.all([
-    loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js', 'html2canvas'),
-    loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js', 'jspdf')
-  ]);
-  const host = createRenderHost(papers);
-  try {
-    await waitForImages(host);
-    fitOutputPhotoImages(host);
-    const nodes = [...host.querySelectorAll('.output-paper')];
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
-    for (let index = 0; index < nodes.length; index += 1) {
-      setStatus(`PDFを作成中 ${index + 1} / ${nodes.length}`, (index + 1) / Math.max(1, nodes.length));
-      const canvas = await window.html2canvas(nodes[index], { scale:4, useCORS:true, backgroundColor:'#ffffff', logging:false });
-      if (index > 0) pdf.addPage('a4', 'portrait');
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, 297, undefined, 'NONE');
-    }
-    pdf.save(filename);
-  } finally {
-    host.remove();
-  }
-}
 async function exportPdf(targets, vm, photoSources) {
   const combine = Boolean(modal.querySelector('[data-output-combine]')?.checked);
+  const onProgress = (text, progress) => setStatus(text, progress);
   if (combine) {
-    await makePdfFromPapers(allPaperHtml(targets, vm, photoSources), projectFileName('調査資料', 'pdf'));
+    await exportVectorPdf({
+      targets,
+      vm,
+      photoSources,
+      filename: projectFileName('調査資料', 'pdf'),
+      onProgress
+    });
     return;
   }
   for (const target of targets) {
-    await makePdfFromPapers(buildOutputPaperHtml(target, vm, { photoSources }), projectFileName(OUTPUT_TARGETS[target].header, 'pdf'));
+    await exportVectorPdf({
+      targets:[target],
+      vm,
+      photoSources,
+      filename: projectFileName(OUTPUT_TARGETS[target].header, 'pdf'),
+      onProgress
+    });
   }
 }
 async function exportPrint(targets, vm, photoSources) {
@@ -230,7 +210,7 @@ function addSamplingPhotoSheet(workbook, pages, photoSources) {
   pages.forEach((page) => {
     sheet.getCell(row,1).value = '件名'; sheet.getCell(row,2).value = page.projectName; row += 1;
     sheet.getCell(row,1).value = '試料'; sheet.getCell(row,2).value = page.sampleName; row += 1;
-    sheet.getCell(row,1).value = '試料No.'; sheet.getCell(row,2).value = [page.projectNo,page.sampleNo,page.branch].filter(Boolean).join('-'); row += 1;
+    sheet.getCell(row,1).value = '試料No.'; sheet.getCell(row,2).value = `${page.projectNo || ''}${page.sampleNo || ''}${page.branch ? `-${page.branch}` : ''}`; row += 1;
     sheet.getCell(row,1).value = '採取日'; sheet.getCell(row,2).value = page.capturedDate; row += 1;
     sheet.getCell(row,1).value = '場所'; sheet.getCell(row,2).value = page.samplingPlace ? `部屋No.${page.samplingPlace}` : ''; row += 2;
     (page.stages || []).forEach((stage) => {
