@@ -8,6 +8,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { buildOutputViewModel } from './output-view-model.js';
 import { renderOutputTarget } from './output-report-renderer.js';
+import { fitOutputPhotoImage } from './output-photo-layout.js';
 import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import {
   initializeOutputPhotoSelectionBridge,
@@ -57,6 +58,11 @@ async function hydratePhotoImages(serial) {
       const url = URL.createObjectURL(blob);
       outputObjectUrls.push(url);
       frame.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(photo.fileName || photo.photoId)}">`;
+      const image = frame.querySelector('img');
+      if (image) {
+        try { await image.decode(); } catch (_) { /* load完了後に寸法が取れればよい */ }
+        if (serial === renderSerial && frame.isConnected) fitOutputPhotoImage(image);
+      }
     } catch (error) {
       console.warn('出力写真の読込に失敗しました', { photoId, error });
       if (frame.isConnected) frame.innerHTML = '<span>写真を読み込めませんでした</span>';
