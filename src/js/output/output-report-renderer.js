@@ -96,7 +96,8 @@ function photoFrame(photoId, photoSources, extraClass = '') {
 }
 function visualPhotoSlot(item, photoSources) {
   const canSelect = item.candidates?.length > 0;
-  return `<div class="output-visual-slot"><div class="output-photo-frame-wrap">${photoFrame(item.photoId, photoSources)}${canSelect ? `<button class="output-photo-expand" type="button" data-output-visual-expand="${esc(item.materialId)}">拡大</button>` : ''}</div><div class="output-visual-caption"><b>試料No. ${esc(item.materialNo)}</b><span>${esc(item.part)}${item.part && item.name ? '　' : ''}${esc(item.name)}</span></div></div>`;
+  const caption = [`建材No.${item.materialNo}`, item.part, item.name].filter((value) => String(value ?? '').trim()).join('　');
+  return `<div class="output-visual-slot"><div class="output-photo-frame-wrap">${photoFrame(item.photoId, photoSources)}${canSelect ? `<button class="output-photo-expand" type="button" data-output-visual-expand="${esc(item.materialId)}">拡大</button>` : ''}</div><div class="output-visual-caption">${esc(caption)}</div></div>`;
 }
 function visualPages(items, photoSources) {
   const pages = chunkRows(items, VISUAL_ITEMS_PER_PAGE);
