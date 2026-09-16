@@ -1,9 +1,13 @@
 /**
  * src/js/output/output-export-controller.js
  * PDF / 印刷 / Excel の共通選択画面と出力実行。
+ *
+ * v0.1.7.5:
+ * - PDF/印刷の写真は、html2canvas任せの object-fit ではなく、元画像比率から実寸を計算して枠内へ配置する。
+ * - 横写真・縦写真とも縦横比を維持し、余りは余白にする。
  */
 import { buildOutputViewModel } from './output-view-model.js';
-import { buildOutputPaperHtml, renderOutputTarget, OUTPUT_TARGETS } from './output-report-renderer.js';
+import { buildOutputPaperHtml, OUTPUT_TARGETS } from './output-report-renderer.js';
 import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -128,6 +132,33 @@ async function waitForImages(container) {
   const images = [...container.querySelectorAll('img')];
   await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
 }
+
+/**
+ * html2canvas / 印刷へ渡す前に、写真の実描画サイズを元画像比率から固定する。
+ * CSS object-fit の解釈差で写真が枠いっぱいに引き伸ばされるのを防ぐ。
+ */
+function fitPhotoImages(container) {
+  [...container.querySelectorAll('.output-photo-frame img')].forEach((img) => {
+    const frame = img.closest('.output-photo-frame');
+    if (!frame || !(img.naturalWidth > 0 && img.naturalHeight > 0)) return;
+    const frameRect = frame.getBoundingClientRect();
+    const maxW = frameRect.width;
+    const maxH = frameRect.height;
+    if (!(maxW > 0 && maxH > 0)) return;
+
+    const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+    const width = Math.max(1, img.naturalWidth * scale);
+    const height = Math.max(1, img.naturalHeight * scale);
+
+    img.style.width = `${width}px`;
+    img.style.height = `${height}px`;
+    img.style.maxWidth = 'none';
+    img.style.maxHeight = 'none';
+    img.style.objectFit = 'fill';
+    img.style.flex = '0 0 auto';
+  });
+}
+
 function createRenderHost(papers) {
   const host = document.createElement('div');
   host.className = 'output-export-render-host';
@@ -143,6 +174,7 @@ async function makePdfFromPapers(papers, filename) {
   const host = createRenderHost(papers);
   try {
     await waitForImages(host);
+    fitPhotoImages(host);
     const nodes = [...host.querySelectorAll('.output-paper')];
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
@@ -173,11 +205,12 @@ async function exportPrint(targets, vm, photoSources) {
   const title = projectFileName(targets.length === 1 ? OUTPUT_TARGETS[targets[0]].header : '調査資料', '').replace(/\.$/, '');
   const cssUrl = new URL('./css/output.css', window.location.href).href;
   popup.document.open();
-  popup.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><link rel="stylesheet" href="${esc(cssUrl)}"></head><body><div class="output-preview"><div class="output-pages">${allPaperHtml(targets, vm, photoSources).map((paper, index, arr) => `<section class="output-page-shell is-current" data-output-page="${index}">${paper}</section>`).join('')}</div></div></body></html>`);
+  popup.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><link rel="stylesheet" href="${esc(cssUrl)}"></head><body><div class="output-preview"><div class="output-pages">${allPaperHtml(targets, vm, photoSources).map((paper, index) => `<section class="output-page-shell is-current" data-output-page="${index}">${paper}</section>`).join('')}</div></div></body></html>`);
   popup.document.close();
   await new Promise((resolve) => setTimeout(resolve, 500));
   const images = [...popup.document.images];
   await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
+  fitPhotoImages(popup.document);
   popup.focus();
   popup.print();
 }
