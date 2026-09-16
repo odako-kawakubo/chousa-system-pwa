@@ -1,9 +1,9 @@
 /*
- * v0.1.7.5 Service Worker
+ * v0.1.7.6 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.5-r2';
+const APP_CACHE = 'chousa-app-v0.1.7.6-r1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -76,6 +76,7 @@ const APP_SHELL = [
   './js/photos/photo-filename.js',
   './js/photos/photo-onedrive-sync.js',
   './js/photos/photo-remote-reader.js',
+  './js/photos/photo-original-source.js',
   './js/photos/photo-controller.js',
   './js/photos/photo-refresh-policy.js',
   './js/photos/photo-view-model.js',
