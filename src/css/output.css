@@ -35,27 +35,29 @@
 .output-report-table tbody tr { height:7mm; }
 .output-report-table .group-cell { vertical-align:middle; }
 
-.output-material-report .col-no { width:7%; }
-.output-material-report .col-name { width:17%; }
-.output-material-report .col-part { width:7%; }
-.output-material-report .col-place { width:22%; }
-.output-material-report .col-level { width:6%; }
-.output-material-report .col-analysis { width:10%; }
-.output-material-report .col-result { width:11%; }
-.output-material-report .col-note { width:20%; }
+/* 建材リスト: A4本文幅190mmを実寸固定で配分する。 */
+.output-material-report .col-no { width:6mm; }
+.output-material-report .col-name { width:33mm; }
+.output-material-report .col-part { width:10mm; }
+.output-material-report .col-place { width:42mm; }
+.output-material-report .col-level { width:6mm; }
+.output-material-report .col-analysis { width:19mm; }
+.output-material-report .col-result { width:19mm; }
+.output-material-report .col-note { width:55mm; }
 .output-material-report tbody tr,.output-material-report .output-blank-row td { height:6.8mm; }
 
-.output-room-report .col-floor { width:7%; }
-.output-room-report .col-room { width:12%; }
-.output-room-report .col-part { width:10%; }
-.output-room-report .col-no { width:7%; }
-.output-room-report .col-name { width:23%; }
-.output-room-report .col-note { width:24%; }
-.output-room-report .col-level { width:7%; }
-.output-room-report .col-result { width:10%; }
+/* 部屋別リスト: 部屋名・部屋備考を独立列にし、合計190mmで固定する。 */
+.output-room-report .col-floor { width:10mm; }
+.output-room-report .col-room-no { width:12mm; }
+.output-room-report .col-room-name { width:22mm; }
+.output-room-report .col-part { width:10mm; }
+.output-room-report .col-no { width:6mm; }
+.output-room-report .col-name { width:33mm; }
+.output-room-report .col-note { width:42mm; }
+.output-room-report .col-level { width:6mm; }
+.output-room-report .col-result { width:19mm; }
+.output-room-report .col-room-note { width:30mm; }
 .output-room-report tbody tr { height:8mm; }
-.output-room-name { margin-top:.7mm; font-size:7.5px; line-height:1.2; }
-.output-room-note { margin-top:.8mm; font-size:7px; line-height:1.25; font-weight:400; }
 .output-room-report tr.is-unregistered td { font-style:normal; }
 .output-report-footer { margin-top:2mm; font-size:7px; text-align:left; }
 
@@ -86,15 +88,55 @@
   font-weight:700;
 }
 
-.output-sampling-paper { padding-top:10mm; }
-.output-sampling-meta { width:100%; border-collapse:collapse; font-size:8.5px; margin-bottom:3mm; }
-.output-sampling-meta th,.output-sampling-meta td { padding:.8mm 1.2mm; text-align:left; vertical-align:middle; font-weight:400; }
-.output-sampling-meta th { width:12mm; white-space:nowrap; }
-.output-sampling-stages { display:grid; grid-template-rows:repeat(3,1fr); gap:3mm; height:246mm; }
-.output-sampling-stage { min-height:0; display:flex; flex-direction:column; }
-.output-stage-label { min-height:6mm; font-size:8.5px; line-height:1.2; padding-bottom:1mm; }
-.output-sampling-frame-wrap { min-height:0; }
-.output-sampling-frame { flex:1 1 auto; min-height:0; border:0; }
+/* 試料採取写真: 既存PDFの配置を基準に再現。寸法はここへ集約し後から調整しやすくする。 */
+.output-sampling-paper {
+  position:relative;
+  padding:0;
+  font-family:"MS PGothic","ＭＳ Ｐゴシック","MS Gothic",sans-serif;
+}
+.output-sampling-paper .output-report-title {
+  position:absolute;
+  top:17mm;
+  left:0;
+  width:210mm;
+  margin:0;
+  text-align:center;
+  font-family:"MS PGothic","ＭＳ Ｐゴシック","MS Gothic",sans-serif;
+  font-size:18pt;
+  line-height:1.15;
+  font-weight:700;
+}
+.output-sampling-meta {
+  position:absolute;
+  top:29mm;
+  left:10mm;
+  width:190mm;
+  display:grid;
+  grid-template-columns:1fr 62mm;
+  column-gap:8mm;
+  font-size:11pt;
+  line-height:1.2;
+}
+.output-sampling-meta-left,.output-sampling-meta-right { display:grid; grid-template-rows:repeat(3,8.5mm); align-items:center; }
+.output-sampling-meta-left > div,.output-sampling-meta-right > div { min-width:0; display:flex; align-items:center; gap:1mm; white-space:nowrap; overflow:hidden; }
+.output-sampling-meta-left span,.output-sampling-meta-right span { overflow:hidden; text-overflow:ellipsis; }
+.output-sampling-meta b { font-weight:700; flex:0 0 auto; }
+.output-sampling-stages {
+  position:absolute;
+  left:38mm;
+  top:57mm;
+  width:148mm;
+  display:grid;
+  grid-template-rows:repeat(3,69.5mm);
+  gap:2.5mm;
+}
+.output-sampling-stage { min-height:0; display:grid; grid-template-columns:92mm 53mm; gap:3mm; }
+.output-sampling-frame-wrap { min-width:0; min-height:0; }
+.output-sampling-frame { width:92mm; height:69.5mm; min-height:0; border:0; }
+.output-sampling-memo { min-width:0; height:69.5mm; overflow:hidden; }
+.output-stage-label { height:7mm; display:flex; align-items:flex-start; padding-top:.5mm; font-size:11pt; line-height:1.2; font-weight:700; white-space:nowrap; }
+.output-sampling-memo-lines { height:62mm; display:grid; grid-template-rows:repeat(9,1fr); }
+.output-sampling-memo-lines span { display:block; border-bottom:1px dotted #333; }
 .output-empty { padding:28px; text-align:center; color:#666; }
 .output-placeholder-count { padding:14px 18px 0; font-size:12px; font-weight:700; }
 
