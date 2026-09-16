@@ -132,6 +132,13 @@ function formatCapturedDate(photo) {
   if (Number.isNaN(date.getTime())) return raw.slice(0, 10);
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
+function samplingBaseNo(photo, fallback) {
+  const explicit = text(photo?.sampleBaseNo);
+  if (explicit) return explicit;
+  const stored = text(photo?.sampleNo);
+  if (stored) return stored.split('-')[0].trim();
+  return String(fallback || '');
+}
 
 export function buildSamplingPhotoOutput() {
   const materials = activeMaterials().filter((record) => record.analysisRequired === '採取・分析')
@@ -149,11 +156,10 @@ export function buildSamplingPhotoOutput() {
       const firstPhoto = firstSelectedStage
         ? firstSelectedStage.candidates.find((photo) => String(photo.photoId) === String(firstSelectedStage.photoId)) || null
         : null;
-      const recordSampleNo = text(firstPhoto?.sampleNo);
       pages.push({
         materialId: material.materialId,
         materialNo: material.materialNo || material.inputId || '',
-        sampleNo: recordSampleNo || String(materialIndex + 1),
+        sampleNo: samplingBaseNo(firstPhoto, materialIndex + 1),
         sampleName: buildMaterialSampleName(material),
         branch,
         projectName: text(getCurrentProject()?.projectName),
