@@ -2,10 +2,10 @@
  * src/js/output/output-export-controller.js
  * PDF / 印刷 / Excel の共通選択画面と出力実行。
  *
- * v0.1.7.6 r2:
- * - 写真配置はoutput-photo-layout.jsへ一本化する。
- * - PDFは報告書用途として約300dpi相当の高画質レンダリングへ上げる。
- * - Excelの建材/部屋別列名も画面帳票と揃える。
+ * v0.1.7.6 r3:
+ * - 写真配置はoutput-photo-layout.jsを共用する。
+ * - PDFはscale 4 + PNGで高画質化する。
+ * - Excelの表示名も画面帳票と揃える。
  */
 import { buildOutputViewModel } from './output-view-model.js';
 import { buildOutputPaperHtml, OUTPUT_TARGETS } from './output-report-renderer.js';
@@ -155,9 +155,9 @@ async function makePdfFromPapers(papers, filename) {
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
     for (let index = 0; index < nodes.length; index += 1) {
       setStatus(`PDFを作成中 ${index + 1} / ${nodes.length}`, (index + 1) / Math.max(1, nodes.length));
-      const canvas = await window.html2canvas(nodes[index], { scale:3, useCORS:true, backgroundColor:'#ffffff', logging:false });
+      const canvas = await window.html2canvas(nodes[index], { scale:4, useCORS:true, backgroundColor:'#ffffff', logging:false });
       if (index > 0) pdf.addPage('a4', 'portrait');
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.97), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, 297, undefined, 'NONE');
     }
     pdf.save(filename);
   } finally {
@@ -198,7 +198,7 @@ function addExcelImage(workbook, sheet, dataUrl, range) {
 function styleHeader(row) { row.font = { bold:true }; row.alignment = { vertical:'middle', horizontal:'center', wrapText:true }; }
 function addMaterialSheet(workbook, rows) {
   const sheet = workbook.addWorksheet('建材リスト');
-  sheet.addRow(['建材No.','建材名','部位','施工範囲（部屋No.）','建材レベル','分析の要否','石綿含有の有無','調査備考']);
+  sheet.addRow(['建材No.','建材名','部位','施工範囲 / 部屋No.','建材レベル','分析の要否','石綿含有の有無','調査備考']);
   styleHeader(sheet.getRow(1));
   rows.forEach((r) => sheet.addRow([r.materialNo,r.name,r.part,r.usageLocation,r.level,r.analysisRequired,r.analysisResult,r.note]));
   sheet.columns = [{width:10},{width:24},{width:12},{width:28},{width:12},{width:16},{width:18},{width:34}];
@@ -229,8 +229,8 @@ function addSamplingPhotoSheet(workbook, pages, photoSources) {
   let row = 1;
   pages.forEach((page) => {
     sheet.getCell(row,1).value = '件名'; sheet.getCell(row,2).value = page.projectName; row += 1;
-    sheet.getCell(row,1).value = '試料'; sheet.getCell(row,2).value = `${page.part}　${page.materialName}`; row += 1;
-    sheet.getCell(row,1).value = '試料No.'; sheet.getCell(row,2).value = `${page.projectNo}${page.projectNo && page.sampleNo ? '-' : ''}${page.sampleNo}`; row += 1;
+    sheet.getCell(row,1).value = '試料'; sheet.getCell(row,2).value = page.sampleName; row += 1;
+    sheet.getCell(row,1).value = '試料No.'; sheet.getCell(row,2).value = [page.projectNo,page.sampleNo,page.branch].filter(Boolean).join('-'); row += 1;
     sheet.getCell(row,1).value = '採取日'; sheet.getCell(row,2).value = page.capturedDate; row += 1;
     sheet.getCell(row,1).value = '場所'; sheet.getCell(row,2).value = page.samplingPlace ? `部屋No.${page.samplingPlace}` : ''; row += 2;
     (page.stages || []).forEach((stage) => {
