@@ -2,10 +2,10 @@
  * src/js/output/output-controller.js
  * 「出力」タブの実PDFレビューと、帳票外の写真・採取メモ編集を担当する。
  *
- * v0.1.7.6 r5:
- * - HTML帳票をレビューとして表示する経路を廃止。
- * - PDF保存と同じベクターレンダラーでBlobを生成し、その実PDFをレビュー表示する。
- * - 写真選択 / 採取メモ編集は帳票外の編集パネルへ移動する。
+ * v0.1.7.6 r6:
+ * - 実PDFレビューはA4全体が見えるページフィット表示を基本とする。
+ * - PDF保存と同じベクターレンダラーのBlobをそのまま表示する。
+ * - 写真選択 / 採取メモ編集は帳票外の編集パネルに残す。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
@@ -134,8 +134,8 @@ async function renderPdfPreview(serial, vm) {
 
     releasePreviewObjectUrl();
     previewObjectUrl = URL.createObjectURL(blob);
-    host.innerHTML = `<iframe class="output-pdf-frame" title="${escapeHtml(activeViewLabel())} 実PDFレビュー" src="${escapeHtml(previewObjectUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`;
-    setPreviewStatus('実際に出力されるPDFを表示しています。');
+    host.innerHTML = `<iframe class="output-pdf-frame" title="${escapeHtml(activeViewLabel())} 実PDFレビュー" src="${escapeHtml(previewObjectUrl)}#toolbar=0&navpanes=0&view=Fit"></iframe>`;
+    setPreviewStatus('実際に出力されるPDFをページ全体表示しています。');
   } catch (error) {
     console.error('実PDFレビュー生成に失敗しました', error);
     if (serial !== renderSerial) return;
