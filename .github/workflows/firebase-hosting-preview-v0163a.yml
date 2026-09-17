@@ -29,6 +29,48 @@ jobs:
           done < <(find src/js src/config -type f -name '*.js' -print0)
           node --check src/service-worker.js
 
+      - name: Module and app shell reference checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const roots = ['src/js', 'src/config'];
+          const files = [];
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes:true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+            }
+          }
+          roots.forEach(walk);
+          const missing = [];
+          const re = /(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g;
+          for (const file of files) {
+            const text = fs.readFileSync(file, 'utf8');
+            let match;
+            while ((match = re.exec(text))) {
+              const resolved = path.resolve(path.dirname(file), match[1]);
+              const candidates = [resolved, `${resolved}.js`, path.join(resolved, 'index.js')];
+              if (!candidates.some((candidate) => fs.existsSync(candidate))) missing.push(`${file} -> ${match[1]}`);
+            }
+          }
+          if (missing.length) {
+            console.error('Missing relative module references:\n' + missing.join('\n'));
+            process.exit(1);
+          }
+
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          const shell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map((m) => m[1]);
+          const missingShell = shell.filter((rel) => rel && !fs.existsSync(path.join('src', rel)));
+          if (missingShell.length) {
+            console.error('Missing APP_SHELL files:\n' + missingShell.join('\n'));
+            process.exit(1);
+          }
+          NODE
+
       - name: v0.1.7.6 r8 consistency checks
         shell: bash
         run: |
