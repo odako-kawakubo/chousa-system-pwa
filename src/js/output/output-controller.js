@@ -1,16 +1,19 @@
 /**
  * src/js/output/output-controller.js
- * 「出力」タブの帳票プレビュー・ページ操作・出力写真選択を担当する。
- * 帳票HTMLはoutput-report-rendererへ集約し、PDF/印刷と共用する。
+ * 「出力」タブの実PDFレビューと、帳票外の写真・採取メモ編集を担当する。
+ *
+ * v0.1.7.6 r5:
+ * - HTML帳票をレビューとして表示する経路を廃止。
+ * - PDF保存と同じベクターレンダラーでBlobを生成し、その実PDFをレビュー表示する。
+ * - 写真選択 / 採取メモ編集は帳票外の編集パネルへ移動する。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { buildOutputViewModel } from './output-view-model.js';
-import { renderOutputTarget } from './output-report-renderer.js';
-import { fitOutputPhotoImage } from './output-photo-layout.js';
+import { createVectorPdfBlob } from './output-pdf-renderer.js';
+import { prepareOutputPhotoSources } from './output-photo-source.js';
 import { setSamplingOutputMemo } from './output-state.js';
-import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
 import {
   initializeOutputPhotoSelectionBridge,
   openVisualOutputPhotoViewer,
@@ -19,13 +22,11 @@ import {
 import { initializeOutputExportController } from './output-export-controller.js';
 
 let activeView = 'materials';
-let pageMode = 'continuous';
-let currentPage = 0;
 let initialized = false;
 let renderSerial = 0;
-let outputObjectUrls = [];
 let currentVm = null;
-let swipeStart = null;
+let previewObjectUrl = '';
+let previewRefreshTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -41,55 +42,127 @@ function ensureOutputStyles() {
   document.head.appendChild(link);
 }
 function outputRoot() { return document.getElementById('sync'); }
-function releaseOutputObjectUrls() {
-  outputObjectUrls.forEach((url) => URL.revokeObjectURL?.(url));
-  outputObjectUrls = [];
+function releasePreviewObjectUrl() {
+  if (!previewObjectUrl) return;
+  URL.revokeObjectURL?.(previewObjectUrl);
+  previewObjectUrl = '';
 }
-async function hydratePhotoImages(serial) {
+function activeViewLabel() {
+  if (activeView === 'materials') return '建材リスト';
+  if (activeView === 'rooms') return '部屋別リスト';
+  if (activeView === 'visual-photos') return '建材写真帳';
+  return '採取写真帳';
+}
+
+function renderVisualEditor(vm) {
+  const items = vm?.visualPhotoItems || [];
+  if (!items.length) return '<div class="output-editor-empty">写真帳の対象建材がありません。</div>';
+  return `<div class="output-editor-list">${items.map((item) => {
+    const label = [`建材No.${item.materialNo}`, item.part, item.name].filter((v) => String(v ?? '').trim()).join('　');
+    const state = item.photoId ? '選択済み' : '未選択';
+    return `<div class="output-editor-row">
+      <div class="output-editor-row-main"><b>${escapeHtml(label)}</b><span>${escapeHtml(state)}</span></div>
+      <button type="button" class="btn small" data-output-visual-expand="${escapeHtml(item.materialId)}">写真選択</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderSamplingEditor(vm) {
+  const pages = vm?.samplingPhotoPages || [];
+  if (!pages.length) return '<div class="output-editor-empty">採取写真帳の対象がありません。</div>';
+  return `<div class="output-editor-list">${pages.map((page) => {
+    const sampleLabel = [page.sampleName, page.samplingPlace ? `部屋No.${page.samplingPlace}` : ''].filter(Boolean).join('　');
+    const stages = (page.stages || []).map((stage) => `<div class="output-sampling-editor-stage">
+      <div class="output-sampling-editor-head">
+        <b>${escapeHtml(stage.label || stage.type)}</b>
+        <button type="button" class="btn small"
+          data-output-sampling-expand="${escapeHtml(page.materialId)}"
+          data-output-branch="${Number(page.branch) || 0}"
+          data-output-stage="${escapeHtml(stage.type)}">写真選択</button>
+      </div>
+      <textarea class="output-sampling-editor-memo" rows="3"
+        placeholder="撮影メモ"
+        data-output-sampling-memo-editor
+        data-output-material-id="${escapeHtml(page.materialId)}"
+        data-output-branch="${Number(page.branch) || 0}"
+        data-output-stage="${escapeHtml(stage.type)}">${escapeHtml(stage.memo || '')}</textarea>
+    </div>`).join('');
+    return `<section class="output-editor-group"><div class="output-editor-group-title">${escapeHtml(sampleLabel || `建材No.${page.materialNo || ''}`)}</div>${stages}</section>`;
+  }).join('')}</div>`;
+}
+
+function renderEditorPanel(vm) {
+  if (activeView === 'visual-photos') {
+    return `<aside class="output-editor-panel"><div class="output-editor-title">写真帳編集</div>${renderVisualEditor(vm)}</aside>`;
+  }
+  if (activeView === 'sampling-photos') {
+    return `<aside class="output-editor-panel"><div class="output-editor-title">採取写真帳編集</div>${renderSamplingEditor(vm)}</aside>`;
+  }
+  return '';
+}
+
+function setPreviewStatus(message, isError = false) {
+  const node = outputRoot()?.querySelector('[data-output-preview-status]');
+  if (!node) return;
+  node.textContent = message || '';
+  node.classList.toggle('is-error', Boolean(isError));
+}
+
+async function renderPdfPreview(serial, vm) {
   const root = outputRoot();
-  if (!root || serial !== renderSerial) return;
-  const frames = [...root.querySelectorAll('[data-output-photo-id]')].filter((frame) => frame.dataset.outputPhotoId);
-  await Promise.all(frames.map(async (frame) => {
-    const photoId = frame.dataset.outputPhotoId;
-    const photo = photoRecordStore.get(photoId);
-    if (!photo) return;
-    try {
-      const blob = await resolveViewerCompletedPhoto(photo);
-      if (!(blob instanceof Blob) || serial !== renderSerial || !frame.isConnected) return;
-      const url = URL.createObjectURL(blob);
-      outputObjectUrls.push(url);
-      frame.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(photo.fileName || photo.photoId)}">`;
-      const image = frame.querySelector('img');
-      if (image) {
-        try { await image.decode(); } catch (_) { /* load完了後に寸法が取れればよい */ }
-        if (serial === renderSerial && frame.isConnected) fitOutputPhotoImage(image);
+  const host = root?.querySelector('[data-output-pdf-host]');
+  if (!root || !host || serial !== renderSerial) return;
+
+  try {
+    setPreviewStatus('実PDFを生成しています…');
+    const photoSources = await prepareOutputPhotoSources([activeView], vm, {
+      onProgress:(text) => {
+        if (serial === renderSerial) setPreviewStatus(text);
       }
-    } catch (error) {
-      console.warn('出力写真の読込に失敗しました', { photoId, error });
-      if (frame.isConnected) frame.innerHTML = '<span>写真を読み込めませんでした</span>';
-    }
-  }));
+    });
+    if (serial !== renderSerial) return;
+
+    const blob = await createVectorPdfBlob({
+      targets:[activeView],
+      vm,
+      photoSources,
+      onProgress:(text) => {
+        if (serial === renderSerial) setPreviewStatus(text);
+      }
+    });
+    if (serial !== renderSerial) return;
+
+    releasePreviewObjectUrl();
+    previewObjectUrl = URL.createObjectURL(blob);
+    host.innerHTML = `<iframe class="output-pdf-frame" title="${escapeHtml(activeViewLabel())} 実PDFレビュー" src="${escapeHtml(previewObjectUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`;
+    setPreviewStatus('実際に出力されるPDFを表示しています。');
+  } catch (error) {
+    console.error('実PDFレビュー生成に失敗しました', error);
+    if (serial !== renderSerial) return;
+    host.innerHTML = '<div class="output-preview-error">PDFレビューを生成できませんでした。</div>';
+    setPreviewStatus(`PDFレビュー生成に失敗しました：${error?.message || error}`, true);
+  }
 }
-function pageCount() { return outputRoot()?.querySelectorAll('[data-output-page]').length || 1; }
-function clampCurrentPage() { currentPage = Math.max(0, Math.min(currentPage, pageCount() - 1)); }
-function applyPageMode() {
+
+function refreshPdfPreviewOnly() {
   const root = outputRoot();
   if (!root) return;
-  clampCurrentPage();
-  root.querySelector('.output-pages')?.classList.toggle('is-single-page', pageMode === 'single');
-  root.querySelectorAll('[data-output-page]').forEach((page) => page.classList.toggle('is-current', Number(page.dataset.outputPage) === currentPage));
-  root.querySelectorAll('[data-output-page-mode]').forEach((button) => button.classList.toggle('active', button.dataset.outputPageMode === pageMode));
-  const counter = root.querySelector('[data-output-page-counter]');
-  if (counter) counter.textContent = `${currentPage + 1} / ${pageCount()}`;
-  root.querySelector('[data-output-page-prev]')?.toggleAttribute('disabled', pageMode !== 'single' || currentPage <= 0);
-  root.querySelector('[data-output-page-next]')?.toggleAttribute('disabled', pageMode !== 'single' || currentPage >= pageCount() - 1);
+  renderSerial += 1;
+  const serial = renderSerial;
+  currentVm = buildOutputViewModel();
+  const host = root.querySelector('[data-output-pdf-host]');
+  if (host) host.innerHTML = '<div class="output-preview-loading">実PDFを更新しています…</div>';
+  void renderPdfPreview(serial, currentVm);
 }
-function movePage(delta) {
-  if (pageMode !== 'single') return;
-  currentPage += delta;
-  applyPageMode();
-  outputRoot()?.querySelector('.output-preview')?.scrollTo({ top:0, behavior:'smooth' });
+
+function schedulePdfPreviewRefresh() {
+  if (previewRefreshTimer) clearTimeout(previewRefreshTimer);
+  previewRefreshTimer = setTimeout(() => {
+    previewRefreshTimer = null;
+    refreshPdfPreviewOnly();
+  }, 300);
 }
+
 function openVisualSelection(materialId) {
   const item = currentVm?.visualPhotoItems?.find((row) => String(row.materialId) === String(materialId));
   if (!item) return;
@@ -113,44 +186,35 @@ function openSamplingSelection(materialId, branch, shootingType) {
     onSelection:() => renderOutputTab()
   });
 }
-function saveSamplingMemoFromLine(line) {
-  const materialId = line.dataset.outputMaterialId;
-  const branch = Number(line.dataset.outputBranch) || 0;
-  const stage = line.dataset.outputStage || '';
-  const container = line.closest('.output-sampling-memo-lines');
-  if (!materialId || !branch || !stage || !container) return;
-  const values = [...container.querySelectorAll('[data-output-sampling-memo-line]')]
-    .map((node) => String(node.textContent || '').replace(/\n/g, ' ').trimEnd());
-  while (values.length && !values[values.length - 1]) values.pop();
-  setSamplingOutputMemo(materialId, branch, stage, values.join('\n'));
-}
 
 export function renderOutputTab() {
   const root = outputRoot();
   if (!root) return;
-  releaseOutputObjectUrls();
   renderSerial += 1;
   const serial = renderSerial;
   currentVm = buildOutputViewModel();
-  const body = renderOutputTarget(activeView, currentVm);
-  root.innerHTML = `<div class="output-root"><div class="output-toolbar">
-    <button type="button" class="btn small output-view-btn ${activeView === 'materials' ? 'active' : ''}" data-output-view="materials">建材リスト</button>
-    <button type="button" class="btn small output-view-btn ${activeView === 'rooms' ? 'active' : ''}" data-output-view="rooms">部屋別リスト</button>
-    <button type="button" class="btn small output-view-btn ${activeView === 'visual-photos' ? 'active' : ''}" data-output-view="visual-photos">建材写真帳</button>
-    <button type="button" class="btn small output-view-btn ${activeView === 'sampling-photos' ? 'active' : ''}" data-output-view="sampling-photos">採取写真帳</button>
-    <span class="output-toolbar-separator"></span>
-    <button type="button" class="btn small output-page-mode-btn" data-output-page-mode="continuous">連続表示</button>
-    <button type="button" class="btn small output-page-mode-btn" data-output-page-mode="single">1ページ表示</button>
-    <button type="button" class="btn small" data-output-page-prev>‹</button>
-    <span class="output-page-counter" data-output-page-counter></span>
-    <button type="button" class="btn small" data-output-page-next>›</button>
-    <span class="output-toolbar-fill"></span>
-    <button type="button" class="btn small" data-output-export="pdf">PDF</button>
-    <button type="button" class="btn small" data-output-export="print">印刷</button>
-    <button type="button" class="btn small" data-output-export="excel">Excel</button>
-  </div><div class="output-preview">${body}</div></div>`;
-  applyPageMode();
-  if (activeView === 'visual-photos' || activeView === 'sampling-photos') void hydratePhotoImages(serial);
+
+  root.innerHTML = `<div class="output-root">
+    <div class="output-toolbar">
+      <button type="button" class="btn small output-view-btn ${activeView === 'materials' ? 'active' : ''}" data-output-view="materials">建材リスト</button>
+      <button type="button" class="btn small output-view-btn ${activeView === 'rooms' ? 'active' : ''}" data-output-view="rooms">部屋別リスト</button>
+      <button type="button" class="btn small output-view-btn ${activeView === 'visual-photos' ? 'active' : ''}" data-output-view="visual-photos">建材写真帳</button>
+      <button type="button" class="btn small output-view-btn ${activeView === 'sampling-photos' ? 'active' : ''}" data-output-view="sampling-photos">採取写真帳</button>
+      <span class="output-toolbar-fill"></span>
+      <button type="button" class="btn small" data-output-export="pdf">PDF</button>
+      <button type="button" class="btn small" data-output-export="print">印刷</button>
+      <button type="button" class="btn small" data-output-export="excel">Excel</button>
+    </div>
+    <div class="output-review-layout ${activeView === 'visual-photos' || activeView === 'sampling-photos' ? 'has-editor' : ''}">
+      <section class="output-pdf-review">
+        <div class="output-preview-status" data-output-preview-status>実PDFを生成しています…</div>
+        <div class="output-pdf-host" data-output-pdf-host><div class="output-preview-loading">実PDFを生成しています…</div></div>
+      </section>
+      ${renderEditorPanel(currentVm)}
+    </div>
+  </div>`;
+
+  void renderPdfPreview(serial, currentVm);
 }
 
 export function initializeOutputTab() {
@@ -166,35 +230,32 @@ export function initializeOutputTab() {
 
   root.addEventListener('click', (event) => {
     const viewButton = event.target.closest('[data-output-view]');
-    if (viewButton) { activeView = viewButton.dataset.outputView || 'materials'; currentPage = 0; renderOutputTab(); return; }
-    const modeButton = event.target.closest('[data-output-page-mode]');
-    if (modeButton) { pageMode = modeButton.dataset.outputPageMode === 'single' ? 'single' : 'continuous'; currentPage = 0; applyPageMode(); return; }
-    if (event.target.closest('[data-output-page-prev]')) { movePage(-1); return; }
-    if (event.target.closest('[data-output-page-next]')) { movePage(1); return; }
+    if (viewButton) {
+      activeView = viewButton.dataset.outputView || 'materials';
+      renderOutputTab();
+      return;
+    }
     const visual = event.target.closest('[data-output-visual-expand]');
-    if (visual) { openVisualSelection(visual.dataset.outputVisualExpand); return; }
+    if (visual) {
+      openVisualSelection(visual.dataset.outputVisualExpand);
+      return;
+    }
     const sampling = event.target.closest('[data-output-sampling-expand]');
-    if (sampling) { openSamplingSelection(sampling.dataset.outputSamplingExpand, Number(sampling.dataset.outputBranch), sampling.dataset.outputStage); return; }
+    if (sampling) {
+      openSamplingSelection(sampling.dataset.outputSamplingExpand, Number(sampling.dataset.outputBranch), sampling.dataset.outputStage);
+    }
   });
+
   root.addEventListener('input', (event) => {
-    const line = event.target.closest?.('[data-output-sampling-memo-line]');
-    if (line) saveSamplingMemoFromLine(line);
+    const editor = event.target.closest?.('[data-output-sampling-memo-editor]');
+    if (!editor) return;
+    const materialId = editor.dataset.outputMaterialId;
+    const branch = Number(editor.dataset.outputBranch) || 0;
+    const stage = editor.dataset.outputStage || '';
+    if (!materialId || !branch || !stage) return;
+    setSamplingOutputMemo(materialId, branch, stage, String(editor.value || ''));
+    schedulePdfPreviewRefresh();
   });
-  root.addEventListener('keydown', (event) => {
-    const line = event.target.closest?.('[data-output-sampling-memo-line]');
-    if (line && event.key === 'Enter') event.preventDefault();
-  });
-  root.addEventListener('pointerdown', (event) => {
-    if (pageMode !== 'single' || event.pointerType === 'mouse') return;
-    swipeStart = { x:event.clientX, y:event.clientY };
-  }, { passive:true });
-  root.addEventListener('pointerup', (event) => {
-    if (!swipeStart || pageMode !== 'single') return;
-    const dx = event.clientX - swipeStart.x;
-    const dy = event.clientY - swipeStart.y;
-    swipeStart = null;
-    if (Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.2) movePage(dx < 0 ? 1 : -1);
-  }, { passive:true });
 
   finishRecordStore.subscribe(renderOutputTab);
   materialRecordStore.subscribe(renderOutputTab);
