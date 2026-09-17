@@ -3,7 +3,7 @@
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.6-r4';
+const APP_CACHE = 'chousa-app-v0.1.7.6-r5';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -88,6 +88,7 @@ const APP_SHELL = [
   './js/output/output-state.js',
   './js/output/output-photo-selection.js',
   './js/output/output-photo-layout.js',
+  './js/output/output-photo-source.js',
   './js/output/output-report-renderer.js',
   './js/output/output-pdf-renderer.js',
   './js/output/output-export-controller.js',
