@@ -7,6 +7,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { buildOutputViewModel } from './output-view-model.js';
 import { createVectorPdfPreview } from './output-pdf-renderer.js';
+import { OutputPdfPreview } from './output-pdf-preview.js';
 import { prepareOutputPhotoSources } from './output-photo-source.js';
 import { setSamplingOutputMemo } from './output-state.js';
 import { DEFAULT_OUTPUT_SETTINGS, getOutputSettings, saveOutputSettings, normalizeOutputSettings } from './output-settings-store.js';
@@ -22,11 +23,11 @@ let activeView = 'materials';
 let initialized = false;
 let renderSerial = 0;
 let currentVm = null;
-let previewObjectUrl = '';
 let previewRefreshTimer = null;
 let previewPage = 1;
 let previewPageCount = 1;
 let previewZoom = 'fit';
+let previewRenderer = null;
 let settingsOpen = false;
 let settingsDraft = null;
 
@@ -44,8 +45,6 @@ function ensureOutputStyles() {
   document.head.appendChild(link);
 }
 function outputRoot(){ return document.getElementById('sync'); }
-function releasePreviewObjectUrl(){ if(previewObjectUrl){ URL.revokeObjectURL?.(previewObjectUrl); previewObjectUrl=''; } }
-function activeViewLabel(){ if(activeView==='materials')return '建材リスト'; if(activeView==='rooms')return '部屋別リスト'; if(activeView==='visual-photos')return '建材写真帳'; return '採取写真帳'; }
 function effectiveSettings(){ return normalizeOutputSettings(settingsOpen && settingsDraft ? settingsDraft : getOutputSettings()); }
 
 function renderVisualEditor(vm) {
@@ -76,16 +75,6 @@ function renderSidePanels(vm){
 function hasSidePanel(){ return settingsOpen || activeView==='visual-photos' || activeView==='sampling-photos'; }
 
 function setPreviewStatus(message,isError=false){const node=outputRoot()?.querySelector('[data-output-preview-status]');if(!node)return;node.textContent=message||'';node.classList.toggle('is-error',Boolean(isError));}
-function previewFragment(){
-  const page=Math.max(1,Math.min(previewPage,previewPageCount));
-  if(previewZoom==='fit')return `#toolbar=0&navpanes=0&page=${page}&view=Fit`;
-  return `#toolbar=0&navpanes=0&page=${page}&zoom=${Number(previewZoom)||100}`;
-}
-function updatePreviewFrameSource(){
-  const frame=outputRoot()?.querySelector('.output-pdf-frame');
-  if(frame && previewObjectUrl)frame.src=`${previewObjectUrl}${previewFragment()}`;
-  updatePreviewControls();
-}
 function updatePreviewControls(){
   const root=outputRoot(); if(!root)return;
   const counter=root.querySelector('[data-output-page-counter]');
@@ -97,6 +86,16 @@ function updatePreviewControls(){
   if(prev)prev.disabled=previewPage<=1;
   if(next)next.disabled=previewPage>=previewPageCount;
 }
+async function applyPreviewPage(page){
+  if(!previewRenderer)return;
+  previewPage=await previewRenderer.setPage(page);
+  updatePreviewControls();
+}
+async function applyPreviewZoom(zoom){
+  if(!previewRenderer)return;
+  previewZoom=await previewRenderer.setZoom(zoom);
+  updatePreviewControls();
+}
 
 async function renderPdfPreview(serial,vm){
   const root=outputRoot(); const host=root?.querySelector('[data-output-pdf-host]'); if(!root||!host||serial!==renderSerial)return;
@@ -106,21 +105,23 @@ async function renderPdfPreview(serial,vm){
     if(serial!==renderSerial)return;
     const result=await createVectorPdfPreview({targets:[activeView],vm,photoSources,settings:effectiveSettings(),onProgress:(text)=>{if(serial===renderSerial)setPreviewStatus(text);}});
     if(serial!==renderSerial)return;
-    releasePreviewObjectUrl();
-    previewObjectUrl=URL.createObjectURL(result.blob);
-    previewPageCount=Math.max(1,Number(result.pageCount)||1);
-    previewPage=Math.max(1,Math.min(previewPage,previewPageCount));
-    host.innerHTML=`<iframe class="output-pdf-frame" title="${escapeHtml(activeViewLabel())} 実PDFレビュー" src="${escapeHtml(previewObjectUrl)}${previewFragment()}"></iframe>`;
-    setPreviewStatus('実際に出力されるPDFを表示しています。');
+
+    previewRenderer?.destroy();
+    previewRenderer=new OutputPdfPreview(host);
+    const state=await previewRenderer.load(result.blob,{page:previewPage,zoom:previewZoom});
+    if(serial!==renderSerial)return;
+    previewPageCount=state.pageCount;
+    previewPage=state.page;
+    previewZoom=state.zoom;
+    setPreviewStatus('実際に出力されるPDFを1ページずつ表示しています。');
     updatePreviewControls();
   }catch(error){console.error('実PDFレビュー生成に失敗しました',error);if(serial!==renderSerial)return;host.innerHTML='<div class="output-preview-error">PDFレビューを生成できませんでした。</div>';setPreviewStatus(`PDFレビュー生成に失敗しました：${error?.message||error}`,true);}
 }
-function refreshPdfPreviewOnly(){const root=outputRoot();if(!root)return;renderSerial+=1;const serial=renderSerial;currentVm=buildOutputViewModel();const host=root.querySelector('[data-output-pdf-host]');if(host)host.innerHTML='<div class="output-preview-loading">実PDFを更新しています…</div>';void renderPdfPreview(serial,currentVm);}
+function refreshPdfPreviewOnly(){const root=outputRoot();if(!root)return;renderSerial+=1;const serial=renderSerial;currentVm=buildOutputViewModel();const host=root.querySelector('[data-output-pdf-host]');previewRenderer?.destroy();previewRenderer=null;if(host)host.innerHTML='<div class="output-preview-loading">実PDFを更新しています…</div>';void renderPdfPreview(serial,currentVm);}
 function schedulePdfPreviewRefresh(){if(previewRefreshTimer)clearTimeout(previewRefreshTimer);previewRefreshTimer=setTimeout(()=>{previewRefreshTimer=null;refreshPdfPreviewOnly();},250);}
 
 function openVisualSelection(materialId){const item=currentVm?.visualPhotoItems?.find((row)=>String(row.materialId)===String(materialId));if(!item)return;openVisualOutputPhotoViewer({materialId:item.materialId,selectedPhotoId:item.photoId,candidates:item.candidates,onSelection:()=>renderOutputTab()});}
 function openSamplingSelection(materialId,branch,shootingType){const page=currentVm?.samplingPhotoPages?.find((item)=>String(item.materialId)===String(materialId)&&Number(item.branch)===Number(branch));const stage=page?.stages?.find((item)=>item.type===shootingType);if(!page||!stage)return;openSamplingOutputPhotoViewer({materialId:page.materialId,branch:page.branch,shootingType,selectedPhotoId:stage.photoId,candidates:stage.candidates,onSelection:()=>renderOutputTab()});}
-
 function openSettingsPanel(){settingsDraft=getOutputSettings();settingsOpen=true;renderOutputTab();}
 function closeSettingsPanel(){settingsOpen=false;settingsDraft=null;renderOutputTab();}
 function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-output-settings-panel]');if(!panel)return;settingsDraft=collectOutputSettings(panel,settingsDraft||getOutputSettings());schedulePdfPreviewRefresh();}
@@ -128,6 +129,7 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
 export function renderOutputTab(){
   const root=outputRoot(); if(!root)return;
   renderSerial+=1; const serial=renderSerial; currentVm=buildOutputViewModel();
+  previewRenderer?.destroy(); previewRenderer=null;
   root.innerHTML=`<div class="output-root"><div class="output-toolbar">
     <button type="button" class="btn small output-view-btn ${activeView==='materials'?'active':''}" data-output-view="materials">建材リスト</button>
     <button type="button" class="btn small output-view-btn ${activeView==='rooms'?'active':''}" data-output-view="rooms">部屋別リスト</button>
@@ -143,14 +145,16 @@ export function renderOutputTab(){
 }
 
 export function initializeOutputTab(){
-  if(initialized)return; initialized=true; ensureOutputStyles(); initializeOutputPhotoSelectionBridge(); const root=outputRoot(); if(!root)return; initializeOutputExportController(root); const tab=document.querySelector('.tab[data-tab="sync"]');if(tab)tab.textContent='出力';
+  if(initialized)return; initialized=true; ensureOutputStyles(); initializeOutputPhotoSelectionBridge(); const root=outputRoot(); if(!root)return;
+  initializeOutputExportController(root,{getSettings:effectiveSettings});
+  const tab=document.querySelector('.tab[data-tab="sync"]');if(tab)tab.textContent='出力';
   root.addEventListener('click',(event)=>{
-    const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';previewPage=1;renderOutputTab();return;}
-    if(event.target.closest('[data-output-page-prev]')){previewPage=Math.max(1,previewPage-1);updatePreviewFrameSource();return;}
-    if(event.target.closest('[data-output-page-next]')){previewPage=Math.min(previewPageCount,previewPage+1);updatePreviewFrameSource();return;}
-    if(event.target.closest('[data-output-zoom-fit]')){previewZoom='fit';updatePreviewFrameSource();return;}
-    if(event.target.closest('[data-output-zoom-out]')){const current=previewZoom==='fit'?70:Number(previewZoom)||100;previewZoom=Math.max(30,current-10);updatePreviewFrameSource();return;}
-    if(event.target.closest('[data-output-zoom-in]')){const current=previewZoom==='fit'?70:Number(previewZoom)||100;previewZoom=Math.min(200,current+10);updatePreviewFrameSource();return;}
+    const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';previewPage=1;previewZoom='fit';renderOutputTab();return;}
+    if(event.target.closest('[data-output-page-prev]')){void applyPreviewPage(previewPage-1);return;}
+    if(event.target.closest('[data-output-page-next]')){void applyPreviewPage(previewPage+1);return;}
+    if(event.target.closest('[data-output-zoom-fit]')){void applyPreviewZoom('fit');return;}
+    if(event.target.closest('[data-output-zoom-out]')){const current=previewZoom==='fit'?70:Number(previewZoom)||100;void applyPreviewZoom(Math.max(30,current-10));return;}
+    if(event.target.closest('[data-output-zoom-in]')){const current=previewZoom==='fit'?70:Number(previewZoom)||100;void applyPreviewZoom(Math.min(200,current+10));return;}
     if(event.target.closest('[data-output-settings-open]')){if(settingsOpen)closeSettingsPanel();else openSettingsPanel();return;}
     if(event.target.closest('[data-output-settings-close]')){closeSettingsPanel();return;}
     if(event.target.closest('[data-output-settings-undo]')){settingsDraft=getOutputSettings();renderOutputTab();return;}
@@ -165,6 +169,7 @@ export function initializeOutputTab(){
     if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();
   });
   root.addEventListener('change',(event)=>{if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
+  window.addEventListener('resize',()=>{if(previewRenderer&&previewZoom==='fit')void previewRenderer.render();});
   window.addEventListener('chousa:output-settings-change',()=>{if(!settingsOpen)renderOutputTab();});
   finishRecordStore.subscribe(renderOutputTab); materialRecordStore.subscribe(renderOutputTab); photoRecordStore.subscribe(renderOutputTab); renderOutputTab();
 }
