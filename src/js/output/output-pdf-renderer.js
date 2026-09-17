@@ -306,7 +306,6 @@ function renderRoomPages(pdf, vm, state) {
       const positive = isPositive(row.analysisResult);
       const color = positive ? RED : BLACK;
 
-      // 非グループ列
       const cells = [
         { col:3, value:row.part, center:true },
         { col:4, value:row.materialNo, center:true },
@@ -469,7 +468,7 @@ function renderTarget(pdf, target, vm, photoSources, state) {
   else if (target === 'sampling-photos') renderSamplingPages(pdf, vm, photoSources, state);
 }
 
-export async function exportVectorPdf({ targets, vm, photoSources, filename, onProgress = null }) {
+async function buildVectorPdf({ targets, vm, photoSources, onProgress = null }) {
   await loadScript(JSPDF_URL, 'jspdf');
   const { jsPDF } = window.jspdf || {};
   if (!jsPDF) throw new Error('PDF生成ライブラリを初期化できませんでした。');
@@ -488,7 +487,16 @@ export async function exportVectorPdf({ targets, vm, photoSources, filename, onP
     setFont(pdf, 10, 'normal');
     pdf.text('出力対象がありません。', 10, 20);
   }
-  // jsPDFは生成直後に空ページを1枚持つため、描画開始時にaddPageした分の先頭空ページを除く。
   if (pdf.getNumberOfPages() > state.pageCount) pdf.deletePage(1);
+  return pdf;
+}
+
+export async function createVectorPdfBlob({ targets, vm, photoSources, onProgress = null }) {
+  const pdf = await buildVectorPdf({ targets, vm, photoSources, onProgress });
+  return pdf.output('blob');
+}
+
+export async function exportVectorPdf({ targets, vm, photoSources, filename, onProgress = null }) {
+  const pdf = await buildVectorPdf({ targets, vm, photoSources, onProgress });
   pdf.save(filename);
 }
