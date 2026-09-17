@@ -9,9 +9,44 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+
+      - name: Production consistency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/config/app-config.js
+          test -f src/version.json
+          test -f src/service-worker.js
+          if grep -R "output-report-renderer\|output-photo-layout" -n src; then
+            echo "obsolete HTML output path remains"
+            exit 1
+          fi
+          if test -e src/js/debug/h-log.js; then
+            echo "legacy h-log.js remains"
+            exit 1
+          fi
+          if test -e .firebase/hosting..cache; then
+            echo "generated Firebase cache is tracked"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
