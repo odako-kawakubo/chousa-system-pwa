@@ -1,5 +1,5 @@
 /* src/css/output.css
- * 出力タブ専用。A4帳票プレビュー・ページ送り・写真選択チップを扱う。
+ * 出力タブ専用。実PDFレビュー、帳票編集パネル、印刷用HTMLを扱う。
  */
 .output-root { display:flex; flex-direction:column; gap:8px; }
 .output-toolbar { display:flex; align-items:center; gap:4px; flex-wrap:wrap; position:sticky; top:var(--finish-page-stack-h,96px); z-index:20; padding:4px 0; background:var(--bg); }
@@ -7,6 +7,35 @@
 .output-toolbar-separator { width:1px; height:24px; background:var(--line-strong); margin:0 2px; }
 .output-view-btn.active,.output-page-mode-btn.active { background:var(--main); border-color:var(--main); color:var(--text-on-accent); }
 .output-page-counter { min-width:44px; text-align:center; font-size:11px; font-weight:700; }
+
+/* 実PDFレビュー */
+.output-review-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; min-height:0; }
+.output-review-layout.has-editor { grid-template-columns:minmax(0,1fr) minmax(260px,320px); align-items:start; }
+.output-pdf-review { min-width:0; min-height:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel); }
+.output-preview-status { min-height:32px; display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); font-size:11px; color:var(--text-subtle); background:var(--surface-soft); }
+.output-preview-status.is-error { color:#b42318; }
+.output-pdf-host { min-height:calc(100vh - 220px); background:#cfd3d8; }
+.output-pdf-frame { display:block; width:100%; height:calc(100vh - 220px); min-height:680px; border:0; background:#cfd3d8; }
+.output-preview-loading,.output-preview-error { display:flex; align-items:center; justify-content:center; min-height:680px; padding:24px; text-align:center; color:var(--text-subtle); }
+.output-preview-error { color:#b42318; }
+
+/* 帳票の外側に置く編集UI */
+.output-editor-panel { position:sticky; top:calc(var(--finish-page-stack-h,96px) + 44px); max-height:calc(100vh - 170px); overflow:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.output-editor-title { position:sticky; top:0; z-index:1; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--panel); font-size:13px; font-weight:700; }
+.output-editor-list { display:flex; flex-direction:column; gap:8px; padding:10px; }
+.output-editor-empty { padding:16px 12px; color:var(--text-subtle); font-size:12px; }
+.output-editor-row { display:flex; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:7px; background:var(--surface-soft); }
+.output-editor-row-main { min-width:0; flex:1 1 auto; display:flex; flex-direction:column; gap:2px; }
+.output-editor-row-main b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.output-editor-row-main span { font-size:10px; color:var(--text-subtle); }
+.output-editor-group { border:1px solid var(--line); border-radius:7px; overflow:hidden; background:var(--surface-soft); }
+.output-editor-group-title { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; font-weight:700; background:var(--panel); }
+.output-sampling-editor-stage { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); }
+.output-sampling-editor-stage:last-child { border-bottom:0; }
+.output-sampling-editor-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+.output-sampling-editor-memo { box-sizing:border-box; width:100%; min-height:66px; resize:vertical; padding:7px 8px; border:1px solid var(--line-strong); border-radius:6px; background:var(--panel); color:var(--text); font:inherit; font-size:12px; line-height:1.4; }
+
+/* HTML帳票: 印刷経路で引き続き使用 */
 .output-preview { overflow:auto; padding:8px 8px 24px; background:var(--surface-soft); touch-action:pan-y pinch-zoom; }
 .output-pages { display:flex; flex-direction:column; align-items:flex-start; gap:18px; min-width:max-content; }
 .output-pages.is-single-page .output-page-shell { display:none; }
@@ -175,10 +204,17 @@
 .output-export-progress { width:calc(100% - 28px); height:8px; margin:0 14px 12px; }
 .output-export-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--line); }
 
+@media (max-width: 1100px) {
+  .output-review-layout.has-editor { grid-template-columns:minmax(0,1fr); }
+  .output-editor-panel { position:static; max-height:none; }
+}
+
 @media (max-width: 900px) {
   .output-preview { padding:4px; }
   .output-page-shell,.output-paper { margin:0; }
   .output-export-targets { grid-template-columns:1fr; }
+  .output-pdf-host,.output-pdf-frame { min-height:560px; height:calc(100vh - 190px); }
+  .output-preview-loading,.output-preview-error { min-height:560px; }
 }
 
 @media print {
