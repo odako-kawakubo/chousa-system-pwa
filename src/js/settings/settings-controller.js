@@ -15,6 +15,7 @@ import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { getOneDriveConnectionState, subscribeOneDriveConnection } from '../onedrive/onedrive-connection.js';
 import { listSystemDataBackups, saveSystemDataNow } from '../onedrive/system-data-backup.js';
+import { mountOutputSettingsSection, bindOutputSettingsSection } from './output-settings-section.js';
 
 let root = null;
 let unsubscribe = null;
@@ -56,7 +57,7 @@ function formatSyncTime(value) {
   if (!time) return '未同期';
   const date = new Date(time);
   if (Number.isNaN(date.getTime())) return '未同期';
-  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }).format(date);
 }
 
 function refreshSyncStatusFields(status = getSyncStatus()) {
@@ -92,11 +93,7 @@ function refreshOneDriveStatusFields(oneDrive = getOneDriveConnectionState()) {
   const restoreButton = root.querySelector('[data-action="show-system-data-backups"]');
   const systemDataCard = root.querySelector('[data-action="save-system-data-now"]')?.closest('.settings-card');
   const systemDataState = systemDataCard?.querySelector('.settings-card-head .pill');
-
-  if (state) {
-    state.textContent = oneDrive.text;
-    state.title = oneDrive.error || '';
-  }
+  if (state) { state.textContent = oneDrive.text; state.title = oneDrive.error || ''; }
   if (rootName) rootName.textContent = oneDrive.connected ? (oneDrive.root?.name || '04 調査') : '-';
   if (systemDataState) {
     systemDataState.textContent = oneDrive.connected ? 'OneDrive接続済み' : 'OneDrive未接続';
@@ -109,14 +106,11 @@ function refreshOneDriveStatusFields(oneDrive = getOneDriveConnectionState()) {
 function refreshSyncDiagnosticLogView() {
   if (!root) return;
   const output = root.querySelector('[data-settings-sync-diagnostic-log]');
-  if (output) {
-    output.value = formatSyncDiagnosticLog();
-    output.scrollTop = output.scrollHeight;
-  }
+  if (output) { output.value = formatSyncDiagnosticLog(); output.scrollTop = output.scrollHeight; }
 }
 
 function downloadSyncDiagnosticLog() {
-  const blob = new Blob([formatSyncDiagnosticLog() || '(ログなし)'], { type: 'text/plain;charset=utf-8' });
+  const blob = new Blob([formatSyncDiagnosticLog() || '(ログなし)'], { type:'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -137,6 +131,7 @@ function render() {
   if (!root) return;
   const activeSection = root.querySelector('.settings-subtab.active')?.dataset.settingsSection || 'survey';
   renderSettingsTab(root, buildViewModel());
+  mountOutputSettingsSection(root);
   showInnerSection(activeSection);
   renderBoardPreview();
   refreshSyncDiagnosticLogView();
@@ -144,26 +139,20 @@ function render() {
 
 function showInnerSection(section) {
   if (!root) return;
-  root.querySelectorAll('[data-settings-section]').forEach((button) => {
-    button.classList.toggle('active', button.dataset.settingsSection === section);
-  });
-  root.querySelectorAll('[data-settings-panel]').forEach((panel) => {
-    panel.hidden = panel.dataset.settingsPanel !== section;
-  });
+  root.querySelectorAll('[data-settings-section]').forEach((button) => button.classList.toggle('active', button.dataset.settingsSection === section));
+  root.querySelectorAll('[data-settings-panel]').forEach((panel) => { panel.hidden = panel.dataset.settingsPanel !== section; });
 }
 
 function boardPreviewData() {
   const settings = boardSettingsStore.get();
   return {
-    photoType: 'visual',
-    projectName: settings.subjectText || settings.projectName,
-    address: settings.addressText || settings.address,
-    subjectFontSize: settings.subjectFontSize,
-    addressFontSize: settings.addressFontSize,
-    roomNo: '1-1',
-    part: '壁',
-    statusCode: '5',
-    date: new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date())
+    photoType:'visual',
+    projectName:settings.subjectText || settings.projectName,
+    address:settings.addressText || settings.address,
+    subjectFontSize:settings.subjectFontSize,
+    addressFontSize:settings.addressFontSize,
+    roomNo:'1-1', part:'壁', statusCode:'5',
+    date:new Intl.DateTimeFormat('ja-JP',{ year:'numeric', month:'long', day:'numeric' }).format(new Date())
   };
 }
 
@@ -174,7 +163,6 @@ function renderBoardPreview() {
 
 function syncBoardFromInputs(changedElement = null) {
   if (!root) return;
-
   const projectNoInput = root.querySelector('[data-setting-project-field="projectNo"]');
   const projectNameInput = root.querySelector('[data-setting-project-field="projectName"]');
   const addressInput = root.querySelector('[data-setting-project-field="address"]');
@@ -189,244 +177,110 @@ function syncBoardFromInputs(changedElement = null) {
   const surveyDate = surveyDateInput?.value || '';
   const surveyor = surveyorInput?.value || '';
 
-  if (changedElement?.matches('[data-setting-project-field="projectName"]') && subjectTextInput) {
-    subjectTextInput.value = projectName;
-  }
-  if (changedElement?.matches('[data-setting-project-field="address"]') && addressTextInput) {
-    addressTextInput.value = address;
-  }
-
-  const subjectText = subjectTextInput?.value ?? projectName;
-  const addressText = addressTextInput?.value ?? address;
-  const subjectFontSize = root.querySelector('[data-board-setting="subjectFontSize"]')?.value;
-  const addressFontSize = root.querySelector('[data-board-setting="addressFontSize"]')?.value;
+  if (changedElement?.matches('[data-setting-project-field="projectName"]') && subjectTextInput) subjectTextInput.value = projectName;
+  if (changedElement?.matches('[data-setting-project-field="address"]') && addressTextInput) addressTextInput.value = address;
 
   boardSettingsStore.set({
-    projectNo,
-    projectName,
-    address,
-    surveyDate,
-    surveyor,
-    subjectText,
-    addressText,
-    subjectFontSize,
-    addressFontSize
+    projectNo, projectName, address, surveyDate, surveyor,
+    subjectText:subjectTextInput?.value ?? projectName,
+    addressText:addressTextInput?.value ?? address,
+    subjectFontSize:root.querySelector('[data-board-setting="subjectFontSize"]')?.value,
+    addressFontSize:root.querySelector('[data-board-setting="addressFontSize"]')?.value
   });
-
   renderBoardPreview();
 }
 
 function adjustBoardFontSize(field, delta) {
   const input = root?.querySelector(`[data-board-setting="${field}"]`);
   if (!input) return;
-
   const min = Number(input.min || 0);
   const max = Number(input.max || 999);
-  const current = Number(input.value || 0);
-  const next = Math.max(min, Math.min(max, current + delta));
-
-  input.value = String(next);
+  input.value = String(Math.max(min, Math.min(max, Number(input.value || 0) + delta)));
   syncBoardFromInputs(input);
 }
 
 async function saveSystemDataManually() {
   const button = root?.querySelector('[data-action="save-system-data-now"]');
-  if (button) {
-    button.disabled = true;
-    button.textContent = '保存中…';
-  }
+  if (button) { button.disabled = true; button.textContent = '保存中…'; }
   try {
     const result = await saveSystemDataNow();
-    if (result?.ok && result.saved) {
-      window.alert('システムデータをOneDriveへ保存しました。');
-      return;
-    }
-    if (result?.reason === 'busy') {
-      window.alert('システムデータを保存中です。完了後にもう一度お試しください。');
-      return;
-    }
-    if (result?.reason === 'onedrive-unavailable') {
-      window.alert('OneDrive保存先を利用できません。接続状態を確認してください。');
-      return;
-    }
+    if (result?.ok && result.saved) { window.alert('システムデータをOneDriveへ保存しました。'); return; }
+    if (result?.reason === 'busy') { window.alert('システムデータを保存中です。完了後にもう一度お試しください。'); return; }
+    if (result?.reason === 'onedrive-unavailable') { window.alert('OneDrive保存先を利用できません。接続状態を確認してください。'); return; }
     window.alert('システムデータを保存できませんでした。');
-  } catch (error) {
-    window.alert(error?.message || 'システムデータを保存できませんでした。');
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = '今すぐバックアップ';
-    }
-  }
+  } catch (error) { window.alert(error?.message || 'システムデータを保存できませんでした。'); }
+  finally { if (button) { button.disabled = false; button.textContent = '今すぐバックアップ'; } }
 }
 
 async function showSystemDataBackups() {
   try {
     const backups = await listSystemDataBackups();
-    if (!backups.length) {
-      window.alert('この案件の復元データはまだありません。');
-      return;
-    }
-    const names = backups.slice(0, 15).map((item) => `・${item.name}`).join('\n');
+    if (!backups.length) { window.alert('この案件の復元データはまだありません。'); return; }
+    const names = backups.slice(0,15).map((item)=>`・${item.name}`).join('\n');
     window.alert(`復元データを確認しました。\n\n${names}\n\n復元処理は後続フェーズで接続します。`);
-  } catch (error) {
-    window.alert(error?.message || '復元データを確認できませんでした。');
-  }
+  } catch (error) { window.alert(error?.message || '復元データを確認できませんでした。'); }
 }
 
 async function handleClick(event) {
   const subtab = event.target.closest('[data-settings-section]');
-  if (subtab) {
-    showInnerSection(subtab.dataset.settingsSection);
+  if (subtab) { showInnerSection(subtab.dataset.settingsSection); return; }
+  if (event.target.closest('[data-action="save-system-data-now"]')) { await saveSystemDataManually(); return; }
+  if (event.target.closest('[data-action="show-system-data-backups"]')) { await showSystemDataBackups(); return; }
+  if (event.target.closest('[data-action="toggle-manual-offline"]')) { const next = !getSyncStatus().manualOffline; window.dispatchEvent(new CustomEvent('chousa:manual-offline-change',{detail:{enabled:next}})); window.setTimeout(render,0); return; }
+  if (event.target.closest('[data-action="save-device-name"]')) { const value=root.querySelector('[data-setting-device-name]')?.value||''; if(!setDeviceName(value)){window.alert('端末名を入力してください。');return;} render(); return; }
+  if (event.target.closest('[data-action="copy-sync-diagnostic-log"]')) { navigator.clipboard?.writeText(formatSyncDiagnosticLog()).then(()=>window.alert('同期ログをコピーしました。')).catch(()=>window.alert('コピーできませんでした。診断ログ保存を使用してください。')); return; }
+  if (event.target.closest('[data-action="download-sync-diagnostic-log"]')) { downloadSyncDiagnosticLog(); return; }
+  if (event.target.closest('[data-action="clear-sync-diagnostic-log"]')) { clearSyncDiagnosticLog(); refreshSyncDiagnosticLogView(); return; }
+  const fontAdjust=event.target.closest('[data-board-font-adjust]');
+  if(fontAdjust){adjustBoardFontSize(fontAdjust.dataset.boardFontAdjust,Number(fontAdjust.dataset.boardFontDelta||0));return;}
+  if(event.target.closest('[data-action="reset-board-settings"]')){boardSettingsStore.resetFormatting();render();return;}
+  if(event.target.closest('[data-action="add-setting-material"]')){
+    const part=root.querySelector('[data-setting-add-material-part]')?.value||'';
+    const baseName=root.querySelector('[data-setting-add-material-name]')?.value||'';
+    if(!part.trim()||!baseName.trim()){window.alert('部位と建材名称を入力してください。');return;}
+    if(!surveyCandidateStore.addMaterialCandidate(part,baseName))window.alert('同じ建材名称候補が登録済み、または入力内容が正しくありません。');
     return;
   }
-
-  if (event.target.closest('[data-action="save-system-data-now"]')) {
-    await saveSystemDataManually();
-    return;
-  }
-
-  if (event.target.closest('[data-action="show-system-data-backups"]')) {
-    await showSystemDataBackups();
-    return;
-  }
-
-  if (event.target.closest('[data-action="toggle-manual-offline"]')) {
-    const next = !getSyncStatus().manualOffline;
-    window.dispatchEvent(new CustomEvent('chousa:manual-offline-change', { detail: { enabled: next } }));
-    window.setTimeout(render, 0);
-    return;
-  }
-
-  if (event.target.closest('[data-action="save-device-name"]')) {
-    const value = root.querySelector('[data-setting-device-name]')?.value || '';
-    if (!setDeviceName(value)) {
-      window.alert('端末名を入力してください。');
-      return;
-    }
-    render();
-    return;
-  }
-
-  if (event.target.closest('[data-action="copy-sync-diagnostic-log"]')) {
-    navigator.clipboard?.writeText(formatSyncDiagnosticLog()).then(() => {
-      window.alert('同期ログをコピーしました。');
-    }).catch(() => {
-      window.alert('コピーできませんでした。診断ログ保存を使用してください。');
-    });
-    return;
-  }
-
-  if (event.target.closest('[data-action="download-sync-diagnostic-log"]')) {
-    downloadSyncDiagnosticLog();
-    return;
-  }
-
-  if (event.target.closest('[data-action="clear-sync-diagnostic-log"]')) {
-    clearSyncDiagnosticLog();
-    refreshSyncDiagnosticLogView();
-    return;
-  }
-
-  const fontAdjust = event.target.closest('[data-board-font-adjust]');
-  if (fontAdjust) {
-    adjustBoardFontSize(
-      fontAdjust.dataset.boardFontAdjust,
-      Number(fontAdjust.dataset.boardFontDelta || 0)
-    );
-    return;
-  }
-
-  if (event.target.closest('[data-action="reset-board-settings"]')) {
-    boardSettingsStore.resetFormatting();
-    render();
-    return;
-  }
-
-  if (event.target.closest('[data-action="add-setting-material"]')) {
-    const part = root.querySelector('[data-setting-add-material-part]')?.value || '';
-    const baseName = root.querySelector('[data-setting-add-material-name]')?.value || '';
-    if (!part.trim() || !baseName.trim()) {
-      window.alert('部位と建材名称を入力してください。');
-      return;
-    }
-    if (!surveyCandidateStore.addMaterialCandidate(part, baseName)) {
-      window.alert('同じ建材名称候補が登録済み、または入力内容が正しくありません。');
-      return;
-    }
-    return;
-  }
-
-  if (event.target.closest('[data-action="add-setting-part"]')) {
-    const name = root.querySelector('[data-setting-add-part-name]')?.value || '';
-    if (!name.trim()) {
-      window.alert('部位名称を入力してください。');
-      return;
-    }
-    if (!surveyCandidateStore.addPartCandidate(name)) {
-      window.alert('同じ部位名称候補が登録済みです。');
-    }
+  if(event.target.closest('[data-action="add-setting-part"]')){
+    const name=root.querySelector('[data-setting-add-part-name]')?.value||'';
+    if(!name.trim()){window.alert('部位名称を入力してください。');return;}
+    if(!surveyCandidateStore.addPartCandidate(name))window.alert('同じ部位名称候補が登録済みです。');
   }
 }
 
 function handleChange(event) {
-  const materialRow = event.target.closest('[data-setting-material-row]');
-  if (materialRow && event.target.matches('[data-setting-material-field]')) {
-    const candidateId = materialRow.dataset.settingMaterialRow;
-    const fields = {};
-    materialRow.querySelectorAll('[data-setting-material-field]').forEach((input) => {
-      fields[input.dataset.settingMaterialField] = input.value;
-    });
-    if (!surveyCandidateStore.updateMaterialCandidate(candidateId, fields)) {
-      window.alert('同じ候補が登録済み、または入力内容が正しくありません。');
-      render();
-    }
+  const materialRow=event.target.closest('[data-setting-material-row]');
+  if(materialRow&&event.target.matches('[data-setting-material-field]')){
+    const candidateId=materialRow.dataset.settingMaterialRow; const fields={};
+    materialRow.querySelectorAll('[data-setting-material-field]').forEach((input)=>{fields[input.dataset.settingMaterialField]=input.value;});
+    if(!surveyCandidateStore.updateMaterialCandidate(candidateId,fields)){window.alert('同じ候補が登録済み、または入力内容が正しくありません。');render();}
     return;
   }
-
-  const partRow = event.target.closest('[data-setting-part-row]');
-  if (partRow && event.target.matches('[data-setting-part-field]')) {
-    const candidateId = partRow.dataset.settingPartRow;
-    if (!surveyCandidateStore.updatePartCandidate(candidateId, event.target.value)) {
-      window.alert('同じ部位名称候補が登録済み、または入力内容が正しくありません。');
-      render();
-    }
+  const partRow=event.target.closest('[data-setting-part-row]');
+  if(partRow&&event.target.matches('[data-setting-part-field]')){
+    const candidateId=partRow.dataset.settingPartRow;
+    if(!surveyCandidateStore.updatePartCandidate(candidateId,event.target.value)){window.alert('同じ部位名称候補が登録済み、または入力内容が正しくありません。');render();}
   }
 }
 
-export function refreshSettingsTab() {
+export function refreshSettingsTab(){ render(); }
+
+export function initializeSettingsTab(){
+  root=document.getElementById('settings'); if(!root)return;
   render();
-}
-
-export function initializeSettingsTab() {
-  root = document.getElementById('settings');
-  if (!root) return;
-
-  render();
-
-  if (root.dataset.settingsEventsBound !== '1') {
-    root.dataset.settingsEventsBound = '1';
-    root.addEventListener('click', (event) => void handleClick(event));
-    root.addEventListener('input', (event) => {
-      if (event.target.matches('[data-board-setting], [data-setting-project-field]')) {
-        syncBoardFromInputs(event.target);
-      }
-    });
-    root.addEventListener('change', handleChange);
-    window.addEventListener('resize', renderBoardPreview);
+  bindOutputSettingsSection(root);
+  if(root.dataset.settingsEventsBound!=='1'){
+    root.dataset.settingsEventsBound='1';
+    root.addEventListener('click',(event)=>void handleClick(event));
+    root.addEventListener('input',(event)=>{if(event.target.matches('[data-board-setting], [data-setting-project-field]'))syncBoardFromInputs(event.target);});
+    root.addEventListener('change',handleChange);
+    window.addEventListener('resize',renderBoardPreview);
   }
-
-  if (unsubscribe) unsubscribe();
-  unsubscribe = surveyCandidateStore.subscribe(render);
-  if (unsubscribeSync) unsubscribeSync();
-  unsubscribeSync = subscribeSyncStatus(refreshSyncStatusFields);
-  if (unsubscribeAuth) unsubscribeAuth();
-  unsubscribeAuth = subscribeAuthUiState(refreshAuthStatusFields);
-  if (unsubscribeOneDrive) unsubscribeOneDrive();
-  unsubscribeOneDrive = subscribeOneDriveConnection(refreshOneDriveStatusFields);
-  if (unsubscribeDevice) unsubscribeDevice();
-  unsubscribeDevice = subscribeDeviceName(refreshDeviceFields);
-  if (unsubscribeSyncDiagnosticLog) unsubscribeSyncDiagnosticLog();
-  unsubscribeSyncDiagnosticLog = subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);
+  if(unsubscribe)unsubscribe(); unsubscribe=surveyCandidateStore.subscribe(render);
+  if(unsubscribeSync)unsubscribeSync(); unsubscribeSync=subscribeSyncStatus(refreshSyncStatusFields);
+  if(unsubscribeAuth)unsubscribeAuth(); unsubscribeAuth=subscribeAuthUiState(refreshAuthStatusFields);
+  if(unsubscribeOneDrive)unsubscribeOneDrive(); unsubscribeOneDrive=subscribeOneDriveConnection(refreshOneDriveStatusFields);
+  if(unsubscribeDevice)unsubscribeDevice(); unsubscribeDevice=subscribeDeviceName(refreshDeviceFields);
+  if(unsubscribeSyncDiagnosticLog)unsubscribeSyncDiagnosticLog(); unsubscribeSyncDiagnosticLog=subscribeSyncDiagnosticLog(refreshSyncDiagnosticLogView);
   refreshSyncDiagnosticLogView();
 }
