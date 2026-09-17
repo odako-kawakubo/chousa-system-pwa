@@ -3,7 +3,7 @@
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
 
-const APP_CACHE = 'chousa-app-v0.1.7.6-r6';
+const APP_CACHE = 'chousa-app-v0.1.7.6-r7';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
@@ -86,12 +86,18 @@ const APP_SHELL = [
   './js/output/output-controller.js',
   './js/output/output-view-model.js',
   './js/output/output-state.js',
+  './js/output/output-settings-store.js',
+  './js/output/output-settings-ui.js',
   './js/output/output-photo-selection.js',
   './js/output/output-photo-layout.js',
   './js/output/output-photo-source.js',
   './js/output/output-report-renderer.js',
   './js/output/output-pdf-renderer.js',
   './js/output/output-export-controller.js',
+  './js/settings/settings-controller.js',
+  './js/settings/settings-renderer.js',
+  './js/settings/board-settings-store.js',
+  './js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/materials/material-sample-name.js',
   './js/demo/sample-session.js',
@@ -103,7 +109,7 @@ const APP_SHELL = [
 function appCacheKey(request) {
   const url = new URL(request.url);
   url.search = '';
-  return new Request(url.toString(), { method: 'GET' });
+  return new Request(url.toString(), { method:'GET' });
 }
 
 async function networkFirstAppRequest(request) {
@@ -111,7 +117,7 @@ async function networkFirstAppRequest(request) {
   const cacheKey = appCacheKey(request);
   try {
     const response = await fetch(request);
-    if (response && response.ok) await cache.put(cacheKey, response.clone());
+    if (response && response.ok) await cache.put(cacheKey,response.clone());
     return response;
   } catch (error) {
     const cached = await cache.match(cacheKey);
@@ -120,49 +126,38 @@ async function networkFirstAppRequest(request) {
   }
 }
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL)));
+self.addEventListener('install',(event)=>{
+  event.waitUntil(caches.open(APP_CACHE).then((cache)=>cache.addAll(APP_SHELL)));
 });
 
-self.addEventListener('message', (event) => {
+self.addEventListener('message',(event)=>{
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate',(event)=>{
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(
+      .then((keys)=>Promise.all(
         keys
-          .filter((key) => (
-            key.startsWith(APP_CACHE_PREFIX) && key !== APP_CACHE
-          ) || (
-            key.startsWith('chousa-firebase-') && key !== FIREBASE_SDK_CACHE
-          ))
-          .map((key) => caches.delete(key))
+          .filter((key)=>(key.startsWith(APP_CACHE_PREFIX)&&key!==APP_CACHE)||(key.startsWith('chousa-firebase-')&&key!==FIREBASE_SDK_CACHE))
+          .map((key)=>caches.delete(key))
       ))
-      .then(() => self.clients.claim())
+      .then(()=>self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', (event) => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
-  const url = new URL(request.url);
-
-  if (url.origin === self.location.origin) {
-    event.respondWith(networkFirstAppRequest(request));
-    return;
-  }
-
-  if (request.url.startsWith(FIREBASE_SDK_PREFIX)) {
-    event.respondWith(
-      caches.open(FIREBASE_SDK_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        if (cached) return cached;
-        const response = await fetch(request);
-        cache.put(request, response.clone());
-        return response;
-      })
-    );
+self.addEventListener('fetch',(event)=>{
+  const request=event.request;
+  if(request.method!=='GET')return;
+  const url=new URL(request.url);
+  if(url.origin===self.location.origin){event.respondWith(networkFirstAppRequest(request));return;}
+  if(request.url.startsWith(FIREBASE_SDK_PREFIX)){
+    event.respondWith(caches.open(FIREBASE_SDK_CACHE).then(async(cache)=>{
+      const cached=await cache.match(request);
+      if(cached)return cached;
+      const response=await fetch(request);
+      cache.put(request,response.clone());
+      return response;
+    }));
   }
 });
