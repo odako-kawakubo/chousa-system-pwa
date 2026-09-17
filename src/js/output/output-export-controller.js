@@ -2,17 +2,16 @@
  * src/js/output/output-export-controller.js
  * PDF / 印刷 / Excel の共通選択画面と出力実行。
  *
- * v0.1.7.6 r4:
- * - PDFは専用ベクターレンダラーへ切替。
- * - html2canvasによるA4全面画像化は廃止。
+ * v0.1.7.6 r5:
+ * - PDFは専用ベクターレンダラーを使用。
+ * - 写真準備はプレビューと共通化。
  * - 印刷はHTML/CSS、ExcelはExcelJSの既存経路を維持する。
  */
 import { buildOutputViewModel } from './output-view-model.js';
 import { buildOutputPaperHtml, OUTPUT_TARGETS } from './output-report-renderer.js';
 import { fitOutputPhotoImages } from './output-photo-layout.js';
 import { exportVectorPdf } from './output-pdf-renderer.js';
-import { resolveViewerCompletedPhoto } from '../photos/photo-viewer-source.js';
-import * as photoRecordStore from '../store/photo-record-store.js';
+import { prepareOutputPhotoSources } from './output-photo-source.js';
 import { getCurrentProject } from '../projects/project-store.js';
 
 const TARGET_ORDER = ['materials', 'rooms', 'visual-photos', 'sampling-photos'];
@@ -59,46 +58,14 @@ function loadScript(src, globalName) {
     document.head.appendChild(script);
   });
 }
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('写真変換に失敗しました。'));
-    reader.readAsDataURL(blob);
-  });
-}
 function selectedTargets() {
   return TARGET_ORDER.filter((key) => modal?.querySelector(`[data-output-target="${key}"]`)?.checked);
-}
-function collectPhotoIds(targets, vm) {
-  const ids = new Set();
-  if (targets.includes('visual-photos')) (vm.visualPhotoItems || []).forEach((item) => { if (item.photoId) ids.add(String(item.photoId)); });
-  if (targets.includes('sampling-photos')) (vm.samplingPhotoPages || []).forEach((page) => (page.stages || []).forEach((stage) => { if (stage.photoId) ids.add(String(stage.photoId)); }));
-  return [...ids];
 }
 function setStatus(text, progress = null) {
   const node = modal?.querySelector('[data-output-export-status]');
   if (node) node.textContent = text || '';
   const bar = modal?.querySelector('[data-output-export-progress]');
   if (bar && progress != null) bar.value = progress;
-}
-async function preparePhotoSources(targets, vm) {
-  const ids = collectPhotoIds(targets, vm);
-  const result = new Map();
-  if (!ids.length) return result;
-  for (let index = 0; index < ids.length; index += 1) {
-    const id = ids[index];
-    setStatus(`写真を準備中 ${index + 1} / ${ids.length}`, (index + 1) / ids.length);
-    const photo = photoRecordStore.get(id);
-    if (!photo) continue;
-    try {
-      const blob = await resolveViewerCompletedPhoto(photo);
-      if (blob instanceof Blob) result.set(id, await blobToDataUrl(blob));
-    } catch (error) {
-      console.warn('出力用写真の準備に失敗しました', { id, error });
-    }
-  }
-  return result;
 }
 function ensureModal() {
   if (modal) return;
@@ -245,7 +212,7 @@ async function runExport() {
   modal.querySelector('[data-output-export-run]').disabled = true;
   try {
     const vm = buildOutputViewModel();
-    const photoSources = await preparePhotoSources(targets, vm);
+    const photoSources = await prepareOutputPhotoSources(targets, vm, { onProgress:setStatus });
     setStatus('出力を作成しています…', 1);
     if (method === 'pdf') await exportPdf(targets, vm, photoSources);
     else if (method === 'print') await exportPrint(targets, vm, photoSources);
