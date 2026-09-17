@@ -7,6 +7,6 @@
 export const appConfig = {
   appName: '調査システムPWA',
   version: '0.1.7.6',
-  revision: 'r6',
+  revision: 'r7',
   mode: 'review'
 };
