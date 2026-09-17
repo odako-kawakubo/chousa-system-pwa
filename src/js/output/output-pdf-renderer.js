@@ -1,13 +1,9 @@
 /**
  * src/js/output/output-pdf-renderer.js
  *
- * PDF専用レンダラー。
- * HTMLを画像化せず、文字・罫線・塗りをjsPDFへ直接描画する。
- * 写真だけJPEG/PNGとして配置する。
- *
- * 日本語フォント:
- * BIZ UDPGothic (SIL Open Font License 1.1)
- * https://github.com/googlefonts/morisawa-biz-ud-gothic
+ * PDF専用ベクターレンダラー。
+ * 文字・罫線・塗りはjsPDFで直接描画し、写真だけ画像として配置する。
+ * 建材リスト / 部屋別リストは固定行数を使わず、実際の行高からページ分割する。
  */
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
@@ -30,9 +26,18 @@ const MARGIN_X = 10;
 const RED = [192, 0, 0];
 const BLACK = [17, 17, 17];
 const HEADER_FILL = [230, 230, 230];
-const MATERIAL_ROWS_PER_PAGE = 24;
-const ROOM_ROWS_PER_PAGE = 24;
 const VISUAL_ITEMS_PER_PAGE = 8;
+
+const LIST_START_Y = 27;
+const LIST_HEADER_H = 6.5;
+const LIST_TABLE_BOTTOM_Y = 269;
+const LIST_FOOTNOTE_Y = 274;
+const MATERIAL_BASE_ROW_H = 6.8;
+const ROOM_BASE_ROW_H = 8;
+const LIST_BODY_SIZE = 7.5;
+const LIST_HEADER_SIZE = 7.5;
+
+const DEFAULT_LIST_FOOTNOTE = '※ケイ酸カルシウム板第１種は、飛散性の高いレベル３建材として、環境省、厚生労働省の告示で定められました。\nこれを切断等の方法で除去する場合、作業場をビニールシート等で隔離し、常時湿潤な状態を保ちながら作業することが必要になります。\nまた、建築用仕上塗材を電動工具を使用して除去を行う場合においても、大気汚染防止法施行令及び石綿障害予防規則にて作業場の隔離、常時湿潤な状態での作業が必要です。';
 
 function loadScript(src, globalName) {
   if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
@@ -101,69 +106,61 @@ function isPositive(value) {
   return text.includes('含有');
 }
 
-function roomKey(row) { return `${row.floor}\u0000${row.roomNo}`; }
-function paginateRoomRows(rows) {
-  if (!rows.length) return [[]];
-  const groups = [];
-  let current = [];
-  let currentKey = '';
-  rows.forEach((row) => {
-    const key = roomKey(row);
-    if (current.length && key !== currentKey) { groups.push(current); current = []; }
-    currentKey = key;
-    current.push(row);
-  });
-  if (current.length) groups.push(current);
-
-  const pages = [];
-  let page = [];
-  groups.forEach((group) => {
-    if (group.length > ROOM_ROWS_PER_PAGE) {
-      if (page.length) pages.push(page);
-      page = [];
-      for (let index = 0; index < group.length; index += ROOM_ROWS_PER_PAGE) pages.push(group.slice(index, index + ROOM_ROWS_PER_PAGE));
-      return;
-    }
-    if (page.length && page.length + group.length > ROOM_ROWS_PER_PAGE) { pages.push(page); page = []; }
-    page.push(...group);
-  });
-  if (page.length) pages.push(page);
-  return pages.length ? pages : [[]];
-}
-
-function spanLength(rows, index, key, parentKey = null) {
-  const value = rows[index]?.[key];
-  const parentValue = parentKey ? rows[index]?.[parentKey] : null;
-  let count = 1;
-  for (let i = index + 1; i < rows.length; i += 1) {
-    if (rows[i]?.[key] !== value) break;
-    if (parentKey && rows[i]?.[parentKey] !== parentValue) break;
-    count += 1;
-  }
-  return count;
-}
-function shouldRenderGroupedCell(rows, index, key, parentKey = null) {
-  if (index === 0) return true;
-  if (rows[index - 1]?.[key] !== rows[index]?.[key]) return true;
-  return Boolean(parentKey && rows[index - 1]?.[parentKey] !== rows[index]?.[parentKey]);
-}
-
 function setFont(pdf, size, style = 'normal', color = BLACK) {
   pdf.setFont(FONT_FAMILY, style);
   pdf.setFontSize(size);
   pdf.setTextColor(...color);
 }
 
-function fitLines(pdf, value, width, maxLines = 2) {
+function textLines(pdf, value, width) {
   const text = String(value ?? '');
   if (!text) return [];
-  const lines = pdf.splitTextToSize(text, Math.max(1, width));
-  if (lines.length <= maxLines) return lines;
-  const result = lines.slice(0, maxLines);
-  let last = String(result[maxLines - 1] || '');
-  while (last && pdf.getTextWidth(`${last}…`) > width) last = last.slice(0, -1);
-  result[maxLines - 1] = `${last}…`;
-  return result;
+  return pdf.splitTextToSize(text, Math.max(1, width));
+}
+
+function roomNoTokens(value) {
+  return String(value ?? '')
+    .split(/[、，,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function wrapRoomNoLines(pdf, value, width, size = LIST_BODY_SIZE) {
+  const tokens = roomNoTokens(value);
+  if (!tokens.length) return [];
+  setFont(pdf, size, 'normal');
+  const lines = [];
+  let current = '';
+  tokens.forEach((token) => {
+    const next = current ? `${current}、${token}` : token;
+    if (!current || pdf.getTextWidth(next) <= width) {
+      current = next;
+      return;
+    }
+    lines.push(current);
+    current = token;
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+function lineBlockHeight(size, lineCount, lineHeight = 1.12, paddingY = 1.2) {
+  if (!lineCount) return 0;
+  return lineCount * size * 0.352778 * lineHeight + paddingY * 2;
+}
+
+function requiredTextHeight(pdf, value, width, options = {}) {
+  const {
+    size = LIST_BODY_SIZE,
+    lineHeight = 1.12,
+    paddingX = .8,
+    paddingY = 1.2,
+    roomTokens = false
+  } = options;
+  setFont(pdf, size, 'normal');
+  const usable = Math.max(1, width - paddingX * 2);
+  const lines = roomTokens ? wrapRoomNoLines(pdf, value, usable, size) : textLines(pdf, value, usable);
+  return Math.max(0, lineBlockHeight(size, lines.length, lineHeight, paddingY));
 }
 
 function drawCellText(pdf, value, x, y, width, height, options = {}) {
@@ -173,13 +170,19 @@ function drawCellText(pdf, value, x, y, width, height, options = {}) {
     style = 'normal',
     color = BLACK,
     paddingX = 1.1,
-    maxLines = 2,
-    lineHeight = 1.12
+    maxLines = Infinity,
+    lineHeight = 1.12,
+    roomTokens = false
   } = options;
   setFont(pdf, size, style, color);
   const usable = Math.max(1, width - paddingX * 2);
-  const lines = Array.isArray(value) ? value.map(String) : fitLines(pdf, value, usable, maxLines);
+  let lines;
+  if (Array.isArray(value)) lines = value.map(String);
+  else if (roomTokens) lines = wrapRoomNoLines(pdf, value, usable, size);
+  else lines = textLines(pdf, value, usable);
+  if (Number.isFinite(maxLines)) lines = lines.slice(0, Math.max(0, maxLines));
   if (!lines.length) return;
+
   const mmPerPt = 0.352778;
   const step = size * mmPerPt * lineHeight;
   const total = step * lines.length;
@@ -214,132 +217,314 @@ function addPage(pdf, state) {
   state.pageCount += 1;
 }
 
+function drawListFootnote(pdf) {
+  setFont(pdf, 6.4, 'normal', BLACK);
+  const lines = [];
+  DEFAULT_LIST_FOOTNOTE.split('\n').forEach((paragraph) => {
+    const wrapped = pdf.splitTextToSize(paragraph, 190);
+    lines.push(...wrapped);
+  });
+  pdf.text(lines, MARGIN_X, LIST_FOOTNOTE_Y, { lineHeightFactor:1.25 });
+}
+
 function drawMaterialHeader(pdf, x, y, widths, height) {
   const labels = [
-    ['建','材','No.'], ['建材名'], ['部位'], null,
-    ['建','材','Lv.'], ['分析の要否'], ['石綿含有','の有無'], ['調査備考']
+    ['建材','No.'], ['建材名'], ['部位'], null,
+    ['建材','レベル'], ['分析の要否'], ['石綿含有','の有無'], ['調査備考']
   ];
   let cx = x;
   widths.forEach((width, index) => {
     drawRect(pdf, cx, y, width, height, { fill:HEADER_FILL });
     if (index === 3) {
-      const topH = height / 3;
+      const topH = height * .38;
       pdf.setDrawColor(...BLACK);
       pdf.setLineWidth(0.2);
       pdf.line(cx, y + topH, cx + width, y + topH);
-      drawCellText(pdf, '施工範囲', cx, y, width, topH, { align:'center', size:6.5, style:'bold', maxLines:1, paddingX:.3 });
-      drawCellText(pdf, '部屋No.', cx, y + topH, width, height - topH, { align:'center', size:7, style:'bold', maxLines:1, paddingX:.3 });
+      drawCellText(pdf, '施工範囲', cx, y, width, topH, { align:'center', size:7, style:'bold', paddingX:.3, lineHeight:1 });
+      drawCellText(pdf, '部屋No.', cx, y + topH, width, height - topH, { align:'center', size:LIST_HEADER_SIZE, style:'bold', paddingX:.3, lineHeight:1 });
     } else {
-      drawCellText(pdf, labels[index], cx, y, width, height, { align:'center', size:7, style:'bold', maxLines:3, paddingX:.35, lineHeight:1 });
+      drawCellText(pdf, labels[index], cx, y, width, height, { align:'center', size:LIST_HEADER_SIZE, style:'bold', paddingX:.25, lineHeight:1 });
     }
     cx += width;
   });
 }
 
-function renderMaterialPages(pdf, vm, state) {
-  const pages = chunkRows(vm.materialRows || [], MATERIAL_ROWS_PER_PAGE);
-  const widths = [6,33,10,42,6,19,19,55];
-  const headerH = 5;
-  const rowH = 6.8;
-  const x = 10;
-  const startY = 27;
+function materialRowHeight(pdf, row, widths) {
+  const values = [row.materialNo,row.name,row.part,row.usageLocation,row.level,row.analysisRequired,row.analysisResult,row.note];
+  let height = MATERIAL_BASE_ROW_H;
+  values.forEach((value, index) => {
+    const needed = requiredTextHeight(pdf, value, widths[index], {
+      roomTokens:index === 3,
+      paddingX:index === 3 ? .8 : .8,
+      paddingY:.9
+    });
+    height = Math.max(height, needed);
+  });
+  return Math.min(24, height);
+}
 
-  pages.forEach((rows) => {
+function paginateVariableRows(rows, heights, availableHeight) {
+  const pages = [];
+  let currentRows = [];
+  let currentHeights = [];
+  let used = 0;
+
+  rows.forEach((row, index) => {
+    const rowHeight = heights[index];
+    if (currentRows.length && used + rowHeight > availableHeight) {
+      pages.push({ rows:currentRows, heights:currentHeights });
+      currentRows = [];
+      currentHeights = [];
+      used = 0;
+    }
+    currentRows.push(row);
+    currentHeights.push(rowHeight);
+    used += rowHeight;
+  });
+
+  if (currentRows.length || !pages.length) pages.push({ rows:currentRows, heights:currentHeights });
+  return pages;
+}
+
+function drawMaterialBodyRow(pdf, row, y, rowH, widths, isBlank = false, blankLabel = '') {
+  const positive = row ? isPositive(row.analysisResult) : false;
+  const values = row
+    ? [row.materialNo,row.name,row.part,row.usageLocation,row.level,row.analysisRequired,row.analysisResult,row.note]
+    : ['', blankLabel, '', '', '', '', '', ''];
+
+  let cx = MARGIN_X;
+  widths.forEach((width, colIndex) => {
+    drawRect(pdf, cx, y, width, rowH);
+    const center = [0,2,4,5,6].includes(colIndex);
+    drawCellText(pdf, values[colIndex], cx, y, width, rowH, {
+      align:center ? 'center' : 'left',
+      size:isBlank && colIndex === 1 ? 7 : LIST_BODY_SIZE,
+      color:positive ? RED : BLACK,
+      paddingX:.8,
+      roomTokens:colIndex === 3
+    });
+    cx += width;
+  });
+}
+
+function fillMaterialBlankRows(pdf, startY, widths) {
+  let y = startY;
+  let first = true;
+  while (LIST_TABLE_BOTTOM_Y - y >= 3.2) {
+    const remaining = LIST_TABLE_BOTTOM_Y - y;
+    const rowH = Math.min(MATERIAL_BASE_ROW_H, remaining);
+    drawMaterialBodyRow(pdf, null, y, rowH, widths, true, first ? '以下余白' : '');
+    first = false;
+    y += rowH;
+  }
+}
+
+function renderMaterialPages(pdf, vm, state) {
+  const widths = [6,33,10,42,6,19,19,55];
+  const rows = vm.materialRows || [];
+  const heights = rows.map((row) => materialRowHeight(pdf, row, widths));
+  const available = LIST_TABLE_BOTTOM_Y - (LIST_START_Y + LIST_HEADER_H);
+  const pages = paginateVariableRows(rows, heights, available);
+
+  pages.forEach((page, pageIndex) => {
     addPage(pdf, state);
     drawTitle(pdf, '調査対象建材リスト');
-    drawMaterialHeader(pdf, x, startY, widths, headerH);
-    let y = startY + headerH;
-    for (let index = 0; index < MATERIAL_ROWS_PER_PAGE; index += 1) {
-      const row = rows[index] || null;
-      const positive = row ? isPositive(row.analysisResult) : false;
-      const values = row
-        ? [row.materialNo,row.name,row.part,row.usageLocation,row.level,row.analysisRequired,row.analysisResult,row.note]
-        : ['', index === rows.length ? '以下余白' : '', '', '', '', '', '', ''];
-      let cx = x;
-      widths.forEach((width, colIndex) => {
-        drawRect(pdf, cx, y, width, rowH);
-        const center = [0,2,4,5,6].includes(colIndex);
-        drawCellText(pdf, values[colIndex], cx, y, width, rowH, {
-          align:center ? 'center' : 'left',
-          size:colIndex === 1 && !row ? 7 : 7.1,
-          color:positive ? RED : BLACK,
-          maxLines:2,
-          paddingX:.8
-        });
-        cx += width;
-      });
+    drawMaterialHeader(pdf, MARGIN_X, LIST_START_Y, widths, LIST_HEADER_H);
+    let y = LIST_START_Y + LIST_HEADER_H;
+    page.rows.forEach((row, index) => {
+      const rowH = page.heights[index];
+      drawMaterialBodyRow(pdf, row, y, rowH, widths);
       y += rowH;
-    }
+    });
+    if (pageIndex === pages.length - 1) fillMaterialBlankRows(pdf, y, widths);
+    drawListFootnote(pdf);
   });
 }
 
 function drawRoomHeader(pdf, x, y, widths, height) {
   const labels = [
-    ['階'],['部屋No.'],['部屋名'],['部位'],['建','材','No.'],['建材名称'],['調査備考'],['建','材','Lv.'],['分析結果'],['部屋備考']
+    ['階'],['部屋No.'],['部屋名'],['部位'],['建材','No.'],['建材名称'],['調査備考'],['建材','レベル'],['分析結果'],['部屋備考']
   ];
   let cx = x;
   widths.forEach((width, index) => {
     drawRect(pdf, cx, y, width, height, { fill:HEADER_FILL });
-    drawCellText(pdf, labels[index], cx, y, width, height, { align:'center', size:7, style:'bold', maxLines:3, paddingX:.3, lineHeight:1 });
+    drawCellText(pdf, labels[index], cx, y, width, height, { align:'center', size:LIST_HEADER_SIZE, style:'bold', paddingX:.25, lineHeight:1 });
     cx += width;
   });
 }
 
-function renderRoomPages(pdf, vm, state) {
-  const pages = paginateRoomRows(vm.roomRows || []);
-  const widths = [10,12,22,10,6,33,42,6,19,30];
-  const headerH = 5;
-  const rowH = 8;
-  const x = 10;
-  const startY = 27;
-  const xs = [x];
+function roomRowBaseHeight(pdf, row, widths) {
+  const values = [
+    { col:3, value:row.part },
+    { col:4, value:row.materialNo },
+    { col:5, value:row.materialName },
+    { col:6, value:row.note },
+    { col:7, value:row.level },
+    { col:8, value:row.analysisResult }
+  ];
+  let height = ROOM_BASE_ROW_H;
+  values.forEach(({ col, value }) => {
+    height = Math.max(height, requiredTextHeight(pdf, value, widths[col], { paddingX:.8, paddingY:.9 }));
+  });
+  return Math.min(26, height);
+}
+
+function groupRanges(rows, keyFn) {
+  const ranges = [];
+  let start = 0;
+  while (start < rows.length) {
+    const key = keyFn(rows[start]);
+    let end = start + 1;
+    while (end < rows.length && keyFn(rows[end]) === key) end += 1;
+    ranges.push({ start, end });
+    start = end;
+  }
+  return ranges;
+}
+
+function ensureGroupedCellHeight(pdf, rows, heights, range, value, width, options = {}) {
+  const needed = requiredTextHeight(pdf, value, width, options);
+  const current = heights.slice(range.start, range.end).reduce((sum, height) => sum + height, 0);
+  if (needed <= current) return;
+  heights[range.end - 1] += needed - current;
+}
+
+function calculateRoomHeights(pdf, rows, widths) {
+  const heights = rows.map((row) => roomRowBaseHeight(pdf, row, widths));
+
+  groupRanges(rows, (row) => String(row.floor ?? '')).forEach((range) => {
+    ensureGroupedCellHeight(pdf, rows, heights, range, rows[range.start]?.floor, widths[0], { paddingX:.4, paddingY:.9 });
+  });
+
+  groupRanges(rows, (row) => `${row.floor}\u0000${row.roomNo}`).forEach((range) => {
+    const first = rows[range.start] || {};
+    ensureGroupedCellHeight(pdf, rows, heights, range, first.roomNo, widths[1], { paddingX:.6, paddingY:.9, roomTokens:true });
+    ensureGroupedCellHeight(pdf, rows, heights, range, first.roomName, widths[2], { paddingX:.8, paddingY:.9 });
+    ensureGroupedCellHeight(pdf, rows, heights, range, first.roomNote, widths[9], { paddingX:.8, paddingY:.9 });
+  });
+
+  return heights;
+}
+
+function paginateRoomVariableRows(rows, heights, availableHeight) {
+  const pages = [];
+  let start = 0;
+  while (start < rows.length) {
+    let used = 0;
+    let end = start;
+    while (end < rows.length) {
+      const next = heights[end];
+      if (end > start && used + next > availableHeight) break;
+      used += next;
+      end += 1;
+    }
+    pages.push({ rows:rows.slice(start, end), heights:heights.slice(start, end) });
+    start = end;
+  }
+  return pages.length ? pages : [{ rows:[], heights:[] }];
+}
+
+function pageSpan(rows, index, keyFn) {
+  const key = keyFn(rows[index]);
+  let count = 1;
+  for (let i = index + 1; i < rows.length; i += 1) {
+    if (keyFn(rows[i]) !== key) break;
+    count += 1;
+  }
+  return count;
+}
+
+function precedingSame(rows, index, keyFn) {
+  return index > 0 && keyFn(rows[index - 1]) === keyFn(rows[index]);
+}
+
+function spanHeight(heights, index, span) {
+  return heights.slice(index, index + span).reduce((sum, value) => sum + value, 0);
+}
+
+function renderRoomPageBody(pdf, rows, heights, widths) {
+  const xs = [MARGIN_X];
   widths.forEach((width) => xs.push(xs[xs.length - 1] + width));
+  let y = LIST_START_Y + LIST_HEADER_H;
 
-  pages.forEach((rows) => {
-    addPage(pdf, state);
-    drawTitle(pdf, '部屋別調査対象建材リスト');
-    drawRoomHeader(pdf, x, startY, widths, headerH);
-    const bodyY = startY + headerH;
+  rows.forEach((row, index) => {
+    const rowH = heights[index];
+    const positive = isPositive(row.analysisResult);
+    const color = positive ? RED : BLACK;
 
-    rows.forEach((row, index) => {
-      const y = bodyY + index * rowH;
-      const positive = isPositive(row.analysisResult);
-      const color = positive ? RED : BLACK;
+    [
+      { col:3, value:row.part, center:true },
+      { col:4, value:row.materialNo, center:true },
+      { col:5, value:row.materialName },
+      { col:6, value:row.note },
+      { col:7, value:row.level, center:true },
+      { col:8, value:row.analysisResult, center:true }
+    ].forEach((cell) => {
+      drawRect(pdf, xs[cell.col], y, widths[cell.col], rowH);
+      drawCellText(pdf, cell.value, xs[cell.col], y, widths[cell.col], rowH, {
+        align:cell.center ? 'center' : 'left', size:LIST_BODY_SIZE, color, paddingX:.8
+      });
+    });
 
-      const cells = [
-        { col:3, value:row.part, center:true },
-        { col:4, value:row.materialNo, center:true },
-        { col:5, value:row.materialName },
-        { col:6, value:row.note },
-        { col:7, value:row.level, center:true },
-        { col:8, value:row.analysisResult, center:true }
-      ];
-      cells.forEach((cell) => {
-        drawRect(pdf, xs[cell.col], y, widths[cell.col], rowH);
-        drawCellText(pdf, cell.value, xs[cell.col], y, widths[cell.col], rowH, {
-          align:cell.center ? 'center' : 'left', size:7.1, color, maxLines:2, paddingX:.8
+    const floorKey = (item) => String(item.floor ?? '');
+    if (!precedingSame(rows, index, floorKey)) {
+      const span = pageSpan(rows, index, floorKey);
+      const height = spanHeight(heights, index, span);
+      drawRect(pdf, xs[0], y, widths[0], height);
+      drawCellText(pdf, row.floor, xs[0], y, widths[0], height, { align:'center', size:LIST_BODY_SIZE, color, paddingX:.4 });
+    }
+
+    const roomKey = (item) => `${item.floor}\u0000${item.roomNo}`;
+    if (!precedingSame(rows, index, roomKey)) {
+      const span = pageSpan(rows, index, roomKey);
+      const height = spanHeight(heights, index, span);
+      [
+        { col:1, value:row.roomNo, center:true, roomTokens:true },
+        { col:2, value:row.roomName, center:true },
+        { col:9, value:row.roomNote, center:false }
+      ].forEach((cell) => {
+        drawRect(pdf, xs[cell.col], y, widths[cell.col], height);
+        drawCellText(pdf, cell.value, xs[cell.col], y, widths[cell.col], height, {
+          align:cell.center ? 'center' : 'left', size:LIST_BODY_SIZE, color, paddingX:.8, roomTokens:cell.roomTokens
         });
       });
+    }
 
-      if (shouldRenderGroupedCell(rows, index, 'floor')) {
-        const span = spanLength(rows, index, 'floor');
-        drawRect(pdf, xs[0], y, widths[0], rowH * span);
-        drawCellText(pdf, row.floor, xs[0], y, widths[0], rowH * span, { align:'center', size:7.1, color, maxLines:2, paddingX:.4 });
-      }
-      if (shouldRenderGroupedCell(rows, index, 'roomNo', 'floor')) {
-        const span = spanLength(rows, index, 'roomNo', 'floor');
-        [
-          { col:1, value:row.roomNo, center:true },
-          { col:2, value:row.roomName, center:true },
-          { col:9, value:row.roomNote, center:false }
-        ].forEach((cell) => {
-          drawRect(pdf, xs[cell.col], y, widths[cell.col], rowH * span);
-          drawCellText(pdf, cell.value, xs[cell.col], y, widths[cell.col], rowH * span, {
-            align:cell.center ? 'center' : 'left', size:7.1, color, maxLines:Math.max(2, span * 2), paddingX:.8
-          });
-        });
-      }
-    });
+    y += rowH;
+  });
+
+  return y;
+}
+
+function fillRoomBlankRows(pdf, startY, widths) {
+  const xs = [MARGIN_X];
+  widths.forEach((width) => xs.push(xs[xs.length - 1] + width));
+  let y = startY;
+  let first = true;
+  while (LIST_TABLE_BOTTOM_Y - y >= 3.2) {
+    const remaining = LIST_TABLE_BOTTOM_Y - y;
+    const rowH = Math.min(ROOM_BASE_ROW_H, remaining);
+    widths.forEach((width, index) => drawRect(pdf, xs[index], y, width, rowH));
+    if (first) drawCellText(pdf, '以下余白', xs[5], y, widths[5], rowH, { size:7, paddingX:.8 });
+    first = false;
+    y += rowH;
+  }
+}
+
+function renderRoomPages(pdf, vm, state) {
+  const widths = [10,12,22,10,6,33,42,6,19,30];
+  const rows = vm.roomRows || [];
+  const heights = calculateRoomHeights(pdf, rows, widths);
+  const available = LIST_TABLE_BOTTOM_Y - (LIST_START_Y + LIST_HEADER_H);
+  const pages = paginateRoomVariableRows(rows, heights, available);
+
+  pages.forEach((page, pageIndex) => {
+    addPage(pdf, state);
+    drawTitle(pdf, '部屋別調査対象建材リスト');
+    drawRoomHeader(pdf, MARGIN_X, LIST_START_Y, widths, LIST_HEADER_H);
+    const endY = renderRoomPageBody(pdf, page.rows, page.heights, widths);
+    if (pageIndex === pages.length - 1) fillRoomBlankRows(pdf, endY, widths);
+    drawListFootnote(pdf);
   });
 }
 
@@ -388,7 +573,7 @@ function renderVisualPhotoPages(pdf, vm, photoSources, state) {
       const source = photoSources?.get?.(String(item.photoId || '')) || '';
       addContainedImage(pdf, source, x, y, slotW, photoH);
       const caption = [`建材No.${item.materialNo}`, item.part, item.name].filter((v) => String(v ?? '').trim()).join('　');
-      drawCellText(pdf, caption, x, y + photoH, slotW, captionH, { size:11, style:'bold', maxLines:1, paddingX:0 });
+      drawCellText(pdf, caption, x, y + photoH, slotW, captionH, { size:11, style:'bold', paddingX:0 });
     }
   });
 }
@@ -430,9 +615,7 @@ function renderSamplingPages(pdf, vm, photoSources, state) {
     pdf.text(String(item.capturedDate || ''), 154, metaY + lineH);
 
     const stageMap = new Map((item.stages || []).map((stage) => [stage.type, stage]));
-    const order = [
-      ['before','施工前'],['during','施工中'],['after','施工後']
-    ];
+    const order = [['before','施工前'],['during','施工中'],['after','施工後']];
     order.forEach(([type,label], index) => {
       const stage = stageMap.get(type) || { label, photoId:'', memo:'' };
       const y = 57 + index * 72;
@@ -444,7 +627,7 @@ function renderSamplingPages(pdf, vm, photoSources, state) {
       const source = photoSources?.get?.(String(stage.photoId || '')) || '';
       addContainedImage(pdf, source, photoX, y, photoW, photoH);
 
-      drawCellText(pdf, `撮影状況：${stage.label || label}`, memoX, y, memoW, 7, { size:11, style:'bold', maxLines:1, paddingX:0 });
+      drawCellText(pdf, `撮影状況：${stage.label || label}`, memoX, y, memoW, 7, { size:11, style:'bold', paddingX:0 });
       const memoTop = y + 7;
       const memoH = 62;
       const lineHeight = memoH / 9;
