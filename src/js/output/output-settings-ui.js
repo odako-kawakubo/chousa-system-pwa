@@ -89,3 +89,5 @@ export function collectOutputSettings(container, base = {}) {
   });
   return normalizeOutputSettings(next);
 }
+
+ensureOutputSettingsStyles();
