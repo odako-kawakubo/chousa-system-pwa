@@ -9,10 +9,61 @@ on:
 permissions:
   contents: read
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+concurrency:
+  group: firebase-preview-v0176
+  cancel-in-progress: true
 
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+
+      - name: v0.1.7.6 r8 consistency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "version: '0.1.7.6'" src/config/app-config.js
+          grep -q "revision: 'r8'" src/config/app-config.js
+          grep -q '"version": "0.1.7.6"' src/version.json
+          grep -q '"revision": "r8"' src/version.json
+          grep -q "chousa-app-v0.1.7.6-r8" src/service-worker.js
+
+          test -f src/js/output/output-pdf-preview.js
+          test -f src/js/output/output-format.js
+          test -f src/js/output/output-targets.js
+          grep -q "OutputPdfPreview" src/js/output/output-controller.js
+          grep -q "formatSamplingCode" src/js/output/output-pdf-renderer.js
+          grep -q "formatSamplingCode" src/js/output/output-export-controller.js
+          grep -q "MATERIAL_WIDTHS.*6,33,12,42,6,19,19,53" src/js/output/output-pdf-renderer.js
+          grep -q "ROOM_WIDTHS.*10,12,22,12,6,38,35,6,19,30" src/js/output/output-pdf-renderer.js
+
+          if grep -R "output-report-renderer\|output-photo-layout" -n src; then
+            echo "obsolete HTML output path remains"
+            exit 1
+          fi
+          if test -e src/js/debug/h-log.js; then
+            echo "legacy h-log.js remains"
+            exit 1
+          fi
+          if test -e .firebase/hosting..cache; then
+            echo "generated Firebase cache is tracked"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
