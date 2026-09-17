@@ -4,9 +4,9 @@
  * PDFと印刷は同じベクターPDF生成経路を使用する。
  */
 import { buildOutputViewModel } from './output-view-model.js';
-import { exportVectorPdf, createVectorPdfBlob } from './output-pdf-renderer.js';
+import { exportVectorPdf,createVectorPdfBlob } from './output-pdf-renderer.js';
 import { prepareOutputPhotoSources } from './output-photo-source.js';
-import { OUTPUT_TARGETS, OUTPUT_TARGET_ORDER } from './output-targets.js';
+import { OUTPUT_TARGETS,OUTPUT_TARGET_ORDER } from './output-targets.js';
 import { formatSamplingCode } from './output-format.js';
 import { getOutputSettings } from './output-settings-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -15,6 +15,7 @@ let modal=null;
 let method='pdf';
 let running=false;
 let settingsProvider=getOutputSettings;
+let viewModelProvider=()=>buildOutputViewModel();
 
 function esc(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 function safeFilePart(value){return String(value??'').trim().replace(/[\\/:*?"<>|]/g,' ').replace(/\s+/g,' ');}
@@ -43,18 +44,12 @@ async function runExport(){
   const targets=selectedTargets();if(!targets.length){setStatus('出力対象を1つ以上選択してください。');return;}
   const hasPhotos=targets.some((key)=>key==='visual-photos'||key==='sampling-photos');
   if(hasPhotos&&!window.confirm('写真を含む帳票を出力します。未取得の写真はOneDriveからダウンロードして準備します。続行しますか？'))return;
-
   let printPopup=null;
-  if(method==='print'){
-    printPopup=window.open('about:blank','_blank');
-    if(!printPopup){setStatus('印刷用PDFを開けませんでした。ポップアップを許可してください。');return;}
-    printPopup.document.title='印刷用PDFを準備しています…';
-    printPopup.document.body.innerHTML='<p style="font-family:sans-serif;padding:24px">印刷用PDFを準備しています…</p>';
-  }
-
+  if(method==='print'){printPopup=window.open('about:blank','_blank');if(!printPopup){setStatus('印刷用PDFを開けませんでした。ポップアップを許可してください。');return;}printPopup.document.title='印刷用PDFを準備しています…';printPopup.document.body.innerHTML='<p style="font-family:sans-serif;padding:24px">印刷用PDFを準備しています…</p>';}
   running=true;modal.querySelector('[data-output-export-run]').disabled=true;
   try{
-    const vm=buildOutputViewModel();const settings=settingsProvider?.()||getOutputSettings();
+    const vm=viewModelProvider?.()||buildOutputViewModel();
+    const settings=settingsProvider?.()||getOutputSettings();
     const photoSources=await prepareOutputPhotoSources(targets,vm,{onProgress:setStatus});setStatus('出力を作成しています…',1);
     if(method==='pdf')await exportPdf(targets,vm,photoSources,settings);
     else if(method==='print')await exportPrint(targets,vm,photoSources,settings,printPopup);
@@ -64,4 +59,4 @@ async function runExport(){
   finally{running=false;modal.querySelector('[data-output-export-run]').disabled=false;}
 }
 
-export function initializeOutputExportController(root,{getSettings=null}={}){ensureModal();if(typeof getSettings==='function')settingsProvider=getSettings;root?.addEventListener('click',(event)=>{const button=event.target.closest('[data-output-export]');if(!button)return;const requested=button.dataset.outputExport;if(!['pdf','print','excel'].includes(requested))return;openModal(requested);});}
+export function initializeOutputExportController(root,{getSettings=null,getViewModel=null}={}){ensureModal();if(typeof getSettings==='function')settingsProvider=getSettings;if(typeof getViewModel==='function')viewModelProvider=getViewModel;root?.addEventListener('click',(event)=>{const button=event.target.closest('[data-output-export]');if(!button)return;const requested=button.dataset.outputExport;if(!['pdf','print','excel'].includes(requested))return;openModal(requested);});}
