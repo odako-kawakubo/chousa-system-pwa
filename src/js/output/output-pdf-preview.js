@@ -24,6 +24,7 @@ export class OutputPdfPreview {
     this.page = 1;
     this.zoom = 'fit';
     this.renderToken = 0;
+    this.renderTask = null;
   }
 
   async load(blob, { page = 1, zoom = 'fit' } = {}) {
@@ -55,6 +56,11 @@ export class OutputPdfPreview {
   async render() {
     if (!this.host || !this.pdf) return;
     const token = ++this.renderToken;
+    if (this.renderTask) {
+      try { this.renderTask.cancel(); } catch { /* no-op */ }
+      this.renderTask = null;
+    }
+
     const page = await this.pdf.getPage(this.page);
     if (token !== this.renderToken) return;
 
@@ -83,11 +89,22 @@ export class OutputPdfPreview {
     }
 
     const context = canvas.getContext('2d', { alpha:false });
-    await page.render({ canvasContext:context, viewport }).promise;
+    this.renderTask = page.render({ canvasContext:context, viewport });
+    try {
+      await this.renderTask.promise;
+    } catch (error) {
+      if (error?.name !== 'RenderingCancelledException') throw error;
+    } finally {
+      if (token === this.renderToken) this.renderTask = null;
+    }
   }
 
   destroy() {
     this.renderToken += 1;
+    if (this.renderTask) {
+      try { this.renderTask.cancel(); } catch { /* no-op */ }
+      this.renderTask = null;
+    }
     this.pdf?.destroy?.();
     this.pdf = null;
     if (this.host) this.host.innerHTML = '';
