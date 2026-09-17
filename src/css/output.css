@@ -8,15 +8,31 @@
 .output-view-btn.active,.output-page-mode-btn.active { background:var(--main); border-color:var(--main); color:var(--text-on-accent); }
 .output-page-counter { min-width:44px; text-align:center; font-size:11px; font-weight:700; }
 
-/* 実PDFレビュー */
+/* 実PDFレビュー: A4 1ページ全体が見える大きさを基本とする。 */
 .output-review-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; min-height:0; }
 .output-review-layout.has-editor { grid-template-columns:minmax(0,1fr) minmax(260px,320px); align-items:start; }
 .output-pdf-review { min-width:0; min-height:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel); }
 .output-preview-status { min-height:32px; display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); font-size:11px; color:var(--text-subtle); background:var(--surface-soft); }
 .output-preview-status.is-error { color:#b42318; }
-.output-pdf-host { min-height:calc(100vh - 220px); background:#cfd3d8; }
-.output-pdf-frame { display:block; width:100%; height:calc(100vh - 220px); min-height:680px; border:0; background:#cfd3d8; }
-.output-preview-loading,.output-preview-error { display:flex; align-items:center; justify-content:center; min-height:680px; padding:24px; text-align:center; color:var(--text-subtle); }
+.output-pdf-host {
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  min-height:calc(100vh - 190px);
+  padding:12px;
+  overflow:auto;
+  background:#cfd3d8;
+}
+.output-pdf-frame {
+  display:block;
+  width:min(760px,calc((100vh - 220px) * .7071),100%);
+  aspect-ratio:210 / 297;
+  flex:0 0 auto;
+  border:0;
+  background:#fff;
+  box-shadow:0 2px 12px rgba(0,0,0,.22);
+}
+.output-preview-loading,.output-preview-error { display:flex; align-items:center; justify-content:center; min-height:560px; padding:24px; text-align:center; color:var(--text-subtle); }
 .output-preview-error { color:#b42318; }
 
 /* 帳票の外側に置く編集UI */
@@ -81,7 +97,6 @@
 .output-report-table .group-cell { vertical-align:middle; }
 .output-report-table tbody tr.is-asbestos-positive > td { color:#c00000; }
 
-/* 建材リスト: A4本文幅190mmを実寸固定で配分する。 */
 .output-material-report .col-no { width:6mm; }
 .output-material-report .col-name { width:33mm; }
 .output-material-report .col-part { width:10mm; }
@@ -98,7 +113,6 @@
 .output-place-head-bottom { height:66.667%; font-size:7px !important; line-height:1; }
 .output-blank-label { display:block; font-size:7px; line-height:1.1; font-weight:400; color:#111; }
 
-/* 部屋別リスト: 部屋名・部屋備考を独立列にし、合計190mmで固定する。 */
 .output-room-report .col-floor { width:10mm; }
 .output-room-report .col-room-no { width:12mm; }
 .output-room-report .col-room-name { width:22mm; }
@@ -137,7 +151,6 @@
 }
 .output-visual-slot.is-no-photo .output-visual-caption { width:100%; margin-left:0; }
 
-/* 試料採取写真: 既存PDFの配置を基準に再現。寸法はここへ集約し後から調整しやすくする。 */
 .output-sampling-paper { position:relative; padding:0; }
 .output-sampling-paper .output-report-title {
   position:absolute;
@@ -213,8 +226,9 @@
   .output-preview { padding:4px; }
   .output-page-shell,.output-paper { margin:0; }
   .output-export-targets { grid-template-columns:1fr; }
-  .output-pdf-host,.output-pdf-frame { min-height:560px; height:calc(100vh - 190px); }
-  .output-preview-loading,.output-preview-error { min-height:560px; }
+  .output-pdf-host { min-height:520px; padding:6px; }
+  .output-pdf-frame { width:min(100%,calc((100vh - 180px) * .7071)); }
+  .output-preview-loading,.output-preview-error { min-height:520px; }
 }
 
 @media print {
