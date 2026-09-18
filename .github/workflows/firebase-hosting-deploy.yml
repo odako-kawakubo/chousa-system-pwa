@@ -80,13 +80,124 @@ jobs:
           assert(formatPartDisplay('ハト小屋').split === false, 'single long part should stay one line');
           NODE
 
-      - name: Production consistency checks
+
+      - name: Core architecture regression checks
         shell: bash
         run: |
           set -euo pipefail
-          test -f src/config/app-config.js
-          test -f src/version.json
-          test -f src/service-worker.js
+
+          # Firestore差分保存・未送信・直列化
+          grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
+          grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
+          grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
+          grep -q "bulk-required" src/js/firestore/firestore-repository.js
+
+          # 変更履歴 + cursor同期
+          grep -q "SYNC_APPLY_START" src/js/projects/project-controller.js
+          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-controller.js
+          grep -q "SYNC_STORE_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_LISTENER_APPLY_RESULT" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_BEFORE" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_BASELINE_CHECK" src/js/projects/project-controller.js
+          grep -q "LOCAL_SNAPSHOT_BEFORE_SAVE" src/js/projects/project-store.js
+          grep -q "LOCAL_SNAPSHOT_AFTER_SAVE" src/js/projects/project-store.js
+
+          # Firebase認証とGraph/MSALを分離
+          grep -q "PublicClientApplication" src/js/auth/graph-session.js
+          grep -q "handleRedirectPromise" src/js/auth/graph-session.js
+          grep -q "acquireTokenSilent" src/js/auth/graph-session.js
+          grep -q "cacheLocation: 'localStorage'" src/js/auth/graph-session.js
+          if grep -q "graphAccessToken" src/js/auth/microsoft-auth.js; then
+            echo "Firebase auth owns Graph token storage"
+            exit 1
+          fi
+
+          # OneDrive root責務を一元化
+          grep -q "export async function getSurveyRoot" src/js/onedrive/onedrive-root.js
+          grep -q "resolveSharedUrl" src/js/onedrive/onedrive-root.js
+          grep -q "searchDriveFolders" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'fixed-share'" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'legacy-search'" src/js/onedrive/onedrive-root.js
+          grep -q "getSurveyRoot" src/js/onedrive/onedrive-connection.js
+          grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
+          grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
+
+          # xlsx/xlsmはOpen XML reader経由
+          grep -q "export async function readOpenXmlCells" src/js/onedrive/openxml-workbook-reader.js
+          grep -q "DecompressionStream" src/js/onedrive/openxml-workbook-reader.js
+          grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
+          grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
+          grep -q "F2" src/js/onedrive/onedrive-project-file.js
+          grep -q "K2" src/js/onedrive/onedrive-project-file.js
+          grep -q "L2" src/js/onedrive/onedrive-project-file.js
+          grep -q "isInternalRequestFile" src/js/onedrive/onedrive-project-file.js
+
+          # 正式案件起動と3レコードバックアップ
+          grep -q "tryReadProjectExcel" src/js/projects/onedrive-project-browser.js
+          grep -q "readFirestoreProjectList" src/js/projects/onedrive-project-browser.js
+          grep -q "createFormalProjectFromOneDriveSnapshot" src/js/projects/onedrive-project-browser.js
+          grep -q "const BACKUP_INTERVAL_MS = 10 \* 60 \* 1000" src/js/onedrive/system-data-backup.js
+          grep -q "const MAX_GENERATIONS_PER_DEVICE = 15" src/js/onedrive/system-data-backup.js
+          grep -q "finishRecords" src/js/onedrive/system-data-backup.js
+          grep -q "materialRecords" src/js/onedrive/system-data-backup.js
+          grep -q "photoRecords" src/js/onedrive/system-data-backup.js
+
+          # 写真Blob → OneDrive → photoRecord参照確定
+          grep -q "configurePhotoLocalStore" src/js/photos/photo-local-store.js
+          grep -q "resolveProjectId" src/js/photos/photo-local-store.js
+          grep -q "listPendingPhotoBlobEntries(project.projectId, photoIds)" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_BINDING_MISSING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_PENDING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_UPLOAD_START" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_VERIFY_OK" src/js/photos/photo-onedrive-sync.js
+          grep -q "oneDriveDriveId: text(record.oneDriveDriveId)" src/js/firestore/record-serializer.js
+          grep -q "originalItemId: text(record.originalItemId)" src/js/firestore/record-serializer.js
+          grep -q "completedItemId: text(record.completedItemId)" src/js/firestore/record-serializer.js
+          grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
+          grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
+          grep -q "remoteThumbnailUrls" src/js/photos/photo-controller.js
+          grep -q "ensureRemoteThumbnail" src/js/photos/photo-controller.js
+
+          # 明示アップデート・オフラインキャッシュ
+          grep -q "sameBuild" src/js/app-update.js
+          grep -q "cache: 'no-store'" src/js/app-update.js
+          grep -q "event.data?.type==='SKIP_WAITING'" src/service-worker.js
+          grep -q "worker.postMessage({ type: 'SKIP_WAITING' })" src/js/pwa/pwa-controller.js
+          if grep -q "then(() => self.skipWaiting())" src/service-worker.js; then
+            echo "service worker auto activates on install"
+            exit 1
+          fi
+
+          # ヘッダー通信状態と未送信件数を分離
+          grep -q "text = '良好'" src/js/sync/sync-status.js
+          if grep -q "text = unsentCount" src/js/sync/sync-status.js; then
+            echo "unsent count is mixed into communication label"
+            exit 1
+          fi
+          grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
+
+      - name: v0.1.7.6 stable consistency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "version: '0.1.7.6'" src/config/app-config.js
+          grep -q "revision: ''" src/config/app-config.js
+          grep -q "mode: 'stable'" src/config/app-config.js
+          grep -q '"version": "0.1.7.6"' src/version.json
+          grep -q '"revision": ""' src/version.json
+          grep -q "chousa-app-v0.1.7.6-stable" src/service-worker.js
+          grep -q "chousa-output-libs-v0176-stable" src/service-worker.js
+
+          test -f src/js/output/output-pdf-preview.js
+          test -f src/js/output/output-format.js
+          test -f src/js/output/output-targets.js
+          grep -q "OutputPdfPreview" src/js/output/output-controller.js
+          grep -q "formatSamplingCode" src/js/output/output-pdf-renderer.js
+          grep -q "formatSamplingCode" src/js/output/output-export-controller.js
+          grep -q "MATERIAL_WIDTHS.*6,33,12,42,6,19,19,53" src/js/output/output-pdf-renderer.js
+          grep -q "ROOM_WIDTHS.*10,12,22,12,6,38,35,6,19,30" src/js/output/output-pdf-renderer.js
+
           if grep -R "output-report-renderer\|output-photo-layout" -n src; then
             echo "obsolete HTML output path remains"
             exit 1
