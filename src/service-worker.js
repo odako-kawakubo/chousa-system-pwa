@@ -36,7 +36,7 @@ const APP_SHELL = [
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
-  './js/camera/camera-board.js','./js/camera/camera-controller.js',
+  './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-controller.js',
   './js/debug/sync-diagnostic-log.js',
   './js/demo/sample-session.js','./js/demo/sample-project.js','./js/demo/sample-finish-data.js','./js/demo/sample-materials.js','./js/demo/sample-photos.js',
   './js/default/default-finish-data.js',
