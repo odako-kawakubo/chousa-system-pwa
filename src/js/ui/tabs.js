@@ -60,6 +60,7 @@ export function showTab(tabId) {
   });
 
   const nextId = target.id;
+  document.body.classList.toggle('photo-tab-active', nextId === 'photos');
   if (previousId !== nextId) {
     window.dispatchEvent(new CustomEvent('chousa:tab-change', {
       detail: { previousTab: previousId, currentTab: nextId }
