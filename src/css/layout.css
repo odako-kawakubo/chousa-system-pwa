@@ -205,6 +205,7 @@
   padding: 8px 13px;
   white-space: nowrap;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .tab.active {
   background: var(--main);
@@ -215,6 +216,7 @@
   margin-left: auto;
   align-self: center;
   white-space: nowrap;
+  touch-action: manipulation;
 }
 
 .content {
@@ -254,12 +256,21 @@
   right: 0;
 }
 .drawer-head {
-  height: 54px;
+  flex: 0 0 54px;
+  min-height: 54px;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 14px;
+  position: relative;
+  z-index: 2;
+}
+.drawer-head .btn {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
+  touch-action: manipulation;
 }
 .drawer-body {
   flex: 1 1 auto;
@@ -590,7 +601,8 @@
     padding:3px 7px;
     font-size:12px;
     font-weight:900;
-    margin-left:2px
+    margin-left:2px;
+    touch-action:manipulation
   }
   body.header-collapsed .app-header-compact{display:none}
   body.header-collapsed .app{min-height:100dvh}
@@ -610,15 +622,17 @@
     padding:2px 0 0;
     gap:2px;
     height:34px;
-    overflow-x:auto;
+    overflow-x:hidden;
     overflow-y:hidden;
-    align-items:flex-end
+    align-items:flex-end;
+    touch-action:manipulation
   }
   body.header-collapsed .tab{
     min-height:30px;
     padding:4px 8px;
     border-radius:7px 7px 0 0;
-    font-size:11px
+    font-size:11px;
+    flex:0 0 auto
   }
   body.header-collapsed .tab-operation-button{
     min-height:28px;
