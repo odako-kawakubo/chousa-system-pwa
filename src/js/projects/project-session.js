@@ -5,7 +5,7 @@
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { getCurrentProject, saveProjectSnapshot, setCurrentProject, formatProjectLabel } from './project-store.js';
+import { getCurrentProject, saveProjectSnapshot, setCurrentProject } from './project-store.js';
 import { setProject } from '../finish-table/finish-table-state.js';
 import { refreshFinishTableFromStores, resetFinishTableForProject } from '../finish-table/finish-table-controller.js';
 import {
@@ -121,8 +121,6 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   initializePhotoRefreshOnTabActivation();
   refreshOpenProjectSessionViews();
 
-  const header = document.getElementById('caseHeaderTitle');
-  if (header) header.textContent = formatProjectLabel(project);
   return project;
 }
 
@@ -133,6 +131,4 @@ export function closeProjectSession() {
   resetPhotoUiStateForProject();
   setCurrentProject(null);
   activateProjectSyncStatus('');
-  const header = document.getElementById('caseHeaderTitle');
-  if (header) header.textContent = '案件未選択';
 }
