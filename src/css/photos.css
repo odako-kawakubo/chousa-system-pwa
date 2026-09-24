@@ -286,13 +286,13 @@ body.photo-board-edit-open{overflow:hidden!important}
   body.header-collapsed.photo-tab-active #photos .panel{margin:0}
   body.header-collapsed.photo-tab-active #photos .photo-panel{
     min-height:0;
-    height:calc(100dvh - 38px);
+    height:calc(100dvh - 68px);
     display:flex;
     flex-direction:column
   }
   body.header-collapsed.photo-tab-active #photos .photo-mode-sticky{
     position:sticky;
-    top:34px;
+    top:64px;
     z-index:42;
     border-radius:0;
     flex:0 0 auto
