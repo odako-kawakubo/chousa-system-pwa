@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.1 Preview
+name: Deploy v0.1.8.2 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v0181
+  group: firebase-preview-v0182
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.1 review consistency checks
+      - name: v0.1.8.2 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.1'" src/config/app-config.js
+          grep -q "version: '0.1.8.2'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.1"' src/version.json
+          grep -q '"version": "0.1.8.2"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.1-review" src/service-worker.js
-          grep -q "chousa-output-libs-v0181-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.2-review" src/service-worker.js
+          grep -q "chousa-output-libs-v0182-review" src/service-worker.js
 
           test -f src/js/output/output-pdf-preview.js
           test -f src/js/output/output-format.js
