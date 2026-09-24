@@ -32,8 +32,6 @@
  * Apple Pencilは単純タップを通常操作として扱い、ドラッグ時だけ編集開始を抑止する。
  */
 
-import { formatProjectLabel } from '../projects/project-store.js';
-
 import {
   initFinishTableState,
   getState,
@@ -445,8 +443,6 @@ export function initializeFinishTable() {
  * ここで個別に呼ぶ必要はない。
  */
 function refreshFromStores() {
-  const banner = document.getElementById('finishProjectBanner');
-  if (banner) banner.textContent = formatProjectLabel(getState().project);
   renderToolbarState();
   renderRooms();
   renderSimpleList();
