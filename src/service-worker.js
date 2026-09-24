@@ -1,10 +1,10 @@
 /*
- * v0.1.8.8 Service Worker
+ * v0.1.8.9 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.8-review';
+const APP_CACHE = 'chousa-app-v0.1.8.9-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0188-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0189-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -36,7 +36,7 @@ const APP_SHELL = [
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
-  './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-controller.js',
+  './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-photo-id.js','./js/camera/camera-controller.js',
   './js/debug/sync-diagnostic-log.js',
   './js/demo/sample-session.js','./js/demo/sample-project.js','./js/demo/sample-finish-data.js','./js/demo/sample-materials.js','./js/demo/sample-photos.js',
   './js/default/default-finish-data.js',
