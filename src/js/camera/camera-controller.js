@@ -18,7 +18,6 @@ import { getDeviceCode } from '../device-code.js';
 import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { saveCapturedPhoto } from '../photos/photo-local-store.js';
 import { BOARD_POSITIONS, renderBoardPreview } from './camera-board.js';
 import { BOARD_SIZE_ORDER, saveCameraPreferences } from './camera-preferences.js';
 import {
@@ -468,9 +467,10 @@ async function takePhoto() {
       ])
     });
 
-    await saveCapturedPhoto({ record, originalBlob, completedBlob });
-    const stored = photoRecordStore.set(record);
-    await onPhotoSaved?.({ record: stored, originalBlob, completedBlob });
+    if (typeof onPhotoSaved !== 'function') {
+      throw new Error('写真保存処理が設定されていません。');
+    }
+    await onPhotoSaved({ record, originalBlob, completedBlob });
     updatePhotoCount();
   } catch (error) {
     console.error('Capture save failed:', error);
