@@ -3,7 +3,7 @@
  * 案件名はproject-storeを更新し、Firestoreの案件メタ情報も同じ値へ更新する。
  * 設定タブの案件名入力も同じ経路へ流す。
  */
-import { getCurrentProject, updateProjectFields } from '../projects/project-store.js';
+import { getCurrentProject, updateProjectFields, subscribe } from '../projects/project-store.js';
 import { persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
 import { getDeviceDisplayName, setDeviceName } from '../device-code.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
@@ -54,6 +54,21 @@ function editHeaderProjectName() {
   updateCurrentProjectName(entered);
 }
 
+function renderProjectTitle(project = getCurrentProject()) {
+  const headerTitle = document.getElementById('caseHeaderTitle');
+  const titleBar = document.getElementById('projectTitleBar');
+  const number = document.getElementById('projectTitleNumber');
+  const name = document.getElementById('projectTitleName');
+  const projectNo = String(project?.projectNo || '').trim();
+  const projectName = String(project?.projectName || '').trim();
+  const label = [projectNo, projectName].filter(Boolean).join('　') || '案件未選択';
+
+  if (headerTitle) headerTitle.textContent = '';
+  if (number) number.textContent = projectNo;
+  if (name) name.textContent = projectName || '案件未選択';
+  if (titleBar) titleBar.setAttribute('aria-label', label);
+}
+
 function editHeaderDeviceName() {
   const entered = window.prompt('端末名を変更', getDeviceDisplayName());
   if (entered === null) return;
@@ -62,21 +77,31 @@ function editHeaderDeviceName() {
 
 export function bindHeaderEditUi() {
   const projectTitle = document.getElementById('caseHeaderTitle');
+  const projectTitleBar = document.getElementById('projectTitleBar');
   const devicePill = document.getElementById('devicePill');
 
-  if (projectTitle && projectTitle.dataset.editBound !== '1') {
-    projectTitle.dataset.editBound = '1';
-    projectTitle.tabIndex = 0;
-    projectTitle.title = 'クリックして案件名を変更';
-    projectTitle.classList.add('header-editable-label');
-    projectTitle.addEventListener('click', editHeaderProjectName);
-    projectTitle.addEventListener('keydown', (event) => {
+  if (projectTitle) {
+    projectTitle.hidden = true;
+    projectTitle.removeAttribute('tabindex');
+    projectTitle.removeAttribute('title');
+    projectTitle.classList.remove('header-editable-label');
+  }
+
+  if (projectTitleBar && projectTitleBar.dataset.editBound !== '1') {
+    projectTitleBar.dataset.editBound = '1';
+    projectTitleBar.tabIndex = 0;
+    projectTitleBar.classList.add('header-editable-label');
+    projectTitleBar.addEventListener('click', editHeaderProjectName);
+    projectTitleBar.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         editHeaderProjectName();
       }
     });
   }
+
+  renderProjectTitle();
+  subscribe((project) => renderProjectTitle(project));
 
   if (devicePill && devicePill.dataset.editBound !== '1') {
     devicePill.dataset.editBound = '1';
