@@ -394,12 +394,15 @@ function buildCameraOptions() {
 async function registerCameraPreview({ record, completedBlob }, { renderAfter = true } = {}) {
   setLocalPreview(record?.photoId, completedBlob);
 
+  // 撮影直後の見た目を永続化待ちにしない。
+  // photoRecordStoreへの登録と画像Blob保存は呼出元で完了済みなので、
+  // まずローカルObject URLでサムネイルを即時描画し、その後に永続化する。
+  if (renderAfter) render();
+
   if (record?.photoId) {
     await updateCameraPhotoRecord(record);
     await persistPhoto(record);
   }
-
-  if (renderAfter) render();
 }
 
 async function hydrateCurrentPhotoPreviews() {
