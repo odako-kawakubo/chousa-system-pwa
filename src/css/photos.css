@@ -277,3 +277,139 @@ body.photo-board-edit-open{overflow:hidden!important}
 .photo-board-editor-controls select{width:100%;border:1px solid #475569;border-radius:8px;padding:8px;background:#fff;color:#111827;font:inherit}
 .photo-board-editor-history{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 @media(max-width:760px){.photo-board-editor-shell{grid-template-columns:1fr 220px}.photo-board-editor-controls{padding:8px}}
+
+
+/* v0.1.8.2 横スマホ写真専用レイアウト
+ * 上部情報を圧縮し、画面高の約80%を写真作業領域へ充てる。
+ */
+@media (orientation:landscape) and (max-width:850px) and (max-height:500px){
+  body.photo-tab-active #photos .panel{margin:0}
+  body.photo-tab-active #photos .photo-panel{
+    min-height:0;
+    height:calc(100dvh - 38px);
+    display:flex;
+    flex-direction:column
+  }
+  body.photo-tab-active #photos .photo-mode-sticky{
+    position:sticky;
+    top:34px;
+    z-index:42;
+    border-radius:0;
+    flex:0 0 auto
+  }
+  body.photo-tab-active #photos .photo-action-row{
+    min-height:38px;
+    padding:3px 6px;
+    gap:4px;
+    align-items:center
+  }
+  body.photo-tab-active #photos .photo-action-row .left,
+  body.photo-tab-active #photos .photo-action-row .right{
+    gap:4px;
+    flex-wrap:nowrap
+  }
+  body.photo-tab-active #photos .photo-mode-tabs{gap:4px;flex-wrap:nowrap}
+  body.photo-tab-active #photos .photo-mode-tab{
+    min-height:30px;
+    padding:4px 9px;
+    font-size:11px
+  }
+  body.photo-tab-active #photos .photo-top-actions .btn{
+    min-height:30px;
+    padding:4px 8px;
+    font-size:11px
+  }
+  body.photo-tab-active #photos .photo-hint-row{display:none}
+  body.photo-tab-active #photos .photo-body{
+    flex:1 1 auto;
+    min-height:0;
+    padding:3px 0 0;
+    overflow:hidden
+  }
+  body.photo-tab-active #photos .photo-target-layout{
+    grid-template-columns:clamp(128px,22vw,160px) minmax(0,1fr);
+    width:100%;
+    height:100%;
+    min-height:0;
+    max-height:none;
+    overflow:hidden;
+    gap:0;
+    border-radius:8px
+  }
+  body.photo-tab-active #photos .photo-target-list{
+    height:100%;
+    min-height:0;
+    border-radius:0
+  }
+  body.photo-tab-active #photos .photo-target-list-head{
+    padding:5px 7px;
+    font-size:11px
+  }
+  body.photo-tab-active #photos .photo-group-head{
+    top:27px;
+    padding:5px 7px;
+    font-size:11px
+  }
+  body.photo-tab-active #photos .photo-subgroup-head{
+    padding:4px 8px;
+    font-size:10.5px
+  }
+  body.photo-tab-active #photos .photo-target-item{
+    padding:6px 7px
+  }
+  body.photo-tab-active #photos .photo-target-item.grouped{padding-left:10px}
+  body.photo-tab-active #photos .photo-target-item b{font-size:11.5px}
+  body.photo-tab-active #photos .photo-target-item .meta{font-size:10px;margin-top:1px}
+  body.photo-tab-active #photos .photo-review-panel{
+    height:100%;
+    min-height:0;
+    max-height:none;
+    overflow:auto;
+    border-radius:0
+  }
+  body.photo-tab-active #photos .photo-review-panel-head{
+    position:sticky;
+    top:0;
+    min-height:31px;
+    padding:5px 8px
+  }
+  body.photo-tab-active #photos .photo-review-panel-head h4{font-size:11.5px}
+  body.photo-tab-active #photos .photo-detail-body{
+    min-width:430px;
+    padding:6px;
+    gap:6px
+  }
+  body.photo-tab-active #photos .photo-frame-card,
+  body.photo-tab-active #photos .sample-point-block{padding:6px}
+  body.photo-tab-active #photos .visual-info-line,
+  body.photo-tab-active #photos .sample-compact-info{
+    flex-direction:row;
+    align-items:center;
+    gap:10px;
+    margin-bottom:5px;
+    font-size:11.5px
+  }
+  body.photo-tab-active #photos .visual-compact-actions{flex-wrap:nowrap;gap:6px}
+  body.photo-tab-active #photos .photo-thumb-card{
+    width:132px;
+    height:88px;
+    flex-basis:132px
+  }
+  body.photo-tab-active #photos .photo-thumb-card.compact,
+  body.photo-tab-active #photos .photo-thumb-card.extra{
+    width:82px;
+    height:54px;
+    flex-basis:82px
+  }
+  body.photo-tab-active #photos .sample-compact-head{
+    flex-direction:row;
+    align-items:center;
+    margin-bottom:5px
+  }
+  body.photo-tab-active #photos .sample-stage-grid{
+    grid-template-columns:repeat(4,112px) auto;
+    min-width:500px;
+    gap:6px
+  }
+  body.photo-tab-active #photos .sample-point-block{overflow:visible}
+}
