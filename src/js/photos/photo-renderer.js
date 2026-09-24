@@ -65,7 +65,7 @@ function renderOtherPhotoRows(photos) {
 }
 
 /** 目視1部位分のカード。 */
-function renderVisualTarget(target, openKeys) {
+export function renderVisualTargetBlock(target, openKeys) {
   const isOpen = openKeys.has(target.key);
   const others = target.photos.filter((photo) => photo.photoId !== target.representative?.photoId);
   const hasInput = target.materials.length > 0;
@@ -200,7 +200,7 @@ export function renderVisualView(container, view, state) {
   }
 
   const room = view.activeRoom;
-  const cards = view.targets.map((target) => renderVisualTarget(target, state.openVisualKeys)).join('');
+  const cards = view.targets.map((target) => renderVisualTargetBlock(target, state.openVisualKeys)).join('');
 
   container.innerHTML = `<div class="photo-target-layout">
     <aside class="photo-target-list">
@@ -247,11 +247,11 @@ function renderStageColumn(point, stage, isOpen) {
   </div>`;
 }
 
-function renderSamplePoint(point, openKeys) {
+export function renderSamplingPointBlock(point, openKeys) {
   const isOpen = openKeys.has(point.key);
   const extraCount = point.stages.reduce((sum, stage) => sum + Math.max(0, stage.count - (stage.representative ? 1 : 0)), 0);
 
-  return `<article class="sample-point-block sample-compact">
+  return `<article class="sample-point-block sample-compact" data-photo-sampling-point-key="${esc(point.key)}">
     <div class="sample-compact-head">
       <div class="sample-compact-info">
         <span><span class="label">試料No.：</span><b>${esc(point.sampleNo || '-')}</b></span>
@@ -302,7 +302,7 @@ export function renderSamplingView(container, view, state) {
         <h4>建材No.${esc(active.materialNo)}　${esc(active.name || '-')}</h4>
         <span class="hint">採取数 ${esc(active.sampleCount)}</span>
       </div>
-      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplePoint(point, state.openSamplingKeys)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
+      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplingPointBlock(point, state.openSamplingKeys)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
     </section>
   </div>`;
 }
