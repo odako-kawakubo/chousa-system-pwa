@@ -35,6 +35,7 @@ import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
 import { bindDeviceUi } from './ui/device-ui.js';
 import { bindHeaderEditUi } from './ui/header-edit-ui.js';
+import { initializeHeaderVisibility } from './ui/header-visibility.js';
 import { initializeDeviceIdentity } from './device-code.js';
 import { initializeNetworkStatusEvents, activateProjectSyncStatus } from './sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from './demo/sample-session.js';
@@ -61,6 +62,7 @@ async function initProjectApp() {
     bindSyncStatusUi();
     bindDeviceUi();
     bindHeaderEditUi();
+    initializeHeaderVisibility();
     bindTabEvents();
     bindDrawerEvents();
     bindThemeControls();
