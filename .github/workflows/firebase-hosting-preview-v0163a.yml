@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.8 Preview
+name: Deploy v0.1.8.9 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v0188
+  group: firebase-preview-v0189
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.8 review consistency checks
+      - name: v0.1.8.9 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,13 +191,27 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.8"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.8-review" src/service-worker.js
-          grep -q "chousa-output-libs-v0188-review" src/service-worker.js
-          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js; do
+          grep -q "chousa-app-v0.1.8.9-review" src/service-worker.js
+          grep -q "chousa-output-libs-v0189-review" src/service-worker.js
+          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
           if grep -q "sampleProject" src/js/camera/camera-*.js; then
             echo "camera module still depends on sampleProject"
+            exit 1
+          fi
+          grep -q "import { nextPhotoId } from './camera-photo-id.js';" src/js/camera/camera-controller.js || { echo "nextPhotoId import is missing"; exit 1; }
+          grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
+          if grep -q "currentSamplingTarget()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentSamplingTarget"
+            exit 1
+          fi
+          if grep -q "currentVisualTarget()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentVisualTarget"
+            exit 1
+          fi
+          if grep -q "currentStageInfo()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentStageInfo"
             exit 1
           fi
           if grep -R "caseHeaderTitle" -n src; then
