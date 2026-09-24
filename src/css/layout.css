@@ -43,13 +43,6 @@
 .app-header-compact::-webkit-scrollbar {
   display: none;
 }
-.app-header-compact h1 {
-  font-size: 14px;
-  min-width: 0;
-  max-width: none;
-  overflow: visible;
-  text-overflow: clip;
-}
 .header-case-btn {
   flex: 0 0 auto;
   font-weight: 700;
@@ -75,7 +68,8 @@
   top: 0;
   width: 340px;
   max-width: 88vw;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   background: var(--panel);
   z-index: 190;
   box-shadow: 10px 0 32px var(--overlay);
@@ -88,7 +82,8 @@
   left: 0;
 }
 .project-side-head {
-  height: 54px;
+  flex: 0 0 54px;
+  min-height: 54px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -96,6 +91,7 @@
   justify-content: space-between;
 }
 .project-side-tools {
+  flex: 0 0 auto;
   padding: 12px;
   display: grid;
   gap: 8px;
@@ -108,8 +104,13 @@
   padding: 8px 10px;
 }
 .project-side-list {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 4px 12px 18px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .project-card {
   border: 1px solid var(--line);
