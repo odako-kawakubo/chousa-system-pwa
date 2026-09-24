@@ -283,50 +283,50 @@ body.photo-board-edit-open{overflow:hidden!important}
  * 上部情報を圧縮し、画面高の約80%を写真作業領域へ充てる。
  */
 @media (orientation:landscape) and (max-width:850px) and (max-height:500px){
-  body.photo-tab-active #photos .panel{margin:0}
-  body.photo-tab-active #photos .photo-panel{
+  body.header-collapsed.photo-tab-active #photos .panel{margin:0}
+  body.header-collapsed.photo-tab-active #photos .photo-panel{
     min-height:0;
     height:calc(100dvh - 38px);
     display:flex;
     flex-direction:column
   }
-  body.photo-tab-active #photos .photo-mode-sticky{
+  body.header-collapsed.photo-tab-active #photos .photo-mode-sticky{
     position:sticky;
     top:34px;
     z-index:42;
     border-radius:0;
     flex:0 0 auto
   }
-  body.photo-tab-active #photos .photo-action-row{
+  body.header-collapsed.photo-tab-active #photos .photo-action-row{
     min-height:38px;
     padding:3px 6px;
     gap:4px;
     align-items:center
   }
-  body.photo-tab-active #photos .photo-action-row .left,
-  body.photo-tab-active #photos .photo-action-row .right{
+  body.header-collapsed.photo-tab-active #photos .photo-action-row .left,
+  body.header-collapsed.photo-tab-active #photos .photo-action-row .right{
     gap:4px;
     flex-wrap:nowrap
   }
-  body.photo-tab-active #photos .photo-mode-tabs{gap:4px;flex-wrap:nowrap}
-  body.photo-tab-active #photos .photo-mode-tab{
+  body.header-collapsed.photo-tab-active #photos .photo-mode-tabs{gap:4px;flex-wrap:nowrap}
+  body.header-collapsed.photo-tab-active #photos .photo-mode-tab{
     min-height:30px;
     padding:4px 9px;
     font-size:11px
   }
-  body.photo-tab-active #photos .photo-top-actions .btn{
+  body.header-collapsed.photo-tab-active #photos .photo-top-actions .btn{
     min-height:30px;
     padding:4px 8px;
     font-size:11px
   }
-  body.photo-tab-active #photos .photo-hint-row{display:none}
-  body.photo-tab-active #photos .photo-body{
+  body.header-collapsed.photo-tab-active #photos .photo-hint-row{display:none}
+  body.header-collapsed.photo-tab-active #photos .photo-body{
     flex:1 1 auto;
     min-height:0;
     padding:3px 0 0;
     overflow:hidden
   }
-  body.photo-tab-active #photos .photo-target-layout{
+  body.header-collapsed.photo-tab-active #photos .photo-target-layout{
     grid-template-columns:clamp(128px,22vw,160px) minmax(0,1fr);
     width:100%;
     height:100%;
@@ -336,80 +336,80 @@ body.photo-board-edit-open{overflow:hidden!important}
     gap:0;
     border-radius:8px
   }
-  body.photo-tab-active #photos .photo-target-list{
+  body.header-collapsed.photo-tab-active #photos .photo-target-list{
     height:100%;
     min-height:0;
     border-radius:0
   }
-  body.photo-tab-active #photos .photo-target-list-head{
+  body.header-collapsed.photo-tab-active #photos .photo-target-list-head{
     padding:5px 7px;
     font-size:11px
   }
-  body.photo-tab-active #photos .photo-group-head{
+  body.header-collapsed.photo-tab-active #photos .photo-group-head{
     top:27px;
     padding:5px 7px;
     font-size:11px
   }
-  body.photo-tab-active #photos .photo-subgroup-head{
+  body.header-collapsed.photo-tab-active #photos .photo-subgroup-head{
     padding:4px 8px;
     font-size:10.5px
   }
-  body.photo-tab-active #photos .photo-target-item{
+  body.header-collapsed.photo-tab-active #photos .photo-target-item{
     padding:6px 7px
   }
-  body.photo-tab-active #photos .photo-target-item.grouped{padding-left:10px}
-  body.photo-tab-active #photos .photo-target-item b{font-size:11.5px}
-  body.photo-tab-active #photos .photo-target-item .meta{font-size:10px;margin-top:1px}
-  body.photo-tab-active #photos .photo-review-panel{
+  body.header-collapsed.photo-tab-active #photos .photo-target-item.grouped{padding-left:10px}
+  body.header-collapsed.photo-tab-active #photos .photo-target-item b{font-size:11.5px}
+  body.header-collapsed.photo-tab-active #photos .photo-target-item .meta{font-size:10px;margin-top:1px}
+  body.header-collapsed.photo-tab-active #photos .photo-review-panel{
     height:100%;
     min-height:0;
     max-height:none;
     overflow:auto;
     border-radius:0
   }
-  body.photo-tab-active #photos .photo-review-panel-head{
+  body.header-collapsed.photo-tab-active #photos .photo-review-panel-head{
     position:sticky;
     top:0;
     min-height:31px;
     padding:5px 8px
   }
-  body.photo-tab-active #photos .photo-review-panel-head h4{font-size:11.5px}
-  body.photo-tab-active #photos .photo-detail-body{
+  body.header-collapsed.photo-tab-active #photos .photo-review-panel-head h4{font-size:11.5px}
+  body.header-collapsed.photo-tab-active #photos .photo-detail-body{
     min-width:430px;
     padding:6px;
     gap:6px
   }
-  body.photo-tab-active #photos .photo-frame-card,
-  body.photo-tab-active #photos .sample-point-block{padding:6px}
-  body.photo-tab-active #photos .visual-info-line,
-  body.photo-tab-active #photos .sample-compact-info{
+  body.header-collapsed.photo-tab-active #photos .photo-frame-card,
+  body.header-collapsed.photo-tab-active #photos .sample-point-block{padding:6px}
+  body.header-collapsed.photo-tab-active #photos .visual-info-line,
+  body.header-collapsed.photo-tab-active #photos .sample-compact-info{
     flex-direction:row;
     align-items:center;
     gap:10px;
     margin-bottom:5px;
     font-size:11.5px
   }
-  body.photo-tab-active #photos .visual-compact-actions{flex-wrap:nowrap;gap:6px}
-  body.photo-tab-active #photos .photo-thumb-card{
+  body.header-collapsed.photo-tab-active #photos .visual-compact-actions{flex-wrap:nowrap;gap:6px}
+  body.header-collapsed.photo-tab-active #photos .photo-thumb-card{
     width:132px;
     height:88px;
     flex-basis:132px
   }
-  body.photo-tab-active #photos .photo-thumb-card.compact,
-  body.photo-tab-active #photos .photo-thumb-card.extra{
+  body.header-collapsed.photo-tab-active #photos .photo-thumb-card.compact,
+  body.header-collapsed.photo-tab-active #photos .photo-thumb-card.extra{
     width:82px;
     height:54px;
     flex-basis:82px
   }
-  body.photo-tab-active #photos .sample-compact-head{
+  body.header-collapsed.photo-tab-active #photos .sample-compact-head{
     flex-direction:row;
     align-items:center;
     margin-bottom:5px
   }
-  body.photo-tab-active #photos .sample-stage-grid{
+  body.header-collapsed.photo-tab-active #photos .sample-stage-grid{
     grid-template-columns:repeat(4,112px) auto;
     min-width:500px;
     gap:6px
   }
-  body.photo-tab-active #photos .sample-point-block{overflow:visible}
+  body.header-collapsed.photo-tab-active #photos .sample-point-block{overflow:visible}
 }
