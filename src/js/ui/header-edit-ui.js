@@ -55,7 +55,6 @@ function editHeaderProjectName() {
 }
 
 function renderProjectTitle(project = getCurrentProject()) {
-  const headerTitle = document.getElementById('caseHeaderTitle');
   const titleBar = document.getElementById('projectTitleBar');
   const number = document.getElementById('projectTitleNumber');
   const name = document.getElementById('projectTitleName');
@@ -63,7 +62,6 @@ function renderProjectTitle(project = getCurrentProject()) {
   const projectName = String(project?.projectName || '').trim();
   const label = [projectNo, projectName].filter(Boolean).join('　') || '案件未選択';
 
-  if (headerTitle) headerTitle.textContent = '';
   if (number) number.textContent = projectNo;
   if (name) name.textContent = projectName || '案件未選択';
   if (titleBar) titleBar.setAttribute('aria-label', label);
@@ -76,16 +74,8 @@ function editHeaderDeviceName() {
 }
 
 export function bindHeaderEditUi() {
-  const projectTitle = document.getElementById('caseHeaderTitle');
   const projectTitleBar = document.getElementById('projectTitleBar');
   const devicePill = document.getElementById('devicePill');
-
-  if (projectTitle) {
-    projectTitle.hidden = true;
-    projectTitle.removeAttribute('tabindex');
-    projectTitle.removeAttribute('title');
-    projectTitle.classList.remove('header-editable-label');
-  }
 
   if (projectTitleBar && projectTitleBar.dataset.editBound !== '1') {
     projectTitleBar.dataset.editBound = '1';
