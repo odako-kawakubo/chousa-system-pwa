@@ -34,9 +34,6 @@ function escapeHtml(value) {
 
 function renderProjectList() {
   const current = getCurrentProject();
-  const header = document.getElementById('caseHeaderTitle');
-  if (header) header.textContent = formatProjectLabel(current);
-
   const list = document.getElementById('projectList');
   if (!list) return;
   const projects = getProjectList();
