@@ -231,28 +231,42 @@ function hydrateThumbnailImages() {
     const photo = photoById(photoId);
     const card = image.closest('.photo-thumb-card');
     const source = photo ? previewSourceForPhoto(photo) : '';
+    const isLocalPreview = localPreviewUrls.has(photoId);
+
+    const markReady = () => {
+      card?.classList.add('photo-thumb-ready');
+      card?.classList.remove('photo-thumb-loading');
+    };
+    const markLoading = () => {
+      card?.classList.remove('photo-thumb-ready');
+      card?.classList.add('photo-thumb-loading');
+    };
 
     if (!source) {
       image.removeAttribute('src');
-      card?.classList.remove('photo-thumb-ready');
-      card?.classList.add('photo-thumb-loading');
+      image.loading = 'lazy';
+      markLoading();
       if (photo) void ensureRemoteThumbnail(photo);
       return;
     }
 
+    // 撮影直後のローカルObject URLは、カメラ全画面の背面でも即読込する。
+    image.loading = isLocalPreview ? 'eager' : 'lazy';
+    image.onload = markReady;
+    image.onerror = markLoading;
+
     if (image.getAttribute('src') !== source) image.src = source;
-    image.onload = () => {
-      card?.classList.add('photo-thumb-ready');
-      card?.classList.remove('photo-thumb-loading');
-    };
-    image.onerror = () => {
-      card?.classList.remove('photo-thumb-ready');
-      card?.classList.add('photo-thumb-loading');
-    };
 
     if (image.complete && image.naturalWidth > 0) {
-      card?.classList.add('photo-thumb-ready');
-      card?.classList.remove('photo-thumb-loading');
+      markReady();
+      return;
+    }
+
+    // Object URLは高速に読めるため、loadイベントとの競合をdecodeでも補完する。
+    if (isLocalPreview && typeof image.decode === 'function') {
+      image.decode().then(markReady).catch(() => {
+        if (image.complete && image.naturalWidth > 0) markReady();
+      });
     }
   });
 }
