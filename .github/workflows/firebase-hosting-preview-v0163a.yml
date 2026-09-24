@@ -186,10 +186,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.13'" src/config/app-config.js
+          grep -q "version: '0.1.8.14'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.13"' src/version.json
+          grep -q '"version": "0.1.8.14"' src/version.json
           grep -q '"revision": ""' src/version.json
           grep -q "chousa-app-v0.1.8.14-review" src/service-worker.js
           grep -q "chousa-output-libs-v01814-review" src/service-worker.js
