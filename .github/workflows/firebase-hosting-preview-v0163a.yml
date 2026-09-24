@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.5 Preview
+name: Deploy v0.1.8.6 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v0185
+  group: firebase-preview-v0186
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,25 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.5 review consistency checks
+      - name: v0.1.8.6 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.5'" src/config/app-config.js
+          grep -q "version: '0.1.8.6'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.5"' src/version.json
+          grep -q '"version": "0.1.8.6"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.5-review" src/service-worker.js
-          grep -q "chousa-output-libs-v0185-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.6-review" src/service-worker.js
+          grep -q "chousa-output-libs-v0186-review" src/service-worker.js
+          if grep -q "finishProjectBanner" src/js/finish-table/finish-table-renderer.js src/js/finish-table/finish-table-controller.js; then
+            echo "legacy finish project banner remains"
+            exit 1
+          fi
+          if grep -q "formatProjectLabel" src/js/finish-table/finish-table-controller.js src/js/projects/project-session.js; then
+            echo "legacy project label writer remains"
+            exit 1
+          fi
 
           test -f src/js/output/output-pdf-preview.js
           test -f src/js/output/output-format.js
