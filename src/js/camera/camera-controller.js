@@ -12,7 +12,6 @@
  * - OneDrive実接続は行わず、photoRecordはpendingで止める。
  */
 
-import { sampleProject } from '../demo/sample-project.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { getAvailablePhotoFileName } from '../photos/photo-filename.js';
 import { getDeviceCode } from '../device-code.js';
@@ -46,7 +45,8 @@ const STAGE_INFO = Object.freeze({
 
 const BOARD_SIZE_ORDER = Object.freeze(['small', 'medium', 'large']);
 const JPEG_QUALITY = 0.82;
-const STORAGE_KEY = `chousa-camera:${sampleProject.projectId || 'project'}`;
+const STORAGE_KEY = 'chousa-camera-preferences-v1';
+const LEGACY_STORAGE_KEY = 'chousa-camera:SAMPLE-001';
 const COUNTER_KEY = 'chousa-photo-counter';
 
 let root = null;
@@ -78,7 +78,13 @@ function cycleIndex(index, length, delta) {
 
 function loadPersistentState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const currentRaw = localStorage.getItem(STORAGE_KEY);
+    const legacyRaw = currentRaw ? null : localStorage.getItem(LEGACY_STORAGE_KEY);
+    const saved = JSON.parse(currentRaw || legacyRaw || '{}');
+    if (!currentRaw && legacyRaw) {
+      localStorage.setItem(STORAGE_KEY, legacyRaw);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
     return {
       boardPosition: BOARD_POSITIONS.includes(saved.boardPosition) ? saved.boardPosition : 'bottom-left',
       boardSize: BOARD_SIZE_ORDER.includes(saved.boardSize) ? saved.boardSize : 'medium',
