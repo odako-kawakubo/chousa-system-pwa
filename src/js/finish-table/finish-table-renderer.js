@@ -58,8 +58,6 @@ function escapeHtml(value) {
 export function renderFinishTab(container) {
   container.innerHTML = `
     <div class="finish-tab-root">
-      <div class="finish-project-banner" id="finishProjectBanner"></div>
-
       <div class="finish-toolbar" id="finishToolbar">
         <div class="finish-toolbar-group" id="finishAreaToggle">
           <button type="button" class="btn small finish-area-btn" data-area-mode="internal">内部</button>
