@@ -42,6 +42,7 @@ import {
   createCompletedCanvas
 } from './camera-capture.js';
 import { createCameraSession, getVideoInputCount, getCameraErrorMessage } from './camera-session.js';
+import { nextPhotoId } from './camera-photo-id.js';
 
 let root = null;
 let orientationShell = null;
@@ -292,7 +293,7 @@ function updateCameraUi() {
   applyLandscapeFlip();
 
   if (state.photoType === PHOTO_TYPES.SAMPLING) {
-    const target = currentSamplingTarget();
+    const target = currentSamplingTarget(state);
     roomButtons.forEach((button) => { button.textContent = '部屋'; });
     sampleButtons.forEach((button) => { button.textContent = '検体'; });
     if (roomValue) roomValue.textContent = '箇所';
@@ -305,10 +306,10 @@ function updateCameraUi() {
     }
     if (stageButton) {
       stageButton.disabled = false;
-      stageButton.textContent = currentStageInfo().label;
+      stageButton.textContent = currentStageInfo(state).label;
     }
   } else {
-    const { room, target } = currentVisualTarget();
+    const { room, target } = currentVisualTarget(state);
     roomButtons.forEach((button) => { button.textContent = '部屋'; });
     sampleButtons.forEach((button) => { button.textContent = '部位'; });
     if (roomValue) roomValue.textContent = '部屋';
