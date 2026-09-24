@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.11 Preview
+name: Deploy v0.1.8.12 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01811
+  group: firebase-preview-v01812
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.11 review consistency checks
+      - name: v0.1.8.12 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.11"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.11-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01811-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.12-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01812-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -224,6 +224,8 @@ jobs:
           fi
           grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-controller.js || { echo "photo controller is not the camera photo registration owner"; exit 1; }
           grep -q "await saveCapturedPhoto({" src/js/photos/photo-controller.js || { echo "photo controller is not the captured photo persistence owner"; exit 1; }
+          grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-controller.js || { echo "local thumbnail eager loading is missing"; exit 1; }
+          grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-controller.js || { echo "local thumbnail loading policy is missing"; exit 1; }
           if grep -R "caseHeaderTitle" -n src; then
             echo "legacy caseHeaderTitle remains"
             exit 1
