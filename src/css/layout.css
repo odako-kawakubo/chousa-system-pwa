@@ -567,3 +567,44 @@
 .connection-dot.offline-mode{background:#3b82f6}
 .connection-dot.blinking{animation:firestore-status-pulse .85s ease-in-out infinite alternate}
 @keyframes firestore-status-pulse{from{opacity:1;transform:scale(1)}to{opacity:.35;transform:scale(.82)}}
+
+
+/* v0.1.8.2 横スマホ写真専用レイアウト
+ * 写真タブ中だけ通常ヘッダーを隠し、タブ列を最小化して作業領域を優先する。
+ */
+@media (orientation:landscape) and (max-width:850px) and (max-height:500px){
+  body.photo-tab-active .app-header-compact{display:none}
+  body.photo-tab-active .app{min-height:100dvh}
+  body.photo-tab-active .toolbar{
+    top:0;
+    padding:0 4px;
+    height:34px;
+    overflow:hidden;
+    background:var(--bg)
+  }
+  body.photo-tab-active .case-title{display:none}
+  body.photo-tab-active .tabs{
+    position:sticky;
+    top:0;
+    z-index:45;
+    margin:0;
+    padding:2px 0 0;
+    gap:2px;
+    height:34px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    align-items:flex-end
+  }
+  body.photo-tab-active .tab{
+    min-height:30px;
+    padding:4px 8px;
+    border-radius:7px 7px 0 0;
+    font-size:11px
+  }
+  body.photo-tab-active .tab-operation-button{
+    min-height:28px;
+    padding:3px 8px;
+    font-size:11px
+  }
+  body.photo-tab-active #photos.content{padding:0 4px 4px}
+}
