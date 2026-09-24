@@ -391,18 +391,23 @@ function buildCameraOptions() {
   return { visualRooms, samplingTargets };
 }
 
-async function registerCameraPreview({ record, completedBlob }, { renderAfter = true } = {}) {
-  setLocalPreview(record?.photoId, completedBlob);
+async function registerCameraPreview({ record, originalBlob, completedBlob }, { renderAfter = true } = {}) {
+  if (!record?.photoId) throw new Error('photoIdがありません。');
 
-  // 撮影直後の見た目を永続化待ちにしない。
-  // photoRecordStoreへの登録と画像Blob保存は呼出元で完了済みなので、
-  // まずローカルObject URLでサムネイルを即時描画し、その後に永続化する。
+  // カメラ撮影後の正式入口。
+  // UI反映は画像圧縮・IndexedDB・Firestore保存を待たずに先行させる。
+  const stored = photoRecordStore.set(record);
+  setLocalPreview(stored.photoId, completedBlob);
   if (renderAfter) render();
 
-  if (record?.photoId) {
-    await updateCameraPhotoRecord(record);
-    await persistPhoto(record);
-  }
+  await saveCapturedPhoto({
+    record: stored,
+    originalBlob,
+    completedBlob
+  });
+  await persistPhoto(stored);
+
+  return stored;
 }
 
 async function hydrateCurrentPhotoPreviews() {
