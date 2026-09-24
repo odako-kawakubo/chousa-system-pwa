@@ -25,7 +25,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import { createPhotoRecord, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
-import { renderPhotoShell, renderVisualView, renderSamplingView } from './photo-renderer.js';
+import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
 import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
@@ -409,10 +409,10 @@ async function registerCameraPreview({ record, originalBlob, completedBlob }, { 
   if (!record?.photoId) throw new Error('photoIdがありません。');
 
   // カメラ撮影後の正式入口。
-  // UI反映は画像圧縮・IndexedDB・Firestore保存を待たずに先行させる。
+  // 写真タブ全体は再描画せず、撮影対象ブロックだけを更新する。
   const stored = photoRecordStore.set(record);
   setLocalPreview(stored.photoId, completedBlob);
-  if (renderAfter) render();
+  if (renderAfter) refreshCameraPhotoBlock(stored);
 
   await saveCapturedPhoto({
     record: stored,
@@ -517,6 +517,78 @@ function previewSourceForPhoto(photo) {
   const demo = demoPreviewSource(photo);
   if (demo) return demo;
   return remoteThumbnailUrls.get(photo.photoId) || '';
+}
+
+function findElementByDataValue(selector, datasetKey, value) {
+  return [...(root?.querySelectorAll(selector) || [])]
+    .find((element) => String(element.dataset?.[datasetKey] || '') === String(value || '')) || null;
+}
+
+function hydrateThumbnailImage(photoId) {
+  if (!root || !photoId) return;
+  const image = findElementByDataValue('[data-photo-thumb-image]', 'photoThumbImage', photoId);
+  if (!image) return;
+
+  const photo = photoById(photoId);
+  const source = photo ? previewSourceForPhoto(photo) : '';
+  const card = image.closest('.photo-thumb-card');
+  if (!source) {
+    image.removeAttribute('src');
+    card?.classList.remove('photo-thumb-ready');
+    card?.classList.add('photo-thumb-loading');
+    return;
+  }
+
+  image.loading = localPreviewUrls.has(photoId) ? 'eager' : 'lazy';
+  image.onload = () => {
+    card?.classList.add('photo-thumb-ready');
+    card?.classList.remove('photo-thumb-loading');
+  };
+  image.onerror = () => {
+    card?.classList.remove('photo-thumb-ready');
+    card?.classList.add('photo-thumb-loading');
+  };
+  image.src = source;
+
+  if (image.complete && image.naturalWidth > 0) {
+    card?.classList.add('photo-thumb-ready');
+    card?.classList.remove('photo-thumb-loading');
+  }
+}
+
+function refreshCameraPhotoBlock(record) {
+  if (!root || !record?.photoId) return false;
+
+  if (record.photoType === PHOTO_TYPES.VISUAL) {
+    const view = buildVisualPhotoView(state.selectedRoomUid);
+    if (!view.activeRoom
+      || view.activeRoom.areaCode !== record.areaCode
+      || view.activeRoom.roomPosition !== record.roomPosition) {
+      return false;
+    }
+
+    const target = view.targets.find((item) => Number(item.partSlot) === Number(record.partSlot));
+    if (!target) return false;
+    const current = findElementByDataValue('[data-photo-target-key]', 'photoTargetKey', target.key);
+    if (!current) return false;
+    current.outerHTML = renderVisualTargetBlock(target, state.openVisualKeys);
+    hydrateThumbnailImage(record.photoId);
+    return true;
+  }
+
+  if (record.photoType === PHOTO_TYPES.SAMPLING) {
+    const view = buildSamplingPhotoView(state.selectedMaterialId);
+    if (!view.activeMaterial || view.activeMaterial.materialId !== record.materialId) return false;
+    const point = view.activeMaterial.points.find((item) => Number(item.branch) === Number(record.samplingBranch));
+    if (!point) return false;
+    const current = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
+    if (!current) return false;
+    current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys);
+    hydrateThumbnailImage(record.photoId);
+    return true;
+  }
+
+  return false;
 }
 
 async function startEditSequence(photoIds) {
