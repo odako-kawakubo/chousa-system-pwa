@@ -2,11 +2,11 @@
  * アプリ全体で共有する基本設定。
  * version は利用者へ表示する版、revision は同一version内の更新判定に使う。
  * HTMLへ番号を直書きしない。
- * v0.1.7.6 正式版。revision は空文字、mode は stable。
+ * v0.1.8.1 レビュー版。revision は空文字、mode は review。
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.7.6',
+  version: '0.1.8.1',
   revision: '',
-  mode: 'stable'
+  mode: 'review'
 };
