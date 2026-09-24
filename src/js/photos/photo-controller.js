@@ -223,10 +223,10 @@ async function ensureRemoteThumbnail(photo) {
  * サムネイルはローカル完成画像を最優先し、無い写真だけOneDriveサムネイルを非同期取得する。
  * 他端末写真の完成画像本体はここでは保存しない。
  */
-function hydrateThumbnailImages() {
-  if (!root) return;
+function hydrateThumbnailImages(scope = root) {
+  if (!scope) return;
 
-  root.querySelectorAll('[data-photo-thumb-image]').forEach((image) => {
+  scope.querySelectorAll('[data-photo-thumb-image]').forEach((image) => {
     const photoId = image.dataset.photoThumbImage || '';
     const photo = photoById(photoId);
     const card = image.closest('.photo-thumb-card');
@@ -524,38 +524,6 @@ function findElementByDataValue(selector, datasetKey, value) {
     .find((element) => String(element.dataset?.[datasetKey] || '') === String(value || '')) || null;
 }
 
-function hydrateThumbnailImage(photoId) {
-  if (!root || !photoId) return;
-  const image = findElementByDataValue('[data-photo-thumb-image]', 'photoThumbImage', photoId);
-  if (!image) return;
-
-  const photo = photoById(photoId);
-  const source = photo ? previewSourceForPhoto(photo) : '';
-  const card = image.closest('.photo-thumb-card');
-  if (!source) {
-    image.removeAttribute('src');
-    card?.classList.remove('photo-thumb-ready');
-    card?.classList.add('photo-thumb-loading');
-    return;
-  }
-
-  image.loading = localPreviewUrls.has(photoId) ? 'eager' : 'lazy';
-  image.onload = () => {
-    card?.classList.add('photo-thumb-ready');
-    card?.classList.remove('photo-thumb-loading');
-  };
-  image.onerror = () => {
-    card?.classList.remove('photo-thumb-ready');
-    card?.classList.add('photo-thumb-loading');
-  };
-  image.src = source;
-
-  if (image.complete && image.naturalWidth > 0) {
-    card?.classList.add('photo-thumb-ready');
-    card?.classList.remove('photo-thumb-loading');
-  }
-}
-
 function refreshCameraPhotoBlock(record) {
   if (!root || !record?.photoId) return false;
 
@@ -572,8 +540,9 @@ function refreshCameraPhotoBlock(record) {
     const current = findElementByDataValue('[data-photo-target-key]', 'photoTargetKey', target.key);
     if (!current) return false;
     current.outerHTML = renderVisualTargetBlock(target, state.openVisualKeys);
-    hydrateThumbnailImage(record.photoId);
-    return true;
+    const updated = findElementByDataValue('[data-photo-target-key]', 'photoTargetKey', target.key);
+    hydrateThumbnailImages(updated);
+    return Boolean(updated);
   }
 
   if (record.photoType === PHOTO_TYPES.SAMPLING) {
@@ -584,8 +553,9 @@ function refreshCameraPhotoBlock(record) {
     const current = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
     if (!current) return false;
     current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys);
-    hydrateThumbnailImage(record.photoId);
-    return true;
+    const updated = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
+    hydrateThumbnailImages(updated);
+    return Boolean(updated);
   }
 
   return false;
