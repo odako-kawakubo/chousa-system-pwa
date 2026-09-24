@@ -240,7 +240,8 @@
   top: 0;
   width: 340px;
   max-width: 90vw;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   background: var(--panel);
   border-left: 1px solid var(--line);
   box-shadow: -8px 0 24px var(--shadow-soft);
@@ -261,11 +262,16 @@
   padding: 0 14px;
 }
 .drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .drawer-box {
   border: 1px solid var(--line);
@@ -569,21 +575,34 @@
 @keyframes firestore-status-pulse{from{opacity:1;transform:scale(1)}to{opacity:.35;transform:scale(.82)}}
 
 
-/* v0.1.8.2 横スマホ写真専用レイアウト
- * 写真タブ中だけ通常ヘッダーを隠し、タブ列を最小化して作業領域を優先する。
+/* v0.1.8.3 横スマホ共通コンパクトレイアウト
+ * ヘッダーを畳んだ時だけ全タブ共通で上部を圧縮する。
  */
+.header-collapse-button{display:none}
 @media (orientation:landscape) and (max-width:850px) and (max-height:500px){
-  body.photo-tab-active .app-header-compact{display:none}
-  body.photo-tab-active .app{min-height:100dvh}
-  body.photo-tab-active .toolbar{
+  .header-collapse-button{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    align-self:center;
+    min-width:30px;
+    min-height:28px;
+    padding:3px 7px;
+    font-size:12px;
+    font-weight:900;
+    margin-left:2px
+  }
+  body.header-collapsed .app-header-compact{display:none}
+  body.header-collapsed .app{min-height:100dvh}
+  body.header-collapsed .toolbar{
     top:0;
     padding:0 4px;
     height:34px;
     overflow:hidden;
     background:var(--bg)
   }
-  body.photo-tab-active .case-title{display:none}
-  body.photo-tab-active .tabs{
+  body.header-collapsed .case-title{display:none}
+  body.header-collapsed .tabs{
     position:sticky;
     top:0;
     z-index:45;
@@ -595,16 +614,17 @@
     overflow-y:hidden;
     align-items:flex-end
   }
-  body.photo-tab-active .tab{
+  body.header-collapsed .tab{
     min-height:30px;
     padding:4px 8px;
     border-radius:7px 7px 0 0;
     font-size:11px
   }
-  body.photo-tab-active .tab-operation-button{
+  body.header-collapsed .tab-operation-button{
     min-height:28px;
     padding:3px 8px;
     font-size:11px
   }
-  body.photo-tab-active #photos.content{padding:0 4px 4px}
+  body.header-collapsed .content{padding-top:6px}
+  body.header-collapsed #photos.content{padding:0 4px 4px}
 }
