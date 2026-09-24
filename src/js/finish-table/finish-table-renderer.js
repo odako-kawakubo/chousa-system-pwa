@@ -33,7 +33,6 @@ import {
   isFirstNormalFloorFirstRoom,
   orderedInternalGroups
 } from './finish-table-view-model.js';
-import { formatProjectLabel } from '../projects/project-store.js';
 
 const OTHER_PART_INDEXES = new Set([5, 6]);
 
@@ -99,9 +98,6 @@ export function renderFinishTab(container) {
       <div class="finish-candidate-popup" id="finishCandidatePopup" hidden></div>
     </div>
   `;
-
-  const banner = document.getElementById('finishProjectBanner');
-  if (banner) banner.textContent = formatProjectLabel(getState().project);
 
   renderToolbarState();
   renderRooms();
