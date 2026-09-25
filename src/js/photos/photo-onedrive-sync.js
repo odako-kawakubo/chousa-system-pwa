@@ -134,6 +134,15 @@ async function persistUploadedReference(project, record, variant, verifiedItem) 
     fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, changedFields)
   });
 
+  syncDiagnosticLog('PHOTO_SYNC_REFERENCE_UPDATE', {
+    projectId: project.projectId,
+    photoId: record.photoId,
+    variant,
+    changedFields,
+    hasOriginalItemId: Boolean(stored.originalItemId),
+    hasCompletedItemId: Boolean(stored.completedItemId)
+  });
+
   await updateCameraPhotoRecord(stored);
   const persisted = await persistPhotoForProject(project, stored, `photo-onedrive-${variant}-reference`);
   if (!isReferencePersistenceSettled(persisted)) {
