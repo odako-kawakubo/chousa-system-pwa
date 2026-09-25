@@ -1,10 +1,10 @@
 /*
- * v0.1.8.17 Service Worker
+ * v0.1.8.18 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.17-review';
+const APP_CACHE = 'chousa-app-v0.1.8.18-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01817-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01818-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -28,7 +28,7 @@ const APP_SHELL = [
   './js/projects/project-controller.js','./js/projects/project-store.js','./js/projects/project-session.js','./js/projects/project-creation.js','./js/projects/project-factory.js','./js/projects/project-navigation.js','./js/projects/project-side-panel-controller.js','./js/projects/project-entry-ui.js','./js/projects/firestore-project-browser.js','./js/projects/onedrive-project-browser.js','./js/projects/project-transfer.js',
   './js/records/finish-record.js','./js/records/material-record.js','./js/records/photo-record.js',
   './js/store/finish-record-store.js','./js/store/material-record-store.js','./js/store/photo-record-store.js','./js/store/survey-candidate-store.js',
-  './js/finish-table/finish-table-controller.js','./js/finish-table/finish-table-candidate-input.js','./js/finish-table/finish-table-actions.js','./js/finish-table/finish-table-constants.js','./js/finish-table/finish-table-history.js','./js/finish-table/finish-table-renderer.js','./js/finish-table/finish-table-state.js','./js/finish-table/finish-table-view-model.js','./js/finish-table/finish-table-refresh-guard.js','./js/finish-table/finish-table-scroll-state.js','./js/finish-table/room-note-editor.js',
+  './js/finish-table/finish-table-controller.js','./js/finish-table/finish-table-candidate-input.js','./js/finish-table/finish-table-edit-session.js','./js/finish-table/finish-table-actions.js','./js/finish-table/finish-table-constants.js','./js/finish-table/finish-table-history.js','./js/finish-table/finish-table-renderer.js','./js/finish-table/finish-table-state.js','./js/finish-table/finish-table-view-model.js','./js/finish-table/finish-table-refresh-guard.js','./js/finish-table/finish-table-scroll-state.js','./js/finish-table/room-note-editor.js',
   './js/record-view/record-view-controller.js','./js/record-view/record-view-renderer.js','./js/record-view/record-view-view-model.js',
   './js/materials/material-list-controller.js','./js/materials/material-operations-controller.js','./js/materials/material-sample-name.js','./js/materials/simple-list.js',
   './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-controller.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-view-model.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
