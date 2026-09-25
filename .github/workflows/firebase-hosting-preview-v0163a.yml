@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.14 Preview
+name: Deploy v0.1.8.15 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01814
+  group: firebase-preview-v01815
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.14 review consistency checks
+      - name: v0.1.8.15 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.14"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.14-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01814-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.15-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01815-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -230,6 +230,11 @@ jobs:
           grep -q "refreshCameraPhotoBlock(stored);" src/js/photos/photo-controller.js || { echo "camera photo does not use local block refresh"; exit 1; }
           grep -q "function hydrateThumbnailImages(scope = root)" src/js/photos/photo-controller.js || { echo "block scoped thumbnail hydrate is missing"; exit 1; }
           grep -q "hydrateThumbnailImages(updated);" src/js/photos/photo-controller.js || { echo "local photo block is not hydrated after replacement"; exit 1; }
+          grep -q "PHOTO_LOCAL_PREVIEW_SET" src/js/photos/photo-controller.js || { echo "photo local preview diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_READY" src/js/photos/photo-controller.js || { echo "photo thumb ready diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_LOADING" src/js/photos/photo-controller.js || { echo "photo thumb loading diagnostic missing"; exit 1; }
+          grep -q "PHOTO_SYNC_REFERENCE_UPDATE" src/js/photos/photo-onedrive-sync.js || { echo "photo OneDrive diagnostic missing"; exit 1; }
+          grep -q "SYNC_APPLY_PHOTO" src/js/projects/project-controller.js || { echo "photo sync apply diagnostic missing"; exit 1; }
           grep -q "export function renderVisualTargetBlock" src/js/photos/photo-renderer.js || { echo "visual local block renderer is missing"; exit 1; }
           grep -q "export function renderSamplingPointBlock" src/js/photos/photo-renderer.js || { echo "sampling local block renderer is missing"; exit 1; }
           if grep -R "caseHeaderTitle" -n src; then
