@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.18 Preview
+name: Deploy v0.1.8.19 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01818
+  group: firebase-preview-v01819
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.18 review consistency checks
+      - name: v0.1.8.19 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.18"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.18-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01818-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.19-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01819-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -271,6 +271,15 @@ jobs:
           grep -q "resetFinishTableEditSession" src/js/finish-table/finish-table-controller.js || { echo "finish edit session reset hook missing"; exit 1; }
           if grep -q "pendingEditSnapshot\|pendingEditBeforeValue\|explicitlyCommittedInputKey\|explicitCommitReleaseTimer" src/js/finish-table/finish-table-controller.js; then
             echo "finish controller still owns edit session state"
+            exit 1
+          fi
+
+          # 仕上表DOMイベントをcontrollerから分離
+          test -f src/js/finish-table/finish-table-interactions.js
+          grep -q "bindFinishTableInteractions" src/js/finish-table/finish-table-controller.js || { echo "finish interactions are not bound"; exit 1; }
+          grep -q "export function bindFinishTableInteractions" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions API missing"; exit 1; }
+          if grep -q "function bindEvents\|PEN_DRAG_THRESHOLD_PX" src/js/finish-table/finish-table-controller.js; then
+            echo "finish controller still owns DOM interaction wiring"
             exit 1
           fi
 
