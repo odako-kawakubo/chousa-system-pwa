@@ -395,6 +395,18 @@ function applyProjectRecordChanges(project, changes = []) {
     if (change.changeType !== 'removed'
       && current
       && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      if (change.recordType === 'photo') {
+        syncDiagnosticLog('SYNC_APPLY_PHOTO', {
+          projectId: project.projectId,
+          photoId: id,
+          result: 'skipped',
+          reason: 'sameFieldEditedAt',
+          currentOriginalItemId: Boolean(current.originalItemId),
+          currentCompletedItemId: Boolean(current.completedItemId),
+          incomingOriginalItemId: Boolean(change.record?.originalItemId),
+          incomingCompletedItemId: Boolean(change.record?.completedItemId)
+        });
+      }
       skipped += 1;
       syncDiagnosticLog('SYNC_APPLY_CHANGE', {
         projectId: project.projectId,
@@ -452,6 +464,16 @@ function applyProjectRecordChanges(project, changes = []) {
       });
       return;
     }
+    syncDiagnosticLog('SYNC_APPLY_PHOTO', {
+      projectId: project.projectId,
+      photoId: id,
+      result: 'apply',
+      changeType: change.changeType,
+      currentOriginalItemId: Boolean(current?.originalItemId),
+      currentCompletedItemId: Boolean(current?.completedItemId),
+      incomingOriginalItemId: Boolean(change.record?.originalItemId),
+      incomingCompletedItemId: Boolean(change.record?.completedItemId)
+    });
     registerPhotoImpact(viewImpact, current, change);
     if (change.changeType === 'removed') {
       photoRecordStore.replaceAll(
