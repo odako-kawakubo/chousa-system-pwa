@@ -464,6 +464,31 @@ function applyProjectRecordChanges(project, changes = []) {
       });
       return;
     }
+    // photoのRealtime ListenerはupdatedAtカーソル付きクエリを監視しているため、
+    // 同一ドキュメントのupdatedAt更新時に旧クエリ結果が一時的にremovedとして通知されることがある。
+    // 写真の正式な削除正本はphotoRecord.deleted=trueなので、Listener上のremovedだけではStoreから消さない。
+    if (change.changeType === 'removed') {
+      skipped += 1;
+      syncDiagnosticLog('SYNC_APPLY_PHOTO', {
+        projectId: project.projectId,
+        photoId: id,
+        result: 'skipped',
+        changeType: 'removed',
+        reason: 'listener-query-removed-not-record-delete',
+        currentDeleted: Boolean(current?.deleted),
+        currentOriginalItemId: Boolean(current?.originalItemId),
+        currentCompletedItemId: Boolean(current?.completedItemId)
+      });
+      syncDiagnosticLog('SYNC_APPLY_CHANGE', {
+        projectId: project.projectId,
+        recordType: 'photo',
+        recordId: id,
+        result: 'skipped',
+        reason: 'listener-query-removed-not-record-delete'
+      });
+      return;
+    }
+
     syncDiagnosticLog('SYNC_APPLY_PHOTO', {
       projectId: project.projectId,
       photoId: id,
@@ -475,22 +500,6 @@ function applyProjectRecordChanges(project, changes = []) {
       incomingCompletedItemId: Boolean(change.record?.completedItemId)
     });
     registerPhotoImpact(viewImpact, current, change);
-    if (change.changeType === 'removed') {
-      photoRecordStore.replaceAll(
-        photoRecordStore.exportSnapshot().filter((record) => record.photoId !== id),
-        { notify: false }
-      );
-      changed = true;
-      applied += 1;
-      syncDiagnosticLog('SYNC_APPLY_CHANGE', {
-        projectId: project.projectId,
-        recordType: 'photo',
-        recordId: id,
-        result: 'applied',
-        changeType: 'removed'
-      });
-      return;
-    }
     const normalized = hydrateIncomingPhotoRecord(change.record);
     if (normalized) {
       photoRecordStore.set(normalized);
