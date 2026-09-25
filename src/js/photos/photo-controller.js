@@ -35,6 +35,7 @@ import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 
 const state = {
   mode: 'visual',
@@ -187,7 +188,14 @@ function setLocalPreview(photoId, blob) {
   if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
   revokePreviewUrl(localPreviewUrls, photoId);
   revokePreviewUrl(remoteThumbnailUrls, photoId);
-  localPreviewUrls.set(photoId, URL.createObjectURL(blob));
+  const url = URL.createObjectURL(blob);
+  localPreviewUrls.set(photoId, url);
+  syncDiagnosticLog('PHOTO_LOCAL_PREVIEW_SET', {
+    photoId,
+    size: Number(blob.size || 0),
+    type: String(blob.type || ''),
+    urlTail: String(url).slice(-24)
+  });
 }
 
 function setRemoteThumbnail(photoId, blob) {
@@ -236,10 +244,23 @@ function hydrateThumbnailImages(scope = root) {
     const markReady = () => {
       card?.classList.add('photo-thumb-ready');
       card?.classList.remove('photo-thumb-loading');
+      syncDiagnosticLog('PHOTO_THUMB_READY', {
+        photoId,
+        local: isLocalPreview,
+        complete: Boolean(image.complete),
+        naturalWidth: Number(image.naturalWidth || 0)
+      });
     };
     const markLoading = () => {
       card?.classList.remove('photo-thumb-ready');
       card?.classList.add('photo-thumb-loading');
+      syncDiagnosticLog('PHOTO_THUMB_LOADING', {
+        photoId,
+        local: isLocalPreview,
+        hasSource: Boolean(source),
+        complete: Boolean(image.complete),
+        naturalWidth: Number(image.naturalWidth || 0)
+      });
     };
 
     if (!source) {
@@ -412,7 +433,14 @@ async function registerCameraPreview({ record, originalBlob, completedBlob }, { 
   // 写真タブ全体は再描画せず、撮影対象ブロックだけを更新する。
   const stored = photoRecordStore.set(record);
   setLocalPreview(stored.photoId, completedBlob);
-  if (renderAfter) refreshCameraPhotoBlock(stored);
+  let blockRefreshed = null;
+  if (renderAfter) blockRefreshed = refreshCameraPhotoBlock(stored);
+  syncDiagnosticLog('PHOTO_LOCAL_BLOCK_REFRESH', {
+    photoId: stored.photoId,
+    photoType: stored.photoType,
+    renderAfter,
+    refreshed: blockRefreshed
+  });
 
   await saveCapturedPhoto({
     record: stored,
@@ -848,6 +876,12 @@ export function resetPhotoUiStateForProject() {
 }
 
 export function refreshPhotoTab() {
+  syncDiagnosticLog('PHOTO_REFRESH_TAB', {
+    mode: state.mode,
+    selectedRoomUid: state.selectedRoomUid,
+    selectedMaterialId: state.selectedMaterialId,
+    localPreviewCount: localPreviewUrls.size
+  });
   render();
   void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
 }
