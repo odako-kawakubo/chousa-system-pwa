@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.16 Preview
+name: Deploy v0.1.8.17 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01816
+  group: firebase-preview-v01817
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.16 review consistency checks
+      - name: v0.1.8.17 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.16"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.16-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01816-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.17-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01817-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -252,6 +252,15 @@ jobs:
           fi
           if grep -q "formatProjectLabel" src/js/finish-table/finish-table-controller.js src/js/projects/project-session.js; then
             echo "legacy project label writer remains"
+            exit 1
+          fi
+
+          # 仕上表候補入力UIをcontrollerから分離
+          test -f src/js/finish-table/finish-table-candidate-input.js
+          grep -q "getActiveCandidateSelection" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate module API missing"; exit 1; }
+          grep -q "from './finish-table-candidate-input.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use candidate module"; exit 1; }
+          if grep -q "let activeCandidateInput" src/js/finish-table/finish-table-controller.js; then
+            echo "finish controller still owns candidate popup state"
             exit 1
           fi
 
