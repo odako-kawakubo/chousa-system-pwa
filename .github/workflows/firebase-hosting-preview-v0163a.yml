@@ -258,7 +258,7 @@ jobs:
           # 仕上表候補入力UIをcontrollerから分離
           test -f src/js/finish-table/finish-table-candidate-input.js
           grep -q "getActiveCandidateSelection" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate module API missing"; exit 1; }
-          grep -q "from './finish-table-candidate-input.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use candidate module"; exit 1; }
+          grep -q "from './finish-table-candidate-input.js'" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use candidate module"; exit 1; }
           if grep -q "let activeCandidateInput" src/js/finish-table/finish-table-controller.js; then
             echo "finish controller still owns candidate popup state"
             exit 1
@@ -267,7 +267,7 @@ jobs:
           # 仕上表編集セッションをcontrollerから分離
           test -f src/js/finish-table/finish-table-edit-session.js
           grep -q "configureFinishTableEditSession" src/js/finish-table/finish-table-controller.js || { echo "finish edit session is not configured"; exit 1; }
-          grep -q "beginFinishEdit" src/js/finish-table/finish-table-controller.js || { echo "finish edit session begin hook missing"; exit 1; }
+          grep -q "beginFinishEdit" src/js/finish-table/finish-table-interactions.js || { echo "finish edit session begin hook missing"; exit 1; }
           grep -q "resetFinishTableEditSession" src/js/finish-table/finish-table-controller.js || { echo "finish edit session reset hook missing"; exit 1; }
           if grep -q "pendingEditSnapshot\|pendingEditBeforeValue\|explicitlyCommittedInputKey\|explicitCommitReleaseTimer" src/js/finish-table/finish-table-controller.js; then
             echo "finish controller still owns edit session state"
