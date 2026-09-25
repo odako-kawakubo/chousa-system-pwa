@@ -104,6 +104,14 @@ import {
   getActiveCandidateSelection,
   isActiveCandidateInput
 } from './finish-table-candidate-input.js';
+import {
+  configureFinishTableEditSession,
+  beginFinishEdit,
+  consumeExplicitCommit,
+  completeCellEdit,
+  finalizePendingEdit,
+  resetFinishTableEditSession
+} from './finish-table-edit-session.js';
 
 
 function commitCandidateSelection(option, input) {
@@ -156,56 +164,6 @@ function commitCandidateSelection(option, input) {
   input.focus();
 }
 
-/** フォーカス中の文字入力について、編集開始前のスナップショットと値を覚えておく。 */
-let pendingEditSnapshot = null;
-let pendingEditBeforeValue = null;
-
-/**
- * 候補選択／登録のような明示操作で確定した入力キー。
- * DOM再描画に伴って旧inputのfocusoutが後から発火しても、同じ値を二重確定しない。
- * ブラウザごとのfocusout発火順に依存しないよう、1イベントループ分だけ保持する。
- */
-let explicitlyCommittedInputKey = null;
-let explicitCommitReleaseTimer = null;
-
-function markExplicitlyCommitted(input) {
-  const key = String(input?.dataset?.inputKey || '');
-  explicitlyCommittedInputKey = key || null;
-  if (explicitCommitReleaseTimer) clearTimeout(explicitCommitReleaseTimer);
-  explicitCommitReleaseTimer = setTimeout(() => {
-    explicitlyCommittedInputKey = null;
-    explicitCommitReleaseTimer = null;
-  }, 250);
-}
-
-function consumeExplicitCommit(input) {
-  const key = String(input?.dataset?.inputKey || '');
-  if (!key || key !== explicitlyCommittedInputKey) return false;
-  explicitlyCommittedInputKey = null;
-  if (explicitCommitReleaseTimer) clearTimeout(explicitCommitReleaseTimer);
-  explicitCommitReleaseTimer = null;
-  return true;
-}
-
-/**
- * 候補選択／登録でセル編集を明示確定する共通経路。
- * 1操作につきStore確定と履歴記録を1回だけ行い、focusout側では再確定させない。
- */
-function completeCellEdit(input, mutate) {
-  if (!input || typeof mutate !== 'function') return;
-  const before = pendingEditSnapshot || getUndoableSnapshot();
-  markExplicitlyCommitted(input);
-  closeCandidatePopup();
-  restoreDynamicRegisterButton(input);
-  setFocusedInputKey(null);
-  runRecordTransaction(mutate);
-  recordHistory(before);
-  updateUndoRedoButtons();
-  pendingEditSnapshot = null;
-  pendingEditBeforeValue = null;
-  refreshFromStores();
-}
-
 /**
  * その他1/2の「建材名 <-> 部位」入力を往復しやすくする。
  * 明示確定（候補選択／登録／Enter）の後だけ相手セルへ移動し、
@@ -235,6 +193,11 @@ export function initializeFinishTable() {
 
   initFinishTableState();
   resetHistory();
+  configureFinishTableEditSession({
+    getUndoableSnapshot,
+    onHistoryChanged: updateUndoRedoButtons,
+    onRefresh: refreshFromStores
+  });
   renderFinishTab(finishSection);
   initSimpleList(document.getElementById('finishSimpleListPanel'));
   bindEvents(finishSection);
@@ -278,9 +241,7 @@ export function refreshFinishTableFromStores() {
 
 /** 案件切替時にUndo/Redoと編集中状態を新案件向けに初期化する。 */
 export function resetFinishTableForProject() {
-  pendingEditSnapshot = null;
-  pendingEditBeforeValue = null;
-  explicitlyCommittedInputKey = null;
+  resetFinishTableEditSession();
   resetHistory();
   updateUndoRedoButtons();
 }
@@ -442,22 +403,6 @@ function withHistory(mutate) {
 function commitAndRefresh(mutate) {
   runRecordTransaction(mutate);
   refreshFromStores();
-}
-
-/**
- * 文字入力の確定処理。focusinで保存しておいた「編集前スナップショット・
- * 編集前の値」と、確定時の値を比較し、変わっていた場合だけ1操作として
- * 履歴へ積む（1文字ごとには積まない）。
- *
- * @param {string} currentValue 確定時点の入力欄の値
- */
-function finalizePendingEdit(currentValue) {
-  if (pendingEditSnapshot && currentValue !== pendingEditBeforeValue) {
-    recordHistory(pendingEditSnapshot);
-    updateUndoRedoButtons();
-  }
-  pendingEditSnapshot = null;
-  pendingEditBeforeValue = null;
 }
 
 /** セルの未登録名（pending名）を管理する際に使うキー。finish-table-view-model.jsのpendingKeyと同じ形式。 */
@@ -747,8 +692,7 @@ function bindEvents(root) {
       const input = roomNoInput || roomNameInput;
       setFocusedInputKey(input.dataset.fieldKey);
       applyFocusedInputHighlight();
-      pendingEditSnapshot = getUndoableSnapshot();
-      pendingEditBeforeValue = input.value;
+      beginFinishEdit(input, getUndoableSnapshot());
       return;
     }
 
@@ -773,8 +717,7 @@ function bindEvents(root) {
     applyGroupSelection();
     applyFocusedInputHighlight();
 
-    pendingEditSnapshot = getUndoableSnapshot();
-    pendingEditBeforeValue = input.value;
+    beginFinishEdit(input, getUndoableSnapshot());
   });
 
   root.addEventListener('input', (event) => {
