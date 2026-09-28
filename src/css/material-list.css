@@ -151,6 +151,18 @@
   text-align: center;
 }
 
+.material-list-table .col-analysis-result {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
+
+.material-list-table .col-analysis-remarks {
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
+}
+
 .material-list-table .col-note {
   min-width: 190px;
 }
