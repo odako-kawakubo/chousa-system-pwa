@@ -61,6 +61,8 @@ function setAndPersistMaterial(previous, candidate, source = 'material-list-edit
 let materialListColorMode = false;
 // OFF=部屋No.、ON=部屋名優先。部屋名空欄は常に部屋No.へフォールバックする。
 let materialListRoomNameMode = false;
+// 調査中は横幅を圧迫しないよう、分析結果／分析備考は初期非表示。
+let materialListAnalysisColumnsOpen = false;
 
 const PEN_DRAG_THRESHOLD_PX = 12;
 const PEN_CLICK_SUPPRESS_MS = 500;
@@ -137,7 +139,8 @@ export function refreshMaterialList() {
   const projectId = String(getCurrentProject()?.projectId || '');
   renderMaterialList(rootElement, rows, selectedMaterialId, {
     colorMode: materialListColorMode,
-    roomNameMode: materialListRoomNameMode
+    roomNameMode: materialListRoomNameMode,
+    analysisColumnsOpen: materialListAnalysisColumnsOpen
   });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
@@ -292,6 +295,13 @@ function handleMaterialActivation(target, options = {}) {
     return;
   }
 
+  const analysisColumnsButton = target.closest('[data-action="toggle-material-analysis-columns"]');
+  if (analysisColumnsButton) {
+    materialListAnalysisColumnsOpen = !materialListAnalysisColumnsOpen;
+    refreshMaterialList();
+    return;
+  }
+
   const row = target.closest('[data-material-row]');
   if (row) setSelectedMaterial(row.dataset.materialId);
 
@@ -332,7 +342,13 @@ function activateTextDisplay(display) {
 
   const record = materialRecordStore.get(materialId);
   if (!record) return;
-  const value = kind === 'note' ? String(record.note || '') : String(record.name || '');
+  const value = kind === 'note'
+    ? String(record.note || '')
+    : kind === 'analysisResult'
+      ? String(record.analysisResult || '')
+      : kind === 'remarks'
+        ? String(record.remarks || '')
+        : String(record.name || '');
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -352,6 +368,8 @@ function commitTextEditor(input) {
   const kind = input.dataset.editorKind;
   if (kind === 'name') updateMaterialName(materialId, input.value);
   else if (kind === 'note') updateMaterialNote(materialId, input.value);
+  else if (kind === 'analysisResult') updateMaterialAnalysisText(materialId, 'analysisResult', input.value);
+  else if (kind === 'remarks') updateMaterialAnalysisText(materialId, 'remarks', input.value);
   else refreshMaterialList();
 }
 
@@ -493,6 +511,24 @@ function updateMaterialNote(materialId, rawValue) {
     note
   }, 'material-note-edit');
   refreshConnectedViews();
+}
+
+function updateMaterialAnalysisText(materialId, field, rawValue) {
+  if (!['analysisResult', 'remarks'].includes(field)) return refreshMaterialList();
+
+  const record = materialRecordStore.get(materialId);
+  if (!record) return refreshMaterialList();
+
+  const value = String(rawValue ?? '').trim();
+  if (value === String(record[field] || '')) return refreshMaterialList();
+
+  setAndPersistMaterial(record, {
+    ...record,
+    [field]: value
+  }, field === 'analysisResult' ? 'material-analysis-result-edit' : 'material-analysis-remarks-edit');
+
+  refreshMaterialList();
+  refreshRecordView();
 }
 
 function applySamplingAutofill() {
