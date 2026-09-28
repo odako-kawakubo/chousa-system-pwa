@@ -51,7 +51,7 @@ export function buildMaterialListOutput({locationMode='room-no'}={}){
       level:text(record.level)||'-',
       analysisRequired:text(record.analysisRequired),
       analysisResult:text(record.analysisResult),
-      note:text(record.remarks||record.note)
+      note:text(record.note)
     };
   });
 }
@@ -67,7 +67,7 @@ export function buildRoomMaterialOutput(){
         floor:floorLabel(record),roomNo:text(record.roomNo),roomName:text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?(material.materialNo||material.inputId||''):'',
-        materialName:material?text(material.name):text(record.materialName),note:material?text(material.remarks||material.note):'',
+        materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
         level:material?(text(material.level)||'-'):'-',analysisResult:material?text(material.analysisResult):'調査対象外',
         registered:Boolean(material)
       };
