@@ -38,6 +38,8 @@ export function buildMaterialListRows(records) {
         usagePlaces,
         level: normalizeLevel(record.level),
         analysisRequired: String(record.analysisRequired || '採取・分析'),
+        analysisResult: String(record.analysisResult || ''),
+        remarks: String(record.remarks || ''),
         samplingEnabled: String(record.analysisRequired || '採取・分析') === '採取・分析',
         note: String(record.note || ''),
         sampleCount,
