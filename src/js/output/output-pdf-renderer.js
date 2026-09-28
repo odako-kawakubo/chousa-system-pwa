@@ -96,9 +96,9 @@ function chunkRows(rows,size) {
 function isPositive(value) {
   const text=String(value??'').trim();
   if(!text)return false;
-  if(text==='有')return true;
-  if(text.includes('無')||text.includes('なし')||text==='-')return false;
-  return text.includes('含有');
+  if(text==='石綿含有みなし'||text==='石綿含有'||text==='有')return true;
+  if(text==='無'||text==='-'||text==='調査対象外')return false;
+  return text.includes('石綿含有');
 }
 function setFont(pdf,size,style='normal',color=BLACK) {
   pdf.setFont(FONT_FAMILY,style);
@@ -254,7 +254,7 @@ function paginateRows(rows,heights,availableHeight) {
   return pages;
 }
 function drawMaterialBodyRow(pdf,row,y,rowH,widths,settings) {
-  const color=isPositive(row.analysisResult)?RED:BLACK;
+  const color=(row.positive??isPositive(row.analysisResult))?RED:BLACK;
   const values=[row.materialNo,row.name,row.part,row.usageLocation,row.level,row.analysisRequired,row.analysisResult,row.note];
   let cx=MARGIN_X;
   widths.forEach((width,colIndex)=>{
@@ -342,7 +342,7 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
   const xs=[MARGIN_X];widths.forEach((width)=>xs.push(xs[xs.length-1]+width));
   let y=LIST_START_Y+settings.roomHeaderHeight;
   rows.forEach((row,index)=>{
-    const rowH=heights[index];const color=isPositive(row.analysisResult)?RED:BLACK;
+    const rowH=heights[index];const color=(row.positive??isPositive(row.analysisResult))?RED:BLACK;
     [{col:3,value:row.part,part:true},{col:4,value:row.materialNo,center:true},{col:5,value:row.materialName},{col:6,value:row.note},{col:7,value:row.level,center:true},{col:8,value:row.analysisResult,center:true}].forEach((cell)=>{
       drawRect(pdf,xs[cell.col],y,widths[cell.col],rowH);
       if(cell.part)drawPartCell(pdf,cell.value,xs[cell.col],y,widths[cell.col],rowH,{size:settings.roomBodySize,color});
@@ -354,7 +354,7 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
     const roomKey=(item)=>`${item.floor}\u0000${item.roomNo}`;
     if(!precedingSame(rows,index,roomKey)){
       const span=pageSpan(rows,index,roomKey);const h=spanHeight(heights,index,span);
-      [{col:1,value:row.roomNo,center:true,roomTokens:true,color:BLACK},{col:2,value:row.roomName,center:true,color:BLACK},{col:9,value:row.roomNote,center:false,color}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color:cell.color,paddingX:.8,roomTokens:cell.roomTokens});});
+      [{col:1,value:row.roomNo,center:true,roomTokens:true,color:BLACK},{col:2,value:row.roomName,center:true,color:BLACK},{col:9,value:row.roomNote,center:false,color:BLACK}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color:cell.color,paddingX:.8,roomTokens:cell.roomTokens});});
     }
     y+=rowH;
   });
