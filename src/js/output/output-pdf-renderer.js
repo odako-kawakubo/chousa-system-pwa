@@ -238,6 +238,7 @@ function materialRowHeight(pdf,row,widths,settings) {
   let height=MATERIAL_BASE_ROW_H;
   values.forEach((value,index)=>{
     if(index===2){height=Math.max(height,partRequiredHeight(pdf,value,widths[index],settings.materialBodySize));return;}
+    if(index===6)return;
     height=Math.max(height,requiredTextHeight(pdf,value,widths[index],{size:settings.materialBodySize,roomTokens:index===3,paddingX:.8,paddingY:.9}));
   });
   return Math.min(30,height);
@@ -259,7 +260,8 @@ function drawMaterialBodyRow(pdf,row,y,rowH,widths,settings) {
   widths.forEach((width,colIndex)=>{
     drawRect(pdf,cx,y,width,rowH);
     if(colIndex===2)drawPartCell(pdf,values[colIndex],cx,y,width,rowH,{size:settings.materialBodySize,color});
-    else drawCellText(pdf,values[colIndex],cx,y,width,rowH,{align:[0,4,5,6].includes(colIndex)?'center':'left',size:settings.materialBodySize,color,paddingX:.8,roomTokens:colIndex===3});
+    else if(colIndex===6)drawSingleLineFit(pdf,values[colIndex],cx,y,width,rowH,{align:'center',size:settings.materialBodySize,minSize:5.8,style:'normal',color,paddingX:.8});
+    else drawCellText(pdf,values[colIndex],cx,y,width,rowH,{align:[0,4,5].includes(colIndex)?'center':'left',size:settings.materialBodySize,color,paddingX:.8,roomTokens:colIndex===3});
     cx+=width;
   });
 }
@@ -289,6 +291,7 @@ function roomRowBaseHeight(pdf,row,widths,settings) {
   let height=ROOM_BASE_ROW_H;
   values.forEach(({col,value})=>{
     if(col===3){height=Math.max(height,partRequiredHeight(pdf,value,widths[col],settings.roomBodySize));return;}
+    if(col===8)return;
     height=Math.max(height,requiredTextHeight(pdf,value,widths[col],{size:settings.roomBodySize,paddingX:.8,paddingY:.9}));
   });
   return Math.min(30,height);
@@ -343,6 +346,7 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
     [{col:3,value:row.part,part:true},{col:4,value:row.materialNo,center:true},{col:5,value:row.materialName},{col:6,value:row.note},{col:7,value:row.level,center:true},{col:8,value:row.analysisResult,center:true}].forEach((cell)=>{
       drawRect(pdf,xs[cell.col],y,widths[cell.col],rowH);
       if(cell.part)drawPartCell(pdf,cell.value,xs[cell.col],y,widths[cell.col],rowH,{size:settings.roomBodySize,color});
+      else if(cell.col===8)drawSingleLineFit(pdf,cell.value,xs[cell.col],y,widths[cell.col],rowH,{align:'center',size:settings.roomBodySize,minSize:5.8,style:'normal',color,paddingX:.8});
       else drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],rowH,{align:cell.center?'center':'left',size:settings.roomBodySize,color,paddingX:.8});
     });
     const floorKey=(item)=>String(item.floor??'');
