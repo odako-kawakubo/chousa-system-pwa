@@ -60,6 +60,27 @@ function lineGroups(items = []) {
 function compactText(items) {
   return items.map((item) => item.text).join(' ').replace(/\s+/g, ' ').trim();
 }
+
+function normalizeAnalysisResult(rawResult, rawRemarks = '') {
+  const resultText = String(rawResult ?? '').replace(/\s+/g, ' ').trim();
+  const remarksText = String(rawRemarks ?? '').replace(/\s+/g, ' ').trim();
+
+  let analysisResult = '';
+  let overflow = '';
+
+  if (resultText.includes('石綿含有')) {
+    analysisResult = '石綿含有';
+    overflow = resultText.replace(/石綿含有/g, ' ').replace(/\s+/g, ' ').trim();
+  } else if (/(^|\s)無($|\s)/.test(resultText) || resultText === '無') {
+    analysisResult = '無';
+    overflow = resultText.replace(/(^|\s)無($|\s)/g, ' ').replace(/\s+/g, ' ').trim();
+  } else {
+    overflow = resultText;
+  }
+
+  const remarks = [overflow, remarksText].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return { analysisResult, remarks };
+}
 function headerPositions(lines) {
   for (const line of lines) {
     const all = compactText(line.items);
@@ -88,10 +109,16 @@ function parseResultRowsFromPage(lines) {
 
     if (numberMatch) {
       const sampleName = compactText(nameItems);
-      const analysisResult = compactText(analysisItems);
-      const remarks = compactText(remarkItems);
+      const rawAnalysisResult = compactText(analysisItems);
+      const rawRemarks = compactText(remarkItems);
       if (!sampleName || sampleName.includes('以下余白')) return;
-      current = { sampleNo:Number(numberMatch[1]), sampleName, analysisResult, remarks };
+      const normalized = normalizeAnalysisResult(rawAnalysisResult, rawRemarks);
+      current = {
+        sampleNo:Number(numberMatch[1]),
+        sampleName,
+        analysisResult:normalized.analysisResult,
+        remarks:normalized.remarks
+      };
       result.push(current);
       return;
     }
