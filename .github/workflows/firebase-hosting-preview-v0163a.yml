@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.20 Preview
+name: Deploy v0.1.8.21 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01820
+  group: firebase-preview-v01821
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.20 review consistency checks
+      - name: v0.1.8.21 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.20"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.20-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01820-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.21-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01821-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -289,6 +289,19 @@ jobs:
           grep -q "toggle-material-analysis-columns" src/js/materials/material-list-controller.js || { echo "material analysis column toggle missing"; exit 1; }
           grep -q "data-editor-kind=.*analysisResult\|renderTextDisplay(row, 'analysisResult'" src/js/materials/material-list-renderer.js || { echo "material analysis result editor missing"; exit 1; }
           grep -q "renderTextDisplay(row, 'remarks'" src/js/materials/material-list-renderer.js || { echo "material analysis remarks editor missing"; exit 1; }
+
+          # 分析結果取込は「無 / 石綿含有」のみを結果へ保持し、その他は分析備考へ送る
+          grep -q "function normalizeAnalysisResult" src/js/analysis/analysis-import-controller.js || { echo "analysis result normalization missing"; exit 1; }
+          grep -q "analysisResult = '石綿含有'" src/js/analysis/analysis-import-controller.js || { echo "asbestos-containing result mapping missing"; exit 1; }
+          grep -q "analysisResult = '無'" src/js/analysis/analysis-import-controller.js || { echo "none result mapping missing"; exit 1; }
+
+          # 出力帳票の調査備考は material.note のみ
+          grep -q "note:text(record.note)" src/js/output/output-view-model.js || { echo "material output note source is not survey note"; exit 1; }
+          grep -q "note:material?text(material.note):''" src/js/output/output-view-model.js || { echo "room output note source is not survey note"; exit 1; }
+          if grep -q "remarks||record.note\|remarks||material.note" src/js/output/output-view-model.js; then
+            echo "analysis remarks are still mixed into survey note output"
+            exit 1
+          fi
 
           test -f src/js/output/output-pdf-preview.js
           test -f src/js/output/output-format.js
