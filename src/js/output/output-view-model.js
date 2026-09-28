@@ -39,14 +39,20 @@ function floorLabel(record){
 }
 function activeMaterials(){return materialRecordStore.getAll().filter((record)=>record.status==='active').slice().sort((a,b)=>Number(a.materialNo||a.inputId||0)-Number(b.materialNo||b.inputId||0));}
 
+function sourceResultIsPositive(value){
+  const result=text(value);
+  return result==='石綿含有'||result==='有'||result.includes('石綿含有');
+}
+
 function reportAnalysisFields(record){
   const sourceRequired=text(record?.analysisRequired);
   const sourceResult=text(record?.analysisResult);
+  const sourcePositive=sourceResultIsPositive(sourceResult);
 
-  if(sourceRequired==='みなし')return { analysisRequired:'目視', analysisResult:'石綿含有みなし' };
-  if(sourceRequired==='対象外')return { analysisRequired:'目視', analysisResult:'調査対象外' };
-  if(sourceRequired==='目視')return { analysisRequired:'目視', analysisResult:sourceResult||'-' };
-  return { analysisRequired:'採取・分析', analysisResult:sourceResult||'-' };
+  if(sourceRequired==='みなし')return { analysisRequired:'目視', analysisResult:'石綿含有みなし', positive:true };
+  if(sourceRequired==='対象外')return { analysisRequired:'目視', analysisResult:'調査対象外', positive:sourcePositive };
+  if(sourceRequired==='目視')return { analysisRequired:'目視', analysisResult:sourceResult||'-', positive:sourcePositive };
+  return { analysisRequired:'採取・分析', analysisResult:sourceResult||'-', positive:sourcePositive };
 }
 
 export function buildMaterialListOutput({locationMode='room-no'}={}){
@@ -62,6 +68,7 @@ export function buildMaterialListOutput({locationMode='room-no'}={}){
       level:text(record.level)||'-',
       analysisRequired:reportAnalysis.analysisRequired,
       analysisResult:reportAnalysis.analysisResult,
+      positive:reportAnalysis.positive,
       note:text(record.note)
     };
   });
@@ -74,13 +81,13 @@ export function buildRoomMaterialOutput(){
     .map((record)=>{
       const material=record.materialId?materialById.get(String(record.materialId)):null;
       const partIndex=partIndexFromPosition(record.position);
-      const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外' };
+      const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外', positive:false };
       return {
         floor:floorLabel(record),roomNo:text(record.roomNo),roomName:text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?(material.materialNo||material.inputId||''):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
-        level:material?(text(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,
+        level:material?(text(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,positive:reportAnalysis.positive,
         registered:Boolean(material)
       };
     });
