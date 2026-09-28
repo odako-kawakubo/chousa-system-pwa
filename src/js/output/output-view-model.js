@@ -39,18 +39,29 @@ function floorLabel(record){
 }
 function activeMaterials(){return materialRecordStore.getAll().filter((record)=>record.status==='active').slice().sort((a,b)=>Number(a.materialNo||a.inputId||0)-Number(b.materialNo||b.inputId||0));}
 
+function reportAnalysisFields(record){
+  const sourceRequired=text(record?.analysisRequired);
+  const sourceResult=text(record?.analysisResult);
+
+  if(sourceRequired==='みなし')return { analysisRequired:'目視', analysisResult:'石綿含有みなし' };
+  if(sourceRequired==='対象外')return { analysisRequired:'目視', analysisResult:'調査対象外' };
+  if(sourceRequired==='目視')return { analysisRequired:'目視', analysisResult:sourceResult||'-' };
+  return { analysisRequired:'採取・分析', analysisResult:sourceResult||'-' };
+}
+
 export function buildMaterialListOutput({locationMode='room-no'}={}){
   const preferRoomName=locationMode==='room-name';
   return activeMaterials().map((record)=>{
     const labels=getMaterialUsageRoomLabels(record.inputId,{preferRoomName});
+    const reportAnalysis=reportAnalysisFields(record);
     return {
       materialNo:record.materialNo||record.inputId||'',
       name:text(record.name),
       part:text(record.part),
       usageLocation:labels.join('、')||text(record.usageLocation),
       level:text(record.level)||'-',
-      analysisRequired:text(record.analysisRequired),
-      analysisResult:text(record.analysisResult),
+      analysisRequired:reportAnalysis.analysisRequired,
+      analysisResult:reportAnalysis.analysisResult,
       note:text(record.note)
     };
   });
@@ -63,12 +74,13 @@ export function buildRoomMaterialOutput(){
     .map((record)=>{
       const material=record.materialId?materialById.get(String(record.materialId)):null;
       const partIndex=partIndexFromPosition(record.position);
+      const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外' };
       return {
         floor:floorLabel(record),roomNo:text(record.roomNo),roomName:text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?(material.materialNo||material.inputId||''):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
-        level:material?(text(material.level)||'-'):'-',analysisResult:material?text(material.analysisResult):'調査対象外',
+        level:material?(text(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,
         registered:Boolean(material)
       };
     });
