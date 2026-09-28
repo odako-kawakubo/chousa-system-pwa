@@ -346,11 +346,11 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
       else drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],rowH,{align:cell.center?'center':'left',size:settings.roomBodySize,color,paddingX:.8});
     });
     const floorKey=(item)=>String(item.floor??'');
-    if(!precedingSame(rows,index,floorKey)){const span=pageSpan(rows,index,floorKey);const h=spanHeight(heights,index,span);drawRect(pdf,xs[0],y,widths[0],h);drawCellText(pdf,row.floor,xs[0],y,widths[0],h,{align:'center',size:settings.roomBodySize,color,paddingX:.4});}
+    if(!precedingSame(rows,index,floorKey)){const span=pageSpan(rows,index,floorKey);const h=spanHeight(heights,index,span);drawRect(pdf,xs[0],y,widths[0],h);drawCellText(pdf,row.floor,xs[0],y,widths[0],h,{align:'center',size:settings.roomBodySize,color:BLACK,paddingX:.4});}
     const roomKey=(item)=>`${item.floor}\u0000${item.roomNo}`;
     if(!precedingSame(rows,index,roomKey)){
       const span=pageSpan(rows,index,roomKey);const h=spanHeight(heights,index,span);
-      [{col:1,value:row.roomNo,center:true,roomTokens:true},{col:2,value:row.roomName,center:true},{col:9,value:row.roomNote,center:false}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color,paddingX:.8,roomTokens:cell.roomTokens});});
+      [{col:1,value:row.roomNo,center:true,roomTokens:true,color:BLACK},{col:2,value:row.roomName,center:true,color:BLACK},{col:9,value:row.roomNote,center:false,color}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color:cell.color,paddingX:.8,roomTokens:cell.roomTokens});});
     }
     y+=rowH;
   });
