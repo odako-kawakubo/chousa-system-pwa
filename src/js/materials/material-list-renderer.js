@@ -18,26 +18,27 @@ export function renderMaterialList(root, rows, selectedMaterialId, options = {})
   const stats = buildMaterialListStats(rows);
   const colorMode = options.colorMode !== false;
   const roomNameMode = Boolean(options.roomNameMode);
+  const analysisColumnsOpen = Boolean(options.analysisColumnsOpen);
   const partWidth = computePartColumnWidth(rows);
 
   root.innerHTML = `
     <div class="panel material-list-panel">
-      ${renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode)}
+      ${renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode, analysisColumnsOpen)}
       <div class="material-list-table-wrap">
         <table
           class="material-list-table${colorMode ? ' color-mode' : ''}"
           id="materialsTable"
           style="--material-part-width:${partWidth}px"
         >
-          <thead>${renderHeader()}</thead>
-          <tbody>${renderRows(rows, selectedMaterialId, colorMode)}</tbody>
+          <thead>${renderHeader(analysisColumnsOpen)}</thead>
+          <tbody>${renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen)}</tbody>
         </table>
       </div>
     </div>
   `;
 }
 
-function renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode) {
+function renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode, analysisColumnsOpen) {
   return `
     <div class="material-list-toolbar">
       <div class="material-list-toolbar-left">
@@ -46,6 +47,9 @@ function renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode)
         </button>
         <button type="button" class="btn small material-list-room-name-toggle" data-action="toggle-material-room-name">
           部屋名表示 ${roomNameMode ? 'ON' : 'OFF'}
+        </button>
+        <button type="button" class="btn small material-list-analysis-toggle" data-action="toggle-material-analysis-columns">
+          分析欄を${analysisColumnsOpen ? '隠す' : '表示'}
         </button>
         <span class="pill">対象建材 <b>${stats.total}</b>件</span>
         <span class="pill">採取 <b>${stats.sample}</b></span>
@@ -62,7 +66,7 @@ function renderToolbar(rows, selectedMaterialId, stats, colorMode, roomNameMode)
   `;
 }
 
-function renderHeader() {
+function renderHeader(analysisColumnsOpen) {
   return `
     <tr>
       <th class="col-no">No.</th>
@@ -72,6 +76,10 @@ function renderHeader() {
       <th class="col-place">建材使用箇所</th>
       <th class="col-level">レベル</th>
       <th class="col-analysis">分析の要否</th>
+      ${analysisColumnsOpen ? `
+        <th class="col-analysis-result">分析結果</th>
+        <th class="col-analysis-remarks">分析備考</th>
+      ` : ''}
       <th class="col-note">調査備考</th>
       <th class="col-sample-count">採取数</th>
       <th class="col-sample-place">採取場所1</th>
@@ -84,9 +92,9 @@ function renderHeader() {
   `;
 }
 
-function renderRows(rows, selectedMaterialId, colorMode) {
+function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
   if (!rows.length) {
-    return '<tr><td colspan="15" class="material-list-empty">対象建材はまだありません</td></tr>';
+    return `<tr><td colspan="${analysisColumnsOpen ? 17 : 15}" class="material-list-empty">対象建材はまだありません</td></tr>`;
   }
 
   return rows.map((row) => {
@@ -112,6 +120,14 @@ function renderRows(rows, selectedMaterialId, colorMode) {
         <td class="col-analysis material-control-cell">
           ${renderAnalysisSelect(row)}
         </td>
+        ${analysisColumnsOpen ? `
+          <td class="col-analysis-result material-edit-cell">
+            ${renderTextDisplay(row, 'analysisResult', row.analysisResult, '分析結果', '分析結果')}
+          </td>
+          <td class="col-analysis-remarks material-edit-cell">
+            ${renderTextDisplay(row, 'remarks', row.remarks, '分析備考', '分析備考')}
+          </td>
+        ` : ''}
         <td class="col-note material-edit-cell">
           ${renderTextDisplay(row, 'note', row.note, '調査備考', '調査備考')}
         </td>
