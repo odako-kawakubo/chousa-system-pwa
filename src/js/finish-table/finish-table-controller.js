@@ -44,11 +44,9 @@ import {
   clearRoomCopyBackup,
   getRoomCopyBackup
 } from './finish-table-state.js';
-import {
-  runRecordTransaction,
-  finishRecordStore,
-  materialRecordStore
-} from './finish-table-actions.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import { runRecordTransaction } from './finish-table-record-transaction.js';
 import {
   describeRoomCopyClick,
   executeRoomCopy,
