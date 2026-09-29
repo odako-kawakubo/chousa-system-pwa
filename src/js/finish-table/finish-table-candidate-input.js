@@ -12,9 +12,9 @@
 
 import {
   finishRecordStore,
-  materialRecordStore,
-  getMaterialPartOptions
+  materialRecordStore
 } from './finish-table-actions.js';
+import { getMaterialPartOptions } from './finish-table-cell-actions.js';
 import {
   getMaterialOptions,
   getOtherMaterialOptions,
