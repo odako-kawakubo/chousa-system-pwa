@@ -45,14 +45,16 @@ import {
   getRoomCopyBackup
 } from './finish-table-state.js';
 import {
-  describeRoomCopyClick,
-  executeRoomCopy,
-  restoreRoomCopy,
-  snapshotRoomRecords,
   runRecordTransaction,
   finishRecordStore,
   materialRecordStore
 } from './finish-table-actions.js';
+import {
+  describeRoomCopyClick,
+  executeRoomCopy,
+  restoreRoomCopy,
+  snapshotRoomRecords
+} from './finish-table-room-copy.js';
 import {
   addNormalFloor,
   addBasementFloor,
