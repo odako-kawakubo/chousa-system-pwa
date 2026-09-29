@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.25 Preview
+name: Deploy v0.1.8.26 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01825
+  group: firebase-preview-v01826
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.25 review consistency checks
+      - name: v0.1.8.26 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.25'" src/config/app-config.js
+          grep -q "version: '0.1.8.26'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.25"' src/version.json
+          grep -q '"version": "0.1.8.26"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.25-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01825-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.26-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01826-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -284,6 +284,21 @@ jobs:
           grep -q "export function persistSparseFinishRecord" src/js/finish-table/finish-table-persistence.js || { echo "sparse persistence API missing"; exit 1; }
           if grep -q "export function addNormalFloor\|function insertFloorRoomAt\|function persistFinishStructureChange" src/js/finish-table/finish-table-actions.js; then
             echo "legacy structure or persistence ownership remains in finish-table-actions"
+            exit 1
+          fi
+
+          # 仕上表セル編集・建材登録・使用箇所派生をactionsから分離
+          test -f src/js/finish-table/finish-table-cell-actions.js
+          test -f src/js/finish-table/material-usage-derived.js
+          grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use cell actions"; exit 1; }
+          grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate input does not use cell actions"; exit 1; }
+          grep -q "from './material-usage-derived.js'" src/js/finish-table/finish-table-actions.js || { echo "finish actions do not use usage derived module"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/output/output-view-model.js || { echo "output does not use usage derived module"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/materials/material-list-controller.js || { echo "material list does not use usage derived module"; exit 1; }
+          grep -q "export function registerMaterialForCell" src/js/finish-table/finish-table-cell-actions.js || { echo "material registration cell action missing"; exit 1; }
+          grep -q "export function refreshMaterialUsageDerivedFields" src/js/finish-table/material-usage-derived.js || { echo "material usage derivation API missing"; exit 1; }
+          if grep -q "export function commitCellId\|export function registerMaterialForCell\|export function getMaterialUsageRoomLabels" src/js/finish-table/finish-table-actions.js; then
+            echo "legacy cell or usage ownership remains in finish-table-actions"
             exit 1
           fi
 
