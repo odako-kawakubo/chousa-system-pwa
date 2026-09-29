@@ -21,12 +21,10 @@ import {
   clearPendingCellName,
   getPendingCellName
 } from './finish-table-state.js';
-import {
-  commitRoomField,
-  runRecordTransaction,
-  finishRecordStore,
-  materialRecordStore
-} from './finish-table-actions.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import { commitRoomField } from './finish-table-room-actions.js';
+import { runRecordTransaction } from './finish-table-record-transaction.js';
 import {
   commitCellId,
   commitCellName,
