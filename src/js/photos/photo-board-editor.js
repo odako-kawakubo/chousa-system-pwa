@@ -14,8 +14,7 @@
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { PHOTO_TYPES, SHOOTING_TYPES, getShootingTypeLabel, getVisualPhotoRoomKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
-import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { PHOTO_TYPES, SHOOTING_TYPES, getVisualPhotoRoomKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import {
   BOARD_POSITION_LABELS,
@@ -24,9 +23,6 @@ import {
   getBoardRect
 } from '../camera/camera-board.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
-import { getAvailablePhotoFileName } from './photo-filename.js';
-import { getDeviceCode } from '../device-code.js';
-import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
   bindPhotoBoardEditorInteractions,
   resetPhotoBoardEditorInteractionState
@@ -39,20 +35,15 @@ import {
   boardEditorSessionHasUnsavedChanges,
   pushBoardEditorHistory,
   applyBoardEditorHistory,
-  settleBoardEditorEntry
 } from './photo-board-editor-session.js';
+import {
+  persistBoardEditorEntry,
+  formatBoardSampleNo
+} from './photo-board-editor-persistence.js';
 
 const BOARD_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 const BOARD_SIZES = ['small', 'medium', 'large'];
 const STAGES = [SHOOTING_TYPES.BEFORE, SHOOTING_TYPES.DURING, SHOOTING_TYPES.AFTER];
-const MARKS = { 1: '①', 2: '②', 3: '③' };
-
-const PHOTO_SYNC_EDIT_FIELDS = new Set([
-  'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
-  'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'boardDate', 'originalPath', 'completedPath',
-  'areaCode', 'roomPosition', 'partSlot',
-  'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
-]);
 
 let root = null;
 let canvas = null;
@@ -92,55 +83,7 @@ function dateText(value) {
   return `${y}年${m}月${d}日`;
 }
 
-function sampleDisplay(base, branch) { return `${base || ''}${MARKS[branch] ? `-${MARKS[branch]}` : ''}`; }
-
-function memoValue_(value) {
-  const text = String(value ?? '').trim();
-  return text || '-';
-}
-
-function appendSystemMemo_(currentMemo, message) {
-  const current = String(currentMemo || '').trim();
-  const stamp = new Date().toLocaleString('ja-JP');
-  const line = `${stamp} ${message}`;
-  return current ? `${current}\n${line}` : line;
-}
-
-function buildBoardEditMemo_(entry) {
-  const before = entry.initialDraft || {};
-  const after = entry.draft || {};
-  const lines = [];
-
-  if (entry.record.photoType === PHOTO_TYPES.VISUAL) {
-    const roomChanged = before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
-    if (roomChanged) lines.push(`部屋：${memoValue_(before.roomNo || before.roomPosition)} → ${memoValue_(after.roomNo || after.roomPosition)}`);
-
-    const partChanged = Number(before.partSlot || 0) !== Number(after.partSlot || 0) || before.part !== after.part;
-    if (partChanged) lines.push(`部位：${before.part ? memoValue_(before.part) : '未整理'} → ${after.part ? memoValue_(after.part) : '未整理'}`);
-  } else {
-    const materialChanged = before.materialId !== after.materialId || before.sampleBaseNo !== after.sampleBaseNo;
-    if (materialChanged) lines.push(`検体No.：${memoValue_(before.sampleBaseNo)} → ${memoValue_(after.sampleBaseNo)}`);
-
-    const branchChanged = Number(before.samplingBranch || 0) !== Number(after.samplingBranch || 0);
-    if (branchChanged) lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue_(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue_(after.samplingBranch) : '未整理'}`);
-
-    if (before.shootingType !== after.shootingType) {
-      lines.push(`撮影区分：${before.shootingType ? memoValue_(getShootingTypeLabel(before.shootingType)) : '未整理'} → ${after.shootingType ? memoValue_(getShootingTypeLabel(after.shootingType)) : '未整理'}`);
-    }
-  }
-
-  if (before.boardDate !== after.boardDate) {
-    lines.push(`日付：${memoValue_(dateText(before.boardDate))} → ${memoValue_(dateText(after.boardDate))}`);
-  }
-  if (before.boardPosition !== after.boardPosition) {
-    lines.push(`看板位置：${memoValue_(BOARD_POSITION_LABELS[before.boardPosition])} → ${memoValue_(BOARD_POSITION_LABELS[after.boardPosition])}`);
-  }
-  if (before.boardSize !== after.boardSize) {
-    lines.push(`看板サイズ：${memoValue_(BOARD_SIZE_LABELS[before.boardSize])} → ${memoValue_(BOARD_SIZE_LABELS[after.boardSize])}`);
-  }
-
-  return lines.length ? ['看板編集', ...lines].join('\n') : '';
-}
+function sampleDisplay(base, branch) { return formatBoardSampleNo(base, branch); }
 
 function currentStatusCode(entry = active) {
   if (!entry) return '1';
@@ -453,88 +396,13 @@ function updateDraftFromEvent(target) {
   renderPreview();
 }
 
-async function composeCompletedBlob_(entry) {
-  const originalBlob = await resolveEditorOriginalPhoto(entry.record);
-  if (!originalBlob) throw new Error(`元写真を取得できませんでした。 (${entry.record.photoId})`);
-  const img = await loadImageFromBlob(originalBlob);
-  const out = document.createElement('canvas');
-  out.width = img.width;
-  out.height = img.height;
-  const ctx = out.getContext('2d');
-  ctx.drawImage(img,0,0);
-  if (!(entry.record.photoType === PHOTO_TYPES.SAMPLING && entry.draft.shootingType === SHOOTING_TYPES.SECTION)) {
-    const rect = getBoardRect(out.width,out.height,entry.draft.boardPosition,entry.draft.boardSize);
-    drawBoard(ctx,rect,boardData(entry));
-  }
-  return new Promise((resolve,reject)=>out.toBlob((blob)=>blob?resolve(blob):reject(new Error('完成画像を生成できませんでした。')),'image/jpeg',0.82));
-}
-
-async function persistEntry_(entry) {
-  const originalBlob = await resolveEditorOriginalPhoto(entry.record);
-  if (!originalBlob) throw new Error(`元写真を取得できませんでした。 (${entry.record.photoId})`);
-
-  const completedBlob = await composeCompletedBlob_(entry);
-  const now = new Date().toISOString();
-  const nextFields = entry.record.photoType === PHOTO_TYPES.VISUAL
-    ? { areaCode:entry.draft.areaCode, roomPosition:entry.draft.roomPosition, partSlot:entry.draft.partSlot, roomNo:entry.draft.roomNo, part:entry.draft.part }
-    : {
-        materialId:entry.draft.materialId || entry.record.materialId,
-        samplingPlace:entry.draft.samplingPlace,
-        samplingBranch:entry.draft.samplingBranch,
-        sampleNo:sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
-        sampleBaseNo:entry.draft.sampleBaseNo,
-        part:entry.draft.part,
-        shootingType:entry.draft.shootingType
-      };
-
-  const fileName = getAvailablePhotoFileName(
-    { photoType:entry.record.photoType, ...nextFields },
-    photoRecordStore.getAll(),
-    entry.record.photoId
-  );
-  const editMemo = buildBoardEditMemo_(entry);
-  const nextSystemMemo = editMemo ? appendSystemMemo_(entry.record.systemMemo, editMemo) : entry.record.systemMemo;
-  const nextRecordFields = {
-    ...nextFields,
-    fileName,
-    systemMemo: nextSystemMemo,
-    boardDate:entry.draft.boardDate,
-    boardPosition:entry.draft.boardPosition,
-    boardSize:entry.draft.boardSize,
-    isEdited:true,
-    lastEditedDevice:getDeviceCode(),
-    lastEditedAt:now
-  };
-  const editedFields = Object.keys(nextRecordFields).filter((field) =>
-    PHOTO_SYNC_EDIT_FIELDS.has(field)
-    && String(entry.record?.[field] ?? '') !== String(nextRecordFields[field] ?? '')
-  );
-
-  const record = photoRecordStore.set({
-    ...entry.record,
-    ...nextRecordFields,
-    fieldEditedAt: touchFieldEditedAt(entry.record.fieldEditedAt, editedFields),
-    syncStatus:'pending',
-    localOriginalStatus:'saved',
-    localCompletedStatus:'saved'
-  });
-
-  await savePhotoBlob(record.photoId,'original',originalBlob,{createdAt:record.capturedAt,fileName,uploadStatus:'pending'});
-  await savePhotoBlob(record.photoId,'completed',completedBlob,{createdAt:now,fileName,uploadStatus:'pending'});
-  await updateCameraPhotoRecord(record);
-
-  settleBoardEditorEntry(entry, record);
-
-  return { record, completedBlob };
-}
-
 async function saveSession_() {
   if (!active || saving) return;
   saving = true;
   try {
     const dirtyEntries = session.ids.map((photoId) => session.entries.get(photoId)).filter((entry) => entry?.dirty);
     const items = [];
-    for (const entry of dirtyEntries) items.push(await persistEntry_(entry));
+    for (const entry of dirtyEntries) items.push(await persistBoardEditorEntry(entry, { getBoardData: boardData }));
     closeEditorInternal_('saved');
     await onSaved?.({ items });
   } catch (error) {
