@@ -10,7 +10,7 @@ import { defaultPartName } from './finish-table-structure-actions.js';
 import {
   findRepresentativeByRoomKey,
   getRoomRecords
-} from './finish-table-actions.js';
+} from './finish-table-room-actions.js';
 
 function nowIso() { return new Date().toISOString(); }
 
