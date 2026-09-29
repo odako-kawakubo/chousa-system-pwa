@@ -28,10 +28,8 @@ import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './phot
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
   previewSourceForPhoto,
-  setLocalPhotoPreview,
   hydrateThumbnailImages,
   hydrateCurrentPhotoPreviews,
-  removePhotoPreview,
   resetPhotoPreviewManager,
   getLocalPreviewCount
 } from './photo-preview-manager.js';
