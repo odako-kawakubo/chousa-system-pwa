@@ -29,7 +29,7 @@ import {
   touchProjectSyncDeviceForProject,
   cleanupFinishChangeLogsForProject
 } from '../sync/project-record-persistence.js';
-import { refreshMaterialUsageDerivedFields } from '../finish-table/finish-table-actions.js';
+import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import { listUnsent } from '../sync/unsent-queue.js';
 import {
