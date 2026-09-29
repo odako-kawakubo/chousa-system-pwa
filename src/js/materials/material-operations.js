@@ -15,11 +15,9 @@
  * - 処理後は active 建材の建材No.と同一ベース名の末尾英字を整理する。
  */
 
-import {
-  finishRecordStore,
-  materialRecordStore,
-  runRecordTransaction,
-} from '../finish-table/finish-table-actions.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import { runRecordTransaction } from '../finish-table/finish-table-record-transaction.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
