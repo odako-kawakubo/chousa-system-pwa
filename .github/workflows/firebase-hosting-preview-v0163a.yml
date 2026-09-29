@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.36 Preview
+name: Deploy v0.1.8.37 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01836
+  group: firebase-preview-v01837
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.36 review consistency checks
+      - name: v0.1.8.37 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.36'" src/config/app-config.js
+          grep -q "version: '0.1.8.37'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.36"' src/version.json
+          grep -q '"version": "0.1.8.37"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.36-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01836-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.37-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01837-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -321,6 +321,17 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Photo Board Editorのフォーム/draft編集を分離
+          test -f src/js/photos/photo-board-editor-form.js
+          grep -q "from './photo-board-editor-form.js'" src/js/photos/photo-board-editor.js || { echo "board editor does not use form module"; exit 1; }
+          grep -q "export function renderBoardEditorForm" src/js/photos/photo-board-editor-form.js || { echo "board editor form render API missing"; exit 1; }
+          grep -q "export function updateBoardEditorDraftFromEvent" src/js/photos/photo-board-editor-form.js || { echo "board editor draft update API missing"; exit 1; }
+          grep -q "export function boardEditorSamplingMaterials" src/js/photos/photo-board-editor-form.js || { echo "board editor sampling form API missing"; exit 1; }
+          if grep -q "function visualFields\|function samplingFields\|function syncSamplingPlace" src/js/photos/photo-board-editor.js; then
+            echo "board editor still owns form/draft logic"
             exit 1
           fi
 
