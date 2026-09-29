@@ -2,6 +2,7 @@ import {
   PART_POSITION,
   computeFinishId,
   computeCellPosition,
+  roomIndexFromRoomPosition,
   partIndexFromPosition,
   createFinishRecord
 } from '../records/finish-record.js';
@@ -23,7 +24,7 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 import { applySingleRecordSamplingAutofill } from '../materials/material-sampling-autofill.js';
 import { roomCarrierRecord, persistSparseFinishRecord, persistFinishStructureChange } from './finish-table-persistence.js';
-import { buildFloorRoomSeed, buildFlatRoomSeed } from './finish-table-structure-actions.js';
+import { buildFloorRoomSeed, buildFlatRoomSeed, defaultPartName } from './finish-table-structure-actions.js';
 
 const PART_COUNT = 6;
 const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'roomNote', 'part', 'materialId', 'materialName']);
@@ -94,26 +95,6 @@ export function roomHasRecordedContent(roomKey) {
     if (partIndex >= 5 && materialName && String(record.part || '').trim()) return true;
     return partIndex >= 5 && record.part && record.part !== 'その他';
   });
-}
-
-) {
-  const records = [];
-  for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
-    for (let row = 1; row <= rowCount; row += 1) {
-      records.push(createFinishRecord({
-        areaCode,
-        roomPosition,
-        floor,
-        roomNo,
-        roomName,
-        roomNote,
-        position: computeCellPosition(partIndex, row),
-        part: defaultPartName(areaCode, partIndex),
-        roomUid
-      }));
-    }
-  }
-  return records;
 }
 
 export function commitRoomField(roomKey, field, rawValue) {
