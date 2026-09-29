@@ -3,7 +3,8 @@
  * 部屋備考の小型ポップアップ編集。
  * roomNoteの保存自体は既存のcommitRoomField()へ一本化する。
  */
-import { commitRoomField, finishRecordStore } from './finish-table-actions.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import { commitRoomField } from './finish-table-room-actions.js';
 import { refreshFinishTableFromStores } from './finish-table-controller.js';
 
 let initialized = false;
