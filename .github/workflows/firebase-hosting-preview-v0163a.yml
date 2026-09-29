@@ -161,8 +161,8 @@ jobs:
           grep -q "completedItemId: text(record.completedItemId)" src/js/firestore/record-serializer.js
           grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
           grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
-          grep -q "remoteThumbnailUrls" src/js/photos/photo-controller.js
-          grep -q "ensureRemoteThumbnail" src/js/photos/photo-controller.js
+          grep -q "remoteThumbnailUrls" src/js/photos/photo-preview-manager.js
+          grep -q "ensureRemoteThumbnail" src/js/photos/photo-preview-manager.js
 
           # 明示アップデート・オフラインキャッシュ
           grep -q "sameBuild" src/js/app-update.js
@@ -224,15 +224,15 @@ jobs:
           fi
           grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-controller.js || { echo "photo controller is not the camera photo registration owner"; exit 1; }
           grep -q "await saveCapturedPhoto({" src/js/photos/photo-controller.js || { echo "photo controller is not the captured photo persistence owner"; exit 1; }
-          grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-controller.js || { echo "local thumbnail eager loading is missing"; exit 1; }
-          grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-controller.js || { echo "local thumbnail loading policy is missing"; exit 1; }
+          grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-preview-manager.js || { echo "local thumbnail eager loading is missing"; exit 1; }
+          grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-preview-manager.js || { echo "local thumbnail loading policy is missing"; exit 1; }
           grep -q "function refreshCameraPhotoBlock(record)" src/js/photos/photo-controller.js || { echo "camera photo local block refresh is missing"; exit 1; }
           grep -q "refreshCameraPhotoBlock(stored);" src/js/photos/photo-controller.js || { echo "camera photo does not use local block refresh"; exit 1; }
-          grep -q "function hydrateThumbnailImages(scope = root)" src/js/photos/photo-controller.js || { echo "block scoped thumbnail hydrate is missing"; exit 1; }
+          grep -q "export function hydrateThumbnailImages(scope)" src/js/photos/photo-preview-manager.js || { echo "block scoped thumbnail hydrate is missing"; exit 1; }
           grep -q "hydrateThumbnailImages(updated);" src/js/photos/photo-controller.js || { echo "local photo block is not hydrated after replacement"; exit 1; }
-          grep -q "PHOTO_LOCAL_PREVIEW_SET" src/js/photos/photo-controller.js || { echo "photo local preview diagnostic missing"; exit 1; }
-          grep -q "PHOTO_THUMB_READY" src/js/photos/photo-controller.js || { echo "photo thumb ready diagnostic missing"; exit 1; }
-          grep -q "PHOTO_THUMB_LOADING" src/js/photos/photo-controller.js || { echo "photo thumb loading diagnostic missing"; exit 1; }
+          grep -q "PHOTO_LOCAL_PREVIEW_SET" src/js/photos/photo-preview-manager.js || { echo "photo local preview diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_READY" src/js/photos/photo-preview-manager.js || { echo "photo thumb ready diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_LOADING" src/js/photos/photo-preview-manager.js || { echo "photo thumb loading diagnostic missing"; exit 1; }
           grep -q "PHOTO_SYNC_REFERENCE_UPDATE" src/js/photos/photo-onedrive-sync.js || { echo "photo OneDrive diagnostic missing"; exit 1; }
           grep -q "SYNC_APPLY_PHOTO" src/js/projects/project-controller.js || { echo "photo sync apply diagnostic missing"; exit 1; }
           grep -q "listener-query-removed-not-record-delete" src/js/projects/project-controller.js || { echo "photo listener removed guard is missing"; exit 1; }
