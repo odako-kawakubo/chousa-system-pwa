@@ -1,10 +1,10 @@
 /*
- * v0.1.8.40 Service Worker
+ * v0.1.8.41 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.40-review';
+const APP_CACHE = 'chousa-app-v0.1.8.41-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01840-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01841-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -25,7 +25,7 @@ const APP_SHELL = [
   './js/ui/auth-ui.js','./js/ui/header-edit-ui.js','./js/ui/header-visibility.js','./js/ui/sync-ui.js','./js/ui/loading-ui.js','./js/ui/modal.js','./js/ui/tabs.js','./js/ui/drawer.js','./js/ui/project-panel.js','./js/ui/theme.js','./js/ui/device-ui.js',
   './js/firestore/firestore-repository.js','./js/firestore/firestore-project-list.js','./js/firestore/record-serializer.js',
   './js/sync/sync-status.js','./js/sync/field-edit-meta.js','./js/sync/project-record-persistence.js','./js/sync/unsent-queue.js','./js/sync/finish-sparse-structure.js',
-  './js/projects/project-controller.js','./js/projects/project-store.js','./js/projects/project-session.js','./js/projects/project-creation.js','./js/projects/project-factory.js','./js/projects/project-navigation.js','./js/projects/project-side-panel-controller.js','./js/projects/project-entry-ui.js','./js/projects/firestore-project-browser.js','./js/projects/onedrive-project-browser.js','./js/projects/project-transfer.js','./js/projects/project-view-impact.js',
+  './js/projects/project-controller.js','./js/projects/project-store.js','./js/projects/project-session.js','./js/projects/project-sync-meta.js','./js/projects/project-creation.js','./js/projects/project-factory.js','./js/projects/project-navigation.js','./js/projects/project-side-panel-controller.js','./js/projects/project-entry-ui.js','./js/projects/firestore-project-browser.js','./js/projects/onedrive-project-browser.js','./js/projects/project-transfer.js','./js/projects/project-view-impact.js',
   './js/records/finish-record.js','./js/records/material-record.js','./js/records/photo-record.js',
   './js/store/finish-record-store.js','./js/store/material-record-store.js','./js/store/photo-record-store.js','./js/store/survey-candidate-store.js',
   './js/finish-table/finish-table-controller.js','./js/finish-table/finish-table-candidate-input.js','./js/finish-table/finish-table-edit-session.js','./js/finish-table/finish-table-interactions.js','./js/finish-table/finish-table-sample-seed.js','./js/finish-table/finish-table-room-copy.js','./js/finish-table/finish-table-room-actions.js','./js/finish-table/finish-table-record-transaction.js','./js/finish-table/finish-table-cell-actions.js','./js/finish-table/material-usage-derived.js','./js/finish-table/finish-table-persistence.js','./js/finish-table/finish-table-structure-actions.js','./js/finish-table/finish-table-constants.js','./js/finish-table/finish-table-history.js','./js/finish-table/finish-table-renderer.js','./js/finish-table/finish-table-state.js','./js/finish-table/finish-table-view-model.js','./js/finish-table/finish-table-refresh-guard.js','./js/finish-table/finish-table-scroll-state.js','./js/finish-table/room-note-editor.js',
