@@ -9,8 +9,6 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { roomCarrierRecord, persistSparseFinishRecord } from './finish-table-persistence.js';
 import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
 
-const PART_COUNT = 6;
-
 export function roomKeyOf(record) { return record?.roomUid || ''; }
 
 export function findRepresentativeByRoomKey(roomKey) {
