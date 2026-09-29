@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.31 Preview
+name: Deploy v0.1.8.32 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01831
+  group: firebase-preview-v01832
   cancel-in-progress: true
 
 jobs:
@@ -182,7 +182,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.31 review consistency checks
+      - name: v0.1.8.32 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.8.29"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.31-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01831-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.32-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01832-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -222,12 +222,12 @@ jobs:
             echo "camera controller still owns photo record registration"
             exit 1
           fi
-          grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-controller.js || { echo "photo controller is not the camera photo registration owner"; exit 1; }
-          grep -q "await saveCapturedPhoto({" src/js/photos/photo-controller.js || { echo "photo controller is not the captured photo persistence owner"; exit 1; }
+          grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own camera photo registration"; exit 1; }
+          grep -q "await saveCapturedPhoto({" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own captured photo persistence"; exit 1; }
           grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-preview-manager.js || { echo "local thumbnail eager loading is missing"; exit 1; }
           grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-preview-manager.js || { echo "local thumbnail loading policy is missing"; exit 1; }
           grep -q "function refreshCameraPhotoBlock(record)" src/js/photos/photo-controller.js || { echo "camera photo local block refresh is missing"; exit 1; }
-          grep -q "refreshCameraPhotoBlock(stored);" src/js/photos/photo-controller.js || { echo "camera photo does not use local block refresh"; exit 1; }
+          grep -q "refreshBlock: refreshCameraPhotoBlock" src/js/photos/photo-controller.js || { echo "camera photo does not use local block refresh"; exit 1; }
           grep -q "export function hydrateThumbnailImages(scope)" src/js/photos/photo-preview-manager.js || { echo "block scoped thumbnail hydrate is missing"; exit 1; }
           grep -q "hydrateThumbnailImages(updated);" src/js/photos/photo-controller.js || { echo "local photo block is not hydrated after replacement"; exit 1; }
           grep -q "PHOTO_LOCAL_PREVIEW_SET" src/js/photos/photo-preview-manager.js || { echo "photo local preview diagnostic missing"; exit 1; }
@@ -321,6 +321,18 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # 写真Record操作をcontrollerから分離
+          test -f src/js/photos/photo-record-actions.js
+          grep -q "from './photo-record-actions.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use record actions"; exit 1; }
+          grep -q "export async function importPickedPhotoFiles" src/js/photos/photo-record-actions.js || { echo "photo import action missing"; exit 1; }
+          grep -q "export async function registerCapturedPhoto" src/js/photos/photo-record-actions.js || { echo "photo capture action missing"; exit 1; }
+          grep -q "export async function deletePhotos" src/js/photos/photo-record-actions.js || { echo "photo delete action missing"; exit 1; }
+          grep -q "export async function setRepresentativePhoto" src/js/photos/photo-record-actions.js || { echo "photo representative action missing"; exit 1; }
+          if grep -q "function nextPhotoId\|PHOTO_COMMON_CREATE_EDIT_FIELDS\|saveCapturedPhoto\|updateCameraPhotoRecord\|touchFieldEditedAt\|persistPhotoForProject\|openPhotoBoardEditorSequence" src/js/photos/photo-controller.js; then
+            echo "photo controller still owns record actions"
             exit 1
           fi
 
