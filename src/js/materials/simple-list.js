@@ -21,7 +21,7 @@ import {
   getChipInputMaterialInputId,
   setChipInputMaterialInputId
 } from '../finish-table/finish-table-state.js';
-import { materialRecordStore } from '../finish-table/finish-table-actions.js';
+import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialUsageRoomNos } from '../finish-table/material-usage-derived.js';
 import { applyMaterialMatchHighlight } from '../finish-table/finish-table-renderer.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
