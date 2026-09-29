@@ -15,7 +15,8 @@
  */
 
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
-import { materialRecordStore, getMaterialUsageRoomLabels } from '../finish-table/finish-table-actions.js';
+import { materialRecordStore } from '../finish-table/finish-table-actions.js';
+import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
