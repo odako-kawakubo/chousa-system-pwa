@@ -18,7 +18,7 @@ import {
   roomHasRecordedContent,
   getRoomCopyButtonState as computeCopyButtonState,
   describeRoomCopyClick as computeDescribeCopyClick
-} from './finish-table-actions.js';
+} from './finish-table-room-copy.js';
 import { getState, getPendingCellName } from './finish-table-state.js';
 import { INTERNAL_PARTS, EXTERNAL_PARTS } from './finish-table-constants.js';
 
