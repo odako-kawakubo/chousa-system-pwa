@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.38 Preview
+name: Deploy v0.1.8.39 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01838
+  group: firebase-preview-v01839
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.38 review consistency checks
+      - name: v0.1.8.39 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.38'" src/config/app-config.js
+          grep -q "version: '0.1.8.39'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.38"' src/version.json
+          grep -q '"version": "0.1.8.39"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.38-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01838-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.39-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01839-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -319,6 +319,20 @@ jobs:
           grep -q "finish-table-room-actions.js" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use room actions"; exit 1; }
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use record transaction"; exit 1; }
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
+          if grep -R "finish-table-actions.js" -n src/js; then
+            echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Photo構造整理の最終掃除
+          if grep -q "function createPhotoViewerTransformState\|function resetPhotoViewerTransform" src/js/photos/photo-viewer.js; then
+            echo "photo viewer still contains stale local transform definitions"
+            exit 1
+          fi
+          if grep -q "const STAGES =" src/js/photos/photo-board-editor.js; then
+            echo "photo board editor still contains obsolete stage constant"
+            exit 1
+          fi
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
             exit 1
