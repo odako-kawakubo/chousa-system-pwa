@@ -13,6 +13,12 @@
 
 import { getVisualPhotoTargetKey } from '../records/photo-record.js';
 import { resolveViewerCompletedPhoto } from './photo-viewer-source.js';
+import {
+  createPhotoViewerTransformState,
+  resetPhotoViewerTransform,
+  applyPhotoViewerTransform,
+  bindPhotoViewerGestureStage
+} from './photo-viewer-gesture.js';
 
 let getPhotosForPhoto = () => [];
 let getPhotoSource = () => '';
@@ -30,14 +36,14 @@ const viewerState = {
   index: 0,
   context: {},
   compareMode: false,
-  normalTransform: createTransformState(),
+  normalTransform: createPhotoViewerTransformState(),
   compare: {
     targets: [],
     panes: []
   }
 };
 
-function createTransformState() {
+function createPhotoViewerTransformState() {
   return {
     scale: 1,
     x: 0,
@@ -50,7 +56,7 @@ function createTransformState() {
   };
 }
 
-function resetTransform(state) {
+function resetPhotoViewerTransform(state) {
   state.scale = 1;
   state.x = 0;
   state.y = 0;
@@ -77,14 +83,6 @@ function setResolvedViewerSource(photoId, blob) {
   return url;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function pointDistance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
 function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -101,13 +99,6 @@ function currentPhoto() {
 function sourceFor(photo) {
   if (!photo) return '';
   return String(resolvedViewerUrls.get(photo.photoId) || getPhotoSource(photo) || '');
-}
-
-function applyTransform(stage, state) {
-  const image = stage?.querySelector('img');
-  if (!image) return;
-  image.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;
-  image.classList.toggle('is-zoomed', state.scale > 1.01);
 }
 
 function renderImage(photo, className = 'photo-viewer-image') {
@@ -144,7 +135,7 @@ async function prepareNormalPhotoSource(photo) {
     setResolvedViewerSource(photoId, blob);
     const stage = body?.querySelector('[data-photo-viewer-stage]');
     updateStageImage(stage, photo);
-    applyTransform(stage, viewerState.normalTransform);
+    applyPhotoViewerTransform(stage, viewerState.normalTransform);
   } catch (error) {
     console.warn('Viewer写真本体の解決に失敗しました', { photoId, error });
   }
@@ -175,161 +166,10 @@ async function prepareComparePhotoSource(paneIndex, photo) {
     if (String(comparePhoto(paneIndex)?.photoId || '') !== photoId) return;
     const stage = body?.querySelector(`[data-compare-stage="${paneIndex}"]`);
     updateStageImage(stage, photo, 'photo-viewer-image photo-compare-image');
-    applyTransform(stage, livePane.transform);
+    applyPhotoViewerTransform(stage, livePane.transform);
   } catch (error) {
     console.warn('比較写真本体の解決に失敗しました', { photoId, error });
   }
-}
-
-function toggleZoom(stage, state) {
-  if (state.scale > 1.01) resetTransform(state);
-  else state.scale = 2.5;
-  applyTransform(stage, state);
-}
-
-/**
- * stage単位のタッチ・Pencil・マウス操作。
- * allowSwipe=trueの通常Viewerだけ、1倍時の横スワイプで写真送りする。
- */
-function bindGestureStage(stage, state, { allowSwipe = false, onSwipe = null } = {}) {
-  if (!stage) return;
-
-  const tap = (point, inputType) => {
-    const now = Date.now();
-    const previous = state.lastTap;
-    const maxInterval = inputType === 'pen' ? 480 : 350;
-    const maxDistance = inputType === 'pen' ? 48 : 34;
-    if (previous && previous.inputType === inputType && now - previous.time <= maxInterval && pointDistance(previous, point) <= maxDistance) {
-      state.lastTap = null;
-      toggleZoom(stage, state);
-      return true;
-    }
-    state.lastTap = { ...point, time: now, inputType };
-    return false;
-  };
-
-  stage.addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'touch' || !stage.querySelector('img')) return;
-    stage.setPointerCapture?.(event.pointerId);
-    const point = { x: event.clientX, y: event.clientY };
-    state.pointers.set(event.pointerId, point);
-    if (state.scale > 1.01) {
-      state.start = { ...point, x0: state.x, y0: state.y };
-      state.swipe = null;
-    } else if (allowSwipe) {
-      state.swipe = { ...point, time: Date.now(), moved: false };
-    }
-  });
-
-  stage.addEventListener('pointermove', (event) => {
-    if (event.pointerType === 'touch' || !state.pointers.has(event.pointerId)) return;
-    const point = { x: event.clientX, y: event.clientY };
-    state.pointers.set(event.pointerId, point);
-    if (state.scale > 1.01 && state.start) {
-      event.preventDefault();
-      state.x = state.start.x0 + (point.x - state.start.x);
-      state.y = state.start.y0 + (point.y - state.start.y);
-      applyTransform(stage, state);
-    } else if (state.swipe && pointDistance(point, state.swipe) >= 10) {
-      state.swipe.moved = true;
-    }
-  }, { passive: false });
-
-  stage.addEventListener('pointerup', (event) => {
-    if (event.pointerType === 'touch') return;
-    const point = state.pointers.get(event.pointerId) || { x: event.clientX, y: event.clientY };
-    state.pointers.delete(event.pointerId);
-    const swipe = state.swipe;
-    if (state.scale <= 1.01 && swipe && !swipe.moved && tap(point, event.pointerType === 'pen' ? 'pen' : 'mouse')) {
-      state.start = null;
-      state.swipe = null;
-      return;
-    }
-    if (allowSwipe && state.scale <= 1.01 && swipe) {
-      const dx = point.x - swipe.x;
-      const dy = point.y - swipe.y;
-      if (Date.now() - swipe.time < 700 && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.2) onSwipe?.(dx < 0 ? 1 : -1);
-    }
-    state.start = null;
-    state.swipe = null;
-  });
-
-  stage.addEventListener('pointercancel', () => {
-    state.pointers.clear();
-    state.start = null;
-    state.swipe = null;
-  });
-
-  stage.addEventListener('touchstart', (event) => {
-    if (!stage.querySelector('img')) return;
-    if (event.touches.length >= 2) {
-      event.preventDefault();
-      const a = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-      const b = { x: event.touches[1].clientX, y: event.touches[1].clientY };
-      state.pinch = { distance: pointDistance(a, b), scale: state.scale };
-      state.start = null;
-      state.swipe = null;
-      return;
-    }
-    const touch = event.touches[0];
-    if (!touch) return;
-    const point = { x: touch.clientX, y: touch.clientY };
-    if (state.scale > 1.01) state.start = { ...point, x0: state.x, y0: state.y };
-    else if (allowSwipe) state.swipe = { ...point, time: Date.now(), moved: false };
-  }, { passive: false });
-
-  stage.addEventListener('touchmove', (event) => {
-    if (event.touches.length >= 2 && state.pinch) {
-      event.preventDefault();
-      const a = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-      const b = { x: event.touches[1].clientX, y: event.touches[1].clientY };
-      state.scale = clamp(state.pinch.scale * pointDistance(a, b) / Math.max(1, state.pinch.distance), 1, 4);
-      if (state.scale <= 1.01) {
-        state.scale = 1;
-        state.x = 0;
-        state.y = 0;
-      }
-      applyTransform(stage, state);
-      return;
-    }
-    const touch = event.touches[0];
-    if (!touch) return;
-    const point = { x: touch.clientX, y: touch.clientY };
-    if (state.scale > 1.01 && state.start) {
-      event.preventDefault();
-      state.x = state.start.x0 + (point.x - state.start.x);
-      state.y = state.start.y0 + (point.y - state.start.y);
-      applyTransform(stage, state);
-    } else if (state.swipe && pointDistance(point, state.swipe) >= 10) {
-      state.swipe.moved = true;
-    }
-  }, { passive: false });
-
-  stage.addEventListener('touchend', (event) => {
-    if (state.pinch) {
-      if (event.touches.length < 2) state.pinch = null;
-      state.start = null;
-      state.swipe = null;
-      return;
-    }
-    if (event.touches.length) return;
-    const touch = event.changedTouches?.[0];
-    if (!touch) return;
-    const point = { x: touch.clientX, y: touch.clientY };
-    const swipe = state.swipe;
-    if (state.scale <= 1.01 && swipe && !swipe.moved && tap(point, 'touch')) {
-      state.start = null;
-      state.swipe = null;
-      return;
-    }
-    if (allowSwipe && state.scale <= 1.01 && swipe) {
-      const dx = point.x - swipe.x;
-      const dy = point.y - swipe.y;
-      if (Date.now() - swipe.time < 700 && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.2) onSwipe?.(dx < 0 ? 1 : -1);
-    }
-    state.start = null;
-    state.swipe = null;
-  }, { passive: false });
 }
 
 function moveNormal(delta) {
@@ -342,7 +182,7 @@ function renderNormal() {
   const photo = currentPhoto();
   if (!photo || !body || !title) return;
   viewerState.compareMode = false;
-  resetTransform(viewerState.normalTransform);
+  resetPhotoViewerTransform(viewerState.normalTransform);
   title.textContent = photo.fileName || photo.photoId || '写真プレビュー';
   const hasMultiple = viewerState.photos.length > 1;
   const canCompare = photo.photoType === 'visual' && Boolean(getVisualPhotoTargetKey(photo)) && getCompareTargets(viewerState.context).length >= 2;
@@ -357,7 +197,7 @@ function renderNormal() {
     <div class="photo-viewer-counter">${viewerState.index + 1} / ${viewerState.photos.length}</div>
   </div>`;
   const stage = body.querySelector('[data-photo-viewer-stage]');
-  bindGestureStage(stage, viewerState.normalTransform, { allowSwipe: true, onSwipe: moveNormal });
+  bindPhotoViewerGestureStage(stage, viewerState.normalTransform, { allowSwipe: true, onSwipe: moveNormal });
   void prepareNormalPhotoSource(photo);
 }
 
@@ -365,7 +205,7 @@ function createComparePane(key = '') {
   return {
     key,
     index: 0,
-    transform: createTransformState()
+    transform: createPhotoViewerTransformState()
   };
 }
 
@@ -388,7 +228,7 @@ function moveComparePhoto(paneIndex, delta) {
   const target = compareTarget(pane.key);
   if (!target?.photos?.length) return;
   pane.index = (pane.index + delta + target.photos.length) % target.photos.length;
-  resetTransform(pane.transform);
+  resetPhotoViewerTransform(pane.transform);
   renderCompare();
 }
 
@@ -475,7 +315,7 @@ function renderCompare() {
 
   viewerState.compare.panes.forEach((pane, index) => {
     const stage = body.querySelector(`[data-compare-stage="${index}"]`);
-    bindGestureStage(stage, pane.transform);
+    bindPhotoViewerGestureStage(stage, pane.transform);
     void prepareComparePhotoSource(index, comparePhoto(index));
   });
 }
@@ -530,7 +370,7 @@ function bindChrome() {
 
     pane.key = select.value;
     pane.index = 0;
-    resetTransform(pane.transform);
+    resetPhotoViewerTransform(pane.transform);
     renderCompare();
   });
 
@@ -576,8 +416,8 @@ export function closePhotoViewer() {
   viewerState.index = 0;
   viewerState.context = {};
   viewerState.compareMode = false;
-  resetTransform(viewerState.normalTransform);
-  viewerState.compare.panes.forEach((pane) => resetTransform(pane.transform));
+  resetPhotoViewerTransform(viewerState.normalTransform);
+  viewerState.compare.panes.forEach((pane) => resetPhotoViewerTransform(pane.transform));
   viewerState.compare.panes = [];
   viewerState.compare.targets = [];
   if (body) body.innerHTML = '';
