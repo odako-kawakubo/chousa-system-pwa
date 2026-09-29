@@ -98,12 +98,12 @@ jobs:
           grep -q "bulk-required" src/js/firestore/firestore-repository.js
 
           # 変更履歴 + cursor同期
-          grep -q "SYNC_APPLY_START" src/js/projects/project-controller.js
-          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-controller.js
-          grep -q "SYNC_STORE_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_APPLY_START" src/js/projects/project-record-apply.js
+          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-record-apply.js
+          grep -q "SYNC_STORE_AFTER" src/js/projects/project-record-apply.js
           grep -q "SYNC_LISTENER_APPLY_RESULT" src/js/projects/project-controller.js
-          grep -q "SYNC_CURSOR_BEFORE" src/js/projects/project-controller.js
-          grep -q "SYNC_CURSOR_AFTER" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_BEFORE" src/js/projects/project-sync-meta.js
+          grep -q "SYNC_CURSOR_AFTER" src/js/projects/project-sync-meta.js
           grep -q "SYNC_BASELINE_CHECK" src/js/projects/project-controller.js
           grep -q "LOCAL_SNAPSHOT_BEFORE_SAVE" src/js/projects/project-store.js
           grep -q "LOCAL_SNAPSHOT_AFTER_SAVE" src/js/projects/project-store.js
