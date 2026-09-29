@@ -10,10 +10,8 @@
  * 候補を選んだ後の確定処理はcontrollerへ返し、既存の1操作=1commit経路を維持する。
  */
 
-import {
-  finishRecordStore,
-  materialRecordStore
-} from './finish-table-actions.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialPartOptions } from './finish-table-cell-actions.js';
 import {
   getMaterialOptions,
