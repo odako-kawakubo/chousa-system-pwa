@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.28 Preview
+name: Deploy v0.1.8.29 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01828
+  group: firebase-preview-v01829
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.28 review consistency checks
+      - name: v0.1.8.29 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.28'" src/config/app-config.js
+          grep -q "version: '0.1.8.29'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.28"' src/version.json
+          grep -q '"version": "0.1.8.29"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.28-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01828-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.29-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01829-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -278,29 +278,19 @@ jobs:
           test -f src/js/finish-table/finish-table-structure-actions.js
           test -f src/js/finish-table/finish-table-persistence.js
           grep -q "from './finish-table-structure-actions.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use structure module"; exit 1; }
-          grep -q "from './finish-table-persistence.js'" src/js/finish-table/finish-table-actions.js || { echo "finish actions do not use persistence module"; exit 1; }
           grep -q "export function addNormalFloor" src/js/finish-table/finish-table-structure-actions.js || { echo "normal floor structure action missing"; exit 1; }
           grep -q "export function addRoomAfter" src/js/finish-table/finish-table-structure-actions.js || { echo "room insertion structure action missing"; exit 1; }
           grep -q "export function persistSparseFinishRecord" src/js/finish-table/finish-table-persistence.js || { echo "sparse persistence API missing"; exit 1; }
-          if grep -q "export function addNormalFloor\|function insertFloorRoomAt\|function persistFinishStructureChange" src/js/finish-table/finish-table-actions.js; then
-            echo "legacy structure or persistence ownership remains in finish-table-actions"
-            exit 1
-          fi
 
           # 仕上表セル編集・建材登録・使用箇所派生をactionsから分離
           test -f src/js/finish-table/finish-table-cell-actions.js
           test -f src/js/finish-table/material-usage-derived.js
           grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use cell actions"; exit 1; }
           grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate input does not use cell actions"; exit 1; }
-          grep -q "from './material-usage-derived.js'" src/js/finish-table/finish-table-actions.js || { echo "finish actions do not use usage derived module"; exit 1; }
           grep -q "material-usage-derived.js" src/js/output/output-view-model.js || { echo "output does not use usage derived module"; exit 1; }
           grep -q "material-usage-derived.js" src/js/materials/material-list-controller.js || { echo "material list does not use usage derived module"; exit 1; }
           grep -q "export function registerMaterialForCell" src/js/finish-table/finish-table-cell-actions.js || { echo "material registration cell action missing"; exit 1; }
           grep -q "export function refreshMaterialUsageDerivedFields" src/js/finish-table/material-usage-derived.js || { echo "material usage derivation API missing"; exit 1; }
-          if grep -q "export function commitCellId\|export function registerMaterialForCell\|export function getMaterialUsageRoomLabels" src/js/finish-table/finish-table-actions.js; then
-            echo "legacy cell or usage ownership remains in finish-table-actions"
-            exit 1
-          fi
 
           # 部屋コピー責務をactionsから分離
           test -f src/js/finish-table/finish-table-room-copy.js
@@ -308,10 +298,6 @@ jobs:
           grep -q "from './finish-table-room-copy.js'" src/js/finish-table/finish-table-view-model.js || { echo "finish view model does not use room copy module"; exit 1; }
           grep -q "export function executeRoomCopy" src/js/finish-table/finish-table-room-copy.js || { echo "room copy execution API missing"; exit 1; }
           grep -q "export function restoreRoomCopy" src/js/finish-table/finish-table-room-copy.js || { echo "room copy restore API missing"; exit 1; }
-          if grep -q "export function executeRoomCopy\|export function restoreRoomCopy\|export function getRoomCopyButtonState" src/js/finish-table/finish-table-actions.js; then
-            echo "legacy room copy ownership remains in finish-table-actions"
-            exit 1
-          fi
 
           # サンプル初期データ生成と派生値参照をactionsから分離
           test -f src/js/finish-table/finish-table-sample-seed.js
@@ -321,12 +307,20 @@ jobs:
           grep -q "material-usage-derived.js" src/js/materials/material-operations.js || { echo "material operations still uses old usage import"; exit 1; }
           grep -q "export function seedInitialMaterials" src/js/finish-table/finish-table-sample-seed.js || { echo "sample material seed API missing"; exit 1; }
           grep -q "export function seedInitialFinishRecords" src/js/finish-table/finish-table-sample-seed.js || { echo "sample finish seed API missing"; exit 1; }
-          if grep -q "export function seedInitialMaterials\|export function seedInitialFinishRecords" src/js/finish-table/finish-table-actions.js; then
-            echo "legacy sample seed ownership remains in finish-table-actions"
-            exit 1
-          fi
           if grep -R "refreshMaterialUsageDerivedFields.*finish-table-actions\|getMaterialUsageRoomLabels.*finish-table-actions\|getMaterialUsageRoomNos.*finish-table-actions" -n src/js; then
             echo "legacy material usage imports remain"
+            exit 1
+          fi
+
+          # 旧finish-table-actions facadeは完全撤去
+          test ! -e src/js/finish-table/finish-table-actions.js || { echo "obsolete finish-table-actions facade remains"; exit 1; }
+          test -f src/js/finish-table/finish-table-room-actions.js
+          test -f src/js/finish-table/finish-table-record-transaction.js
+          grep -q "finish-table-room-actions.js" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use room actions"; exit 1; }
+          grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use record transaction"; exit 1; }
+          grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
+          if grep -R "finish-table-actions.js" -n src/js; then
+            echo "obsolete finish-table-actions reference remains"
             exit 1
           fi
 
