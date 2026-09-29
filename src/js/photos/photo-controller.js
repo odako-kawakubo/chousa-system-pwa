@@ -1,23 +1,13 @@
 /**
  * src/js/photos/photo-controller.js
  *
- * 写真タブの状態・イベント・photoRecordStore更新を担当する。
- * v0.1.6.5Lでは他端末写真の表示経路を追加する。
- * - サムネイルはOneDriveの軽量サムネイルを自動取得する。
- * - Viewer表示時だけ完成画像本体を取得し、IndexedDBへ保持する。
- * - 一度取得した完成画像は以後ローカル表示を優先する。
- *
- * v0.1.6.6:
- * - finish/material/photo Storeの汎用subscribe描画を廃止する。
- * - 外部同期の描画判定はphoto-refresh-policyへ一本化する。
- * - ローカル写真操作は、その操作自身が必要な描画を明示的に行う。
- * - プレビューhydrateは画像URLの解決だけを担当し、全画面renderを行わない。
- * - 案件切替時に写真UIの選択・開閉・スクロール・プレビューURLをリセットする。
- * - Viewerの完成画像解決はphoto-viewer/photo-viewer-sourceへ一本化する。
- *
- * v0.1.7.6:
- * - 看板編集開始前の「元画像がこの端末にあること」条件を廃止する。
- * - 元画像のローカル/OneDrive解決はphoto-board-editor側へ一本化する。
+ * 写真タブ全体の状態・描画・初期化を調整するController。
+ * - DOMイベントは photo-interactions.js
+ * - Record操作/保存は photo-record-actions.js
+ * - サムネイル/プレビュー管理は photo-preview-manager.js
+ * - Viewer用写真集合は photo-viewer-data.js
+ * - 看板編集は photo-board-editor.js 以下の専用module
+ * に分離し、このControllerは画面状態と各機能の接続を担当する。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
