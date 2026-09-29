@@ -329,6 +329,11 @@ jobs:
           grep -q "from './photo-viewer-data.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use viewer data module"; exit 1; }
           grep -q "export function photosForViewer" src/js/photos/photo-viewer-data.js || { echo "photo viewer photo-set API missing"; exit 1; }
           grep -q "export function compareTargetsForViewer" src/js/photos/photo-viewer-data.js || { echo "photo viewer compare-target API missing"; exit 1; }
+          grep -q "photoRecordStore.get(photoId)" src/js/photos/photo-viewer-data.js || { echo "photo viewer data does not resolve photo from store"; exit 1; }
+          if grep -q "photoById(" src/js/photos/photo-viewer-data.js; then
+            echo "photo viewer data still depends on controller-local lookup"
+            exit 1
+          fi
           if grep -q "function photosForViewer\|function compareTargetsForViewer" src/js/photos/photo-controller.js; then
             echo "photo controller still owns viewer data assembly"
             exit 1
