@@ -24,7 +24,7 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
-import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
+import { initializePhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
   previewSourceForPhoto,
@@ -33,16 +33,16 @@ import {
   resetPhotoPreviewManager,
   getLocalPreviewCount
 } from './photo-preview-manager.js';
-import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
+import { initializeCameraController } from '../camera/camera-controller.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor } from './photo-board-editor.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import {
   importPickedPhotoFiles,
   registerCapturedPhoto,
   startPhotoEditSequence,
-  deletePhotos,
-  setRepresentativePhoto
+  deletePhotos
 } from './photo-record-actions.js';
+import { bindPhotoInteractions } from './photo-interactions.js';
 
 const state = {
   mode: 'visual',
@@ -202,6 +202,13 @@ function samplingContextFromKey(key, shootingType) {
   };
 }
 
+function samplingDefaultContextFromKey(key) {
+  const view = buildSamplingPhotoView(state.selectedMaterialId);
+  const point = view.activeMaterial?.points.find((item) => item.key === key);
+  const nextStage = point?.stages.find((stage) => stage.shootingType !== SHOOTING_TYPES.SECTION && stage.count === 0)?.shootingType || SHOOTING_TYPES.BEFORE;
+  return samplingContextFromKey(key, nextStage);
+}
+
 function buildCameraOptions() {
   const visual = buildVisualPhotoView('');
   const visualRooms = visual.rooms.map((room) => {
@@ -328,160 +335,6 @@ function togglePhotoSelection(photoId) {
   applySelectionUi();
 }
 
-function bindPhotoTabExitReset() {
-  document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
-    tabButton.addEventListener('click', () => {
-      if (tabButton.dataset.tab !== 'photos' && state.selectionMode) clearSelectionMode();
-    });
-  });
-}
-
-function bindEvents() {
-  root.addEventListener('click', (event) => {
-    const selectionButton = event.target.closest('[data-photo-selection-mode]');
-    if (selectionButton) {
-      const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
-      if (state.selectionMode === requestedMode) {
-        if (!state.selectedPhotoIds.size) {
-          clearSelectionMode();
-        } else if (requestedMode === 'delete') {
-          deleteSelectedPhotos(state.selectedPhotoIds).catch((error) => {
-            console.error(error);
-            window.alert(`写真の削除に失敗しました。\n${error.message || error}`);
-          });
-        } else {
-          void startEditSequence(state.selectedPhotoIds);
-        }
-      } else {
-        state.selectionMode = requestedMode;
-        state.selectedPhotoIds.clear();
-        applySelectionUi();
-      }
-      return;
-    }
-
-    const expandButton = event.target.closest('[data-photo-expand]');
-    if (expandButton) {
-      openPhotoViewer(expandButton.dataset.photoExpand || '');
-      return;
-    }
-
-    if (state.selectionMode) {
-      const selectableThumb = event.target.closest('.photo-thumb-card[data-photo-id]');
-      if (selectableThumb) {
-        togglePhotoSelection(selectableThumb.dataset.photoId || '');
-        return;
-      }
-    }
-
-    const mode = event.target.closest('[data-photo-mode]');
-    if (mode) {
-      state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
-      state.reviewScrollTop[state.mode] = 0;
-      render();
-      return;
-    }
-
-    const listGroup = event.target.closest('[data-photo-list-group]');
-    if (listGroup) {
-      const key = listGroup.dataset.photoListGroup || '';
-      state.collapsedLocationGroups.has(key) ? state.collapsedLocationGroups.delete(key) : state.collapsedLocationGroups.add(key);
-      render();
-      return;
-    }
-
-    const room = event.target.closest('[data-photo-room]');
-    if (room) {
-      state.selectedRoomUid = room.dataset.photoRoom || '';
-      state.reviewScrollTop.visual = 0;
-      render();
-      return;
-    }
-
-    const material = event.target.closest('[data-photo-material]');
-    if (material) {
-      state.selectedMaterialId = material.dataset.photoMaterial || '';
-      state.reviewScrollTop.sampling = 0;
-      render();
-      return;
-    }
-
-    const visualToggle = event.target.closest('[data-photo-toggle]');
-    if (visualToggle) {
-      const key = visualToggle.dataset.photoToggle || '';
-      state.openVisualKeys.has(key) ? state.openVisualKeys.delete(key) : state.openVisualKeys.add(key);
-      render();
-      return;
-    }
-
-    const sampleToggle = event.target.closest('[data-photo-toggle-sampling]');
-    if (sampleToggle) {
-      const key = sampleToggle.dataset.photoToggleSampling || '';
-      state.openSamplingKeys.has(key) ? state.openSamplingKeys.delete(key) : state.openSamplingKeys.add(key);
-      render();
-      return;
-    }
-
-    const representative = event.target.closest('[data-photo-representative]');
-    if (representative) {
-      const photoId = representative.dataset.photoRepresentative || '';
-      setRepresentativePhoto(photoId)
-        .then((changed) => { if (changed.length) render(); })
-        .catch((error) => {
-          console.error('代表写真のFirestore保存に失敗しました', error);
-        });
-      return;
-    }
-
-    const cameraVisual = event.target.closest('[data-photo-camera-visual]');
-    if (cameraVisual) {
-      const context = visualContextFromKey(cameraVisual.dataset.photoCameraVisual || '');
-      if (context) openCamera(context);
-      return;
-    }
-
-    const cameraSamplingStage = event.target.closest('[data-photo-camera-sampling-stage]');
-    if (cameraSamplingStage) {
-      const context = samplingContextFromKey(
-        cameraSamplingStage.dataset.photoCameraSamplingStage || '',
-        cameraSamplingStage.dataset.photoStage || ''
-      );
-      if (context) openCamera(context);
-      return;
-    }
-
-    const cameraSampling = event.target.closest('[data-photo-camera-sampling]');
-    if (cameraSampling) {
-      const view = buildSamplingPhotoView(state.selectedMaterialId);
-      const point = view.activeMaterial?.points.find((item) => item.key === (cameraSampling.dataset.photoCameraSampling || ''));
-      const nextStage = point?.stages.find((stage) => stage.shootingType !== SHOOTING_TYPES.SECTION && stage.count === 0)?.shootingType || SHOOTING_TYPES.BEFORE;
-      const context = samplingContextFromKey(cameraSampling.dataset.photoCameraSampling || '', nextStage);
-      if (context) openCamera(context);
-      return;
-    }
-
-    if (event.target.closest('[data-photo-camera-global]')) {
-      const context = globalCameraContext();
-      if (context) openCamera(context);
-      else window.alert('撮影対象がありません。');
-      return;
-    }
-
-    if (event.target.closest('[data-photo-picker]')) {
-      const context = externalImportContext();
-      if (context) openFilePicker(context);
-      else window.alert('写真の取り込み先がありません。');
-    }
-  });
-
-  root.querySelector('#photoFilePicker')?.addEventListener('change', (event) => {
-    addPickedFiles(event.target.files).catch((error) => {
-      console.error(error);
-      window.alert(`写真の取り込みに失敗しました。\n${error.message || error}`);
-    });
-  });
-}
-
 /** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
 export function resetPhotoUiStateForProject() {
   resetPhotoPreviewManager();
@@ -523,8 +376,23 @@ export function initializePhotoTab() {
 
   renderPhotoShell(root, state.mode);
   body = root.querySelector('#photoModeBody');
-  bindEvents();
-  bindPhotoTabExitReset();
+  bindPhotoInteractions({
+    root,
+    state,
+    render,
+    applySelectionUi,
+    clearSelectionMode,
+    togglePhotoSelection,
+    deleteSelectedPhotos,
+    startEditSequence,
+    visualContextFromKey,
+    samplingContextFromKey,
+    samplingDefaultContextFromKey,
+    globalCameraContext,
+    externalImportContext,
+    openFilePicker,
+    addPickedFiles
+  });
 
   initializePhotoViewer({
     getPhotosForPhoto: photosForViewer,
