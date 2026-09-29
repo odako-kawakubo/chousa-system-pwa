@@ -1,36 +1,9 @@
-/**
- * src/js/finish-table/finish-table-actions.js
- *
- * 仕上表・建材の業務ロジック。
- *
- * v0.1.6.2 方針：
- * - 1入力枠 = 1 finishRecord。未入力枠も実レコードとして保持する。
- * - 独立した部屋レコード／代表レコード／rowCountsは持たない。
- * - 同一部屋のfinishRecordは内部補助ID roomUid で束ねる。
- * - 部屋追加・入力行追加は、必要なfinishRecordそのものを生成する。
- * - 建材の部位・使用箇所はfinishRecordStoreから派生してmaterialRecordへ反映する。
- * - 新規建材登録は登録ボタンをトリガーとし、末尾英字を A..Z, AA, AB... で自動採番する。
- *
- * v0.1.7.1:
- * - 登録ボタンを押していない建材名称もfinishRecordのmaterialNameへ保持する。
- * - materialNameは建材登録状態を増やすための別レコードではなく、仕上表セル自身の入力値。
- * - 通常部位はmaterialNameがあれば疎保存対象、その他はpart + materialNameが揃った時だけ疎保存対象とする。
- *
- * v0.1.7.2:
- * - roomNoteをroomNo / roomNameと同じ部屋共通情報として扱う。
- * - ローカルでは同一部屋の全finishRecordへ反映し、Firestoreは標準carrier 602だけを正として疎保存する。
- */
-
 import {
   PART_POSITION,
   computeFinishId,
   computeCellPosition,
-  buildFloorRoomPosition,
-  roomIndexFromRoomPosition,
   partIndexFromPosition,
-  rowFromPosition,
-  createFinishRecord,
-  nextRoomUid
+  createFinishRecord
 } from '../records/finish-record.js';
 import {
   createMaterialRecord,
@@ -42,43 +15,20 @@ import {
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import {
-  INITIAL_ROW_COUNT,
-  INTERNAL_PARTS,
-  EXTERNAL_PARTS
-} from './finish-table-constants.js';
+
 import { INITIAL_STRUCTURE_SEED } from '../demo/sample-finish-data.js';
 import { SAMPLE_MATERIALS_SEED } from '../demo/sample-materials.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import {
-  deleteFinishForProject,
-  persistFinishForProject,
-  persistMaterialForProject,
-  hasKnownFinishRecord
-} from '../sync/project-record-persistence.js';
+import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 import { applySingleRecordSamplingAutofill } from '../materials/material-sampling-autofill.js';
-import {
-  getRequiredStructureRecordIds,
-  defaultPartForRecord,
-  defaultRoomFieldsForRecord
-} from '../sync/finish-sparse-structure.js';
+import { roomCarrierRecord, persistSparseFinishRecord, persistFinishStructureChange } from './finish-table-persistence.js';
+import { buildFloorRoomSeed, buildFlatRoomSeed } from './finish-table-structure-actions.js';
 
-const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
 const PERSISTED_FINISH_EDIT_FIELDS = new Set(['roomNo', 'roomName', 'roomNote', 'part', 'materialId', 'materialName']);
 
-function pad(value, length) { return String(value).padStart(length, '0'); }
 function nowIso() { return new Date().toISOString(); }
-
-function partsForArea(areaCode) {
-  return areaCode === 'E' ? EXTERNAL_PARTS : INTERNAL_PARTS;
-}
-
-function defaultPartName(areaCode, partIndex) {
-  const raw = partsForArea(areaCode)[partIndex - 1] || '';
-  return partIndex >= 5 ? '' : raw;
-}
 
 function normalizeCandidateMaterialInput(rawValue) {
   const normalized = normalizeMaterialName(rawValue);
@@ -120,11 +70,6 @@ export function findRepresentativeByRoomKey(roomKey) {
 
 export function floorKeyOf(areaCode, floor) { return `floor-${areaCode}-${floor}`; }
 
-function parseFloorKey(floorKey) {
-  const match = /^floor-([IB])-(-?\d+)$/.exec(floorKey || '');
-  return match ? { areaCode: match[1], floor: Number(match[2]) } : null;
-}
-
 export function isFirstNormalFloorFirstRoom(record) {
   return !!record && record.areaCode === 'I' && Number(record.floor) === 1
     && roomIndexFromRoomPosition(record.roomPosition) === 1;
@@ -151,17 +96,7 @@ export function roomHasRecordedContent(roomKey) {
   });
 }
 
-function uniqueRoomAnchors(areaCode, floor = undefined) {
-  const byRoom = new Map();
-  finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || record.areaCode !== areaCode) return;
-    if (floor !== undefined && Number(record.floor) !== Number(floor)) return;
-    if (!byRoom.has(record.roomUid)) byRoom.set(record.roomUid, record);
-  });
-  return Array.from(byRoom.values());
-}
-
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT, roomUid = nextRoomUid() }) {
+) {
   const records = [];
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= rowCount; row += 1) {
@@ -179,231 +114,6 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, ro
     }
   }
   return records;
-}
-
-function buildFloorRoomSeed(areaCode, floor, index) {
-  const roomPosition = buildFloorRoomPosition(floor, index);
-  const prefix = areaCode === 'B' ? `B${floor}` : String(floor);
-  const label = `${prefix}-${index}`;
-  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: '', roomNote: '' });
-}
-
-function buildFlatRoomSeed(areaCode, index, customName = '') {
-  const roomPosition = pad(index, 3);
-  let roomNo = customName;
-  let roomName = customName;
-  if (!customName && areaCode === 'S') { roomNo = `S-${index}`; roomName = `階段${index}`; }
-  if (!customName && areaCode === 'R') { roomNo = `R-${index}`; roomName = index === 1 ? '屋上' : `屋上${index}`; }
-  if (!customName && areaCode === 'E') { roomNo = `面${index}`; roomName = ''; }
-  return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
-}
-
-function rekeyRecordToRoomPosition(record, newRoomPosition) {
-  const oldId = record.finishId;
-  const nextId = computeFinishId(record.areaCode, newRoomPosition, record.position);
-  if (oldId === nextId) return record;
-  return {
-    ...record,
-    roomPosition: newRoomPosition,
-    finishId: nextId,
-    updatedAt: nowIso()
-  };
-}
-
-function roomCarrierRecord(roomRecords = []) {
-  const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
-  return roomRecords.find((record) => Number(record.position) === standardCarrierPosition) || null;
-}
-
-function isFinishCellAtDefault(record) {
-  if (!record) return true;
-  if (String(record.materialId || '')) return false;
-
-  const materialName = String(record.materialName || '').trim();
-  const partIndex = partIndexFromPosition(record.position);
-  if (partIndex >= 5) {
-    return !(materialName && String(record.part || '').trim());
-  }
-
-  if (materialName) return false;
-  return String(record.part || '') === String(defaultPartForRecord(record) || '');
-}
-
-function hasRoomCommonDifference(record) {
-  if (!record) return false;
-  const defaults = defaultRoomFieldsForRecord(record);
-  return String(record.roomNo || '') !== String(defaults.roomNo || '')
-    || String(record.roomName || '') !== String(defaults.roomName || '')
-    || String(record.roomNote || '') !== String(defaults.roomNote || '');
-}
-
-function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.getAll()) {
-  if (!record?.finishId) return false;
-  if (getRequiredStructureRecordIds(allRecords).has(record.finishId)) return true;
-  if (!isFinishCellAtDefault(record)) return true;
-  const carrier = roomCarrierRecord(allRecords.filter((item) => item.roomUid === record.roomUid && item.status === 'active'));
-  if (carrier?.finishId === record.finishId && hasRoomCommonDifference(record)) return true;
-  if (String(record.systemMemo || '').trim()) return true;
-  return false;
-}
-
-function persistSparseFinishRecord(project, record, allRecords = finishRecordStore.getAll()) {
-  if (!project?.projectId || project.isSample || !record?.finishId) return;
-  if (shouldKeepSparseFinishRecord(record, allRecords)) {
-    persistFinishForProject(project, record, 'finish-sparse-cell');
-    return;
-  }
-  if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
-}
-
-function persistAddedStructureMarker(records = []) {
-  const project = getCurrentProject();
-  if (!project?.projectId || project.isSample || !records.length) return;
-  const marker = roomCarrierRecord(records);
-  if (marker) persistFinishForProject(project, marker, 'finish-structure-marker');
-}
-
-const STRUCTURE_COMPARE_FIELDS = Object.freeze([
-  'finishId', 'areaCode', 'roomPosition', 'floor', 'roomNo', 'roomName', 'roomNote',
-  'position', 'part', 'materialId', 'materialName'
-]);
-
-function sameStructureRecord(a, b) {
-  if (!a || !b) return false;
-  return STRUCTURE_COMPARE_FIELDS.every((field) => String(a[field] ?? '') === String(b[field] ?? ''));
-}
-
-function persistFinishStructureChange(beforeRecords, afterRecords) {
-  const project = getCurrentProject();
-  if (!project?.projectId || project.isSample) return;
-
-  const beforeMap = new Map(beforeRecords.map((record) => [record.finishId, record]));
-  const afterMap = new Map(afterRecords.map((record) => [record.finishId, record]));
-
-  const removed = beforeRecords.filter((record) => !afterMap.has(record.finishId));
-  const changed = afterRecords.filter((record) => {
-    const previous = beforeMap.get(record.finishId);
-    return !previous || !sameStructureRecord(previous, record);
-  });
-
-  changed.forEach((record) => persistSparseFinishRecord(project, record, afterRecords));
-  removed.forEach((record) => {
-    if (hasKnownFinishRecord(project.projectId, record.finishId)) deleteFinishForProject(project, record, 'finish-sparse-reset');
-  });
-}
-
-function listFloorNumbers(areaCode) {
-  return [...new Set(uniqueRoomAnchors(areaCode).map((record) => Number(record.floor)))];
-}
-
-function countRoomsInFloor(areaCode, floor) { return uniqueRoomAnchors(areaCode, floor).length; }
-function countFlatRooms(areaCode) { return uniqueRoomAnchors(areaCode).length; }
-
-function insertFloorRoomAt(areaCode, floor, insertIndex) {
-  const before = finishRecordStore.getAll();
-  const shifted = before.map((record) => {
-    if (record.areaCode !== areaCode || Number(record.floor) !== floor) return record;
-    const idx = roomIndexFromRoomPosition(record.roomPosition);
-    return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, buildFloorRoomPosition(floor, idx + 1));
-  });
-  finishRecordStore.replaceAll([...shifted, ...buildFloorRoomSeed(areaCode, floor, insertIndex)]);
-  persistFinishStructureChange(before, finishRecordStore.getAll());
-}
-
-function insertFlatRoomAt(areaCode, insertIndex) {
-  const before = finishRecordStore.getAll();
-  const shifted = before.map((record) => {
-    if (record.areaCode !== areaCode) return record;
-    const idx = Number(record.roomPosition);
-    return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, pad(idx + 1, 3));
-  });
-  finishRecordStore.replaceAll([...shifted, ...buildFlatRoomSeed(areaCode, insertIndex)]);
-  persistFinishStructureChange(before, finishRecordStore.getAll());
-}
-
-export function addNormalFloor() {
-  const floors = listFloorNumbers('I');
-  const next = floors.length ? Math.max(...floors) + 1 : 1;
-  const records = [];
-  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
-  return `floor-I-${next}`;
-}
-
-export function addBasementFloor() {
-  const floors = listFloorNumbers('B');
-  const next = floors.length ? Math.max(...floors) + 1 : 1;
-  const records = [];
-  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
-  return `floor-B-${next}`;
-}
-
-export function addStairs() {
-  const records = buildFlatRoomSeed('S', countFlatRooms('S') + 1);
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records);
-  return 'stairs-group';
-}
-
-export function addRoof() {
-  const records = buildFlatRoomSeed('R', countFlatRooms('R') + 1);
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records);
-  return 'roof-group';
-}
-
-export function addExternalRoom() {
-  const records = buildFlatRoomSeed('E', countFlatRooms('E') + 1);
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records);
-}
-
-export function addRoomToFloor(floorKey) {
-  const parsed = parseFloorKey(floorKey);
-  if (!parsed) return;
-  const index = countRoomsInFloor(parsed.areaCode, parsed.floor) + 1;
-  const records = buildFloorRoomSeed(parsed.areaCode, parsed.floor, index);
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records);
-}
-
-export function addRoomAfter(roomKey) {
-  const anchor = findRepresentativeByRoomKey(roomKey);
-  if (!anchor) return;
-  if (anchor.areaCode === 'I' || anchor.areaCode === 'B') {
-    insertFloorRoomAt(anchor.areaCode, Number(anchor.floor), roomIndexFromRoomPosition(anchor.roomPosition) + 1);
-  } else {
-    insertFlatRoomAt(anchor.areaCode, Number(anchor.roomPosition) + 1);
-  }
-}
-
-export function addInputRow(roomKey) {
-  const before = finishRecordStore.getAll();
-  const roomRecords = getRoomRecords(roomKey);
-  const anchor = roomRecords[0];
-  if (!anchor) return;
-  const maxRow = Math.max(...roomRecords.map((record) => rowFromPosition(record.position)), 0);
-  const nextRow = maxRow + 1;
-  const records = [];
-  for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
-    records.push(createFinishRecord({
-      areaCode: anchor.areaCode,
-      roomPosition: anchor.roomPosition,
-      floor: anchor.floor,
-      roomNo: anchor.roomNo,
-      roomName: anchor.roomName,
-      roomNote: anchor.roomNote,
-      position: computeCellPosition(partIndex, nextRow),
-      part: defaultPartName(anchor.areaCode, partIndex),
-      roomUid: anchor.roomUid
-    }));
-  }
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  const marker = records.find((record) => partIndexFromPosition(record.position) === PART_COUNT);
-  if (marker) persistFinishForProject(getCurrentProject(), marker, 'finish-structure-marker');
 }
 
 export function commitRoomField(roomKey, field, rawValue) {
