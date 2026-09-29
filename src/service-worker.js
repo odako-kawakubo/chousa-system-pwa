@@ -1,10 +1,10 @@
 /*
- * v0.1.8.36 Service Worker
+ * v0.1.8.37 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.36-review';
+const APP_CACHE = 'chousa-app-v0.1.8.37-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01836-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01837-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -31,7 +31,7 @@ const APP_SHELL = [
   './js/finish-table/finish-table-controller.js','./js/finish-table/finish-table-candidate-input.js','./js/finish-table/finish-table-edit-session.js','./js/finish-table/finish-table-interactions.js','./js/finish-table/finish-table-sample-seed.js','./js/finish-table/finish-table-room-copy.js','./js/finish-table/finish-table-room-actions.js','./js/finish-table/finish-table-record-transaction.js','./js/finish-table/finish-table-cell-actions.js','./js/finish-table/material-usage-derived.js','./js/finish-table/finish-table-persistence.js','./js/finish-table/finish-table-structure-actions.js','./js/finish-table/finish-table-constants.js','./js/finish-table/finish-table-history.js','./js/finish-table/finish-table-renderer.js','./js/finish-table/finish-table-state.js','./js/finish-table/finish-table-view-model.js','./js/finish-table/finish-table-refresh-guard.js','./js/finish-table/finish-table-scroll-state.js','./js/finish-table/room-note-editor.js',
   './js/record-view/record-view-controller.js','./js/record-view/record-view-renderer.js','./js/record-view/record-view-view-model.js',
   './js/materials/material-list-controller.js','./js/materials/material-operations-controller.js','./js/materials/material-sample-name.js','./js/materials/simple-list.js',
-  './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-board-editor.js','./js/photos/photo-board-editor-interactions.js','./js/photos/photo-board-editor-persistence.js','./js/photos/photo-board-editor-session.js','./js/photos/photo-controller.js','./js/photos/photo-interactions.js','./js/photos/photo-record-actions.js','./js/photos/photo-preview-manager.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-view-model.js','./js/photos/photo-viewer-data.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
+  './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-board-editor.js','./js/photos/photo-board-editor-form.js','./js/photos/photo-board-editor-interactions.js','./js/photos/photo-board-editor-persistence.js','./js/photos/photo-board-editor-session.js','./js/photos/photo-controller.js','./js/photos/photo-interactions.js','./js/photos/photo-record-actions.js','./js/photos/photo-preview-manager.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-view-model.js','./js/photos/photo-viewer-data.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
   './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
