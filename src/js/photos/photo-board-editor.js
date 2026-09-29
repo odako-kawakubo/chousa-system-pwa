@@ -27,6 +27,16 @@ import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { getAvailablePhotoFileName } from './photo-filename.js';
 import { getDeviceCode } from '../device-code.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import {
+  createEmptyBoardEditorSession,
+  createBoardEditorEntry,
+  cloneEditorValue,
+  refreshBoardEditorEntryDirty,
+  boardEditorSessionHasUnsavedChanges,
+  pushBoardEditorHistory,
+  applyBoardEditorHistory,
+  settleBoardEditorEntry
+} from './photo-board-editor-session.js';
 
 const BOARD_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 const BOARD_SIZES = ['small', 'medium', 'large'];
@@ -52,16 +62,10 @@ let saving = false;
 let switching = false;
 let swipeStart = null;
 
-let session = createEmptySession_();
+let session = createEmptyBoardEditorSession();
 let active = null;
 
-function createEmptySession_() {
-  return { ids: [], index: -1, entries: new Map() };
-}
-
 function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
-function clone(value) { return JSON.parse(JSON.stringify(value)); }
-function sameDraft_(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
 function dateInputValue(value) {
   if (!value) return '';
@@ -217,40 +221,24 @@ function snapshotFromRecord(record) {
 }
 
 function createEntry_(record) {
-  const initialDraft = snapshotFromRecord(record);
-  return {
-    record: { ...record },
-    initialDraft: clone(initialDraft),
-    draft: clone(initialDraft),
-    history: [clone(initialDraft)],
-    historyIndex: 0,
-    dirty: false
-  };
+  return createBoardEditorEntry(record, snapshotFromRecord(record));
 }
 
 function refreshDirty_(entry = active) {
-  if (!entry) return;
-  entry.dirty = !sameDraft_(entry.draft, entry.initialDraft);
+  return refreshBoardEditorEntryDirty(entry);
 }
-function hasUnsavedChanges_() { return [...session.entries.values()].some((entry) => entry.dirty); }
+function hasUnsavedChanges_() {
+  return boardEditorSessionHasUnsavedChanges(session);
+}
 
 function pushHistory() {
   if (!active) return;
-  const snap = clone(active.draft);
-  const current = active.history[active.historyIndex];
-  if (current && sameDraft_(current, snap)) return;
-  active.history = active.history.slice(0, active.historyIndex + 1);
-  active.history.push(snap);
-  active.historyIndex = active.history.length - 1;
-  refreshDirty_();
+  if (!pushBoardEditorHistory(active)) return;
   updateHistoryButtons();
 }
 
 function applyHistory(index) {
-  if (!active || index < 0 || index >= active.history.length) return;
-  active.historyIndex = index;
-  active.draft = clone(active.history[index]);
-  refreshDirty_();
+  if (!active || !applyBoardEditorHistory(active, index)) return;
   renderControls();
   renderPreview();
   updateHistoryButtons();
@@ -514,11 +502,7 @@ async function persistEntry_(entry) {
   await savePhotoBlob(record.photoId,'completed',completedBlob,{createdAt:now,fileName,uploadStatus:'pending'});
   await updateCameraPhotoRecord(record);
 
-  entry.record = { ...record };
-  entry.initialDraft = clone(entry.draft);
-  entry.history = [clone(entry.draft)];
-  entry.historyIndex = 0;
-  entry.dirty = false;
+  settleBoardEditorEntry(entry, record);
 
   return { record, completedBlob };
 }
@@ -667,7 +651,7 @@ function closeEditorInternal_(reason = 'cancel') {
   root.hidden=true;
   document.body.classList.remove('photo-board-edit-open');
   active=null;
-  session=createEmptySession_();
+  session=createEmptyBoardEditorSession();
   originalImage=null;
   swipeStart=null;
   switching=false;
