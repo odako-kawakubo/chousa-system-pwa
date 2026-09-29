@@ -43,30 +43,6 @@ const viewerState = {
   }
 };
 
-function createPhotoViewerTransformState() {
-  return {
-    scale: 1,
-    x: 0,
-    y: 0,
-    pointers: new Map(),
-    start: null,
-    pinch: null,
-    swipe: null,
-    lastTap: null
-  };
-}
-
-function resetPhotoViewerTransform(state) {
-  state.scale = 1;
-  state.x = 0;
-  state.y = 0;
-  state.pointers.clear();
-  state.start = null;
-  state.pinch = null;
-  state.swipe = null;
-  state.lastTap = null;
-}
-
 function revokeResolvedViewerUrls() {
   for (const url of resolvedViewerUrls.values()) {
     if (url && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
