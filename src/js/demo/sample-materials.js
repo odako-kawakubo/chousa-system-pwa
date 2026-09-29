@@ -5,7 +5,7 @@
  * v0.1.5.1より前は、この配列を直接アプリ実行中の正本（state.materials）
  * として使っていたが、今回からmaterialRecordStoreが正本になったため、
  * ここでの役割は「起動時にmaterialRecordStoreへ初期投入するための元データ」
- * だけに縮小する（finish-table-actions.jsのseedInitialMaterials()が、
+ * だけに縮小する（finish-table-sample-seed.jsのseedInitialMaterials()が、
  * この配列からmaterialRecord（src/js/records/material-record.js）を
  * 生成してmaterialRecordStoreへ書き込む）。
  *
