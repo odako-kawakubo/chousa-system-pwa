@@ -7,7 +7,7 @@
  *
  * finish-record-store.jsと同じCRUD・購読・batch()の形を持つ独立した
  * 別モジュール。互いに相手のStoreを参照・importせず、複数Storeにまたがる
- * 操作の調整はfinish-table-actions.jsのrunRecordTransaction()が行う。
+ * 操作の調整はfinish-table-record-transaction.jsのrunRecordTransaction()が行う。
  */
 
 /** @type {Map<string, import('../records/material-record.js').MaterialRecord>} */
