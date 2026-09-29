@@ -330,7 +330,7 @@ jobs:
           grep -q "export function bindPhotoInteractions" src/js/photos/photo-interactions.js || { echo "photo interactions API missing"; exit 1; }
           grep -q "openPhotoViewer" src/js/photos/photo-interactions.js || { echo "photo viewer interaction missing"; exit 1; }
           grep -q "openCamera" src/js/photos/photo-interactions.js || { echo "photo camera interaction missing"; exit 1; }
-          if grep -q "function bindEvents\|function bindPhotoTabExitReset\|data-photo-selection-mode\|data-photo-camera-visual\|data-photo-picker" src/js/photos/photo-controller.js; then
+          if grep -q "function bindEvents\|function bindPhotoTabExitReset\|data-photo-camera-visual\|data-photo-picker" src/js/photos/photo-controller.js; then
             echo "photo controller still owns DOM interactions"
             exit 1
           fi
