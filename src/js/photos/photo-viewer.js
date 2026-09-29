@@ -2,13 +2,9 @@
  * src/js/photos/photo-viewer.js
  *
  * 共通PhotoViewer。
- * 通常表示に加え、v0.1.5.4Eで2〜4枠の比較モードへ拡張する。
- * 写真本体はRecordへ重複保持せず、getPhotoSource()で表示URLを解決する。
- *
- * v0.1.6.6:
- * - Viewerで表示対象になった写真は完成画像本体を共通解決する。
- * - 通常表示・写真送り・比較表示を同じ遅延解決経路へ統一する。
- * - OneDrive/IndexedDBの詳細はphoto-viewer-source.jsへ隔離する。
+ * 通常表示・写真送り・2〜4枠比較・画像本体の遅延解決を担当する。
+ * Gesture処理は photo-viewer-gesture.js、
+ * OneDrive/IndexedDBからの完成画像解決は photo-viewer-source.js に分離する。
  */
 
 import { getVisualPhotoTargetKey } from '../records/photo-record.js';
