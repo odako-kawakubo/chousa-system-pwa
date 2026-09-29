@@ -2,25 +2,13 @@
  * src/js/finish-table/finish-table-controller.js
  *
  * 仕上表のイベント配線とユーザー操作の入口を担当する。
- * DOM描画はrenderer、UI専用状態はstate、業務ロジック（部屋・建材の
- * 読み書き）はfinish-table-actions.js（finishRecordStore／
- * materialRecordStore）、簡易リストはsimple-list、履歴はhistoryへ分離する。
+ * DOM描画はrenderer、UI専用状態はstate、業務ロジックは用途別モジュール、
+ * 正本データは各Record Store、簡易リストはsimple-list、履歴はhistoryへ分離する。
  *
- * v0.1.5.1でのデータ層移行：
- *   これまでこのファイルはfinish-table-state.jsの業務ミューテーター
- *   （addNormalFloor・setCellDraftInputId等）を直接呼んでいたが、業務データの
- *   正本をfinishRecordStore／materialRecordStoreへ移したことに伴い、
- *   finish-table-actions.jsの関数を呼ぶ形へ置き換えた。DOM構造・イベント
- *   配線の対象（クラス名・data属性）自体は変更していない。
- *
- *   このファイルはfinishRecordStore／materialRecordStoreの購読（subscribe）
- *   を再描画のトリガーとしては使わない。業務操作はすべて
- *   「finish-table-actions.jsの関数を呼ぶ→refreshFromStores()を呼ぶ」という
- *   単一の経路に統一し（withHistory()／commitAndRefresh()がその経路）、
- *   Store単位・件単位で再描画が何度も走る経路を作らない。UI専用状態
- *   （finish-table-state.js）の変更だけは、従来どおりsubscribe経由で
- *   refreshFromStores()を呼ぶ（表示モード・折りたたみ等、業務データを
- *   伴わない変更のため）。
+ * finishRecordStore／materialRecordStoreの購読（subscribe）を再描画トリガーには使わない。
+ * 業務操作後はwithHistory()／commitAndRefresh()からrefreshFromStores()へ集約し、
+ * Store単位・件単位で再描画が重複しない経路を維持する。
+ * UI専用状態の変更だけはsubscribe経由でrefreshFromStores()へ反映する。
  *
  * Undo/Redo（戻る/進む）は、finishRecordStore／materialRecordStoreの
  * スナップショット（getUndoableSnapshot/restoreUndoableSnapshot、この
@@ -285,7 +273,7 @@ function restoreUndoableSnapshot(snapshot) {
  * 実行後に仕上表自身はrefreshFromStores()を1回だけ呼ぶ。
  *
  * @param {() => any} mutate 実際にfinishRecordStore／materialRecordStoreを
- *   変更する処理（finish-table-actions.jsの関数を呼ぶ）
+ *   変更する処理（用途別の業務モジュールを呼ぶ）
  * @returns {any} mutateの戻り値。階追加時は追加した既存floorGroupKeyを表示処理へ渡す。
  */
 function withHistory(mutate) {
@@ -362,8 +350,7 @@ async function handleCopyRoomClick(roomKeyValue) {
 
   const sourceKey = getRoomCopyState().sourceRoomKey;
   // コピー実行前の状態をバックアップとして記録する（「戻す」用。
-  // バックアップの取得元はfinishRecordStore＝finish-table-actions.jsの
-  // snapshotRoomRecords()）。
+  // バックアップの取得元はfinishRecordStoreからsnapshotRoomRecords()で取得）。
   recordRoomCopyBackup(roomKeyValue, snapshotRoomRecords(roomKeyValue));
   withHistory(() => executeRoomCopy(sourceKey, roomKeyValue));
 }
