@@ -3,7 +3,7 @@
  * サンプルは案件一覧用Snapshotとして準備するだけで、起動時の現在案件にはしない。
  */
 import { sampleProject } from './sample-project.js';
-import { seedInitialMaterials, seedInitialFinishRecords } from '../finish-table/finish-table-actions.js';
+import { seedInitialMaterials, seedInitialFinishRecords } from '../finish-table/finish-table-sample-seed.js';
 import { seedInitialPhotoRecords } from './sample-photos.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
