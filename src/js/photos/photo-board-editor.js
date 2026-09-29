@@ -10,7 +10,7 @@
  * - 旧写真に boardDate が無い場合だけ capturedAt の日付へフォールバックする。
  * - 看板編集に必要な元画像はローカル優先、無ければOneDriveから取得してIndexedDBへ保持する。
  *
- * 確定経路は増やさず、persistEntry_() を全保存の唯一の入口とする。
+ * 確定経路は増やさず、photo-board-editor-persistence.js の persistBoardEditorEntry() を全保存の唯一の入口とする。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
