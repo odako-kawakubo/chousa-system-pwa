@@ -1,10 +1,10 @@
 /*
- * v0.1.8.33 Service Worker
+ * v0.1.8.34 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.33-review';
+const APP_CACHE = 'chousa-app-v0.1.8.34-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01833-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01834-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
