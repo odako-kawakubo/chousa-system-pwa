@@ -28,6 +28,10 @@ import { getAvailablePhotoFileName } from './photo-filename.js';
 import { getDeviceCode } from '../device-code.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import {
+  bindPhotoBoardEditorInteractions,
+  resetPhotoBoardEditorInteractionState
+} from './photo-board-editor-interactions.js';
+import {
   createEmptyBoardEditorSession,
   createBoardEditorEntry,
   cloneEditorValue,
@@ -60,7 +64,6 @@ let originalUrl = '';
 let renderToken = 0;
 let saving = false;
 let switching = false;
-let swipeStart = null;
 
 let session = createEmptyBoardEditorSession();
 let active = null;
@@ -288,7 +291,25 @@ function ensureRoot() {
     </div>`;
   document.body.appendChild(root);
   canvas = root.querySelector('[data-photo-board-editor-canvas]');
-  bindEvents();
+  bindPhotoBoardEditorInteractions({
+    root,
+    isActive: () => Boolean(active),
+    isSaving: () => saving,
+    isSwitching: () => switching,
+    getSessionIndex: () => session.index,
+    updateDraftFromEvent,
+    requestClose: requestClose_,
+    applyHistory: (direction) => {
+      if (!active) return;
+      if (direction === 'reset') return applyHistory(0);
+      return applyHistory(active.historyIndex + Number(direction || 0));
+    },
+    saveSession: saveSession_,
+    setSaving: (value) => { saving = Boolean(value); },
+    canNavigate,
+    activateIndex: activateIndex_,
+    renderPreview
+  });
 }
 
 function visualFields() {
@@ -551,7 +572,6 @@ async function activateIndex_(index) {
     }
     session.index = index;
     active = entry;
-    swipeStart = null;
     renderControls();
     updateHistoryButtons();
     renderPreview();
@@ -561,55 +581,12 @@ async function activateIndex_(index) {
   }
 }
 
-function handleEditorSwipeStart(event) {
-  if (!active || saving || switching || event.pointerType === 'mouse' && event.button !== 0) return;
-  swipeStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-}
-
-function handleEditorSwipeEnd(event) {
-  if (!swipeStart || swipeStart.pointerId !== event.pointerId || !active || saving || switching) {
-    swipeStart = null;
-    return;
-  }
-  const dx = event.clientX - swipeStart.x;
-  const dy = event.clientY - swipeStart.y;
-  swipeStart = null;
-  if (Math.abs(dx) < 70 || Math.abs(dx) <= Math.abs(dy) * 1.2) return;
-  const direction = dx < 0 ? 1 : -1;
-  if (!canNavigate(direction)) return;
-  activateIndex_(session.index + direction).catch((error) => {
-    console.error(error);
-    window.alert(`写真の切り替えに失敗しました。\n${error.message || error}`);
-  });
-}
-
 function requestClose_() {
   if (saving) return;
   if (hasUnsavedChanges_() && !window.confirm('未保存の看板編集があります。\n変更を破棄して閉じますか？')) return;
   closeEditorInternal_('cancel');
 }
 
-function bindEvents() {
-  root.addEventListener('change',(event)=>updateDraftFromEvent(event.target));
-  const stage = root.querySelector('.photo-board-editor-stage');
-  stage?.addEventListener('pointerdown', handleEditorSwipeStart);
-  stage?.addEventListener('pointerup', handleEditorSwipeEnd);
-  stage?.addEventListener('pointercancel', () => { swipeStart = null; });
-  root.addEventListener('click',(event)=>{
-    if (event.target.closest('[data-editor-close]')) return requestClose_();
-    if (event.target.closest('[data-editor-undo]')) return applyHistory(active?.historyIndex - 1);
-    if (event.target.closest('[data-editor-redo]')) return applyHistory(active?.historyIndex + 1);
-    if (event.target.closest('[data-editor-reset]')) return applyHistory(0);
-    if (event.target.closest('[data-editor-save]')) {
-      saveSession_().catch((error)=>{
-        saving=false;
-        console.error(error);
-        window.alert(`看板編集の保存に失敗しました。\n${error.message||error}`);
-      });
-    }
-  });
-  window.addEventListener('resize',renderPreview);
-}
 
 export function initializePhotoBoardEditor(options={}) {
   optionsProvider = typeof options.getOptions === 'function' ? options.getOptions : optionsProvider;
@@ -653,8 +630,8 @@ function closeEditorInternal_(reason = 'cancel') {
   active=null;
   session=createEmptyBoardEditorSession();
   originalImage=null;
-  swipeStart=null;
   switching=false;
+  resetPhotoBoardEditorInteractionState();
   if (originalUrl) { URL.revokeObjectURL(originalUrl); originalUrl=''; }
   onClosed?.(reason);
 }
