@@ -53,7 +53,6 @@ import {
 
 const BOARD_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 const BOARD_SIZES = ['small', 'medium', 'large'];
-const STAGES = [SHOOTING_TYPES.BEFORE, SHOOTING_TYPES.DURING, SHOOTING_TYPES.AFTER];
 
 let root = null;
 let canvas = null;
