@@ -11,7 +11,7 @@
  */
 
 import { setFocusedInputKey } from './finish-table-state.js';
-import { runRecordTransaction } from './finish-table-actions.js';
+import { runRecordTransaction } from './finish-table-record-transaction.js';
 import { recordHistory } from './finish-table-history.js';
 import {
   closeCandidatePopup,
