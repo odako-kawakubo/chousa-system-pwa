@@ -23,17 +23,19 @@ import {
 } from './finish-table-state.js';
 import {
   commitRoomField,
+  runRecordTransaction,
+  finishRecordStore,
+  materialRecordStore
+} from './finish-table-actions.js';
+import {
   commitCellId,
   commitCellName,
   commitCellActualPart,
   applyMaterialToCell,
   registerMaterialForCell,
-  getMaterialPartOptions,
-  runRecordTransaction,
-  refreshMaterialUsageDerivedFields,
-  finishRecordStore,
-  materialRecordStore
-} from './finish-table-actions.js';
+  getMaterialPartOptions
+} from './finish-table-cell-actions.js';
+import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
 import {
   applyRoomSelection,
   applyGroupSelection,
@@ -212,7 +214,7 @@ export function bindFinishTableInteractions(root, {
       const pendingName = String(editingNameInput?.value || getPendingCellName(pendingKey) || '').trim();
       if (pendingName && editingNameInput) {
         completeCellEdit(editingNameInput, () => {
-          registerMaterialForCell(roomKeyValue, partIndex, row, pendingName);
+          registerMaterialForCell(roomKeyValue, partIndex, row, pendingName, runRecordTransaction);
           clearPendingCellName(pendingKey);
         });
         // 「登録」ボタンは新規建材登録の完了操作。部位が未入力なら登録処理内で
