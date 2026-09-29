@@ -14,7 +14,7 @@
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { PHOTO_TYPES, SHOOTING_TYPES, getVisualPhotoRoomKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
+import { PHOTO_TYPES, SHOOTING_TYPES, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import {
   BOARD_POSITION_LABELS,
@@ -40,6 +40,16 @@ import {
   persistBoardEditorEntry,
   formatBoardSampleNo
 } from './photo-board-editor-persistence.js';
+import {
+  normalizeBoardEditorDateInput,
+  boardEditorVisualRooms,
+  boardEditorSamplingTargets,
+  findBoardEditorVisualRoom,
+  boardEditorSamplingMaterialTargets,
+  boardEditorSamplingMaterials,
+  renderBoardEditorForm,
+  updateBoardEditorDraftFromEvent
+} from './photo-board-editor-form.js';
 
 const BOARD_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 const BOARD_SIZES = ['small', 'medium', 'large'];
@@ -59,17 +69,8 @@ let switching = false;
 let session = createEmptyBoardEditorSession();
 let active = null;
 
-function esc(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
-
 function dateInputValue(value) {
-  if (!value) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return normalizeBoardEditorDateInput(value);
 }
 
 function boardDateFromRecord(record) {
@@ -109,21 +110,11 @@ function boardData(entry = active) {
   };
 }
 
-function visualRooms() { return optionsProvider()?.visualRooms || []; }
-function samplingTargets() { return optionsProvider()?.samplingTargets || []; }
-function visualRoomByIdentity(identity = {}) {
-  const key = getVisualPhotoRoomKey(identity);
-  return visualRooms().find((room) => getVisualPhotoRoomKey(room) === key) || null;
-}
-function samplingMaterialTargets(materialId) { return samplingTargets().filter((t) => t.materialId === materialId); }
-function samplingMaterials() {
-  const map = new Map();
-  samplingTargets().forEach((t) => {
-    if (!map.has(t.materialId)) map.set(t.materialId, { materialId:t.materialId, sampleBaseNo:String(t.sampleBaseNo || ''), targets:[] });
-    map.get(t.materialId).targets.push(t);
-  });
-  return [...map.values()];
-}
+function visualRooms() { return boardEditorVisualRooms(optionsProvider); }
+function samplingTargets() { return boardEditorSamplingTargets(optionsProvider); }
+function visualRoomByIdentity(identity = {}) { return findBoardEditorVisualRoom(optionsProvider, identity); }
+function samplingMaterialTargets(materialId) { return boardEditorSamplingMaterialTargets(optionsProvider, materialId); }
+function samplingMaterials() { return boardEditorSamplingMaterials(optionsProvider); }
 
 function snapshotVisualFromRecord_(record) {
   const room = visualRoomByIdentity(record);
@@ -255,53 +246,9 @@ function ensureRoot() {
   });
 }
 
-function visualFields() {
-  const rooms = visualRooms();
-  const room = visualRoomByIdentity(active.draft);
-  const parts = room?.targets || [];
-  const activeRoomKey = getVisualPhotoRoomKey(active.draft);
-  const hasActiveRoom = rooms.some((item) => getVisualPhotoRoomKey(item) === activeRoomKey);
-  return `<div class="photo-board-editor-fields">
-    <label>部屋No.<select data-editor-room>
-      ${hasActiveRoom ? '' : '<option value="" selected>選択してください</option>'}
-      ${rooms.map((r)=>{ const key=getVisualPhotoRoomKey(r); return `<option value="${esc(key)}" ${key===activeRoomKey?'selected':''}>${esc(r.roomNo || r.roomPosition)}</option>`; }).join('')}
-    </select></label>
-    <label>部位<select data-editor-part>
-      <option value="" ${Number(active.draft.partSlot || 0)===0?'selected':''}>選択してください</option>
-      ${parts.map((p)=>`<option value="${Number(p.partSlot || 0)}" ${Number(p.partSlot || 0)===Number(active.draft.partSlot || 0)?'selected':''}>${esc(p.part)}</option>`).join('')}
-    </select></label>
-  </div>`;
-}
-
-function samplingFields() {
-  const materials = samplingMaterials();
-  const selectedMaterialId = active.draft.materialId || active.record.materialId || '';
-  const targets = samplingMaterialTargets(selectedMaterialId);
-  const branches = [...new Set(targets.map((t)=>Number(t.branch)).filter(Boolean))];
-  const hasMaterial = materials.some((item) => item.materialId === selectedMaterialId);
-  return `<div class="photo-board-editor-fields">
-    <label>検体No.<select data-editor-sample>
-      ${hasMaterial ? '' : '<option value="" selected>選択してください</option>'}
-      ${materials.map((m)=>`<option value="${esc(m.materialId)}" ${m.materialId===selectedMaterialId?'selected':''}>${esc(m.sampleBaseNo)}</option>`).join('')}
-    </select></label>
-    <label>箇所<select data-editor-branch>
-      <option value="" ${Number(active.draft.samplingBranch || 0)===0?'selected':''}>選択してください</option>
-      ${branches.map((b)=>`<option value="${b}" ${b===Number(active.draft.samplingBranch)?'selected':''}>${MARKS[b] || b}</option>`).join('')}
-    </select></label>
-    <label>撮影区分<select data-editor-stage>
-      <option value="" ${!active.draft.shootingType?'selected':''}>選択してください</option>
-      ${STAGES.map((v)=>`<option value="${v}" ${v===active.draft.shootingType?'selected':''}>${({before:'施工前',during:'施工中',after:'施工後'})[v]}</option>`).join('')}
-      <option value="section" ${active.draft.shootingType==='section'?'selected':''}>断面</option>
-    </select></label>
-  </div>`;
-}
-
 function renderControls() {
   if (!active || !root) return;
-  root.querySelector('[data-editor-fields]').innerHTML = active.record.photoType === PHOTO_TYPES.VISUAL ? visualFields() : samplingFields();
-  root.querySelector('[data-editor-date]').value = active.draft.boardDate || '';
-  root.querySelector('[data-editor-position]').value = active.draft.boardPosition;
-  root.querySelector('[data-editor-size]').value = active.draft.boardSize;
+  renderBoardEditorForm(root, active, optionsProvider);
   updateNavigationHint_();
 }
 
@@ -349,49 +296,11 @@ function renderPreview() {
   });
 }
 
-function syncSamplingPlace() {
-  const target = samplingMaterialTargets(active.draft.materialId || active.record.materialId).find((t)=> Number(t.branch) === Number(active.draft.samplingBranch));
-  if (target) {
-    active.draft.samplingPlace = target.samplingPlace || '';
-    active.draft.part = target.part || active.draft.part;
-  }
-}
-
 function updateDraftFromEvent(target) {
   if (!active) return;
-  if (target.matches('[data-editor-room]')) {
-    const room = visualRooms().find((item) => getVisualPhotoRoomKey(item) === target.value);
-    active.draft.areaCode = room?.areaCode || '';
-    active.draft.roomPosition = room?.roomPosition || '';
-    active.draft.roomNo = room?.roomNo || '';
-    active.draft.partSlot = 0;
-    active.draft.part = '';
-    renderControls();
-  } else if (target.matches('[data-editor-part]')) {
-    const room = visualRoomByIdentity(active.draft);
-    const partTarget = target.value ? room?.targets?.find((item) => Number(item.partSlot || 0) === Number(target.value)) || null : null;
-    active.draft.partSlot = Number(partTarget?.partSlot || 0);
-    active.draft.part = partTarget?.part || '';
-  }
-  else if (target.matches('[data-editor-sample]')) {
-    const material = samplingMaterials().find((m)=>m.materialId===target.value);
-    active.draft.materialId = material?.materialId || target.value;
-    active.draft.sampleBaseNo = material?.sampleBaseNo || '';
-    active.draft.samplingBranch = 0;
-    active.draft.samplingPlace = '';
-    active.draft.part = '';
-    renderControls();
-  }
-  else if (target.matches('[data-editor-branch]')) {
-    active.draft.samplingBranch = Number(target.value || 0);
-    if (active.draft.samplingBranch) syncSamplingPlace();
-    else { active.draft.samplingPlace = ''; active.draft.part = ''; }
-  }
-  else if (target.matches('[data-editor-stage]')) active.draft.shootingType = target.value;
-  else if (target.matches('[data-editor-date]')) active.draft.boardDate = dateInputValue(target.value);
-  else if (target.matches('[data-editor-position]')) active.draft.boardPosition = target.value;
-  else if (target.matches('[data-editor-size]')) active.draft.boardSize = target.value;
-  else return;
+  const result = updateBoardEditorDraftFromEvent(target, active, optionsProvider);
+  if (!result.changed) return;
+  if (result.rerenderControls) renderControls();
   pushHistory();
   renderPreview();
 }
