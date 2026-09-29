@@ -45,15 +45,6 @@ import {
   getRoomCopyBackup
 } from './finish-table-state.js';
 import {
-  addNormalFloor,
-  addBasementFloor,
-  addStairs,
-  addRoof,
-  addExternalRoom,
-  addRoomToFloor,
-  addRoomAfter,
-  addInputRow,
-
   describeRoomCopyClick,
   executeRoomCopy,
   restoreRoomCopy,
@@ -62,6 +53,16 @@ import {
   finishRecordStore,
   materialRecordStore
 } from './finish-table-actions.js';
+import {
+  addNormalFloor,
+  addBasementFloor,
+  addStairs,
+  addRoof,
+  addExternalRoom,
+  addRoomToFloor,
+  addRoomAfter,
+  addInputRow
+} from './finish-table-structure-actions.js';
 import {
   renderFinishTab,
   renderToolbarState,
