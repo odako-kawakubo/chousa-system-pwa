@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.39 Preview
+name: Deploy v0.1.8.40 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01839
+  group: firebase-preview-v01840
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.39 review consistency checks
+      - name: v0.1.8.40 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.39'" src/config/app-config.js
+          grep -q "version: '0.1.8.40'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.39"' src/version.json
+          grep -q '"version": "0.1.8.40"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.39-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01839-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.40-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01840-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -321,6 +321,18 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Project同期差分の画面影響判定をcontrollerから分離
+          test -f src/js/projects/project-view-impact.js
+          grep -q "from './project-view-impact.js'" src/js/projects/project-controller.js || { echo "project controller does not use view impact module"; exit 1; }
+          grep -q "export function createEmptyProjectViewImpact" src/js/projects/project-view-impact.js || { echo "project view impact API missing"; exit 1; }
+          grep -q "export function registerFinishProjectViewImpact" src/js/projects/project-view-impact.js || { echo "finish impact API missing"; exit 1; }
+          grep -q "export function registerMaterialProjectViewImpact" src/js/projects/project-view-impact.js || { echo "material impact API missing"; exit 1; }
+          grep -q "export function registerPhotoProjectViewImpact" src/js/projects/project-view-impact.js || { echo "photo impact API missing"; exit 1; }
+          if grep -q "function equalRecordValue\|function changedFields\|FINISH_IMPACT_FIELDS\|MATERIAL_IMPACT_FIELDS" src/js/projects/project-controller.js; then
+            echo "project controller still owns view impact logic"
             exit 1
           fi
 
