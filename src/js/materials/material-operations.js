@@ -19,8 +19,8 @@ import {
   finishRecordStore,
   materialRecordStore,
   runRecordTransaction,
-  refreshMaterialUsageDerivedFields
 } from '../finish-table/finish-table-actions.js';
+import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
