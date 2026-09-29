@@ -10,7 +10,7 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { samplePartsToText } from '../records/material-record.js';
 import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
-import { getMaterialUsageRoomLabels } from '../finish-table/finish-table-actions.js';
+import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
 import {
   getVisualOutputPhotoId,
   getSamplingOutputPhotoId,
