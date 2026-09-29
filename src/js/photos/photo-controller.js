@@ -27,9 +27,17 @@ import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
+import {
+  previewSourceForPhoto,
+  setLocalPhotoPreview,
+  hydrateThumbnailImages,
+  hydrateCurrentPhotoPreviews,
+  removePhotoPreview,
+  resetPhotoPreviewManager,
+  getLocalPreviewCount
+} from './photo-preview-manager.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { getPhotoBlob, saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
-import { fetchRemotePhotoThumbnail, hasRemoteCompletedPhoto } from './photo-remote-reader.js';
+import { saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
 import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
 import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -50,11 +58,6 @@ const state = {
   selectionMode: null,
   selectedPhotoIds: new Set()
 };
-
-const localPreviewUrls = new Map();
-const remoteThumbnailUrls = new Map();
-const remoteThumbnailFetches = new Map();
-let previewSessionId = 0;
 
 const PHOTO_COMMON_CREATE_EDIT_FIELDS = Object.freeze([
   'photoType', 'fileName', 'isRepresentative', 'capturedDevice', 'capturedAt',
@@ -146,7 +149,7 @@ function render() {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     state.selectedMaterialId = view.activeMaterial?.materialId || '';
     renderSamplingView(body, view, state);
-    hydrateThumbnailImages();
+    hydrateThumbnailImages(root);
     applySelectionUi();
     renderedMode = state.mode;
     restorePhotoScroll();
@@ -156,7 +159,7 @@ function render() {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   state.selectedRoomUid = view.activeRoom?.roomUid || '';
   renderVisualView(body, view, state);
-  hydrateThumbnailImages();
+  hydrateThumbnailImages(root);
   applySelectionUi();
   renderedMode = state.mode;
   restorePhotoScroll();
@@ -164,126 +167,6 @@ function render() {
 
 function photoById(photoId) {
   return photoRecordStore.get(photoId);
-}
-
-function revokePreviewUrl(map, photoId) {
-  const value = map.get(photoId);
-  if (value && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(value);
-  map.delete(photoId);
-}
-
-function clearPreviewUrls() {
-  for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
-    [...map.keys()].forEach((photoId) => revokePreviewUrl(map, photoId));
-  }
-}
-
-function setLocalPreview(photoId, blob) {
-  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
-  revokePreviewUrl(localPreviewUrls, photoId);
-  revokePreviewUrl(remoteThumbnailUrls, photoId);
-  const url = URL.createObjectURL(blob);
-  localPreviewUrls.set(photoId, url);
-  syncDiagnosticLog('PHOTO_LOCAL_PREVIEW_SET', {
-    photoId,
-    size: Number(blob.size || 0),
-    type: String(blob.type || ''),
-    urlTail: String(url).slice(-24)
-  });
-}
-
-function setRemoteThumbnail(photoId, blob) {
-  if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return;
-  if (localPreviewUrls.has(photoId)) return;
-  revokePreviewUrl(remoteThumbnailUrls, photoId);
-  remoteThumbnailUrls.set(photoId, URL.createObjectURL(blob));
-}
-
-async function ensureRemoteThumbnail(photo) {
-  const photoId = String(photo?.photoId || '');
-  if (!photoId || photo.deleted || localPreviewUrls.has(photoId) || remoteThumbnailUrls.has(photoId)) return;
-  if (!hasRemoteCompletedPhoto(photo) || remoteThumbnailFetches.has(photoId)) return;
-
-  const sessionId = previewSessionId;
-  const fetchPromise = fetchRemotePhotoThumbnail(photo)
-    .then((blob) => {
-      if (sessionId !== previewSessionId) return;
-      if (!(blob instanceof Blob) || !photoById(photoId) || localPreviewUrls.has(photoId)) return;
-      setRemoteThumbnail(photoId, blob);
-      hydrateThumbnailImages();
-    })
-    .catch(() => undefined)
-    .finally(() => {
-      if (sessionId === previewSessionId) remoteThumbnailFetches.delete(photoId);
-    });
-
-  remoteThumbnailFetches.set(photoId, fetchPromise);
-  await fetchPromise;
-}
-
-/**
- * サムネイルはローカル完成画像を最優先し、無い写真だけOneDriveサムネイルを非同期取得する。
- * 他端末写真の完成画像本体はここでは保存しない。
- */
-function hydrateThumbnailImages(scope = root) {
-  if (!scope) return;
-
-  scope.querySelectorAll('[data-photo-thumb-image]').forEach((image) => {
-    const photoId = image.dataset.photoThumbImage || '';
-    const photo = photoById(photoId);
-    const card = image.closest('.photo-thumb-card');
-    const source = photo ? previewSourceForPhoto(photo) : '';
-    const isLocalPreview = localPreviewUrls.has(photoId);
-
-    const markReady = () => {
-      card?.classList.add('photo-thumb-ready');
-      card?.classList.remove('photo-thumb-loading');
-      syncDiagnosticLog('PHOTO_THUMB_READY', {
-        photoId,
-        local: isLocalPreview,
-        complete: Boolean(image.complete),
-        naturalWidth: Number(image.naturalWidth || 0)
-      });
-    };
-    const markLoading = () => {
-      card?.classList.remove('photo-thumb-ready');
-      card?.classList.add('photo-thumb-loading');
-      syncDiagnosticLog('PHOTO_THUMB_LOADING', {
-        photoId,
-        local: isLocalPreview,
-        hasSource: Boolean(source),
-        complete: Boolean(image.complete),
-        naturalWidth: Number(image.naturalWidth || 0)
-      });
-    };
-
-    if (!source) {
-      image.removeAttribute('src');
-      image.loading = 'lazy';
-      markLoading();
-      if (photo) void ensureRemoteThumbnail(photo);
-      return;
-    }
-
-    // 撮影直後のローカルObject URLは、カメラ全画面の背面でも即読込する。
-    image.loading = isLocalPreview ? 'eager' : 'lazy';
-    image.onload = markReady;
-    image.onerror = markLoading;
-
-    if (image.getAttribute('src') !== source) image.src = source;
-
-    if (image.complete && image.naturalWidth > 0) {
-      markReady();
-      return;
-    }
-
-    // Object URLは高速に読めるため、loadイベントとの競合をdecodeでも補完する。
-    if (isLocalPreview && typeof image.decode === 'function') {
-      image.decode().then(markReady).catch(() => {
-        if (image.complete && image.naturalWidth > 0) markReady();
-      });
-    }
-  });
 }
 
 function nextPhotoId() {
@@ -358,7 +241,7 @@ async function addPickedFiles(fileList) {
         }));
 
     await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
-    setLocalPreview(photoId, file);
+    setLocalPhotoPreview(photoId, file);
 
     const stored = photoRecordStore.set(record);
     await updateCameraPhotoRecord(stored);
@@ -426,7 +309,7 @@ async function registerCameraPreview({ record, originalBlob, completedBlob }, { 
   // カメラ撮影後の正式入口。
   // 写真タブ全体は再描画せず、撮影対象ブロックだけを更新する。
   const stored = photoRecordStore.set(record);
-  setLocalPreview(stored.photoId, completedBlob);
+  setLocalPhotoPreview(stored.photoId, completedBlob);
   let blockRefreshed = null;
   if (renderAfter) blockRefreshed = refreshCameraPhotoBlock(stored);
   syncDiagnosticLog('PHOTO_LOCAL_BLOCK_REFRESH', {
@@ -444,32 +327,6 @@ async function registerCameraPreview({ record, originalBlob, completedBlob }, { 
   await persistPhoto(stored);
 
   return stored;
-}
-
-async function hydrateCurrentPhotoPreviews() {
-  const sessionId = previewSessionId;
-  try {
-    const activeIds = new Set(photoRecordStore.getAll().map((record) => record.photoId));
-    for (const map of [localPreviewUrls, remoteThumbnailUrls]) {
-      for (const photoId of [...map.keys()]) {
-        if (!activeIds.has(photoId)) revokePreviewUrl(map, photoId);
-      }
-    }
-
-    for (const record of photoRecordStore.getAll()) {
-      if (sessionId !== previewSessionId) return;
-      if (localPreviewUrls.has(record.photoId)) continue;
-      const blob = await getPhotoBlob(record.photoId, 'completed');
-      if (sessionId !== previewSessionId) return;
-      if (blob && typeof URL.createObjectURL === 'function') {
-        setLocalPreview(record.photoId, blob);
-        continue;
-      }
-      void ensureRemoteThumbnail(record);
-    }
-  } catch (error) {
-    console.warn('現在案件の写真プレビュー復元に失敗しました', error);
-  }
 }
 
 function globalCameraContext() {
@@ -490,23 +347,6 @@ function globalCameraContext() {
   const target = view.targets?.[0];
   if (!view.activeRoom || !target) return null;
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
-}
-
-function demoPreviewSource(photo) {
-  if (!String(photo?.photoId || '').startsWith('DEMO-PHOTO-')) return '';
-  const label = photo.photoType === PHOTO_TYPES.VISUAL
-    ? `${photo.roomNo || photo.roomPosition || '-'} / ${photo.part || '-'}`
-    : `${photo.sampleNo || '-'} / ${photo.shootingType || '-'}`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#dbe4ef"/><rect x="100" y="120" width="1000" height="560" rx="24" fill="#fff" fill-opacity=".35" stroke="#fff" stroke-width="8"/><text x="600" y="390" text-anchor="middle" font-family="sans-serif" font-size="72" font-weight="700" fill="#0f172a">${label}</text><text x="600" y="465" text-anchor="middle" font-family="sans-serif" font-size="32" fill="#334155">比較UI確認用デモ写真</text></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function previewSourceForPhoto(photo) {
-  const local = localPreviewUrls.get(photo.photoId);
-  if (local) return local;
-  const demo = demoPreviewSource(photo);
-  if (demo) return demo;
-  return remoteThumbnailUrls.get(photo.photoId) || '';
 }
 
 function findElementByDataValue(selector, datasetKey, value) {
@@ -572,8 +412,7 @@ async function deleteSelectedPhotos(photoIds) {
   const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
   photoRecordStore.batch(() => {
     ids.forEach((photoId) => {
-      revokePreviewUrl(localPreviewUrls, photoId);
-      revokePreviewUrl(remoteThumbnailUrls, photoId);
+      removePhotoPreview(photoId);
       photoRecordStore.markDeleted(photoId);
     });
   });
@@ -768,9 +607,7 @@ function bindEvents() {
 
 /** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
 export function resetPhotoUiStateForProject() {
-  previewSessionId += 1;
-  remoteThumbnailFetches.clear();
-  clearPreviewUrls();
+  resetPhotoPreviewManager();
 
   state.mode = 'visual';
   state.selectedRoomUid = '';
@@ -797,10 +634,10 @@ export function refreshPhotoTab() {
     mode: state.mode,
     selectedRoomUid: state.selectedRoomUid,
     selectedMaterialId: state.selectedMaterialId,
-    localPreviewCount: localPreviewUrls.size
+    localPreviewCount: getLocalPreviewCount()
   });
   render();
-  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
+  void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
 }
 
 export function initializePhotoTab() {
@@ -836,8 +673,8 @@ export function initializePhotoTab() {
   });
 
   render();
-  void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
+  void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
   window.addEventListener('online', () => {
-    void hydrateCurrentPhotoPreviews().then(hydrateThumbnailImages);
+    void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
   });
 }
