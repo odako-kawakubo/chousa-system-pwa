@@ -14,7 +14,7 @@ const SAMPLE_STAGE_ORDER = [
 ];
 
 export function photosForViewer(photoId) {
-  const photo = photoById(photoId);
+  const photo = photoRecordStore.get(photoId);
   if (!photo || photo.deleted) return [];
 
   if (photo.photoType === PHOTO_TYPES.VISUAL) {
