@@ -13,8 +13,7 @@ import {
   getCurrentProject,
   getProject,
   saveProjectSnapshot,
-  getProjectSyncMeta,
-  updateProjectSyncMeta
+  getProjectSyncMeta
 } from './project-store.js';
 import {
   readProjectRecordsForProject,
@@ -24,10 +23,7 @@ import {
   hydrateIncomingMaterialRecord,
   hydrateIncomingPhotoRecord,
   applyKnownFinishChange,
-  restoreKnownFinishRecords,
-  firestoreTimeToMillis,
-  touchProjectSyncDeviceForProject,
-  cleanupFinishChangeLogsForProject
+  restoreKnownFinishRecords
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
@@ -43,13 +39,11 @@ import {
   markLocalOnly,
   beginFirestoreActivity,
   endFirestoreActivity,
-  setSyncBaseline,
-  setLastSyncedAt
+  setSyncBaseline
 } from '../sync/sync-status.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { getDeviceCode, getDeviceDisplayName } from '../device-code.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import {
   createEmptyProjectViewImpact,
@@ -59,6 +53,17 @@ import {
   registerPhotoProjectViewImpact,
   serializeProjectViewImpact
 } from './project-view-impact.js';
+import {
+  sameProjectFieldEditedAt,
+  newestProjectChangeUpdatedAt,
+  normalizeProjectRecordCursors,
+  normalizeProjectFinishChangeCursor,
+  updateProjectFinishChangeCursor,
+  recordProjectSyncDeviceContact,
+  cleanupProjectFinishChangeLogIfDue,
+  getProjectRecordCursors,
+  updateProjectRecordCursors
+} from './project-sync-meta.js';
 
 let stopActiveProjectRecords = null;
 let activeProjectStreamToken = 0;
@@ -73,98 +78,6 @@ function stopProjectRecordStream() {
     stopActiveProjectRecords();
     stopActiveProjectRecords = null;
   }
-}
-
-function sameFieldEditedAt(a, b) {
-  return JSON.stringify(a || {}) === JSON.stringify(b || {});
-}
-
-function newestChangeUpdatedAt(changes = []) {
-  return changes.reduce(
-    (max, change) => Math.max(max, firestoreTimeToMillis(change?.record?.updatedAt)),
-    0
-  );
-}
-
-function normalizeRecordCursors(value = {}) {
-  return {
-    finish: Number(value.finish || 0),
-    material: Number(value.material || 0),
-    photo: Number(value.photo || 0)
-  };
-}
-
-function normalizeFinishChangeCursor(value = null) {
-  if (!value || typeof value.seconds !== 'number' || !value.changeId) return null;
-  return {
-    seconds: Number(value.seconds),
-    nanoseconds: Number(value.nanoseconds || 0),
-    changeId: String(value.changeId)
-  };
-}
-
-function updateFinishChangeCursor(projectId, cursor) {
-  const normalized = normalizeFinishChangeCursor(cursor);
-  if (!projectId || !normalized) return;
-  updateProjectSyncMeta(projectId, { finishChangeCursor: normalized, hasSyncedOnce: true });
-}
-
-async function recordProjectDeviceContact(project, finishChangeCursor) {
-  if (!project?.projectId || project.isSample) return;
-  syncDiagnosticLog('DEVICE_CONTACT_START', { projectId: project.projectId, finishChangeCursor });
-  await touchProjectSyncDeviceForProject(project, {
-    deviceCode: getDeviceCode(),
-    deviceName: getDeviceDisplayName(),
-    finishChangeCursor: normalizeFinishChangeCursor(finishChangeCursor)
-  });
-  syncDiagnosticLog('DEVICE_CONTACT_END', { projectId: project.projectId });
-}
-
-async function cleanupFinishChangeLogIfDue(project) {
-  if (!project?.projectId || project.isSample) return;
-  syncDiagnosticLog('CHANGELOG_CLEANUP_DUE_CHECK', { projectId: project.projectId });
-  const meta = getProjectSyncMeta(project.projectId) || {};
-  const last = Number(meta.finishChangeLogCleanedAt || 0);
-  if (last && (Date.now() - last) < (24 * 60 * 60 * 1000)) {
-    syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_RECENT', { projectId: project.projectId, last });
-    return;
-  }
-  try {
-    const cleanupResult = await cleanupFinishChangeLogsForProject(project);
-    syncDiagnosticLog('CHANGELOG_CLEANUP_DONE', { projectId: project.projectId, cleanupResult });
-    updateProjectSyncMeta(project.projectId, { finishChangeLogCleanedAt: Date.now() });
-  } catch (error) {
-    console.warn('[v0.1.6.5F] finish変更履歴の整理に失敗', error);
-  }
-}
-
-function getProjectRecordCursors(projectId) {
-  return normalizeRecordCursors(getProjectSyncMeta(projectId)?.recordCursors || {});
-}
-
-function updateProjectSyncCursors(projectId, cursors = {}, { completed = false, source = 'unspecified' } = {}) {
-  if (!projectId) return;
-  const current = getProjectRecordCursors(projectId);
-  const next = {
-    finish: Math.max(current.finish, Number(cursors.finish || 0)),
-    material: Math.max(current.material, Number(cursors.material || 0)),
-    photo: Math.max(current.photo, Number(cursors.photo || 0))
-  };
-  syncDiagnosticLog('SYNC_CURSOR_BEFORE', {
-    projectId,
-    source,
-    current,
-    incoming: normalizeRecordCursors(cursors)
-  });
-  const lastSyncedAt = latestCursorValue(next);
-  updateProjectSyncMeta(projectId, {
-    recordCursors: next,
-    lastSyncedAt,
-    hasSyncedOnce: true,
-    ...(completed ? { lastSyncCompletedAt: Date.now() } : {})
-  });
-  syncDiagnosticLog('SYNC_CURSOR_AFTER', { projectId, source, next, lastSyncedAt });
-  if (getCurrentProject()?.projectId === projectId) setLastSyncedAt(lastSyncedAt);
 }
 
 function applyProjectRecordChanges(project, changes = []) {
@@ -239,7 +152,7 @@ function applyProjectRecordChanges(project, changes = []) {
       const current = materialRecordStore.get(id);
       if (change.changeType !== 'removed'
         && current
-        && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+        && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -286,7 +199,7 @@ function applyProjectRecordChanges(project, changes = []) {
     const current = finishRecordStore.get(id);
     if (change.changeType !== 'removed'
       && current
-      && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
       if (change.recordType === 'photo') {
         syncDiagnosticLog('SYNC_APPLY_PHOTO', {
           projectId: project.projectId,
@@ -345,7 +258,7 @@ function applyProjectRecordChanges(project, changes = []) {
     const current = photoRecordStore.get(id);
     if (change.changeType !== 'removed'
       && current
-      && sameFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
       skipped += 1;
       syncDiagnosticLog('SYNC_APPLY_CHANGE', {
         projectId: project.projectId,
@@ -464,8 +377,8 @@ async function openFirestoreProjectSession(target) {
   });
   const token = ++activeProjectStreamToken;
   const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
-  const storedCursors = normalizeRecordCursors(syncMeta.recordCursors || {});
-  const finishChangeCursor = normalizeFinishChangeCursor(syncMeta.finishChangeCursor);
+  const storedCursors = normalizeProjectRecordCursors(syncMeta.recordCursors || {});
+  const finishChangeCursor = normalizeProjectFinishChangeCursor(syncMeta.finishChangeCursor);
   const legacyLastSyncedAt = Number(syncMeta.lastSyncedAt || 0);
   const cursors = storedCursors;
   const hasSyncHistory = Boolean(syncMeta.hasSyncedOnce || legacyLastSyncedAt > 0);
@@ -553,8 +466,8 @@ async function openFirestoreProjectSession(target) {
         photoRecords: remote.photoRecords || target.photoRecords || [],
         syncMeta: {
           ...(target.syncMeta || {}),
-          recordCursors: normalizeRecordCursors(remote.cursors),
-          finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor),
+          recordCursors: normalizeProjectRecordCursors(remote.cursors),
+          finishChangeCursor: normalizeProjectFinishChangeCursor(remote.finishChangeCursor),
           lastSyncedAt: Number(remote.lastSyncedAt || 0),
           hasSyncedOnce: true,
           lastSyncCompletedAt: Date.now()
@@ -594,8 +507,8 @@ async function openFirestoreProjectSession(target) {
           photoRecords: photoRecordStore.exportSnapshot(),
           syncMeta: {
             ...(target.syncMeta || {}),
-            recordCursors: normalizeRecordCursors(remote.cursors),
-            finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor),
+            recordCursors: normalizeProjectRecordCursors(remote.cursors),
+            finishChangeCursor: normalizeProjectFinishChangeCursor(remote.finishChangeCursor),
             lastSyncedAt: Number(remote.lastSyncedAt || 0),
             hasSyncedOnce: true,
             lastSyncCompletedAt: Date.now()
@@ -607,31 +520,31 @@ async function openFirestoreProjectSession(target) {
       }
     }
 
-    const caughtUpCursors = normalizeRecordCursors(remote.cursors || cursors);
-    updateProjectSyncCursors(project.projectId, caughtUpCursors, {
+    const caughtUpCursors = normalizeProjectRecordCursors(remote.cursors || cursors);
+    updateProjectRecordCursors(project.projectId, caughtUpCursors, {
       completed: true,
       source: 'catchup'
     });
     if (remote.finishChangeCursor) {
-      updateFinishChangeCursor(project.projectId, remote.finishChangeCursor);
+      updateProjectFinishChangeCursor(project.projectId, remote.finishChangeCursor);
     }
 
-    void recordProjectDeviceContact(project, remote.finishChangeCursor || finishChangeCursor);
-    void cleanupFinishChangeLogIfDue(project);
+    void recordProjectSyncDeviceContact(project, remote.finishChangeCursor || finishChangeCursor);
+    void cleanupProjectFinishChangeLogIfDue(project);
 
     const serverReadyTypes = new Set();
     syncDiagnosticLog('SYNC_LISTENER_START', {
       projectId: project.projectId,
       caughtUpCursors,
-      finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor)
+      finishChangeCursor: normalizeProjectFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor)
     });
     const stop = subscribeRealtimeProjectRecordsForProject(project, {
       afterByType: caughtUpCursors,
-      finishChangeCursor: normalizeFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor),
+      finishChangeCursor: normalizeProjectFinishChangeCursor(remote.finishChangeCursor || finishChangeCursor),
       onFinishCursor: (cursor) => {
         syncDiagnosticLog('SYNC_FINISH_CURSOR_ADVANCE', { projectId: project.projectId, cursor });
         if (token !== activeProjectStreamToken) return;
-        updateFinishChangeCursor(project.projectId, cursor);
+        updateProjectFinishChangeCursor(project.projectId, cursor);
       },
       onState: ({ recordType, fromCache }) => {
         syncDiagnosticLog('SYNC_LISTENER_STATE', {
@@ -668,11 +581,11 @@ async function openFirestoreProjectSession(target) {
             changes,
             getProjectRecordCursors(project.projectId)
           );
-          updateProjectSyncCursors(project.projectId, nextCursors, {
+          updateProjectRecordCursors(project.projectId, nextCursors, {
             source: 'listener-received-changes'
           });
         } finally {
-          endFirestoreActivity(newestChangeUpdatedAt(changes));
+          endFirestoreActivity(newestProjectChangeUpdatedAt(changes));
         }
       },
       onError: (error) => {
