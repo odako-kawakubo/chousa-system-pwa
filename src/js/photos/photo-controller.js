@@ -21,8 +21,7 @@
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
-import * as materialRecordStore from '../store/material-record-store.js';
-import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, openPhotoViewer, closePhotoViewer } from './photo-viewer.js';
@@ -37,13 +36,15 @@ import {
   getLocalPreviewCount
 } from './photo-preview-manager.js';
 import { initializeCameraController, openCamera } from '../camera/camera-controller.js';
-import { saveCapturedPhoto, updateCameraPhotoRecord } from './photo-local-store.js';
-import { initializePhotoBoardEditor, openPhotoBoardEditor, openPhotoBoardEditorSequence } from './photo-board-editor.js';
-import { getDeviceCode } from '../device-code.js';
-import { getCurrentProject } from '../projects/project-store.js';
-import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+import { initializePhotoBoardEditor, openPhotoBoardEditor } from './photo-board-editor.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import {
+  importPickedPhotoFiles,
+  registerCapturedPhoto,
+  startPhotoEditSequence,
+  deletePhotos,
+  setRepresentativePhoto
+} from './photo-record-actions.js';
 
 const state = {
   mode: 'visual',
@@ -58,29 +59,6 @@ const state = {
   selectionMode: null,
   selectedPhotoIds: new Set()
 };
-
-const PHOTO_COMMON_CREATE_EDIT_FIELDS = Object.freeze([
-  'photoType', 'fileName', 'isRepresentative', 'capturedDevice', 'capturedAt',
-  'isEdited', 'lastEditedDevice', 'lastEditedAt', 'deleted', 'systemMemo',
-  'boardPosition', 'boardSize', 'originalPath', 'completedPath'
-]);
-
-function photoCreateEditFields(record) {
-  return record?.photoType === PHOTO_TYPES.VISUAL
-    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'areaCode', 'roomPosition', 'partSlot']
-    : [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'];
-}
-
-function photoWithEditedFields(record, fields = null, confirmedAt = Date.now()) {
-  return createPhotoRecord({
-    ...record,
-    fieldEditedAt: touchFieldEditedAt(record?.fieldEditedAt, fields || photoCreateEditFields(record), confirmedAt)
-  });
-}
-
-function persistPhoto(record) {
-  return persistPhotoForProject(getCurrentProject(), record, 'photo-controller-save');
-}
 
 let root = null;
 let body = null;
@@ -169,10 +147,6 @@ function photoById(photoId) {
   return photoRecordStore.get(photoId);
 }
 
-function nextPhotoId() {
-  return `I-${getDeviceCode()}-${Date.now()}`;
-}
-
 function openFilePicker(context) {
   const picker = root.querySelector('#photoFilePicker');
   if (!picker || !context) return;
@@ -202,53 +176,8 @@ function externalImportContext() {
 async function addPickedFiles(fileList) {
   const context = state.pendingImportContext;
   state.pendingImportContext = null;
-  const files = [...(fileList || [])].filter((file) => file instanceof Blob);
-  if (!context || !files.length) return;
-
-  for (const file of files) {
-    const photoId = nextPhotoId();
-    const capturedAt = new Date().toISOString();
-    const common = {
-      photoId,
-      fileName: String(file.name || `${photoId}.jpg`),
-      capturedDevice: getDeviceCode(),
-      capturedAt,
-      syncStatus: 'pending',
-      localOriginalStatus: 'saved',
-      localCompletedStatus: 'saved'
-    };
-
-    const record = photoWithEditedFields(createPhotoRecord(context.photoType === PHOTO_TYPES.VISUAL
-      ? {
-          ...common,
-          photoType: PHOTO_TYPES.VISUAL,
-          areaCode: context.areaCode,
-          roomPosition: context.roomPosition,
-          partSlot: 0,
-          roomNo: context.roomNo,
-          part: ''
-        }
-      : {
-          ...common,
-          photoType: PHOTO_TYPES.SAMPLING,
-          materialId: context.materialId,
-          samplingPlace: '',
-          samplingBranch: 0,
-          sampleNo: '',
-          sampleBaseNo: '',
-          part: '',
-          shootingType: ''
-        }));
-
-    await saveCapturedPhoto({ record, originalBlob: file, completedBlob: file });
-    setLocalPhotoPreview(photoId, file);
-
-    const stored = photoRecordStore.set(record);
-    await updateCameraPhotoRecord(stored);
-    await persistPhoto(stored);
-  }
-
-  render();
+  const stored = await importPickedPhotoFiles(context, fileList);
+  if (stored.length) render();
 }
 
 function visualContextFromKey(key) {
@@ -303,30 +232,11 @@ function buildCameraOptions() {
   return { visualRooms, samplingTargets };
 }
 
-async function registerCameraPreview({ record, originalBlob, completedBlob }, { renderAfter = true } = {}) {
-  if (!record?.photoId) throw new Error('photoIdがありません。');
-
-  // カメラ撮影後の正式入口。
-  // 写真タブ全体は再描画せず、撮影対象ブロックだけを更新する。
-  const stored = photoRecordStore.set(record);
-  setLocalPhotoPreview(stored.photoId, completedBlob);
-  let blockRefreshed = null;
-  if (renderAfter) blockRefreshed = refreshCameraPhotoBlock(stored);
-  syncDiagnosticLog('PHOTO_LOCAL_BLOCK_REFRESH', {
-    photoId: stored.photoId,
-    photoType: stored.photoType,
+async function registerCameraPreview(item, { renderAfter = true } = {}) {
+  return registerCapturedPhoto(item, {
     renderAfter,
-    refreshed: blockRefreshed
+    refreshBlock: refreshCameraPhotoBlock
   });
-
-  await saveCapturedPhoto({
-    record: stored,
-    originalBlob,
-    completedBlob
-  });
-  await persistPhoto(stored);
-
-  return stored;
 }
 
 function globalCameraContext() {
@@ -392,46 +302,24 @@ function refreshCameraPhotoBlock(record) {
 }
 
 async function startEditSequence(photoIds) {
-  const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
   clearSelectionMode();
-  if (!ids.length) return;
-
-  // 元画像の所在判定・OneDrive取得はEditor自身へ一本化する。
-  // ここでは編集対象だけ確定し、他端末撮影写真もそのままEditorへ渡す。
-  openPhotoBoardEditorSequence(ids).catch((error) => {
+  try {
+    await startPhotoEditSequence(photoIds);
+  } catch (error) {
     console.error(error);
     window.alert(`看板編集を開始できませんでした。\n${error.message || error}`);
-  });
+  }
 }
 
 async function deleteSelectedPhotos(photoIds) {
-  const ids = [...photoIds].filter((photoId) => photoById(photoId) && !photoById(photoId).deleted);
+  const ids = [...photoIds].filter((photoId) => {
+    const record = photoById(photoId);
+    return record && !record.deleted;
+  });
   if (!ids.length) return;
   if (!window.confirm(`選択した${ids.length}枚の写真を削除しますか？`)) return;
 
-  const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
-  photoRecordStore.batch(() => {
-    ids.forEach((photoId) => {
-      removePhotoPreview(photoId);
-      photoRecordStore.markDeleted(photoId);
-    });
-  });
-
-  const changed = [];
-  photoRecordStore.getAll().forEach((record) => {
-    const previous = before.get(record.photoId);
-    const fields = [];
-    if (Boolean(previous?.deleted) !== Boolean(record.deleted)) fields.push('deleted');
-    if (Boolean(previous?.isRepresentative) !== Boolean(record.isRepresentative)) fields.push('isRepresentative');
-    if (!fields.length) return;
-    const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, fields) });
-    changed.push(next);
-  });
-
-  await Promise.all(changed.map(async (record) => {
-    await updateCameraPhotoRecord(record);
-    await persistPhoto(record);
-  }));
+  await deletePhotos(ids);
   clearSelectionMode({ renderNow: true });
 }
 
@@ -539,20 +427,11 @@ function bindEvents() {
     const representative = event.target.closest('[data-photo-representative]');
     if (representative) {
       const photoId = representative.dataset.photoRepresentative || '';
-      const before = new Map(photoRecordStore.getAll().map((record) => [record.photoId, { ...record }]));
-      if (!photoRecordStore.setRepresentative(photoId)) return;
-
-      const changed = [];
-      photoRecordStore.getAll().forEach((record) => {
-        const previous = before.get(record.photoId);
-        if (Boolean(previous?.isRepresentative) === Boolean(record.isRepresentative)) return;
-        const next = photoRecordStore.set({ ...record, fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative') });
-        changed.push(next);
-      });
-      render();
-      Promise.all(changed.map((record) => persistPhoto(record))).catch((error) => {
-        console.error('代表写真のFirestore保存に失敗しました', error);
-      });
+      setRepresentativePhoto(photoId)
+        .then((changed) => { if (changed.length) render(); })
+        .catch((error) => {
+          console.error('代表写真のFirestore保存に失敗しました', error);
+        });
       return;
     }
 
