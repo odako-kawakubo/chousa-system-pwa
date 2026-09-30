@@ -19,7 +19,6 @@ import {
   setOutputPdfPreviewPage,
   setOutputPdfPreviewZoom,
   renderOutputPdfPreview,
-  refreshOutputPdfPreview,
   scheduleOutputPdfPreviewRefresh,
   rerenderOutputPdfPreview
 } from './output-pdf-preview-controller.js';
@@ -32,7 +31,6 @@ let settingsDraft=null;
 let materialLocationMode='room-no';
 let wheelPageLockUntil=0;
 
-function escapeHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 function ensureOutputStyles(){if(document.querySelector('link[data-output-styles]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./css/output.css';link.dataset.outputStyles='1';document.head.appendChild(link);}
 function outputRoot(){return document.getElementById('sync');}
 function effectiveSettings(){return normalizeOutputSettings(settingsOpen&&settingsDraft?settingsDraft:getOutputSettings());}
