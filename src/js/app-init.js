@@ -43,6 +43,7 @@ import { initializeOneDriveConnection } from './onedrive/onedrive-connection.js'
 import { initializeOneDriveProjectIntegration } from './onedrive/onedrive-project.js';
 import { initializeSystemDataBackup } from './onedrive/system-data-backup.js';
 import { ensureHomeReturnControl } from './home/home-return-control.js';
+import { initializeGuide } from './guide/guide-controller.js';
 
 async function initProjectApp() {
   const projectId = getOpenProjectId();
@@ -72,6 +73,7 @@ async function initProjectApp() {
     bindModalEvents();
 
     initializeSampleProjectSnapshot();
+    initializeGuide();
     initializeProjectManagement();
     initializeProjectSidePanelController();
     initializeFirestoreProjectBrowser();
