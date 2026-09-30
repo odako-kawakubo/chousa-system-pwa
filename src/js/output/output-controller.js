@@ -33,13 +33,34 @@ let wheelPageLockUntil=0;
 
 function ensureOutputStyles(){if(document.querySelector('link[data-output-styles]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./css/output.css';link.dataset.outputStyles='1';document.head.appendChild(link);}
 function outputRoot(){return document.getElementById('sync');}
+/**
+ * 保存済み設定と編集中draftのどちらをPreview/Exportに使うか決め、正規化済み設定を返す。
+ */
 function effectiveSettings(){return normalizeOutputSettings(settingsOpen&&settingsDraft?settingsDraft:getOutputSettings());}
+/**
+ * materialLocationModeを含む現在UI条件からOutput ViewModelを再構築する。PDF/Excel/写真帳で同じVMを共有する。
+ */
 function buildCurrentVm(){return buildOutputViewModel({materialLocationMode});}
 
+/**
+ * 建材写真帳の対象materialをPhoto Viewer選択UIで開く。選択確定後はOutputタブを再描画する。
+ */
 function openVisualSelection(materialId){const item=currentVm?.visualPhotoItems?.find((row)=>String(row.materialId)===String(materialId));if(!item)return;openVisualOutputPhotoViewer({materialId:item.materialId,selectedPhotoId:item.photoId,candidates:item.candidates,onSelection:()=>renderOutputTab()});}
+/**
+ * 採取写真帳のmaterial/枝番/撮影区分をPhoto Viewer選択UIで開く。選択結果はOutput ViewModel再構築で反映する。
+ */
 function openSamplingSelection(materialId,branch,shootingType){const page=currentVm?.samplingPhotoPages?.find((item)=>String(item.materialId)===String(materialId)&&Number(item.branch)===Number(branch));const stage=page?.stages?.find((item)=>item.type===shootingType);if(!page||!stage)return;openSamplingOutputPhotoViewer({materialId:page.materialId,branch:page.branch,shootingType,selectedPhotoId:stage.photoId,candidates:stage.candidates,onSelection:()=>renderOutputTab()});}
+/**
+ * 保存済み出力設定をdraftへコピーして設定panelを開く。保存前変更はdraftだけに保持する。
+ */
 function openSettingsPanel(){settingsDraft=getOutputSettings();settingsOpen=true;renderOutputTab();}
+/**
+ * 設定panelを閉じてdraftを破棄し、保存済み設定へ戻す。
+ */
 function closeSettingsPanel(){settingsOpen=false;settingsDraft=null;renderOutputTab();}
+/**
+ * 設定panel DOMから現在値を収集してdraftへ反映し、debounce付きでPDF Previewだけを再生成する。
+ */
 function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-output-settings-panel]');if(!panel)return;settingsDraft=collectOutputSettings(panel,settingsDraft||getOutputSettings());scheduleOutputPdfPreviewRefresh(() => ({
     root: outputRoot(),
     activeView,
@@ -47,8 +68,14 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
     settings: effectiveSettings()
   }));}
 
+/**
+ * 建材リスト出力時の使用箇所表示を部屋No./部屋名で切り替えるtoolbar HTMLを返す。
+ */
 function renderLocationSwitch(){if(activeView!=='materials')return '';return `<span class="output-toolbar-label">使用箇所</span><div class="output-segmented"><button type="button" class="btn small ${materialLocationMode==='room-no'?'active':''}" data-output-location-mode="room-no">部屋No.</button><button type="button" class="btn small ${materialLocationMode==='room-name'?'active':''}" data-output-location-mode="room-name">部屋名</button></div><span class="output-toolbar-separator"></span>`;}
 
+/**
+ * 現在の出力種別・設定・ViewModelから出力タブ全体を再描画し、PDF Preview生成を開始する。Previewの内部状態は専用controllerへ委譲する。
+ */
 export function renderOutputTab(){const root=outputRoot();if(!root)return;const serial=beginOutputPdfPreviewRender();currentVm=buildCurrentVm();const previewState=getOutputPdfPreviewState();root.innerHTML=`<div class="output-root"><div class="output-toolbar">
   <button type="button" class="btn small output-view-btn ${activeView==='materials'?'active':''}" data-output-view="materials">建材リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='rooms'?'active':''}" data-output-view="rooms">部屋別リスト</button>
@@ -67,6 +94,9 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   settings: effectiveSettings()
 });}
 
+/**
+ * 出力タブの初期化入口。PDF Preview Controller、写真選択、設定panel、Export Controller、Store購読、wheel/zoom/page操作を接続する。
+ */
 export function initializeOutputTab(){
   if(initialized)return;initialized=true;ensureOutputStyles();initializeOutputPhotoSelectionBridge();const root=outputRoot();if(!root)return;
   initializeOutputExportController(root,{getSettings:effectiveSettings,getViewModel:buildCurrentVm});
