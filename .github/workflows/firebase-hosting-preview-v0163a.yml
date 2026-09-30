@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.43 Preview
+name: Deploy v0.1.8.44 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01843
+  group: firebase-preview-v01844
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.43 review consistency checks
+      - name: v0.1.8.44 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.43'" src/config/app-config.js
+          grep -q "version: '0.1.8.44'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.43"' src/version.json
+          grep -q '"version": "0.1.8.44"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.43-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01843-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.44-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01844-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -321,6 +321,17 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Material ListのDOMイベント/Pencil操作をcontrollerから分離
+          test -f src/js/materials/material-list-interactions.js
+          grep -q "from './material-list-interactions.js'" src/js/materials/material-list-controller.js || { echo "material list controller does not use interactions module"; exit 1; }
+          grep -q "export function bindMaterialListInteractions" src/js/materials/material-list-interactions.js || { echo "material list interactions API missing"; exit 1; }
+          grep -q "pointerdown" src/js/materials/material-list-interactions.js || { echo "material list pencil pointerdown missing"; exit 1; }
+          grep -q "pointerup" src/js/materials/material-list-interactions.js || { echo "material list pencil pointerup missing"; exit 1; }
+          if grep -q "function bindMaterialListEvents\|function handlePenPointerDown\|function handlePenPointerMove\|function handlePenPointerUp\|function handlePenPointerCancel" src/js/materials/material-list-controller.js; then
+            echo "material list controller still owns DOM/Pencil interactions"
             exit 1
           fi
 
