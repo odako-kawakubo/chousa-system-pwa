@@ -13,6 +13,9 @@ let previewPageCount = 1;
 let previewZoom = 100;
 let previewRenderer = null;
 
+/**
+ * Previewのpage/pageCount/zoom/renderer有無を読み取り専用objectで返す。Output Controllerは内部変数を直接触らない。
+ */
 export function getOutputPdfPreviewState() {
   return {
     page: previewPage,
@@ -22,11 +25,17 @@ export function getOutputPdfPreviewState() {
   };
 }
 
+/**
+ * 出力種別切替時などにpageとzoomを初期値へ戻す。renderer自体の生成/破棄は行わない。
+ */
 export function resetOutputPdfPreviewView({ page = 1, zoom = 100 } = {}) {
   previewPage = Math.max(1, Number(page) || 1);
   previewZoom = Math.max(50, Math.min(200, Number(zoom) || 100));
 }
 
+/**
+ * 新しいPreview生成serialを発行し、旧rendererを破棄する。非同期生成結果の競合をserialで無効化する基点。
+ */
 export function beginOutputPdfPreviewRender() {
   renderSerial += 1;
   previewRenderer?.destroy();
@@ -57,6 +66,9 @@ function updatePreviewControls(root) {
   });
 }
 
+/**
+ * 現在rendererの表示pageを変更し、page counterとprev/next buttonを更新する。edge指定でスクロール位置も調整する。
+ */
 export async function setOutputPdfPreviewPage(root, page, { edge = 'top' } = {}) {
   if (!previewRenderer) return previewPage;
 
@@ -73,6 +85,9 @@ export async function setOutputPdfPreviewPage(root, page, { edge = 'top' } = {})
   return previewPage;
 }
 
+/**
+ * 現在rendererのzoomを変更し、表示labelとscroll位置を更新する。
+ */
 export async function setOutputPdfPreviewZoom(root, zoom) {
   if (!previewRenderer) return previewZoom;
 
@@ -86,6 +101,9 @@ export async function setOutputPdfPreviewZoom(root, zoom) {
   return previewZoom;
 }
 
+/**
+ * 写真source準備→Vector PDF生成→OutputPdfPreviewへloadまでを行う中核非同期処理。serialが古くなった結果はDOMへ反映しない。
+ */
 export async function renderOutputPdfPreview({
   serial,
   root,
@@ -152,6 +170,9 @@ export async function renderOutputPdfPreview({
   }
 }
 
+/**
+ * 現在DOMをloading表示へ戻し、新しいserialでPreview再生成を開始する。
+ */
 export function refreshOutputPdfPreview({
   root,
   activeView,
@@ -177,6 +198,9 @@ export function refreshOutputPdfPreview({
   return serial;
 }
 
+/**
+ * 設定入力や撮影メモ連続入力時のPreview再生成をdebounceする。delay後に最新contextだけを使う。
+ */
 export function scheduleOutputPdfPreviewRefresh(getContext, delay = 250) {
   if (previewRefreshTimer) clearTimeout(previewRefreshTimer);
 
@@ -188,6 +212,9 @@ export function scheduleOutputPdfPreviewRefresh(getContext, delay = 250) {
   }, delay);
 }
 
+/**
+ * window resize等で既存rendererだけを再描画する。PDF自体は再生成しない。
+ */
 export function rerenderOutputPdfPreview() {
   if (previewRenderer) {
     void previewRenderer.render();
