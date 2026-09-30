@@ -164,6 +164,9 @@ function openFilePicker(context) {
   picker.click();
 }
 
+/**
+ * 外部ファイルpickerで選択した画像に付与する目視/採取contextを保持・取得する。pickerを開いてからchange発火まで対象情報を失わないための一時状態。
+ */
 function externalImportContext() {
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
