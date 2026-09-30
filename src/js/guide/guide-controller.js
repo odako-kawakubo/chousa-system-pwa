@@ -12,6 +12,7 @@ import { openProjectById } from '../projects/project-controller.js';
 import { openProjectSession } from '../projects/project-session.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { setOpenProjectId } from '../projects/project-navigation.js';
+import { setSimpleListOpen } from '../finish-table/finish-table-state.js';
 import {
   TUTORIAL_PROJECT_ID,
   initializeTutorialProjectSnapshot,
@@ -113,6 +114,9 @@ export async function startBasicTutorial() {
     await openProjectById(TUTORIAL_PROJECT_ID);
   }
 
+  // 基本チュートリアルでは簡易リストをノイズにしない。
+  // 通常案件の既定値は変えず、練習開始時だけ閉じる。
+  setSimpleListOpen(false);
   showTab('finish');
   startSteps(TUTORIAL_STEPS);
 }
