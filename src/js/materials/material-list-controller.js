@@ -78,6 +78,9 @@ function bindMaterialListTabScrollState() {
   });
 }
 
+/**
+ * 建材リストタブの初期化入口。DOMイベント・Store購読・スクロール保持を設定し、初回一覧を描画する。
+ */
 export function initializeMaterialList() {
   rootElement = document.getElementById('materials');
   if (!rootElement) return;
@@ -96,6 +99,9 @@ export function initializeMaterialList() {
   refreshMaterialList();
 }
 
+/**
+ * material Storeから最新ViewModelを作り一覧を再描画する。選択材・スクロール位置・カラー表示等のUI状態を維持する。
+ */
 export function refreshMaterialList() {
   if (!rootElement) rootElement = document.getElementById('materials');
   if (!rootElement) return;
@@ -125,6 +131,9 @@ export function refreshMaterialList() {
   restoreMaterialListScroll(projectId);
 }
 
+/**
+ * 行/セルの操作対象を判定し、テキスト編集・select操作・行選択へ振り分ける。業務ルール自体はedit-actionsへ委譲する。
+ */
 function handleMaterialActivation(target, options = {}) {
   const closeMultiSelect = target.closest('[data-action="close-material-multi-select"]');
   if (closeMultiSelect) {
@@ -168,6 +177,9 @@ function handleMaterialActivation(target, options = {}) {
   }
 }
 
+/**
+ * 選択中materialIdを更新し、一覧・簡易リスト等の選択強調へ反映する。
+ */
 function setSelectedMaterial(materialId) {
   selectedMaterialId = materialId || null;
   applySelectedRowState();
@@ -185,6 +197,9 @@ function applySelectedRowState() {
   label.textContent = record ? `選択中：【${record.inputId}】${record.name}` : '選択なし';
 }
 
+/**
+ * 通常span表示のセルをinput/textarea編集状態へ切り替える。値保存はcommitTextEditor側で行う。
+ */
 function activateTextDisplay(display) {
   const materialId = display.dataset.materialId;
   const kind = display.dataset.editorKind;
@@ -214,6 +229,9 @@ function activateTextDisplay(display) {
   input.focus();
 }
 
+/**
+ * 編集UIの値を種類別の更新関数へ渡し、保存後に表示状態へ戻す。建材名/備考/分析欄で更新規則が異なる。
+ */
 function commitTextEditor(input) {
   const materialId = input.dataset.materialId;
   const kind = input.dataset.editorKind;
@@ -224,6 +242,9 @@ function commitTextEditor(input) {
   else refreshMaterialList();
 }
 
+/**
+ * select/date/checkbox等のネイティブcontrolを操作可能状態にする。Record更新はchangeイベント側で行う。
+ */
 function activateNativeControl(control) {
   control.focus({ preventScroll: true });
 
@@ -243,6 +264,9 @@ function activateNativeControl(control) {
   control.click();
 }
 
+/**
+ * level・分析要否・採取数・採取場所・採取日等のcontrol値をedit-actionsへ渡し、必要な画面を再描画する。
+ */
 function updateMaterialControl(control) {
   const result = updateMaterialControlValue(control);
   if (!result.changed) return;
@@ -250,6 +274,9 @@ function updateMaterialControl(control) {
   refreshRecordView();
 }
 
+/**
+ * 採取部位の複数checkboxを配列へ集約してedit-actionsへ渡す。保存後はsummary表示とRecord Viewを更新する。
+ */
 function updateSamplePartsFromChecklist(materialId) {
   if (!rootElement) return;
 
@@ -273,6 +300,9 @@ function updateSamplePartsFromChecklist(materialId) {
   refreshRecordView();
 }
 
+/**
+ * 建材名称変更をedit-actionsへ委譲し、重複/未入力エラーをUI表示する。成功時は仕上表等の関連画面も更新する。
+ */
 function updateMaterialName(materialId, rawValue) {
   const result = updateMaterialNameValue(materialId, rawValue);
   if (result.error) window.alert(result.error);
@@ -283,6 +313,9 @@ function updateMaterialName(materialId, rawValue) {
   if (result.refreshList) refreshMaterialList();
 }
 
+/**
+ * 調査備考の更新をedit-actionsへ委譲し、変更があれば関連画面を再描画する。
+ */
 function updateMaterialNote(materialId, rawValue) {
   const result = updateMaterialNoteValue(materialId, rawValue);
   if (result.refreshConnected) {
@@ -292,12 +325,18 @@ function updateMaterialNote(materialId, rawValue) {
   if (result.refreshList) refreshMaterialList();
 }
 
+/**
+ * 分析結果/分析備考の文字列更新をedit-actionsへ渡す。保存後は一覧とRecord Viewを同期表示する。
+ */
 function updateMaterialAnalysisText(materialId, field, rawValue) {
   const result = updateMaterialAnalysisTextValue(materialId, field, rawValue);
   if (result.refreshList) refreshMaterialList();
   if (result.refreshRecordView) refreshRecordView();
 }
 
+/**
+ * 建材の使用箇所・部位から採取場所/採取部位を補完する処理をedit-actionsへ委譲する。
+ */
 function applySamplingAutofill() {
   applyMaterialSamplingAutofill();
 }
