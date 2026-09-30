@@ -226,6 +226,7 @@ export function subscribe(callback) {
 
 export function formatProjectLabel(project) {
   if (!project) return '案件未選択';
+  if (project.isTutorial) return `［チュートリアル］${project.projectName || ''}`;
   if (project.isSample) return formatSampleProjectName(project);
   return [project.projectNo, project.projectName].filter(Boolean).join('　');
 }
