@@ -205,9 +205,14 @@ export function getChipInputMode() {
   return !!state.chipInputMode;
 }
 
-export function toggleSimpleListOpen() {
-  state.simpleListOpen = !state.simpleListOpen;
+export function setSimpleListOpen(open) {
+  const next = Boolean(open);
+  if (state.simpleListOpen === next) return;
+  state.simpleListOpen = next;
   notify();
+}
+export function toggleSimpleListOpen() {
+  setSimpleListOpen(!state.simpleListOpen);
 }
 export function getSimpleListOpen() {
   return !!state.simpleListOpen;
