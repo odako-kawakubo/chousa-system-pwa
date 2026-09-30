@@ -64,38 +64,62 @@ export const BULK_SYNC_BATCH_SIZE = 50;
 
 let repositoryWriteChain = Promise.resolve();
 
+/**
+ * Firestoreへの書き込みを直列化する。複数画面から同時に保存要求が来ても、前の書き込み完了後に次を実行して順序逆転を防ぐ。
+ */
 function enqueueRepositoryWrite(run) {
   const next = repositoryWriteChain.then(run, run);
   repositoryWriteChain = next.catch(() => undefined);
   return next;
 }
 
+/**
+ * 案件IDからFirestore上の案件ルート参照に必要な正規化情報を作る。ここでは通信せず、下位の参照生成関数から共通利用する。
+ */
 function projectRoot(environment) {
   return environment === 'test' ? 'testProjects' : 'projects';
 }
 
+/**
+ * 案件メタデータDocumentの参照を返す。案件本体の名称・住所などRecord以外の情報を読む/書く際の基点。
+ */
 function projectDocRef(projectId, environment = 'production') {
   return doc(db, projectRoot(environment), String(projectId));
 }
 
+/**
+ * 案件配下のRecord種別ごとのCollection参照を返す。finish/material/photoを共通経路で扱うための低層helper。
+ */
 function collectionRef(projectId, environment, recordType) {
   const name = RECORD_COLLECTIONS[recordType];
   if (!name) throw new Error(`未対応のrecordTypeです: ${recordType}`);
   return collection(db, projectRoot(environment), String(projectId), name);
 }
 
+/**
+ * 案件ID・Record種別・Record IDから単一Document参照を返す。保存/削除の共通入口で使う。
+ */
 function recordRef(projectId, environment, recordType, recordId) {
   return doc(collectionRef(projectId, environment, recordType), String(recordId));
 }
 
+/**
+ * 仕上表変更履歴Collectionの参照を返す。Realtime差分同期用のappend-only change log専用。
+ */
 function finishChangeLogCollectionRef(projectId, environment = 'production') {
   return collection(db, projectRoot(environment), String(projectId), CHANGE_LOG_COLLECTION);
 }
 
+/**
+ * 案件ごとの同期端末Document参照を返す。端末最終接触時刻とfinish change cursorの共有に使う。
+ */
 function projectSyncDeviceRef(projectId, environment = 'production', deviceCode = '') {
   return doc(db, projectRoot(environment), String(projectId), SYNC_DEVICE_COLLECTION, String(deviceCode));
 }
 
+/**
+ * 仕上表RecordをFirestore保存用のplain objectへ整形する。Store専用値や保存不要値を外し、serializerに渡せる形にする。
+ */
 function plainFinishPayload(record) {
   return {
     finishId: String(record.finishId || ''),
@@ -103,6 +127,9 @@ function plainFinishPayload(record) {
   };
 }
 
+/**
+ * finish Recordの変更内容をwriteBatchへ追加し、同じbatchにchange logも追加する。Record本体と変更履歴を同一commitにするための重要処理。
+ */
 function appendFinishChangeToBatch(batch, { projectId, environment, recordId, operation, record = null }) {
   const logRef = doc(finishChangeLogCollectionRef(projectId, environment));
   batch.set(logRef, {
@@ -115,6 +142,9 @@ function appendFinishChangeToBatch(batch, { projectId, environment, recordId, op
   });
 }
 
+/**
+ * Record種別と操作内容を判定してFirestore batchへ追加する。finishだけはchange logを伴い、material/photoは通常Document更新として扱う。
+ */
 function appendRecordOperationToBatch(batch, entry) {
   const projectId = String(entry.projectId || '');
   const environment = entry.environment === 'test' ? 'test' : 'production';
@@ -165,6 +195,9 @@ function appendRecordOperationToBatch(batch, entry) {
   throw new Error(`未対応のrecordTypeです: ${recordType}`);
 }
 
+/**
+ * 複数Record更新をBULK_SYNC_BATCH_SIZE単位でcommitする。大量同期時にFirestore batch上限へ近づかないよう分割する。
+ */
 async function commitRecordEntries(entries = []) {
   if (!entries.length) return { ok: true, sent: 0 };
   const batch = writeBatch(db);
@@ -174,6 +207,9 @@ async function commitRecordEntries(entries = []) {
   return { ok: true, sent: entries.length };
 }
 
+/**
+ * 未送信キューの過去失敗分を受動的に再送する。自動無限再試行はせず、上限回数内だけ処理する。
+ */
 async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
   if (!canUseFirestore()) return { ok: false, sent: 0, skipped: true, reason: 'offline' };
 
@@ -210,6 +246,9 @@ async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
   }
 }
 
+/**
+ * 指定した未送信項目群を即時再送する。手動同期など明示操作から使う。
+ */
 async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
   const id = String(projectId || '');
   if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
@@ -257,6 +296,9 @@ export function retryUnsentBatch(options) {
   return enqueueRepositoryWrite(() => retryUnsentBatchNow(options));
 }
 
+/**
+ * Firestore Timestamp + changeIdを端末保存可能なcursor objectへ変換する。再起動後の差分読取開始位置に使う。
+ */
 function serializeChangeCursor(snapshotDoc) {
   if (!snapshotDoc) return null;
   const committedAt = snapshotDoc.data()?.committedAt;
@@ -268,11 +310,17 @@ function serializeChangeCursor(snapshotDoc) {
   };
 }
 
+/**
+ * 保存済みcursorからFirestore queryに使えるTimestampを復元する。cursorが無効ならnullを返す。
+ */
 function cursorTimestamp(cursor) {
   if (!cursor || typeof cursor.seconds !== 'number') return null;
   return new Timestamp(Number(cursor.seconds), Number(cursor.nanoseconds || 0));
 }
 
+/**
+ * finish change log Documentをアプリ側の差分Record形式へ戻す。removed/modified等の適用処理が読める形に正規化する。
+ */
 function deserializeFinishChangeDoc(item) {
   const data = item.data() || {};
   const committedAt = data.committedAt || null;
@@ -292,10 +340,16 @@ function deserializeFinishChangeDoc(item) {
   };
 }
 
+/**
+ * Firestore DocumentSnapshotをRecord serializer経由でアプリRecordへ復元する。種別ごとの差をここで吸収する。
+ */
 function deserializeSnapshot(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
+/**
+ * Date/数値/Firestore Timestamp相当値を比較可能なTimestampへ正規化する。query cursor生成時の境界処理用。
+ */
 function toTimestamp(value) {
   if (!value) return null;
   if (value instanceof Timestamp) return value;
@@ -303,6 +357,9 @@ function toTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : Timestamp.fromDate(date);
 }
 
+/**
+ * 単一Firestore書き込みを実行し、失敗時は未送信キューへ残す。成功時は該当キュー項目を除去し、同期状態を更新する。
+ */
 async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified' }) {
   const entry = {
     projectId,
@@ -358,6 +415,9 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
   }
 }
 
+/**
+ * finish RecordをFirestoreへ保存する公開API。Record本体とfinish change logを同時に書く。
+ */
 export function saveFinishRecord({ projectId, environment = 'production', record, source = 'finish-unspecified' }) {
   return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
@@ -370,6 +430,9 @@ export function saveFinishRecord({ projectId, environment = 'production', record
   }));
 }
 
+/**
+ * finish RecordをFirestoreから削除し、削除change logを残す公開API。
+ */
 export function deleteFinishRecord({ projectId, environment = 'production', record, source = 'finish-delete-unspecified' }) {
   if (!record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueueRepositoryWrite(() => writeWithQueue({
@@ -383,6 +446,9 @@ export function deleteFinishRecord({ projectId, environment = 'production', reco
   }));
 }
 
+/**
+ * material RecordをFirestoreへ保存する公開API。失敗時は未送信キューへ残す。
+ */
 export function saveMaterialRecord({ projectId, environment = 'production', record, source = 'material-unspecified' }) {
   return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
@@ -395,6 +461,9 @@ export function saveMaterialRecord({ projectId, environment = 'production', reco
   }));
 }
 
+/**
+ * photo RecordをFirestoreへ保存する公開API。写真binaryではなくRecordメタデータを扱う。
+ */
 export function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
   return enqueueRepositoryWrite(() => writeWithQueue({
     projectId,
@@ -407,6 +476,9 @@ export function savePhotoRecord({ projectId, environment = 'production', record,
   }));
 }
 
+/**
+ * 案件メタデータをFirestore案件Documentへ保存する。3Record Storeとは別の案件情報用。
+ */
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
@@ -442,6 +514,9 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
   }
 }
 
+/**
+ * テスト案件をFirestoreから完全削除する管理用処理。配下Record/履歴/端末情報まで対象にするため通常削除では使わない。
+ */
 export async function deleteTestProjectCompletely(projectId) {
   const id = String(projectId || '');
   if (!id) throw new Error('削除対象の案件IDがありません。');
@@ -475,6 +550,9 @@ export async function deleteTestProjectCompletely(projectId) {
   return { ok: true };
 }
 
+/**
+ * Firestore上の仮案件番号を取得する。新規仮案件の連番重複回避に使う。
+ */
 export async function readTemporaryProjectNos(dateCode, environment = 'production') {
   const prefix = `${String(dateCode)}-`;
   const ref = collection(db, projectRoot(environment));
@@ -488,6 +566,9 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
     .filter((value) => value.startsWith(prefix));
 }
 
+/**
+ * 保存済みfinish cursorが現在のchange logで継続利用可能か確認する。古すぎる場合はfull読込へ切り替える判断材料。
+ */
 export async function isFinishChangeCursorAvailable({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CURSOR_CHECK_START', { projectId, cursor });
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
@@ -504,6 +585,9 @@ export async function isFinishChangeCursorAvailable({ projectId, environment = '
     && stored.changeId === String(cursor.changeId));
 }
 
+/**
+ * 同期端末Documentへ最終接触時刻・端末情報・cursorを書き込む。change log cleanupの安全判定に使う。
+ */
 export async function touchProjectSyncDevice({
   projectId, environment = 'production', deviceCode, deviceName, finishChangeCursor = null
 }) {
@@ -526,6 +610,9 @@ export async function touchProjectSyncDevice({
   }
 }
 
+/**
+ * 全端末cursorを考慮し、既に不要になった古いfinish change logを削除する。現在の端末がまだ必要な履歴は消さない。
+ */
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
   if (!projectId || !canUseFirestore()) return { ok: true, skipped: true, deleted: 0 };
@@ -545,6 +632,9 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
   return { ok: true, deleted: snapshot.docs.length };
 }
 
+/**
+ * 現在状態を基準点としてfinish change log checkpointを作る。履歴整理後も差分同期を再開できるようにする。
+ */
 export async function createFinishChangeLogCheckpoint({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHECKPOINT_CREATE_START', { projectId });
   if (!canUseFirestore()) return null;
@@ -572,6 +662,9 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
+/**
+ * 指定cursor以降のfinish change logを昇順で読む。Realtime開始前の取りこぼし補完にも使う。
+ */
 export async function readFinishChangeLog({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CHANGELOG_READ_START', { projectId, cursor });
   if (!canUseFirestore()) return { changes: [], cursor };
@@ -589,6 +682,9 @@ export async function readFinishChangeLog({ projectId, environment = 'production
   };
 }
 
+/**
+ * 最新finish change logのcursorだけを読む。初回同期やcheckpoint判定で使用する。
+ */
 export async function readLatestFinishChangeCursor({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_LATEST_CURSOR_READ_START', { projectId });
   if (!canUseFirestore()) return null;
@@ -603,6 +699,9 @@ export async function readLatestFinishChangeCursor({ projectId, environment = 'p
   return serializeChangeCursor(snapshot.docs[0] || null);
 }
 
+/**
+ * finish change logをRealtime購読し、追加差分をcallbackへ渡す。購読解除関数を返す。
+ */
 export function subscribeFinishChangeLog({ projectId, environment = 'production', afterCursor = null, onChanges, onState, onError }) {
   syncDiagnosticLog('CHANGELOG_LISTENER_START', { projectId, afterCursor });
   if (!canUseFirestore()) return () => {};
@@ -629,6 +728,9 @@ export function subscribeFinishChangeLog({ projectId, environment = 'production'
   };
 }
 
+/**
+ * finish/material/photoを一括で一度だけ読む。初回ロードやfull fallback用。
+ */
 export async function readProjectRecordsOnce({
   projectId,
   environment = 'production',
@@ -659,6 +761,9 @@ export async function readProjectRecordsOnce({
   };
 }
 
+/**
+ * material/photo等のupdatedAt cursor以降をRealtime購読する。finishは専用change log経路を使うため役割を分けている。
+ */
 export function subscribeProjectRecordChanges({
   projectId,
   environment = 'production',
