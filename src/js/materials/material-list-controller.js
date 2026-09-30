@@ -42,6 +42,9 @@ let materialListRoomNameMode = false;
 let materialListAnalysisColumnsOpen = false;
 
 
+/**
+ * 現在案件の建材リストscroll位置をUI stateへ保存する。全体再描画前やタブ離脱時に呼ぶ。
+ */
 function captureMaterialListScroll() {
   if (!rootElement || !renderedProjectId) return;
   const wrap = rootElement.querySelector('.material-list-table-wrap');
@@ -52,6 +55,9 @@ function captureMaterialListScroll() {
   });
 }
 
+/**
+ * 現在案件に保存されているscroll位置を一覧へ戻す。案件ごとに独立して保持する。
+ */
 function restoreMaterialListScroll(projectId) {
   if (!rootElement) return;
   const wrap = rootElement.querySelector('.material-list-table-wrap');
@@ -61,6 +67,9 @@ function restoreMaterialListScroll(projectId) {
   wrap.scrollLeft = Number(saved.left || 0);
 }
 
+/**
+ * 建材リストタブの離脱/復帰イベントへscroll保存・復元処理を接続する。
+ */
 function bindMaterialListTabScrollState() {
   if (materialListTabScrollBound) return;
   materialListTabScrollBound = true;
@@ -185,6 +194,9 @@ function setSelectedMaterial(materialId) {
   applySelectedRowState();
 }
 
+/**
+ * selectedMaterialIdに一致する行/関連表示へ選択強調classを適用する。Record更新はしない。
+ */
 function applySelectedRowState() {
   if (!rootElement) return;
   rootElement.querySelectorAll('[data-material-row]').forEach((row) => {
@@ -341,16 +353,25 @@ function applySamplingAutofill() {
   applyMaterialSamplingAutofill();
 }
 
+/**
+ * 建材変更が仕上表・簡易リスト・Record View等へ影響する場合に関連画面をまとめて再描画する。
+ */
 function refreshConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();
   refreshRecordView();
 }
 
+/**
+ * 現在選択中のmaterialIdを外部module向けに返す。
+ */
 export function getSelectedMaterialId() {
   return selectedMaterialId;
 }
 
+/**
+ * 外部画面からmaterialIdを指定して建材リスト選択状態へ反映し、必要なら該当行を表示範囲へ移動する。
+ */
 export function selectMaterialInList(materialId) {
   selectedMaterialId = materialId || null;
   applySelectedRowState();
