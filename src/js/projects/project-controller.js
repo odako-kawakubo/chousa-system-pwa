@@ -58,6 +58,9 @@ import {
 let stopActiveProjectRecords = null;
 let activeProjectStreamToken = 0;
 
+/**
+ * 現在のFirestore Realtime購読を停止し、購読解除関数を破棄する。案件切替・手動オフライン化・再接続前に必ず呼ぶ。
+ */
 function stopProjectRecordStream() {
   syncDiagnosticLog('SYNC_STREAM_STOP_REQUEST', {
     hadActiveStream: Boolean(stopActiveProjectRecords),
@@ -70,6 +73,9 @@ function stopProjectRecordStream() {
   }
 }
 
+/**
+ * 初回読込結果からRecord種別ごとにfull/deltaになった理由を診断用に整理する。同期挙動のログ確認用。
+ */
 function typeModeReasons(typeModes, storedCursors, target, remote) {
   return {
     finish: typeModes.finish === 'delta'
@@ -84,6 +90,9 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
   };
 }
 
+/**
+ * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
+ */
 async function openFirestoreProjectSession(target) {
   const project = target.project;
   syncDiagnosticLog('SYNC_OPEN_START', {
@@ -333,6 +342,9 @@ async function openFirestoreProjectSession(target) {
   }
 }
 
+/**
+ * 案件ID指定で案件を開く公開入口。ローカル案件情報を解決し、sample/Firestore案件など種別に応じたsession開始へ振り分ける。
+ */
 export async function openProjectById(projectId) {
   const targetId = String(projectId || '');
   const current = getCurrentProject();
@@ -358,6 +370,9 @@ export async function openProjectById(projectId) {
   }
 }
 
+/**
+ * オフラインからネットワーク復帰した時、現在案件の差分取得とRealtime購読を再開する。手動オフライン中は復帰しない。
+ */
 async function recoverCurrentProjectAfterNetworkReturn() {
   if (!canUseFirestore()) return;
   const current = getCurrentProject();
@@ -376,6 +391,9 @@ async function recoverCurrentProjectAfterNetworkReturn() {
   }
 }
 
+/**
+ * ユーザー指定の手動オフライン状態を切り替える。ON時はRealtime購読を止め、OFF時は現在案件の同期回復を試みる。
+ */
 export async function setProjectManualOfflineMode(enabled) {
   const next = Boolean(enabled);
   const current = getCurrentProject();
@@ -400,10 +418,16 @@ export async function setProjectManualOfflineMode(enabled) {
   await openFirestoreProjectSession(target);
 }
 
+/**
+ * アプリ起動時に現在案件の初期session状態を確定する。前回案件の復元や初期表示の基準を作る。
+ */
 export function captureInitialProjectSession() {
   saveCurrentProjectSession();
 }
 
+/**
+ * 案件管理機能の初期化入口。ネットワークイベント・Store連携・初期案件sessionを一度だけ設定する。
+ */
 export function initializeProjectManagement() {
   if (getCurrentProject()?.isSample) markLocalOnly();
 
