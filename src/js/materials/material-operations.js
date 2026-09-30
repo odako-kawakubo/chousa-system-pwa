@@ -30,10 +30,16 @@ import {
   persistPhotoForProject
 } from '../sync/project-record-persistence.js';
 
+/**
+ * 業務操作のupdatedAt等に使う現在時刻をISO文字列で返す。
+ */
 function nowIso() {
   return new Date().toISOString();
 }
 
+/**
+ * 既存systemMemoへ時刻付きの業務履歴1行を追記する。統合/削除/再登録の由来記録に使う。
+ */
 function appendSystemMemo(currentMemo, message) {
   const current = String(currentMemo || '').trim();
   const stamp = new Date().toLocaleString('ja-JP');
@@ -41,6 +47,9 @@ function appendSystemMemo(currentMemo, message) {
   return current ? `${current}\n${line}` : line;
 }
 
+/**
+ * 1→A, 2→B…の末尾英字へ変換する。同一ベース名建材のsuffix再整理用。
+ */
 function numberToSuffix(value) {
   let n = Math.max(1, Number(value) || 1);
   let out = '';
@@ -52,10 +61,16 @@ function numberToSuffix(value) {
   return out;
 }
 
+/**
+ * Record配列を指定ID fieldをkeyとするMapへ変換する。操作前後差分比較の高速化用。
+ */
 function recordMap(records, idField) {
   return new Map((records || []).map((record) => [String(record?.[idField] || ''), record]));
 }
 
+/**
+ * 操作前後のRecord配列を比較し、追加/変更されたRecordだけを返す。Firestore最終差分送信に使う。
+ */
 function changedRecords(beforeRecords, afterRecords, idField) {
   const before = recordMap(beforeRecords, idField);
   return (afterRecords || []).filter((record) => {
@@ -123,6 +138,9 @@ function saveOperationLocalSnapshot(source, before) {
   return result.snapshot;
 }
 
+/**
+ * 保存結果がFirestore保存済みまたは未送信キュー登録済みまで到達したか判定する。重要操作完了条件。
+ */
 function isPersistenceSettled(result) {
   return Boolean(result?.ok || result?.queued || result?.skipped);
 }
@@ -175,6 +193,9 @@ async function persistOperationSnapshotDiff(before, source) {
   };
 }
 
+/**
+ * active建材だけを建材No.順に並べて返す内部helper。
+ */
 function activeMaterialsSorted() {
   return materialRecordStore.getAll()
     .filter((record) => record.status === 'active')
@@ -330,6 +351,9 @@ function nextInputIdForMaterials() {
   return ids.length ? Math.max(...ids) + 1 : 1;
 }
 
+/**
+ * 再登録/挿入時の希望位置をactive建材数の範囲へclampして有効な建材No.へ正規化する。
+ */
 function normalizeInsertPosition(position, activeCount) {
   const numeric = Number(position);
   if (!Number.isFinite(numeric)) return activeCount + 1;
