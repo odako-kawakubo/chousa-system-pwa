@@ -34,20 +34,32 @@ const knownFinishRecordsByProject = new Map();
 const FINISH_CHANGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const FINISH_SPARSE_CACHE_KEY = 'chousa-finish-sparse-cache-v0162h';
 
+/**
+ * 案件情報からFirestore同期に必要なenvironment情報を作る。sample案件や同期対象外案件の判定もここで共通化する。
+ */
 function projectEnvironment(project) {
   return project?.environment === 'test' ? 'test' : 'production';
 }
 
+/**
+ * 指定案件がFirestore同期対象か判定する。sample/無効案件を下位Repositoryへ流さないための入口。
+ */
 function shouldSyncProject(project) {
   return Boolean(project?.projectId) && !project.isSample;
 }
 
+/**
+ * Repository呼び出しを未送信管理付きで実行する共通helper。同期対象外なら何も送らない。
+ */
 function enqueue(run) {
   const next = writeChain.then(run, run);
   writeChain = next.catch(() => undefined);
   return next;
 }
 
+/**
+ * finishの疎構造cacheをローカル保存から読み込む。全セルを常時保持せず必要Recordだけ復元するために使う。
+ */
 function loadSparseCache() {
   try {
     const raw = JSON.parse(localStorage.getItem(FINISH_SPARSE_CACHE_KEY) || '{}');
@@ -64,6 +76,9 @@ function loadSparseCache() {
   }
 }
 
+/**
+ * 現在のfinish疎構造cacheをローカルへ保存する。オフライン復元用。
+ */
 function persistSparseCache() {
   try {
     const payload = {};
@@ -78,12 +93,18 @@ function persistSparseCache() {
 
 loadSparseCache();
 
+/**
+ * 案件ごとの既知finish Record mapを返す。Realtime差分を受けた時の追加/更新/削除判定に使う。
+ */
 function knownFinishMap(projectId) {
   const id = String(projectId || '');
   if (!knownFinishRecordsByProject.has(id)) knownFinishRecordsByProject.set(id, new Map());
   return knownFinishRecordsByProject.get(id);
 }
 
+/**
+ * 案件の既知finish Record集合を丸ごと置き換える。full load後の基準状態設定用。
+ */
 export function setKnownFinishRecords(projectId, records = []) {
   const map = new Map();
   records.forEach((record) => {
@@ -94,14 +115,23 @@ export function setKnownFinishRecords(projectId, records = []) {
   persistSparseCache();
 }
 
+/**
+ * 案件の既知finish Recordを配列で返す。Store再構築時のsource。
+ */
 export function getKnownFinishRecords(projectId) {
   return [...knownFinishMap(projectId).values()].map((record) => ({ ...record }));
 }
 
+/**
+ * 指定finishIdが既知Recordとして存在するか判定する。
+ */
 export function hasKnownFinishRecord(projectId, finishId) {
   return knownFinishMap(projectId).has(String(finishId || ''));
 }
 
+/**
+ * finish change log 1件を既知Record mapへ適用する。Realtime受信直後にStoreへ反映する前の正本更新。
+ */
 export function applyKnownFinishChange(projectId, change) {
   const map = knownFinishMap(projectId);
   const id = String(change?.id || change?.record?.finishId || '');
@@ -111,6 +141,9 @@ export function applyKnownFinishChange(projectId, change) {
   persistSparseCache();
 }
 
+/**
+ * finish Recordをローカル既知状態へ反映し、同期対象案件ならFirestoreへ保存する。
+ */
 export function persistFinishForProject(project, record, source = 'finish-unspecified') {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
@@ -128,6 +161,9 @@ export function persistFinishForProject(project, record, source = 'finish-unspec
   });
 }
 
+/**
+ * finish Recordを既知状態から削除し、同期対象ならFirestore削除+change log記録を行う。
+ */
 export function deleteFinishForProject(project, record, source = 'finish-delete-unspecified') {
   if (!shouldSyncProject(project) || !record?.finishId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
@@ -146,6 +182,9 @@ export function deleteFinishForProject(project, record, source = 'finish-delete-
 }
 
 
+/**
+ * material RecordをFirestoreへ保存する同期adapter。ControllerはRepositoryを直接呼ばずこの層を使う。
+ */
 export function persistMaterialForProject(project, record, source = 'material-unspecified') {
   if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveMaterialRecord({
@@ -156,6 +195,9 @@ export function persistMaterialForProject(project, record, source = 'material-un
   }));
 }
 
+/**
+ * photo RecordメタデータをFirestoreへ保存する同期adapter。
+ */
 export function persistPhotoForProject(project, record, source = 'photo-unspecified') {
   if (!shouldSyncProject(project) || !record?.photoId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => savePhotoRecord({
@@ -166,11 +208,17 @@ export function persistPhotoForProject(project, record, source = 'photo-unspecif
   }));
 }
 
+/**
+ * 案件メタデータをFirestoreへ保存する同期adapter。
+ */
 export function persistProjectMetadataForProject(project, options = {}) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveProjectMetadata(project, options));
 }
 
+/**
+ * 現在端末の同期接触情報をFirestoreへ送るadapter。project-sync-metaから呼ばれる。
+ */
 export function touchProjectSyncDeviceForProject(project, device) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return touchProjectSyncDevice({
@@ -182,6 +230,9 @@ export function touchProjectSyncDeviceForProject(project, device) {
   });
 }
 
+/**
+ * 案件の古いfinish change log整理をRepositoryへ依頼するadapter。
+ */
 export function cleanupFinishChangeLogsForProject(project) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true, deleted: 0 });
   return cleanupExpiredFinishChangeLogs({
@@ -200,6 +251,9 @@ export function deleteTestProjectFromFirestore(project) {
   return enqueue(() => deleteTestProjectCompletely(project.projectId));
 }
 
+/**
+ * Firestore上の仮案件番号一覧を取得する。案件新規作成時の重複回避用。
+ */
 export async function getRemoteTemporaryProjectNos(dateCode, environment = 'production') {
   return readTemporaryProjectNos(dateCode, environment);
 }
@@ -209,12 +263,18 @@ export async function flushPendingWrites() {
   await writeChain;
 }
 
+/**
+ * materialIdから表示/互換用inputIdを補完する。古いRecordを現行形式へhydrateする際のfallback。
+ */
 function inputIdFromMaterialId(materialId, fallbackIndex) {
   const match = /^R(\d+)$/.exec(String(materialId || ''));
   if (match) return Number(match[1]);
   return fallbackIndex + 1;
 }
 
+/**
+ * Firestore/ローカルSnapshotのmaterial配列を現行Record形式へ正規化する。欠損項目のdefault補完も行う。
+ */
 function hydrateMaterialRecords(rawRecords = []) {
   return rawRecords
     .slice()
@@ -239,6 +299,9 @@ function hydrateMaterialRecords(rawRecords = []) {
     });
 }
 
+/**
+ * finish配列を現行Record形式へ正規化し、案件内構造として扱える状態にする。
+ */
 function hydrateFinishRecords(rawRecords = [], materialById = new Map()) {
   const roomUidByKey = new Map();
   return rawRecords
@@ -262,6 +325,9 @@ function hydrateFinishRecords(rawRecords = [], materialById = new Map()) {
     });
 }
 
+/**
+ * photo配列を現行Record形式へ正規化する。削除flagや同期参照を含む現行schemaへ合わせる。
+ */
 function hydratePhotoRecords(rawRecords = []) {
   return rawRecords
     .slice()
@@ -287,10 +353,16 @@ export function firestoreTimeToMillis(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/**
+ * Record配列中の最大updatedAtを返す。差分cursorの初期値計算に使う。
+ */
 export function newestRecordUpdatedAt(records = []) {
   return records.reduce((max, record) => Math.max(max, firestoreTimeToMillis(record?.updatedAt)), 0);
 }
 
+/**
+ * 3Record snapshot全体の最大updatedAtを返す。full load完了時の基準時刻。
+ */
 function newestSnapshotUpdatedAt(raw = {}) {
   return Math.max(
     newestRecordUpdatedAt(raw.finishRecords || []),
@@ -299,6 +371,9 @@ function newestSnapshotUpdatedAt(raw = {}) {
   );
 }
 
+/**
+ * full snapshotを差分適用形式のchanges配列へ変換する。full/deltaで同じ適用経路を使うためのadapter。
+ */
 function rawSnapshotToChanges(raw = {}) {
   return [
     ...(raw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record })),
@@ -307,6 +382,9 @@ function rawSnapshotToChanges(raw = {}) {
   ];
 }
 
+/**
+ * changesからfinish/material/photo各種別の最新updatedAtを集計する。
+ */
 function newestByType(raw = {}, fallback = {}) {
   return {
     finish: Math.max(Number(fallback.finish || 0), newestRecordUpdatedAt(raw.finishRecords || [])),
@@ -315,6 +393,9 @@ function newestByType(raw = {}, fallback = {}) {
   };
 }
 
+/**
+ * 複数cursor候補から大きい値を返す小helper。
+ */
 function maxCursor(cursors = {}) {
   return Math.max(Number(cursors.finish || 0), Number(cursors.material || 0), Number(cursors.photo || 0));
 }
@@ -529,6 +610,9 @@ export function subscribeRealtimeProjectRecordsForProject(project, { afterByType
   return () => { stopFinish(); stopOther(); };
 }
 
+/**
+ * 受信changesからRecord種別別の最新cursorを算出する。適用成功後だけ保存する前提。
+ */
 export function newestCursorsFromChanges(changes = [], fallback = {}) {
   const next = {
     finish: Number(fallback.finish || 0),
@@ -543,6 +627,9 @@ export function newestCursorsFromChanges(changes = [], fallback = {}) {
   return next;
 }
 
+/**
+ * Record種別別cursorの最大値を返す。ヘッダーの最終同期時刻などに使う。
+ */
 export function latestCursorValue(cursors = {}) {
   return maxCursor(cursors);
 }
