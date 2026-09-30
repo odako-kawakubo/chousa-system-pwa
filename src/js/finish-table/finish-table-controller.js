@@ -232,6 +232,9 @@ function bindUndoRedoButtons() {
   });
 }
 
+/**
+ * 現在の履歴cursorからUndo/Redo buttonのdisabled状態を更新する。履歴自体の変更は行わない。
+ */
 function updateUndoRedoButtons() {
   const undoBtn = document.getElementById('finishUndoBtn');
   const redoBtn = document.getElementById('finishRedoBtn');
@@ -355,6 +358,9 @@ async function handleCopyRoomClick(roomKeyValue) {
   withHistory(() => executeRoomCopy(sourceKey, roomKeyValue));
 }
 
+/**
+ * Controllerへ集約された仕上表共通actionを種類別moduleへ振り分ける。直接業務ロジックを持たず、描画/履歴更新の接着点として使う。
+ */
 function handleAction(button) {
   switch (button.dataset.action) {
     case 'add-normal-floor':
