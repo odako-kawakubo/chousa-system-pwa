@@ -48,6 +48,12 @@
   font-weight: 700;
 }
 
+/* 案件パネル表示中は背面の仕上表などへiOSの慣性スクロールを伝播させない。
+ * 案件パネル自体は .app の外側にあるため、そのスクロール操作は維持される。
+ */
+body.project-panel-open{overflow:hidden;overscroll-behavior:none}
+body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:none}
+
 /* ============================================================
    案件選択パネル（左からスライドイン）
    ============================================================ */
