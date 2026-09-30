@@ -234,8 +234,8 @@ jobs:
           grep -q "PHOTO_THUMB_READY" src/js/photos/photo-preview-manager.js || { echo "photo thumb ready diagnostic missing"; exit 1; }
           grep -q "PHOTO_THUMB_LOADING" src/js/photos/photo-preview-manager.js || { echo "photo thumb loading diagnostic missing"; exit 1; }
           grep -q "PHOTO_SYNC_REFERENCE_UPDATE" src/js/photos/photo-onedrive-sync.js || { echo "photo OneDrive diagnostic missing"; exit 1; }
-          grep -q "SYNC_APPLY_PHOTO" src/js/projects/project-controller.js || { echo "photo sync apply diagnostic missing"; exit 1; }
-          grep -q "listener-query-removed-not-record-delete" src/js/projects/project-controller.js || { echo "photo listener removed guard is missing"; exit 1; }
+          grep -q "SYNC_APPLY_PHOTO" src/js/projects/project-record-apply.js || { echo "photo sync apply diagnostic missing"; exit 1; }
+          grep -q "listener-query-removed-not-record-delete" src/js/projects/project-record-apply.js || { echo "photo listener removed guard is missing"; exit 1; }
           grep -q "export function renderVisualTargetBlock" src/js/photos/photo-renderer.js || { echo "visual local block renderer is missing"; exit 1; }
           grep -q "export function renderSamplingPointBlock" src/js/photos/photo-renderer.js || { echo "sampling local block renderer is missing"; exit 1; }
           if grep -R "caseHeaderTitle" -n src; then
