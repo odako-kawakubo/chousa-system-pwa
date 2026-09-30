@@ -57,10 +57,16 @@ let pendingReviewResolve = null;
 let listenersBound = false;
 let activePanel = null;
 
+/**
+ * Camera stateと案件contextから電子看板描画用データを組み立てる。目視/採取で表示項目を切り替える。
+ */
 function buildBoardData() {
   return buildCameraBoardData(state, boardSettingsStore.get());
 }
 
+/**
+ * Camera画面DOMが未生成なら作成し、既存なら再利用して返す。
+ */
 function ensureCameraScreen() {
   if (root) return;
 
@@ -156,6 +162,9 @@ function ensureCameraScreen() {
   root.addEventListener('click', handleCameraClick);
 }
 
+/**
+ * Camera左/右の補助panelを開き、現在panel種別をstateへ反映する。
+ */
 function openSidePanel(name) {
   // 同じ項目を再押下したら通常ボタンへ戻す。
   // 別項目なら現在の操作パネルを閉じ、その項目のボタン領域を操作パネルへ置き換える。
@@ -176,6 +185,9 @@ function openSidePanel(name) {
   updateCameraUi();
 }
 
+/**
+ * 開いている補助panelを閉じ、メイン撮影画面へ戻す。
+ */
 function closeSidePanel() {
   activePanel = null;
   root.querySelectorAll('[data-camera-panel-slot]').forEach((slot) => slot.classList.remove('active'));
@@ -183,6 +195,9 @@ function closeSidePanel() {
   root.querySelectorAll('[data-open-camera-panel]').forEach((button) => button.classList.remove('active'));
 }
 
+/**
+ * Camera画面内clickを撮影・区分切替・panel操作・完了等へ振り分けるイベント入口。
+ */
 function handleCameraClick(event) {
   const openButton = event.target.closest('[data-open-camera-panel]');
   if (openButton) {
@@ -252,6 +267,9 @@ function handleCameraClick(event) {
   if (event.target.closest('[data-camera-accept]')) resolveReview(true);
 }
 
+/**
+ * 横向き撮影時の上下反転設定を切り替え、previewと設定Storeへ反映する。
+ */
 function toggleLandscapeFlip() {
   state.landscapeFlipped = !state.landscapeFlipped;
   saveCameraPreferences(state);
@@ -259,6 +277,9 @@ function toggleLandscapeFlip() {
   setTimeout(handleResize, 80);
 }
 
+/**
+ * 現在flip設定をvideo previewのCSS transformへ反映する。画像Record値は変更しない。
+ */
 function applyLandscapeFlip() {
   orientationShell?.classList.toggle('flipped', Boolean(state?.landscapeFlipped));
   root?.querySelector('[data-camera-landscape-flip]')?.setAttribute(
@@ -267,12 +288,18 @@ function applyLandscapeFlip() {
   );
 }
 
+/**
+ * 現在targetで撮影済みの写真件数をUIへ反映する。
+ */
 function updatePhotoCount() {
   const count = photoRecordStore.getAll().filter((photo) => !photo.deleted && photo.photoType === state.photoType).length;
   const target = root?.querySelector('[data-camera-photo-count]');
   if (target) target.textContent = `撮影済み\n${count}枚`;
 }
 
+/**
+ * Camera state全体からbutton活性・ラベル・電子看板・撮影済み件数などを一括更新する。
+ */
 function updateCameraUi() {
   if (!root || !state) return;
 
@@ -334,36 +361,57 @@ function updateCameraUi() {
   });
 }
 
+/**
+ * 目視撮影対象の部屋候補を次/前へ循環し、part候補と電子看板を追従更新する。
+ */
 function cycleVisualRoom(delta) {
   moveVisualRoom(state, delta);
   updateCameraUi();
 }
 
+/**
+ * 現在部屋内の目視部位候補を次/前へ循環する。
+ */
 function cycleVisualPart(delta) {
   moveVisualPart(state, delta);
   updateCameraUi();
 }
 
+/**
+ * 採取対象materialを次/前へ循環し、枝番/区分/看板情報を同期する。
+ */
 function cycleSamplingSample(delta) {
   moveSamplingSample(state, delta);
   updateCameraUi();
 }
 
+/**
+ * 現在採取materialの枝番①②③を有効範囲内で循環する。
+ */
 function cycleSamplingBranch(delta) {
   moveSamplingBranch(state, delta);
   updateCameraUi();
 }
 
+/**
+ * 採取撮影区分の施工前/施工中/施工後を循環する。断面はsection modeとして別管理。
+ */
 function cycleStage() {
   moveStage(state);
   updateCameraUi();
 }
 
+/**
+ * 断面撮影modeのON/OFFを切り替える。通常stage値を壊さず一時的にsectionへ切り替える。
+ */
 function toggleSectionMode() {
   changeSectionMode(state);
   updateCameraUi();
 }
 
+/**
+ * 電子看板の固定4位置を順番に切り替え、ユーザー設定へ保存する。
+ */
 function cycleBoardPosition() {
   const index = Math.max(0, BOARD_POSITIONS.indexOf(state.boardPosition));
   state.boardPosition = BOARD_POSITIONS[(index + 1) % BOARD_POSITIONS.length];
@@ -371,6 +419,9 @@ function cycleBoardPosition() {
   updateCameraUi();
 }
 
+/**
+ * 電子看板サイズを許容範囲で変更し、previewとユーザー設定へ保存する。
+ */
 function changeBoardSize(delta) {
   const index = Math.max(0, BOARD_SIZE_ORDER.indexOf(state.boardSize));
   const nextIndex = Math.max(0, Math.min(BOARD_SIZE_ORDER.length - 1, index + delta));
@@ -379,6 +430,9 @@ function changeBoardSize(delta) {
   updateCameraUi();
 }
 
+/**
+ * MediaStream準備完了状態を更新し、撮影button等の活性を切り替える。
+ */
 function setCameraReady(ready, guideText = '') {
   const shutter = root?.querySelector('[data-camera-shutter]');
   const guide = root?.querySelector('[data-camera-guide]');
@@ -389,6 +443,9 @@ function setCameraReady(ready, guideText = '') {
   }
 }
 
+/**
+ * 撮影直後画像を確認画面へ表示し、採用/撮り直しの判断待ち状態へ移行する。
+ */
 function showReview(dataUrl) {
   reviewImage.src = dataUrl;
   review.hidden = false;
@@ -397,6 +454,9 @@ function showReview(dataUrl) {
   });
 }
 
+/**
+ * 撮影確認画面の採用/破棄結果を確定し、待機中Promiseを解決する。
+ */
 function resolveReview(accepted) {
   if (!pendingReviewResolve) return;
   const resolve = pendingReviewResolve;
@@ -406,6 +466,9 @@ function resolveReview(accepted) {
   resolve(Boolean(accepted));
 }
 
+/**
+ * 現在video frameをCanvasへ取り込みBlob化し、確認画面→Photo Record登録までの撮影1回分を実行する。
+ */
 async function takePhoto() {
   if (taking || !cameraSession?.isReady() || video.readyState < 2) return;
   taking = true;
@@ -525,15 +588,24 @@ export function closeCamera() {
   document.body.classList.remove('camera-open');
 }
 
+/**
+ * 確認画面や端末状態変化後に必要ならMediaStream previewを再開する。
+ */
 async function resumeCameraIfNeeded() {
   if (!root || root.hidden || document.hidden || !state) return;
   await cameraSession?.resume();
 }
 
+/**
+ * 画面回転/resize時に撮影領域・看板位置・preview transformを再計算する。
+ */
 function handleResize() {
   if (root && !root.hidden && state) updateCameraUi();
 }
 
+/**
+ * Camera Controllerの初期化入口。DOM生成、click/resizeイベント、state購読を一度だけ接続する。
+ */
 export function initializeCameraController(options = {}) {
   optionsProvider = options.getOptions || (() => ({ visualRooms: [], samplingTargets: [] }));
   onPhotoSaved = options.onPhotoSaved || null;
