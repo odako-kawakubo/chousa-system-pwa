@@ -14,7 +14,7 @@
  * - v0.1.7.1 使用箇所は部屋No.を基本表示とし、部屋名表示ON時だけfinishRecordから表示値を再計算する。
  */
 
-import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
+import { normalizeSampleParts } from '../records/material-record.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -22,12 +22,14 @@ import { refreshFinishTableFromStores } from '../finish-table/finish-table-contr
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
 import { renderMaterialList } from './material-list-renderer.js';
-import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.js';
 import {
-  setAndPersistMaterialRecord,
-  appendMaterialSystemMemo,
-  todayMaterialIsoDate
-} from './material-list-persistence.js';
+  updateMaterialControlValue,
+  updateMaterialSampleParts,
+  updateMaterialNameValue,
+  updateMaterialNoteValue,
+  updateMaterialAnalysisTextValue,
+  applyMaterialSamplingAutofill
+} from './material-list-edit-actions.js';
 import { bindMaterialListInteractions } from './material-list-interactions.js';
 
 let rootElement = null;
@@ -246,53 +248,14 @@ function activateNativeControl(control) {
 }
 
 function updateMaterialControl(control) {
-  const materialId = control.dataset.materialId;
-  const field = control.dataset.field;
-  const record = materialRecordStore.get(materialId);
-  if (!record || !field) return;
-
-  const now = new Date().toISOString();
-  const next = { ...record, updatedAt: now };
-
-  switch (field) {
-    case 'level':
-      next.level = String(control.value || '-');
-      break;
-    case 'analysisRequired':
-      next.analysisRequired = String(control.value || '採取・分析');
-      if (next.analysisRequired === '採取・分析') {
-        const currentCount = Number(next.sampleCount);
-        if (!Number.isFinite(currentCount) || currentCount < 1) next.sampleCount = 1;
-        else next.sampleCount = Math.min(3, currentCount);
-        applySingleRecordSamplingAutofill(next);
-      }
-      break;
-    case 'sampleCount':
-      next.sampleCount = Math.max(1, Math.min(3, Number(control.value) || 1));
-      applySingleRecordSamplingAutofill(next);
-      break;
-    case 'sampleLocation1':
-    case 'sampleLocation2':
-    case 'sampleLocation3':
-    case 'sampleDate':
-      next[field] = String(control.value || '');
-      break;
-    case 'sampleDone':
-      next.sampleDone = Boolean(control.checked);
-      if (next.sampleDone && !next.sampleDate) next.sampleDate = todayMaterialIsoDate();
-      break;
-    default:
-      return;
-  }
-
-  setAndPersistMaterialRecord(record, next, 'material-control-edit');
+  const result = updateMaterialControlValue(control);
+  if (!result.changed) return;
   refreshMaterialList();
   refreshRecordView();
 }
 
 function updateSamplePartsFromChecklist(materialId) {
-  const record = materialRecordStore.get(materialId);
-  if (!record || !rootElement) return;
+  if (!rootElement) return;
 
   const inputs = [...rootElement.querySelectorAll('[data-material-multi-part]')]
     .filter((input) => input.dataset.materialId === materialId);
@@ -301,18 +264,13 @@ function updateSamplePartsFromChecklist(materialId) {
     .map((input) => String(input.value || '').trim())
     .filter(Boolean);
 
-  const current = normalizeSampleParts(record.samplePart);
-  if (JSON.stringify(current) === JSON.stringify(selected)) return;
-
-  setAndPersistMaterialRecord(record, {
-    ...record,
-    samplePart: selected
-  });
+  const result = updateMaterialSampleParts(materialId, selected);
+  if (!result.changed) return;
 
   const details = inputs[0]?.closest('[data-material-multi-select]');
   const summary = details?.querySelector('.material-multi-select-summary');
   if (summary) {
-    const label = selected.length ? selected.join('、') : '選択';
+    const label = result.selected.length ? result.selected.join('、') : '選択';
     summary.textContent = label;
     summary.title = label;
   }
@@ -320,84 +278,32 @@ function updateSamplePartsFromChecklist(materialId) {
 }
 
 function updateMaterialName(materialId, rawValue) {
-  const record = materialRecordStore.get(materialId);
-  if (!record) return refreshMaterialList();
-
-  const normalized = normalizeMaterialName(rawValue);
-  if (!normalized) {
-    window.alert('建材名称を入力してください。');
-    return refreshMaterialList();
+  const result = updateMaterialNameValue(materialId, rawValue);
+  if (result.error) window.alert(result.error);
+  if (result.refreshConnected) {
+    refreshConnectedViews();
+    return;
   }
-  if (normalized === record.name) return refreshMaterialList();
-
-  const duplicate = materialRecordStore.getAll().find((item) =>
-    item.status === 'active' &&
-    item.materialId !== materialId &&
-    normalizeMaterialName(item.name) === normalized
-  );
-  if (duplicate) {
-    window.alert(`「${normalized}」は入力ID ${duplicate.inputId} で登録済みです。`);
-    return refreshMaterialList();
-  }
-
-  const parsed = splitBaseNameAndSuffix(normalized);
-  setAndPersistMaterialRecord(record, {
-    ...record,
-    name: normalized,
-    baseName: parsed.baseName,
-    suffixLetter: parsed.suffixLetter,
-    systemMemo: appendMaterialSystemMemo(record.systemMemo, `建材名称変更：${record.name} → ${normalized}`)
-  });
-
-  refreshConnectedViews();
+  if (result.refreshList) refreshMaterialList();
 }
 
 function updateMaterialNote(materialId, rawValue) {
-  const record = materialRecordStore.get(materialId);
-  if (!record) return refreshMaterialList();
-
-  const note = String(rawValue ?? '').trim();
-  if (note === record.note) return refreshMaterialList();
-
-  setAndPersistMaterialRecord(record, {
-    ...record,
-    note
-  }, 'material-note-edit');
-  refreshConnectedViews();
+  const result = updateMaterialNoteValue(materialId, rawValue);
+  if (result.refreshConnected) {
+    refreshConnectedViews();
+    return;
+  }
+  if (result.refreshList) refreshMaterialList();
 }
 
 function updateMaterialAnalysisText(materialId, field, rawValue) {
-  if (!['analysisResult', 'remarks'].includes(field)) return refreshMaterialList();
-
-  const record = materialRecordStore.get(materialId);
-  if (!record) return refreshMaterialList();
-
-  const value = String(rawValue ?? '').trim();
-  if (value === String(record[field] || '')) return refreshMaterialList();
-
-  setAndPersistMaterialRecord(record, {
-    ...record,
-    [field]: value
-  }, field === 'analysisResult' ? 'material-analysis-result-edit' : 'material-analysis-remarks-edit');
-
-  refreshMaterialList();
-  refreshRecordView();
+  const result = updateMaterialAnalysisTextValue(materialId, field, rawValue);
+  if (result.refreshList) refreshMaterialList();
+  if (result.refreshRecordView) refreshRecordView();
 }
 
 function applySamplingAutofill() {
-  const records = materialRecordStore.getAll();
-  const updates = [];
-
-  records.forEach((record) => {
-    if (record.status !== 'active') return;
-    const next = { ...record };
-    if (applySingleRecordSamplingAutofill(next).length) {
-      updates.push({ previous: record, next });
-    }
-  });
-
-  if (!updates.length) return;
-  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterialRecord(previous, next, 'sampling-autofill')));
+  applyMaterialSamplingAutofill();
 }
 
 function refreshConnectedViews() {
