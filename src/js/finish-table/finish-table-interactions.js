@@ -56,6 +56,9 @@ import {
   finalizePendingEdit
 } from './finish-table-edit-session.js';
 
+/**
+ * 候補popupで選択された値を現在編集セルへ1回だけcommitする。focusoutとの二重保存を防ぐため明示commit済み状態も更新する。
+ */
 function commitCandidateSelection(option, input) {
   if (!option || !input) return;
   const roomKeyValue = input.dataset.roomKey;
@@ -106,6 +109,9 @@ function commitCandidateSelection(option, input) {
   input.focus();
 }
 
+/**
+ * その他1/2の名称/部位など対になる入力欄へfocusを移す補助処理。編集sessionを継続したまま関連fieldを入力できるようにする。
+ */
 function focusOtherCompanionField(roomKeyValue, partIndex, row, targetKind) {
   if (partIndex < 5 || !['name', 'part'].includes(targetKind)) return;
 
@@ -124,6 +130,9 @@ function focusOtherCompanionField(roomKeyValue, partIndex, row, targetKind) {
   });
 }
 
+/**
+ * 部屋・part index・input rowから編集中セルを識別する安定keyを作る。登録buttonや候補popupの一時状態をセル単位で管理する。
+ */
 function cellPendingKey(roomKeyValue, partIndex, row) {
   return `${roomKeyValue}|${partIndex}|${row}`;
 }
