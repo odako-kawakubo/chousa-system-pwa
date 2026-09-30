@@ -21,10 +21,12 @@ import { refreshFinishTableFromStores } from '../finish-table/finish-table-contr
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
 import { renderMaterialList } from './material-list-renderer.js';
-import { getCurrentProject } from '../projects/project-store.js';
-import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.js';
+import {
+  setAndPersistMaterialRecord,
+  appendMaterialSystemMemo,
+  todayMaterialIsoDate
+} from './material-list-persistence.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -32,31 +34,6 @@ let outsideMultiSelectBound = false;
 let materialListTabScrollBound = false;
 let renderedProjectId = '';
 const scrollStateByProject = new Map();
-
-const MATERIAL_META_FIELDS = new Set(['updatedAt', 'updatedDevice', 'fieldEditedAt', 'color', 'photoCount', 'materialNo', 'inputId', 'baseName', 'suffixLetter', 'systemMemo']);
-
-function changedBusinessFields(previous, next) {
-  const keys = new Set([...Object.keys(previous || {}), ...Object.keys(next || {})]);
-  return [...keys].filter((field) => {
-    if (MATERIAL_META_FIELDS.has(field)) return false;
-    const a = previous?.[field];
-    const b = next?.[field];
-    if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a || []) !== JSON.stringify(b || []);
-    return String(a ?? '') !== String(b ?? '');
-  });
-}
-
-function setAndPersistMaterial(previous, candidate, source = 'material-list-edit') {
-  const fields = changedBusinessFields(previous, candidate);
-  if (!fields.length) return previous;
-  const next = {
-    ...candidate,
-    fieldEditedAt: touchFieldEditedAt(previous?.fieldEditedAt, fields)
-  };
-  materialRecordStore.set(next);
-  persistMaterialForProject(getCurrentProject(), next, source);
-  return next;
-}
 
 // 建材リスト専用の表示状態。仕上表／簡易リストとは独立して切り替える。
 let materialListColorMode = false;
@@ -427,13 +404,13 @@ function updateMaterialControl(control) {
       break;
     case 'sampleDone':
       next.sampleDone = Boolean(control.checked);
-      if (next.sampleDone && !next.sampleDate) next.sampleDate = todayIsoDate();
+      if (next.sampleDone && !next.sampleDate) next.sampleDate = todayMaterialIsoDate();
       break;
     default:
       return;
   }
 
-  setAndPersistMaterial(record, next, 'material-control-edit');
+  setAndPersistMaterialRecord(record, next, 'material-control-edit');
   refreshMaterialList();
   refreshRecordView();
 }
@@ -452,7 +429,7 @@ function updateSamplePartsFromChecklist(materialId) {
   const current = normalizeSampleParts(record.samplePart);
   if (JSON.stringify(current) === JSON.stringify(selected)) return;
 
-  setAndPersistMaterial(record, {
+  setAndPersistMaterialRecord(record, {
     ...record,
     samplePart: selected
   });
@@ -489,12 +466,12 @@ function updateMaterialName(materialId, rawValue) {
   }
 
   const parsed = splitBaseNameAndSuffix(normalized);
-  setAndPersistMaterial(record, {
+  setAndPersistMaterialRecord(record, {
     ...record,
     name: normalized,
     baseName: parsed.baseName,
     suffixLetter: parsed.suffixLetter,
-    systemMemo: appendSystemMemo(record.systemMemo, `建材名称変更：${record.name} → ${normalized}`)
+    systemMemo: appendMaterialSystemMemo(record.systemMemo, `建材名称変更：${record.name} → ${normalized}`)
   });
 
   refreshConnectedViews();
@@ -507,7 +484,7 @@ function updateMaterialNote(materialId, rawValue) {
   const note = String(rawValue ?? '').trim();
   if (note === record.note) return refreshMaterialList();
 
-  setAndPersistMaterial(record, {
+  setAndPersistMaterialRecord(record, {
     ...record,
     note
   }, 'material-note-edit');
@@ -523,7 +500,7 @@ function updateMaterialAnalysisText(materialId, field, rawValue) {
   const value = String(rawValue ?? '').trim();
   if (value === String(record[field] || '')) return refreshMaterialList();
 
-  setAndPersistMaterial(record, {
+  setAndPersistMaterialRecord(record, {
     ...record,
     [field]: value
   }, field === 'analysisResult' ? 'material-analysis-result-edit' : 'material-analysis-remarks-edit');
@@ -545,28 +522,13 @@ function applySamplingAutofill() {
   });
 
   if (!updates.length) return;
-  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterial(previous, next, 'sampling-autofill')));
+  materialRecordStore.batch(() => updates.forEach(({ previous, next }) => setAndPersistMaterialRecord(previous, next, 'sampling-autofill')));
 }
 
 function refreshConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();
   refreshRecordView();
-}
-
-function appendSystemMemo(currentMemo, line) {
-  const current = String(currentMemo || '').trim();
-  const stamp = new Date().toLocaleString('ja-JP');
-  const nextLine = `${stamp} ${line}`;
-  return current ? `${current}\n${nextLine}` : nextLine;
-}
-
-function todayIsoDate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 export function getSelectedMaterialId() {
