@@ -168,7 +168,7 @@ function buildVisualTarget(room, partSlot, part, finishRecords) {
     partSlot,
     part,
     materials,
-    // v0.1.5.3D: 入力済みの場合だけ簡易リストと同じ【入力ID】建材名称表記を返す。
+    // 入力済みの場合だけ簡易リストと同じ【入力ID】建材名称表記を返す。
     // 未入力時はRenderer側で「未入力」だけを表示する。
     materialText: materials.map((item) => item.label).join('、'),
     photos,
@@ -253,7 +253,7 @@ function buildSamplePoint(material, branch, sampleNo) {
     branch,
     samplingPlace,
     part: samplePartsToText(material.samplePart),
-    // v0.1.5.3D: 試料No.は「採取対象建材の連番-枝番」で表示用に組み立てる。
+    // 試料No.は「採取対象建材の連番-枝番」で表示用に組み立てる。
     // 例: 1-① / 1-② / 1-③
     sampleNo: `${sampleNo}-${branchLabel}`,
     stages,
