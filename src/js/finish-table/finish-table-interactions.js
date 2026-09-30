@@ -197,7 +197,7 @@ export function bindFinishTableInteractions(root, {
     // ID欄の「登録」ボタン：未登録の建材名称を、押下されたときだけ新規登録する。
     // materialRecordStore（新規建材）とfinishRecordStore（対象セルの紐付け）の
     // 両方を書き換えるため、Undo/Redo対象として履歴へ積む
-    // （v0.1.5.1より前は対象外だったが、指示に従いここから対象化した）。
+    // 建材登録は2Storeをまたぐ業務操作なので、Undo/Redo対象として履歴へ積む。
     const registerButton = target.closest('[data-action="register-material"]');
     if (registerButton) {
       const roomKeyValue = registerButton.dataset.roomKey;
@@ -424,7 +424,7 @@ export function bindFinishTableInteractions(root, {
     const input = event.target.closest('.finish-cell-input');
     if (!input) return;
 
-    // v0.1.5.4B: 編集セル直下へ案件内Record + 設定候補のポップを表示する。
+    // 編集セル直下へ案件内Record + 設定候補のポップを表示する。
     updateFinishInputCandidates(input);
     if (input.dataset.kind === 'name') syncDynamicRegisterButton(input);
 
