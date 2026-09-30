@@ -1,23 +1,13 @@
 /**
  * src/js/photos/photo-view-model.js
  *
- * v0.1.5.3D 写真タブ表示用ViewModel。
- *
- * 役割：
- * - 目視側は finishRecordStore を起点に「部屋・部位・使用建材」を組み立てる。
- * - 採取側は materialRecordStore の正式項目をそのまま読み、
- *   採取数 / 採取場所1〜3 / 採取部位を写真側で別管理しない。
+ * 写真タブ表示用ViewModel。
+ * - 目視側は finishRecordStore を起点に部屋・部位・使用建材を組み立てる。
+ * - 採取側は materialRecordStore の採取数 / 採取場所1〜3 / 採取部位を正本として使う。
  * - photoRecordStore から各写真グループの代表写真・追加写真を解決する。
+ * - 試料No.は採取対象建材の並びから表示用に付与する。
+ * - 同期後にroomUidが変化しても areaCode + roomPosition の安定キーで同じ論理部屋へ復帰する。
  * - DOM操作やRecord更新は行わない。
- *
- * v0.1.5.3Dでの重要方針：
- * 1. 採取数・採取場所・採取部位の正本は建材レコード。
- * 2. 試料No.だけは採取対象建材の並びから表示用に付与する。
- * 3. 目視の「部位・使用建材」は仕上表レコードを起点に表示する。
- *
- * v0.1.6.6:
- * - 写真タブの選択部屋は、描画用roomUidが同期再構築で変わった場合でも
- *   areaCode + roomPosition の安定キーから同じ論理部屋へ復帰する。
  */
 
 import * as finishRecordStore from '../store/finish-record-store.js';
