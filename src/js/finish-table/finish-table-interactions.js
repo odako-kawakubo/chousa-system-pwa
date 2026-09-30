@@ -128,6 +128,9 @@ function cellPendingKey(roomKeyValue, partIndex, row) {
   return `${roomKeyValue}|${partIndex}|${row}`;
 }
 
+/**
+ * 仕上表rootへclick/focus/input/change/pointer等のイベント委譲を設定する。Controllerや各actions moduleへ処理を振り分ける入口で、Record更新ロジック自体は持たない。
+ */
 export function bindFinishTableInteractions(root, {
   withHistory,
   commitAndRefresh,
