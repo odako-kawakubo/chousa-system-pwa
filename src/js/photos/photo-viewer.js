@@ -39,6 +39,9 @@ const viewerState = {
   }
 };
 
+/**
+ * Viewerで生成したObject URLをすべてrevokeし、案件/写真切替時のメモリリークを防ぐ。
+ */
 function revokeResolvedViewerUrls() {
   for (const url of resolvedViewerUrls.values()) {
     if (url && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
@@ -46,6 +49,9 @@ function revokeResolvedViewerUrls() {
   resolvedViewerUrls.clear();
 }
 
+/**
+ * photoIdごとの解決済みfull画像URLを保存し、旧Object URLがあれば安全に解放する。
+ */
 function setResolvedViewerSource(photoId, blob) {
   if (!photoId || !(blob instanceof Blob) || typeof URL.createObjectURL !== 'function') return '';
   const previous = resolvedViewerUrls.get(photoId);
@@ -55,6 +61,9 @@ function setResolvedViewerSource(photoId, blob) {
   return url;
 }
 
+/**
+ * Viewer内HTMLへ埋め込む文字列をescapeする小helper。
+ */
 function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -64,15 +73,24 @@ function esc(value) {
     .replaceAll("'", '&#039;');
 }
 
+/**
+ * 通常Viewerのcurrent indexから現在photo Recordを返す。
+ */
 function currentPhoto() {
   return viewerState.photos[viewerState.index] || null;
 }
 
+/**
+ * 指定photoIdの解決済みfull画像URLがあれば返し、未解決時はpreview用sourceへfallbackする。
+ */
 function sourceFor(photo) {
   if (!photo) return '';
   return String(resolvedViewerUrls.get(photo.photoId) || getPhotoSource(photo) || '');
 }
 
+/**
+ * img要素へsource/alt/transform対象属性を設定する共通描画helper。
+ */
 function renderImage(photo, className = 'photo-viewer-image') {
   const source = sourceFor(photo);
   if (!photo) {
@@ -84,6 +102,9 @@ function renderImage(photo, className = 'photo-viewer-image') {
   return `<img class="${className}" src="${esc(source)}" alt="${esc(photo.fileName || photo.photoId || '写真')}" draggable="false">`;
 }
 
+/**
+ * 通常Viewerのstage画像だけを差し替え、gesture transformを初期化する。
+ */
 function updateStageImage(stage, photo, className = 'photo-viewer-image') {
   if (!stage || !photo) return;
   const source = sourceFor(photo);
@@ -185,6 +206,9 @@ function renderNormal() {
   void prepareNormalPhotoSource(photo);
 }
 
+/**
+ * 比較Viewer用pane stateを生成する。target key・photo index等の初期値を持つ。
+ */
 function createComparePane(key = '') {
   return {
     key,
@@ -193,14 +217,23 @@ function createComparePane(key = '') {
   };
 }
 
+/**
+ * paneが指す比較target定義を現在候補集合から解決する。
+ */
 function compareTarget(key) {
   return viewerState.compare.targets.find((item) => item.key === key) || null;
 }
 
+/**
+ * pane indexから比較pane stateを返す。
+ */
 function comparePane(paneIndex) {
   return viewerState.compare.panes[paneIndex] || null;
 }
 
+/**
+ * paneのtarget + photo indexから現在比較中のPhoto Recordを解決する。
+ */
 function comparePhoto(paneIndex) {
   const pane = comparePane(paneIndex);
   return pane ? compareTarget(pane.key)?.photos?.[pane.index] || null : null;
@@ -219,6 +252,9 @@ function moveComparePhoto(paneIndex, delta) {
   renderCompare();
 }
 
+/**
+ * 現在各paneで使用中のtarget key集合を返す。比較対象の重複候補除外に使う。
+ */
 function selectedCompareKeys(exceptIndex = -1) {
   return new Set(
     viewerState.compare.panes
@@ -227,6 +263,9 @@ function selectedCompareKeys(exceptIndex = -1) {
   );
 }
 
+/**
+ * 1つのpane用target select option一覧を生成する。既に他paneで使うtargetは除外する。
+ */
 function compareSelectOptions(paneIndex) {
   const pane = comparePane(paneIndex);
   if (!pane) return '';
@@ -237,6 +276,9 @@ function compareSelectOptions(paneIndex) {
     .join('');
 }
 
+/**
+ * 比較mode上部のpane追加/削除や件数表示など共通controlを再描画する。
+ */
 function renderCompareControls(paneIndex) {
   const pane = comparePane(paneIndex);
   if (!pane) return '';
@@ -270,6 +312,9 @@ function renderComparePane(paneIndex) {
   </section>`;
 }
 
+/**
+ * まだ他paneで使われていない比較targetを1件返す。新規pane追加時のdefault候補。
+ */
 function availableCompareTarget() {
   const used = selectedCompareKeys();
   return viewerState.compare.targets.find((item) => !used.has(item.key)) || null;
