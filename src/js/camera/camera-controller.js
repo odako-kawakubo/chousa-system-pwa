@@ -1,15 +1,13 @@
 /**
  * src/js/camera/camera-controller.js
  *
- * v0.1.5.5 内蔵カメラ。
- *
- * 本開発ルール：BのUIへパッチを重ねず、v64の撮影UI構造を母体に全面再構成する。
- * - 左：撮影済み / 上下反転 / メインパネル -> 展開パネル
+ * 内蔵カメラ全体の進行を調整するController。
+ * - 左：撮影済み / 上下反転 / メインパネル
  * - 中央：4:3撮影領域 + 電子看板
  * - 右：撮影 / 断面 / 区分
- * - 目視・採取の値は写真タブViewModelから受け取り、カメラ独自の表示番号を生成しない。
- * - 断面は通常区分の循環から分離し、独立ボタンとして扱う。
- * - OneDrive実接続は行わず、photoRecordはpendingで止める。
+ * - 目視・採取の候補は写真タブ側のViewModelから受け取り、独自番号を生成しない。
+ * - 断面は通常撮影区分とは分離して扱う。
+ * - 写真Record作成後の永続化・OneDrive同期は写真保存/同期moduleへ委譲する。
  */
 
 import * as boardSettingsStore from '../settings/board-settings-store.js';
