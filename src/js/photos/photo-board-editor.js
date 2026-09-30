@@ -92,6 +92,9 @@ function currentStatusCode(entry = active) {
   return ({ before:'1', during:'2', after:'3' })[entry.draft.shootingType] || '';
 }
 
+/**
+ * 現在entryのdraftから電子看板描画用データを構築する。Camera Boardと同じ表示項目へ正規化する。
+ */
 function boardData(entry = active) {
   const settings = boardSettingsStore.get();
   return {
@@ -152,6 +155,9 @@ function snapshotSamplingFromRecord_(record) {
   };
 }
 
+/**
+ * Photo RecordからBoard Editor用draftを作る。目視/採取で必要fieldが異なるためtype別snapshotへ振り分ける。
+ */
 function snapshotFromRecord(record) {
   return record.photoType === PHOTO_TYPES.VISUAL ? snapshotVisualFromRecord_(record) : snapshotSamplingFromRecord_(record);
 }
@@ -245,6 +251,9 @@ function ensureRoot() {
   });
 }
 
+/**
+ * 現在entryのdraft・Undo/Redo状態・前後移動可否をEditor DOMへ反映する。
+ */
 function renderControls() {
   if (!active || !root) return;
   renderBoardEditorForm(root, active, optionsProvider);
@@ -260,6 +269,9 @@ async function loadImageFromBlob(blob) {
   return image;
 }
 
+/**
+ * entryの原画像をlocal BlobまたはOneDrive参照から解決してEditor用Imageへロードする。完成画像ではなく原本を優先する。
+ */
 async function loadOriginalImageForEntry_(entry) {
   const originalBlob = await resolveEditorOriginalPhoto(entry.record);
   if (!originalBlob) return false;
@@ -267,6 +279,9 @@ async function loadOriginalImageForEntry_(entry) {
   return true;
 }
 
+/**
+ * 原画像とdraft看板をCanvas上に合成した編集Previewを描画する。ここでは永続保存しない。
+ */
 function renderPreview() {
   if (!active || !originalImage || !canvas) return;
   const token = ++renderToken;
@@ -295,6 +310,9 @@ function renderPreview() {
   });
 }
 
+/**
+ * フォームchange/inputをdraftへ反映し、dirty判定・history・Preview再描画を更新する。
+ */
 function updateDraftFromEvent(target) {
   if (!active) return;
   const result = updateBoardEditorDraftFromEvent(target, active, optionsProvider);
@@ -304,6 +322,9 @@ function updateDraftFromEvent(target) {
   renderPreview();
 }
 
+/**
+ * 現在session内のdirty entryを順に保存する。画像合成とRecord更新はpersistence moduleへ委譲する。
+ */
 async function saveSession_() {
   if (!active || saving) return;
   saving = true;
@@ -326,12 +347,18 @@ async function saveSession_() {
   }
 }
 
+/**
+ * 未保存状態を含め、前後写真へ移動可能か判定する。編集中の不整合を避けるためのguard。
+ */
 function canNavigate(direction) {
   if (!session.ids.length) return false;
   const nextIndex = session.index + direction;
   return nextIndex >= 0 && nextIndex < session.ids.length;
 }
 
+/**
+ * session内の指定indexをactiveにし、必要なら原画像をロードしてUI/Previewを更新する。
+ */
 async function activateIndex_(index) {
   if (switching || saving) return false;
   if (index < 0 || index >= session.ids.length) return false;
@@ -357,6 +384,9 @@ async function activateIndex_(index) {
   }
 }
 
+/**
+ * 閉じる操作時に未保存変更の有無を確認し、保存/破棄/キャンセルの分岐を行う。
+ */
 function requestClose_() {
   if (saving) return;
   if (hasUnsavedChanges_() && !window.confirm('未保存の看板編集があります。\n変更を破棄して閉じますか？')) return;
@@ -364,6 +394,9 @@ function requestClose_() {
 }
 
 
+/**
+ * 電子看板付き写真編集UIを一度だけ初期化する。DOM・Interactions・resize等を接続する入口。
+ */
 export function initializePhotoBoardEditor(options={}) {
   optionsProvider = typeof options.getOptions === 'function' ? options.getOptions : optionsProvider;
   onSaved = typeof options.onSaved === 'function' ? options.onSaved : null;
@@ -371,6 +404,9 @@ export function initializePhotoBoardEditor(options={}) {
   ensureRoot();
 }
 
+/**
+ * photoId配列からEditor session entry群を生成し、最初の写真をactiveにする内部初期化。
+ */
 async function startSession_(photoIds) {
   ensureRoot();
   const ids = [...new Set(photoIds || [])].filter((photoId) => {
@@ -396,9 +432,18 @@ async function startSession_(photoIds) {
   return true;
 }
 
+/**
+ * 単一photoIdを編集sessionとして開く公開API。Photo Recordからdraftを作り、原画像読込後に編集画面を表示する。
+ */
 export function openPhotoBoardEditor(photoId) { return startSession_([photoId]); }
+/**
+ * 複数photoIdを順番付きsessionとして開く。前後移動しても各写真のdraft/historyを保持する。
+ */
 export function openPhotoBoardEditorSequence(photoIds) { return startSession_(photoIds); }
 
+/**
+ * 確認処理を行わずEditor DOM/session/resourceを破棄する内部処理。requestClose_または保存完了後からのみ使う。
+ */
 function closeEditorInternal_(reason = 'cancel') {
   if (!root) return;
   root.hidden=true;
@@ -412,6 +457,9 @@ function closeEditorInternal_(reason = 'cancel') {
   onClosed?.(reason);
 }
 
+/**
+ * 未保存変更の確認を経てEditorを閉じる公開API。強制破棄ではなくrequestClose経路を使う。
+ */
 export function closePhotoBoardEditor(reason = 'cancel') {
   if (reason === 'cancel') return requestClose_();
   closeEditorInternal_(reason);
