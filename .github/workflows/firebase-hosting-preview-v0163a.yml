@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.46 Preview
+name: Deploy v0.1.8.47 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01846
+  group: firebase-preview-v01847
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.46 review consistency checks
+      - name: v0.1.8.47 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.46'" src/config/app-config.js
+          grep -q "version: '0.1.8.47'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.46"' src/version.json
+          grep -q '"version": "0.1.8.47"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.46-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01846-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.47-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01847-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -321,6 +321,18 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Output PDF Preview状態/生成をcontrollerから分離
+          test -f src/js/output/output-pdf-preview-controller.js
+          grep -q "from './output-pdf-preview-controller.js'" src/js/output/output-controller.js || { echo "output controller does not use pdf preview controller"; exit 1; }
+          grep -q "export function getOutputPdfPreviewState" src/js/output/output-pdf-preview-controller.js || { echo "output preview state API missing"; exit 1; }
+          grep -q "export function renderOutputPdfPreview" src/js/output/output-pdf-preview-controller.js || { echo "output preview render API missing"; exit 1; }
+          grep -q "export function setOutputPdfPreviewPage" src/js/output/output-pdf-preview-controller.js || { echo "output preview page API missing"; exit 1; }
+          grep -q "export function setOutputPdfPreviewZoom" src/js/output/output-pdf-preview-controller.js || { echo "output preview zoom API missing"; exit 1; }
+          if grep -q "let previewPage\|let previewPageCount\|let previewZoom\|let previewRenderer\|let renderSerial\|function renderPdfPreview\|function applyPreviewPage\|function applyPreviewZoom" src/js/output/output-controller.js; then
+            echo "output controller still owns pdf preview state"
             exit 1
           fi
 
