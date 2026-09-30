@@ -329,8 +329,8 @@ jobs:
           grep -q "from './output-pdf-preview-controller.js'" src/js/output/output-controller.js || { echo "output controller does not use pdf preview controller"; exit 1; }
           grep -q "export function getOutputPdfPreviewState" src/js/output/output-pdf-preview-controller.js || { echo "output preview state API missing"; exit 1; }
           grep -q "export async function renderOutputPdfPreview" src/js/output/output-pdf-preview-controller.js || { echo "output preview render API missing"; exit 1; }
-          grep -q "export function setOutputPdfPreviewPage" src/js/output/output-pdf-preview-controller.js || { echo "output preview page API missing"; exit 1; }
-          grep -q "export function setOutputPdfPreviewZoom" src/js/output/output-pdf-preview-controller.js || { echo "output preview zoom API missing"; exit 1; }
+          grep -q "export async function setOutputPdfPreviewPage" src/js/output/output-pdf-preview-controller.js || { echo "output preview page API missing"; exit 1; }
+          grep -q "export async function setOutputPdfPreviewZoom" src/js/output/output-pdf-preview-controller.js || { echo "output preview zoom API missing"; exit 1; }
           if grep -q "let previewPage\|let previewPageCount\|let previewZoom\|let previewRenderer\|let renderSerial\|function renderPdfPreview\|function applyPreviewPage\|function applyPreviewZoom" src/js/output/output-controller.js; then
             echo "output controller still owns pdf preview state"
             exit 1
