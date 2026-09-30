@@ -66,6 +66,9 @@ function changedRecords(beforeRecords, afterRecords, idField) {
   });
 }
 
+/**
+ * 統合・削除・再登録を始める前にfinish/material/photo 3StoreのSnapshotを保存する。失敗時rollbackの基準。
+ */
 function captureOperationSnapshot() {
   return {
     finishRecords: finishRecordStore.exportSnapshot(),
@@ -258,6 +261,9 @@ function buildMergedPhotoMemo(photo, sourceMaterialId, targetMaterialId) {
   ].join('\n');
 }
 
+/**
+ * material Recordへ変更patchとfieldEditedAtを適用する共通helper。業務操作内では直接Store setせずtransaction経由で使う。
+ */
 function setMaterialPatch(record, patch, editedFields, updatedAt = nowIso()) {
   materialRecordStore.set({
     ...record,
@@ -267,6 +273,9 @@ function setMaterialPatch(record, patch, editedFields, updatedAt = nowIso()) {
   });
 }
 
+/**
+ * finish Recordへ変更patchとfieldEditedAtを適用する共通helper。materialId差替え等に使う。
+ */
 function setFinishPatch(record, patch, editedFields, updatedAt = nowIso()) {
   finishRecordStore.set({
     ...record,
@@ -313,6 +322,9 @@ function resequenceActiveMaterials() {
   });
 }
 
+/**
+ * 既存建材から次の未使用inputIdを算出する。削除済み建材の再登録時に新規IDとして使う。
+ */
 function nextInputIdForMaterials() {
   const ids = materialRecordStore.getAll().map((record) => Number(record.inputId) || 0);
   return ids.length ? Math.max(...ids) + 1 : 1;
@@ -324,6 +336,9 @@ function normalizeInsertPosition(position, activeCount) {
   return Math.max(1, Math.min(activeCount + 1, Math.trunc(numeric)));
 }
 
+/**
+ * 指定挿入位置以降の建材No.をずらし、新規/再登録建材を途中へ入れられるようにする。
+ */
 function shiftMaterialsForInsert(position) {
   const ordered = activeMaterialsSorted();
   const updatedAt = nowIso();
