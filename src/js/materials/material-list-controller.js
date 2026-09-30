@@ -17,6 +17,7 @@
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
+import { getCurrentProject } from '../projects/project-store.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
@@ -27,10 +28,10 @@ import {
   appendMaterialSystemMemo,
   todayMaterialIsoDate
 } from './material-list-persistence.js';
+import { bindMaterialListInteractions } from './material-list-interactions.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
-let outsideMultiSelectBound = false;
 let materialListTabScrollBound = false;
 let renderedProjectId = '';
 const scrollStateByProject = new Map();
@@ -42,11 +43,6 @@ let materialListRoomNameMode = false;
 // 調査中は横幅を圧迫しないよう、分析結果／分析備考は初期非表示。
 let materialListAnalysisColumnsOpen = false;
 
-const PEN_DRAG_THRESHOLD_PX = 12;
-const PEN_CLICK_SUPPRESS_MS = 500;
-let penPointer = null;
-let ignoreNextPenClick = false;
-let ignorePenClickUntil = 0;
 
 function captureMaterialListScroll() {
   if (!rootElement || !renderedProjectId) return;
@@ -88,8 +84,15 @@ export function initializeMaterialList() {
   rootElement = document.getElementById('materials');
   if (!rootElement) return;
 
-  bindMaterialListEvents();
-  bindOutsideMultiSelectClose();
+  bindMaterialListInteractions({
+    root: rootElement,
+    getRoot: () => rootElement,
+    activateTarget: handleMaterialActivation,
+    activateTextDisplay,
+    commitTextEditor,
+    updateSampleParts: updateSamplePartsFromChecklist,
+    updateControl: updateMaterialControl
+  });
   bindMaterialListTabScrollState();
   document.querySelector('.tabs .tab[data-tab="materials"]')?.addEventListener('click', refreshMaterialList);
   refreshMaterialList();
@@ -122,134 +125,6 @@ export function refreshMaterialList() {
   });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
-}
-
-function bindMaterialListEvents() {
-  if (!rootElement || rootElement.dataset.eventsBound === '1') return;
-  rootElement.dataset.eventsBound = '1';
-
-  rootElement.addEventListener('pointerdown', handlePenPointerDown, { passive: true });
-  rootElement.addEventListener('pointermove', handlePenPointerMove, { passive: true });
-  rootElement.addEventListener('pointerup', handlePenPointerUp, { passive: true });
-  rootElement.addEventListener('pointercancel', handlePenPointerCancel, { passive: true });
-
-  rootElement.addEventListener('click', (event) => {
-    if (ignoreNextPenClick && performance.now() <= ignorePenClickUntil) {
-      ignoreNextPenClick = false;
-      ignorePenClickUntil = 0;
-      return;
-    }
-    ignoreNextPenClick = false;
-    ignorePenClickUntil = 0;
-
-    const closeMultiSelect = event.target.closest('[data-action="close-material-multi-select"]');
-    if (closeMultiSelect) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeMultiSelect.closest('[data-material-multi-select]')?.removeAttribute('open');
-      return;
-    }
-
-    handleMaterialActivation(event.target);
-  });
-
-  rootElement.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && event.target.matches('[data-material-text-input]')) {
-      event.preventDefault();
-      event.target.blur();
-      return;
-    }
-
-    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-material-text-display]')) {
-      event.preventDefault();
-      activateTextDisplay(event.target);
-    }
-  });
-
-  rootElement.addEventListener('focusout', (event) => {
-    const input = event.target.closest('[data-material-text-input]');
-    if (!input) return;
-    commitTextEditor(input);
-  });
-
-  rootElement.addEventListener('change', (event) => {
-    const multiPart = event.target.closest('[data-material-multi-part]');
-    if (multiPart) {
-      if (multiPart.disabled) return;
-      updateSamplePartsFromChecklist(multiPart.dataset.materialId);
-      return;
-    }
-
-    const control = event.target.closest('[data-material-control]');
-    if (!control) return;
-    updateMaterialControl(control);
-  });
-}
-
-function bindOutsideMultiSelectClose() {
-  if (outsideMultiSelectBound) return;
-  outsideMultiSelectBound = true;
-
-  document.addEventListener('pointerdown', (event) => {
-    if (!rootElement) return;
-    if (event.target.closest('[data-material-multi-select]')) return;
-    rootElement.querySelectorAll('[data-material-multi-select][open]').forEach((details) => {
-      details.removeAttribute('open');
-    });
-  }, { passive: true });
-}
-
-function handlePenPointerDown(event) {
-  if (event.pointerType !== 'pen') return;
-
-  const scrollHost = event.target.closest('.material-list-table-wrap');
-  penPointer = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    target: event.target,
-    dragged: false,
-    scrollHost,
-    startScrollLeft: scrollHost ? scrollHost.scrollLeft : 0,
-    startScrollTop: scrollHost ? scrollHost.scrollTop : 0
-  };
-
-  ignoreNextPenClick = false;
-  ignorePenClickUntil = 0;
-}
-
-function handlePenPointerMove(event) {
-  if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-  const dx = event.clientX - penPointer.startX;
-  const dy = event.clientY - penPointer.startY;
-  if (Math.hypot(dx, dy) >= PEN_DRAG_THRESHOLD_PX) penPointer.dragged = true;
-}
-
-function handlePenPointerUp(event) {
-  if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-
-  const gesture = penPointer;
-  penPointer = null;
-  const scrollMoved = Boolean(
-    gesture.scrollHost && (
-      gesture.scrollHost.scrollLeft !== gesture.startScrollLeft ||
-      gesture.scrollHost.scrollTop !== gesture.startScrollTop
-    )
-  );
-  const wasDrag = gesture.dragged || scrollMoved;
-
-  ignoreNextPenClick = true;
-  ignorePenClickUntil = performance.now() + PEN_CLICK_SUPPRESS_MS;
-  if (wasDrag) return;
-
-  handleMaterialActivation(gesture.target, { fromPen: true });
-}
-
-function handlePenPointerCancel(event) {
-  if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
-  penPointer = null;
-  ignoreNextPenClick = true;
-  ignorePenClickUntil = performance.now() + PEN_CLICK_SUPPRESS_MS;
 }
 
 function handleMaterialActivation(target, options = {}) {
