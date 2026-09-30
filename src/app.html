@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="./css/camera.css" />
 <link rel="stylesheet" href="./css/settings.css" />
 <link rel="stylesheet" href="./css/pwa-offline.css" />
+<link rel="stylesheet" href="./css/guide.css" />
 </head>
 <body>
 
@@ -167,6 +168,12 @@
 <aside class="drawer" id="drawer">
   <div class="drawer-head"><b>操作パネル</b><button class="btn small" data-drawer-close>閉じる</button></div>
   <div class="drawer-body">
+    <div class="drawer-box" id="drawerGuideTools">
+      <h4>ガイド</h4>
+      <div class="hint guide-drawer-note">基本操作を実画面で確認できます。チュートリアルは専用の練習案件を使用します。</div>
+      <button type="button" class="btn primary" id="startBasicTutorialButton">基本チュートリアル</button>
+      <button type="button" class="btn" id="openOperationGuideButton">操作ガイド</button>
+    </div>
     <div class="drawer-box" id="drawerDisplayTools">
       <h4>表示</h4>
       <div class="drawer-setting-row">
