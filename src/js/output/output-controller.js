@@ -151,6 +151,12 @@ export function initializeOutputTab(){
   }));}return;}if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
   root.addEventListener('change',(event)=>{if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
   window.addEventListener('resize',()=>{rerenderOutputPdfPreview();});
+  window.addEventListener('chousa:tab-change',(event)=>{
+    if(event.detail?.currentTab!=='sync')return;
+    // hidden状態で初期描画したPDFはhost寸法を正しく取れないため、
+    // 出力タブが実際に表示された次のframeで表示倍率だけを再計算する。
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{rerenderOutputPdfPreview();}));
+  });
   window.addEventListener('chousa:output-settings-change',()=>{if(!settingsOpen)renderOutputTab();});
   finishRecordStore.subscribe(renderOutputTab);materialRecordStore.subscribe(renderOutputTab);photoRecordStore.subscribe(renderOutputTab);renderOutputTab();
 }
