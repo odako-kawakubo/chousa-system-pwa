@@ -1,4 +1,4 @@
-name: Deploy v0.1.8.44 Preview
+name: Deploy v0.1.8.45 Preview
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-preview-v01844
+  group: firebase-preview-v01845
   cancel-in-progress: true
 
 jobs:
@@ -182,17 +182,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.44 review consistency checks
+      - name: v0.1.8.45 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.44'" src/config/app-config.js
+          grep -q "version: '0.1.8.45'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.8.44"' src/version.json
+          grep -q '"version": "0.1.8.45"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.44-review" src/service-worker.js
-          grep -q "chousa-output-libs-v01844-review" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.45-review" src/service-worker.js
+          grep -q "chousa-output-libs-v01845-review" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -321,6 +321,17 @@ jobs:
           grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
           if grep -R "finish-table-actions.js" -n src/js; then
             echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Material Listの編集ルールをcontrollerから分離
+          test -f src/js/materials/material-list-edit-actions.js
+          grep -q "from './material-list-edit-actions.js'" src/js/materials/material-list-controller.js || { echo "material list controller does not use edit actions module"; exit 1; }
+          grep -q "export function updateMaterialControlValue" src/js/materials/material-list-edit-actions.js || { echo "material control edit API missing"; exit 1; }
+          grep -q "export function updateMaterialNameValue" src/js/materials/material-list-edit-actions.js || { echo "material name edit API missing"; exit 1; }
+          grep -q "export function applyMaterialSamplingAutofill" src/js/materials/material-list-edit-actions.js || { echo "material autofill edit API missing"; exit 1; }
+          if grep -q "normalizeMaterialName\|splitBaseNameAndSuffix\|setAndPersistMaterialRecord\|applySingleRecordSamplingAutofill" src/js/materials/material-list-controller.js; then
+            echo "material list controller still owns edit rules"
             exit 1
           fi
 
