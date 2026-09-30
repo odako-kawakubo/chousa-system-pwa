@@ -52,6 +52,9 @@ let root = null;
 let body = null;
 let renderedMode = 'visual';
 
+/**
+ * 目視/採取それぞれの左ペインscrollTopを保存する。タブ再描画やmode切替後の位置復元用。
+ */
 function rememberPhotoScroll(mode = renderedMode) {
   if (!body) return;
   const list = body.querySelector('.photo-target-list');
@@ -60,6 +63,9 @@ function rememberPhotoScroll(mode = renderedMode) {
   if (review) state.reviewScrollTop[mode] = review.scrollTop;
 }
 
+/**
+ * 保存済みscrollTopを現在のPhoto UIへ戻す。Record更新は行わない。
+ */
 function restorePhotoScroll() {
   if (!body) return;
   const list = body.querySelector('.photo-target-list');
@@ -72,6 +78,9 @@ function restorePhotoScroll() {
   });
 }
 
+/**
+ * 選択mode中の写真checkbox/件数/操作barを現在選択集合に合わせて更新する。削除や編集操作の前提UI。
+ */
 function applySelectionUi() {
   if (!root) return;
   const panel = root.querySelector('.photo-panel');
@@ -95,6 +104,9 @@ function applySelectionUi() {
   });
 }
 
+/**
+ * 写真複数選択状態を解除し、選択集合と選択UIを初期化する。タブ離脱時にも呼ぶ。
+ */
 function clearSelectionMode({ renderNow = false } = {}) {
   state.selectionMode = null;
   state.selectedPhotoIds.clear();
@@ -102,6 +114,9 @@ function clearSelectionMode({ renderNow = false } = {}) {
   else applySelectionUi();
 }
 
+/**
+ * 現在の写真表示mode・選択対象・Preview状態からDOMを再構築する。描画後にthumbnail hydrateと選択UI復元を行う。
+ */
 function render() {
   if (!root) return;
   rememberPhotoScroll(renderedMode);
@@ -131,10 +146,16 @@ function render() {
   restorePhotoScroll();
 }
 
+/**
+ * photoRecordStoreからphotoId一致のRecordを取得する薄いhelper。Viewer/編集開始時の存在確認に使う。
+ */
 function photoById(photoId) {
   return photoRecordStore.get(photoId);
 }
 
+/**
+ * 現在の目視/採取contextを保存して外部ファイル選択inputを開く。選択後のRecord属性決定に必要。
+ */
 function openFilePicker(context) {
   const picker = root.querySelector('#photoFilePicker');
   if (!picker || !context) return;
@@ -161,6 +182,9 @@ function externalImportContext() {
   };
 }
 
+/**
+ * 外部ファイルpickerで選んだ画像を現在contextのPhoto Recordとして登録する。Record作成/Blob保存はphoto-record-actionsへ委譲する。
+ */
 async function addPickedFiles(fileList) {
   const context = state.pendingImportContext;
   state.pendingImportContext = null;
@@ -168,6 +192,9 @@ async function addPickedFiles(fileList) {
   if (stored.length) render();
 }
 
+/**
+ * 目視写真のUIキーからroomPosition/part等のRecord作成contextを復元する。
+ */
 function visualContextFromKey(key) {
   const view = buildVisualPhotoView(state.selectedRoomUid);
   const target = view.targets.find((item) => item.key === key);
@@ -175,6 +202,9 @@ function visualContextFromKey(key) {
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: target.areaCode, roomPosition: target.roomPosition, partSlot: target.partSlot, roomNo: view.activeRoom?.roomNo || '', part: target.part };
 }
 
+/**
+ * 採取写真のUIキーからmaterialId/枝番/撮影区分等のRecord作成contextを復元する。
+ */
 function samplingContextFromKey(key, shootingType) {
   const view = buildSamplingPhotoView(state.selectedMaterialId);
   const material = view.activeMaterial;
@@ -192,6 +222,9 @@ function samplingContextFromKey(key, shootingType) {
   };
 }
 
+/**
+ * 採取試料だけ指定された時に次に必要な撮影区分を含むdefault camera contextを組み立てる。
+ */
 function samplingDefaultContextFromKey(key) {
   const view = buildSamplingPhotoView(state.selectedMaterialId);
   const point = view.activeMaterial?.points.find((item) => item.key === key);
@@ -199,6 +232,9 @@ function samplingDefaultContextFromKey(key) {
   return samplingContextFromKey(key, nextStage);
 }
 
+/**
+ * 写真タブ側contextを内蔵Cameraへ渡す起動optionに変換する。Camera側で独自に案件/建材情報を再計算させないためのadapter。
+ */
 function buildCameraOptions() {
   const visual = buildVisualPhotoView('');
   const visualRooms = visual.rooms.map((room) => {
@@ -227,6 +263,9 @@ function buildCameraOptions() {
   return { visualRooms, samplingTargets };
 }
 
+/**
+ * Camera撮影直後のlocal Blob URLをPreview Managerへ登録し、OneDrive同期前でも即時表示できるようにする。
+ */
 async function registerCameraPreview(item, { renderAfter = true } = {}) {
   return registerCapturedPhoto(item, {
     renderAfter,
@@ -234,6 +273,9 @@ async function registerCameraPreview(item, { renderAfter = true } = {}) {
   });
 }
 
+/**
+ * 写真タブで個別対象を選ばずCameraを開く場合の案件共通contextを返す。
+ */
 function globalCameraContext() {
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
@@ -254,11 +296,17 @@ function globalCameraContext() {
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
 }
 
+/**
+ * 特定data属性値を持つDOM要素を安全に探すhelper。CSS selector escape差異を避けるため直接比較する。
+ */
 function findElementByDataValue(selector, datasetKey, value) {
   return [...(root?.querySelectorAll(selector) || [])]
     .find((element) => String(element.dataset?.[datasetKey] || '') === String(value || '')) || null;
 }
 
+/**
+ * Camera撮影で追加された写真が属する目視/採取blockだけを部分再描画する。全タブ再描画を避けて撮影直後の操作感を維持する。
+ */
 function refreshCameraPhotoBlock(record) {
   if (!root || !record?.photoId) return false;
 
@@ -296,6 +344,9 @@ function refreshCameraPhotoBlock(record) {
   return false;
 }
 
+/**
+ * 選択写真をPhoto Board Editorへ順番付きで渡す。編集session作成はphoto-record-actions側へ委譲する。
+ */
 async function startEditSequence(photoIds) {
   clearSelectionMode();
   try {
@@ -306,6 +357,9 @@ async function startEditSequence(photoIds) {
   }
 }
 
+/**
+ * 現在選択中の写真群を論理削除し、local previewと選択UIを整理する。OneDrive原本は即物理削除しない。
+ */
 async function deleteSelectedPhotos(photoIds) {
   const ids = [...photoIds].filter((photoId) => {
     const record = photoById(photoId);
@@ -318,6 +372,9 @@ async function deleteSelectedPhotos(photoIds) {
   clearSelectionMode({ renderNow: true });
 }
 
+/**
+ * photoIdの選択ON/OFFを切り替え、複数選択UIを更新する。
+ */
 function togglePhotoSelection(photoId) {
   if (!photoId || !state.selectionMode) return;
   if (state.selectedPhotoIds.has(photoId)) state.selectedPhotoIds.delete(photoId);
@@ -349,6 +406,9 @@ export function resetPhotoUiStateForProject() {
   state.selectedMaterialId = sampling.activeMaterial?.materialId || '';
 }
 
+/**
+ * photo/material/finish StoreからPhoto ViewModelを再生成して写真タブを再描画する。目視/採取の選択位置と左ペインscrollを保持する。
+ */
 export function refreshPhotoTab() {
   syncDiagnosticLog('PHOTO_REFRESH_TAB', {
     mode: state.mode,
@@ -360,6 +420,9 @@ export function refreshPhotoTab() {
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
 }
 
+/**
+ * 写真タブの初期化入口。Interactions・Preview Manager・Viewer・Board Editor・Camera連携を接続し、Store購読と初回描画を設定する。
+ */
 export function initializePhotoTab() {
   root = document.getElementById('photos');
   if (!root) return;
