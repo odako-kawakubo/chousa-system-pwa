@@ -43,6 +43,9 @@ export function beginOutputPdfPreviewRender() {
   return renderSerial;
 }
 
+/**
+ * PDF生成中/完了/失敗のstatus文字列とerror classをPreview UIへ反映する内部helper。
+ */
 function setPreviewStatus(root, message, isError = false) {
   const node = root?.querySelector('[data-output-preview-status]');
   if (!node) return;
@@ -50,6 +53,9 @@ function setPreviewStatus(root, message, isError = false) {
   node.classList.toggle('is-error', Boolean(isError));
 }
 
+/**
+ * 現在page/pageCount/zoomをcounter・label・前後buttonへ反映する。
+ */
 function updatePreviewControls(root) {
   if (!root) return;
   root.querySelectorAll('[data-output-page-counter]').forEach((node) => {
