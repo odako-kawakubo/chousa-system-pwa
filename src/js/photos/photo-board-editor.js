@@ -68,14 +68,23 @@ let switching = false;
 let session = createEmptyBoardEditorSession();
 let active = null;
 
+/**
+ * 看板日付をHTML date inputへ入れられるYYYY-MM-DD形式へ正規化する小helper。
+ */
 function dateInputValue(value) {
   return normalizeBoardEditorDateInput(value);
 }
 
+/**
+ * Photo Recordの撮影日/編集日から電子看板に表示する日付文字列を決める。
+ */
 function boardDateFromRecord(record) {
   return dateInputValue(record?.boardDate) || dateInputValue(record?.capturedAt) || dateInputValue(new Date());
 }
 
+/**
+ * 内部日付値を看板表示用の日本語日付文字列へ変換する。
+ */
 function dateText(value) {
   const iso = dateInputValue(value);
   if (!iso) return '';
@@ -83,8 +92,14 @@ function dateText(value) {
   return `${y}年${m}月${d}日`;
 }
 
+/**
+ * 採取写真の試料No.表示をmaterial/枝番情報から組み立てる。
+ */
 function sampleDisplay(base, branch) { return formatBoardSampleNo(base, branch); }
 
+/**
+ * 現在entryのdirty/保存済み/未保存状態をUI表示用codeへ変換する。
+ */
 function currentStatusCode(entry = active) {
   if (!entry) return '1';
   if (entry.record.photoType === PHOTO_TYPES.VISUAL) return '5';
@@ -112,12 +127,30 @@ function boardData(entry = active) {
   };
 }
 
+/**
+ * 目視Board編集で選択可能な部屋候補一覧をForm module経由で返す。
+ */
 function visualRooms() { return boardEditorVisualRooms(optionsProvider); }
+/**
+ * 採取Board編集で選択可能な試料候補一覧をForm module経由で返す。
+ */
 function samplingTargets() { return boardEditorSamplingTargets(optionsProvider); }
+/**
+ * areaCode + roomPosition等の安定identityから目視部屋候補を1件解決する。
+ */
 function visualRoomByIdentity(identity = {}) { return findBoardEditorVisualRoom(optionsProvider, identity); }
+/**
+ * 採取写真のmaterialIdから枝番/採取場所を含む候補一覧を返す。
+ */
 function samplingMaterialTargets(materialId) { return boardEditorSamplingMaterialTargets(optionsProvider, materialId); }
+/**
+ * 採取対象material候補一覧をForm moduleから取得する薄いadapter。
+ */
 function samplingMaterials() { return boardEditorSamplingMaterials(optionsProvider); }
 
+/**
+ * 目視Photo RecordをBoard Editor draftへ変換する。編集可能fieldだけを抽出して元Recordと分離する。
+ */
 function snapshotVisualFromRecord_(record) {
   const room = visualRoomByIdentity(record);
   const unorganized = isVisualPhotoUnorganized(record);
@@ -135,6 +168,9 @@ function snapshotVisualFromRecord_(record) {
   };
 }
 
+/**
+ * 採取Photo RecordをBoard Editor draftへ変換する。material/枝番/撮影区分/採取場所等を保持する。
+ */
 function snapshotSamplingFromRecord_(record) {
   const materials = samplingMaterials();
   const material = materials.find((item) => item.materialId === record.materialId) || null;
@@ -162,23 +198,38 @@ function snapshotFromRecord(record) {
   return record.photoType === PHOTO_TYPES.VISUAL ? snapshotVisualFromRecord_(record) : snapshotSamplingFromRecord_(record);
 }
 
+/**
+ * photoIdとRecordからEditor session entryを生成する。draft/history/image resource等の初期状態もここでまとめる。
+ */
 function createEntry_(record) {
   return createBoardEditorEntry(record, snapshotFromRecord(record));
 }
 
+/**
+ * entryのdraftと保存済みbaselineを比較しdirty状態を更新する。
+ */
 function refreshDirty_(entry = active) {
   return refreshBoardEditorEntryDirty(entry);
 }
+/**
+ * session内に未保存entryが1件でもあるか判定する。閉じる確認や移動guardで使う。
+ */
 function hasUnsavedChanges_() {
   return boardEditorSessionHasUnsavedChanges(session);
 }
 
+/**
+ * 現在draftをUndo履歴へ積む。連続同値や履歴上限はSession module側の規則に従う。
+ */
 function pushHistory() {
   if (!active) return;
   if (!pushBoardEditorHistory(active)) return;
   updateHistoryButtons();
 }
 
+/**
+ * Undo/Redoで得たdraftを現在entryへ適用し、フォームとPreviewを再描画する。
+ */
 function applyHistory(index) {
   if (!active || !applyBoardEditorHistory(active, index)) return;
   renderControls();
@@ -186,11 +237,17 @@ function applyHistory(index) {
   updateHistoryButtons();
 }
 
+/**
+ * 現在entryのUndo/Redo可否をbutton disabled状態へ反映する。
+ */
 function updateHistoryButtons() {
   root?.querySelector('[data-editor-undo]')?.toggleAttribute('disabled', !active || active.historyIndex <= 0);
   root?.querySelector('[data-editor-redo]')?.toggleAttribute('disabled', !active || active.historyIndex >= active.history.length - 1);
 }
 
+/**
+ * 複数写真sessionの現在位置と前後移動可否を案内UIへ表示する。
+ */
 function updateNavigationHint_() {
   const hint = root?.querySelector('[data-editor-sequence-hint]');
   if (!hint) return;
@@ -203,6 +260,9 @@ function updateNavigationHint_() {
   hint.textContent = `${session.index + 1} / ${session.ids.length}　左右スワイプで写真切替`;
 }
 
+/**
+ * Board Editor用DOM rootが存在することを保証して返す。初回だけ生成し再利用する。
+ */
 function ensureRoot() {
   if (root) return;
   root = document.createElement('div');
@@ -260,6 +320,9 @@ function renderControls() {
   updateNavigationHint_();
 }
 
+/**
+ * 画像BlobをObject URL経由でHTMLImageElementとしてdecodeし、Canvas描画可能状態で返す。
+ */
 async function loadImageFromBlob(blob) {
   if (originalUrl) URL.revokeObjectURL(originalUrl);
   originalUrl = URL.createObjectURL(blob);
