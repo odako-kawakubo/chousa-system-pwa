@@ -116,7 +116,7 @@ export function watchGuideOverlayPosition(callback) {
   repositionCallback = callback;
   if (observer) observer.disconnect();
   observer = new MutationObserver(() => repositionCallback?.());
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  // targetが再描画で差し替わった時だけ追従する。style属性まで監視すると\n  // 自身の位置更新を再検知してループするため、childListに限定する。\n  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 export function initializeGuideOverlayPositionEvents() {
