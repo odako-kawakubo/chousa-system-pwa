@@ -328,7 +328,7 @@ jobs:
           test -f src/js/output/output-pdf-preview-controller.js
           grep -q "from './output-pdf-preview-controller.js'" src/js/output/output-controller.js || { echo "output controller does not use pdf preview controller"; exit 1; }
           grep -q "export function getOutputPdfPreviewState" src/js/output/output-pdf-preview-controller.js || { echo "output preview state API missing"; exit 1; }
-          grep -q "export function renderOutputPdfPreview" src/js/output/output-pdf-preview-controller.js || { echo "output preview render API missing"; exit 1; }
+          grep -q "export async function renderOutputPdfPreview" src/js/output/output-pdf-preview-controller.js || { echo "output preview render API missing"; exit 1; }
           grep -q "export function setOutputPdfPreviewPage" src/js/output/output-pdf-preview-controller.js || { echo "output preview page API missing"; exit 1; }
           grep -q "export function setOutputPdfPreviewZoom" src/js/output/output-pdf-preview-controller.js || { echo "output preview zoom API missing"; exit 1; }
           if grep -q "let previewPage\|let previewPageCount\|let previewZoom\|let previewRenderer\|let renderSerial\|function renderPdfPreview\|function applyPreviewPage\|function applyPreviewZoom" src/js/output/output-controller.js; then
@@ -588,7 +588,7 @@ jobs:
           test -f src/js/output/output-pdf-preview.js
           test -f src/js/output/output-format.js
           test -f src/js/output/output-targets.js
-          grep -q "OutputPdfPreview" src/js/output/output-controller.js
+          grep -q "OutputPdfPreview" src/js/output/output-pdf-preview-controller.js
           grep -q "formatSamplingCode" src/js/output/output-pdf-renderer.js
           grep -q "formatSamplingCode" src/js/output/output-export-controller.js
           grep -q "MATERIAL_WIDTHS.*6,33,12,42,6,19,19,53" src/js/output/output-pdf-renderer.js
