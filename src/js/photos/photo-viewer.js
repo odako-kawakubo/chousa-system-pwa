@@ -95,6 +95,9 @@ function updateStageImage(stage, photo, className = 'photo-viewer-image') {
   stage.innerHTML = renderImage(photo, className);
 }
 
+/**
+ * 通常Viewer用にlocal completed画像またはremote full画像を非同期解決し、現在photoが変わっていなければ反映する。
+ */
 async function prepareNormalPhotoSource(photo) {
   if (!photo || resolvedViewerUrls.has(photo.photoId)) return;
   const sessionId = viewerSessionId;
@@ -113,6 +116,9 @@ async function prepareNormalPhotoSource(photo) {
   }
 }
 
+/**
+ * 比較pane用のfull画像sourceを非同期解決し、paneがまだ同じ写真を指している場合だけ反映する。
+ */
 async function prepareComparePhotoSource(paneIndex, photo) {
   if (!photo) return;
   const sessionId = viewerSessionId;
@@ -144,12 +150,18 @@ async function prepareComparePhotoSource(paneIndex, photo) {
   }
 }
 
+/**
+ * 通常Viewer内で前後写真へ移動する。current indexを更新後、新しい画像sourceを準備して描画する。
+ */
 function moveNormal(delta) {
   if (!viewerState.photos.length || viewerState.normalTransform.scale > 1.01) return;
   viewerState.index = (viewerState.index + delta + viewerState.photos.length) % viewerState.photos.length;
   renderNormal();
 }
 
+/**
+ * 通常Viewerの現在photoを描画し、前後移動可否・caption・gesture対象を更新する。
+ */
 function renderNormal() {
   const photo = currentPhoto();
   if (!photo || !body || !title) return;
@@ -194,6 +206,9 @@ function comparePhoto(paneIndex) {
   return pane ? compareTarget(pane.key)?.photos?.[pane.index] || null : null;
 }
 
+/**
+ * 比較pane内で同一targetの前後写真へ切り替える。
+ */
 function moveComparePhoto(paneIndex, delta) {
   const pane = comparePane(paneIndex);
   if (!pane) return;
@@ -239,6 +254,9 @@ function renderCompareControls(paneIndex) {
   </div>`;
 }
 
+/**
+ * 1つの比較paneを現在target/photo選択に合わせて更新する。paneごとのfull画像source解決も開始する。
+ */
 function renderComparePane(paneIndex) {
   const pane = comparePane(paneIndex);
   if (!pane) return '';
@@ -257,6 +275,9 @@ function availableCompareTarget() {
   return viewerState.compare.targets.find((item) => !used.has(item.key)) || null;
 }
 
+/**
+ * 未使用target候補から比較paneを追加する。最大4枚・同一target重複なしの制約を守る。
+ */
 function addComparePane() {
   if (viewerState.compare.panes.length >= 4) return;
   const target = availableCompareTarget();
@@ -265,12 +286,18 @@ function addComparePane() {
   renderCompare();
 }
 
+/**
+ * 指定比較paneを削除し、残りpaneを再描画する。
+ */
 function removeComparePane(paneIndex) {
   if (paneIndex < 2 || paneIndex >= viewerState.compare.panes.length) return;
   viewerState.compare.panes.splice(paneIndex, 1);
   renderCompare();
 }
 
+/**
+ * 比較mode全体を描画し、各paneの候補select・写真・削除buttonを更新する。
+ */
 function renderCompare() {
   if (!body || !title) return;
   viewerState.compareMode = true;
@@ -292,6 +319,9 @@ function renderCompare() {
   });
 }
 
+/**
+ * 比較Viewer modeへ切り替え、最大4枠の比較paneを初期化する。
+ */
 function openCompare() {
   const targets = getCompareTargets(viewerState.context) || [];
   if (targets.length < 2) return;
@@ -305,6 +335,9 @@ function openCompare() {
   renderCompare();
 }
 
+/**
+ * Viewer上部/下部の閉じる・前後・比較切替等のUIイベントを接続する。gesture本体はphoto-viewer-gestureへ分離している。
+ */
 function bindChrome() {
   if (bound || !modal || !body) return;
   bound = true;
@@ -352,6 +385,9 @@ function bindChrome() {
   modal.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closePhotoViewer));
 }
 
+/**
+ * Photo Viewer DOMとgesture/chromeイベントを一度だけ初期化する。
+ */
 export function initializePhotoViewer(options = {}) {
   getPhotosForPhoto = typeof options.getPhotosForPhoto === 'function' ? options.getPhotosForPhoto : (() => []);
   getPhotoSource = typeof options.getPhotoSource === 'function' ? options.getPhotoSource : (() => '');
@@ -363,6 +399,9 @@ export function initializePhotoViewer(options = {}) {
   bindChrome();
 }
 
+/**
+ * 指定photoIdを通常Viewerで開く公開API。Viewer用候補集合とfull画像sourceを解決し、拡大表示を開始する。
+ */
 export function openPhotoViewer(photoId, context = {}) {
   if (!modal || !body) return;
   const contextPhotos = Array.isArray(context.photos) ? context.photos : null;
@@ -379,6 +418,9 @@ export function openPhotoViewer(photoId, context = {}) {
   modal.classList.add('open');
 }
 
+/**
+ * Viewerを閉じ、解決済みObject URLやgesture状態を解放する。
+ */
 export function closePhotoViewer() {
   if (!modal) return;
   viewerSessionId += 1;
