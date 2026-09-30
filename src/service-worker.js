@@ -1,10 +1,10 @@
 /*
- * v0.1.8.46 Service Worker
+ * v0.1.8.47 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.46-review';
+const APP_CACHE = 'chousa-app-v0.1.8.47-review';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01846-review';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01847-review';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -32,7 +32,7 @@ const APP_SHELL = [
   './js/record-view/record-view-controller.js','./js/record-view/record-view-renderer.js','./js/record-view/record-view-view-model.js',
   './js/materials/material-list-controller.js','./js/materials/material-list-edit-actions.js','./js/materials/material-list-interactions.js','./js/materials/material-list-persistence.js','./js/materials/material-operations-controller.js','./js/materials/material-sample-name.js','./js/materials/simple-list.js',
   './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-board-editor.js','./js/photos/photo-board-editor-form.js','./js/photos/photo-board-editor-interactions.js','./js/photos/photo-board-editor-persistence.js','./js/photos/photo-board-editor-session.js','./js/photos/photo-controller.js','./js/photos/photo-interactions.js','./js/photos/photo-record-actions.js','./js/photos/photo-preview-manager.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-view-model.js','./js/photos/photo-viewer-data.js','./js/photos/photo-viewer-gesture.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
-  './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
+  './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-pdf-preview-controller.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
