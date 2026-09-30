@@ -479,6 +479,9 @@ async function takePhoto() {
   }
 }
 
+/**
+ * 写真タブから渡されたcontext/optionsでCameraを開く公開API。目視/採取対象・案件情報・前回設定をsessionへ反映する。
+ */
 export async function openCamera(initialContext = {}) {
   ensureCameraScreen();
   const options = optionsProvider?.() || { visualRooms: [], samplingTargets: [] };
@@ -508,6 +511,9 @@ export async function openCamera(initialContext = {}) {
   }
 }
 
+/**
+ * Cameraを閉じ、MediaStream・session一時状態・UIを解放する。
+ */
 export function closeCamera() {
   if (!root || root.hidden) return;
   if (pendingReviewResolve) resolveReview(false);
