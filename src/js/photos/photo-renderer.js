@@ -1,13 +1,10 @@
 /**
  * src/js/photos/photo-renderer.js
  *
- * v0.1.5.3D 写真タブDOM描画。
- * v0.15.10基準の写真タブUIを維持しつつ、Dで確定した文言・配置へ整理する。
- *
- * 重要：
- * - データ取得やRecord更新はここで行わない。
- * - 採取数 / 採取場所 / 採取部位はPhoto ViewModelが建材レコードから取得済みの値を描画するだけ。
- * - 目視の部位 / 使用建材はPhoto ViewModelが仕上表レコードを起点に組み立てた値を描画するだけ。
+ * 写真タブのDOM描画を担当するRenderer。
+ * - データ取得やRecord更新は行わない。
+ * - 採取数 / 採取場所 / 採取部位はPhoto ViewModelで解決済みの値を描画する。
+ * - 目視の部位 / 使用建材はPhoto ViewModelが仕上表Recordから組み立てた値を描画する。
  */
 
 function esc(value) {
