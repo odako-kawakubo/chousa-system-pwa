@@ -1,17 +1,13 @@
 /**
  * src/js/materials/material-list-controller.js
  *
- * v0.1.5.2B 建材リストの入口。
- *
- * 方針：
- * - データ正本はmaterialRecordStore。
- * - 14.28の一覧性・集計・カラー切替を本開発構造へ載せ替える。
- * - 建材名称／調査備考の文字入力は、仕上表と同じく通常span・編集時だけinput。
- * - Apple Pencilは単純タップを通常操作、ドラッグをスクロールとして判定する。
- * - 行選択だけでは一覧全体を再描画しない。
- * - 全体再描画が必要な場合でも、案件ごとの建材リストスクロール位置を保持する。
- * - タブ離脱時に明示保存し、建材リストへ戻った時に復元する。
- * - v0.1.7.1 使用箇所は部屋No.を基本表示とし、部屋名表示ON時だけfinishRecordから表示値を再計算する。
+ * 建材リスト全体の画面状態・選択・編集UI進行・再描画を調整するController。
+ * - データ正本は materialRecordStore。
+ * - DOM / Apple Pencilイベントは material-list-interactions.js。
+ * - 建材の編集ルールは material-list-edit-actions.js。
+ * - 単一Record保存は material-list-persistence.js。
+ * - 表示データはViewModel、DOM生成はRendererへ分離する。
+ * - 案件ごとのスクロール位置を保持し、行選択だけでは一覧全体を再描画しない。
  */
 
 import { normalizeSampleParts } from '../records/material-record.js';
