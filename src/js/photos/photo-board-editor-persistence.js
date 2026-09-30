@@ -14,7 +14,9 @@ import {
   getBoardRect
 } from '../camera/camera-board.js';
 import { getDeviceCode } from '../device-code.js';
+import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { settleBoardEditorEntry } from './photo-board-editor-session.js';
 
 const MARKS = { 1: '①', 2: '②', 3: '③' };
@@ -205,6 +207,7 @@ export async function persistBoardEditorEntry(entry, { getBoardData }) {
     uploadStatus: 'pending'
   });
   await updateCameraPhotoRecord(record);
+  await persistPhotoForProject(getCurrentProject(), record, 'photo-board-editor-save');
 
   settleBoardEditorEntry(entry, record);
   return { record, completedBlob };
