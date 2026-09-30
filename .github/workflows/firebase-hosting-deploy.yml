@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8 stable consistency checks
+      - name: v0.1.8.1 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8'" src/config/app-config.js
+          grep -q "version: '0.1.8.1'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.8"' src/version.json
+          grep -q '"version": "0.1.8.1"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8" src/service-worker.js
-          grep -q "chousa-output-libs-v018" src/service-worker.js
+          grep -q "chousa-app-v0.1.8.1" src/service-worker.js
+          grep -q "chousa-output-libs-v0181" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -229,6 +229,11 @@ jobs:
           fi
           grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own camera photo registration"; exit 1; }
           grep -q "await saveCapturedPhoto({" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own captured photo persistence"; exit 1; }
+          grep -q "persistPhotoForProject(getCurrentProject(), record, 'photo-board-editor-save')" src/js/photos/photo-board-editor-persistence.js || { echo "board editor does not persist edited photo record"; exit 1; }
+          if grep -q "registerCameraPreview(item, { renderAfter: false })" src/js/photos/photo-controller.js; then
+            echo "board editor still reuses camera persistence path"
+            exit 1
+          fi
           grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-preview-manager.js || { echo "local thumbnail eager loading is missing"; exit 1; }
           grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-preview-manager.js || { echo "local thumbnail loading policy is missing"; exit 1; }
           grep -q "function refreshCameraPhotoBlock(record)" src/js/photos/photo-controller.js || { echo "camera photo local block refresh is missing"; exit 1; }
