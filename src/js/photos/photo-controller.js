@@ -18,6 +18,7 @@ import { initializePhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
   previewSourceForPhoto,
+  setLocalPhotoPreview,
   hydrateThumbnailImages,
   hydrateCurrentPhotoPreviews,
   resetPhotoPreviewManager,
@@ -468,7 +469,11 @@ export function initializePhotoTab() {
   initializePhotoBoardEditor({
     getOptions: buildCameraOptions,
     onSaved: async ({ items = [] } = {}) => {
-      for (const item of items) await registerCameraPreview(item, { renderAfter: false });
+      items.forEach(({ record, completedBlob }) => {
+        if (record?.photoId && completedBlob instanceof Blob) {
+          setLocalPhotoPreview(record.photoId, completedBlob);
+        }
+      });
       render();
     }
   });
