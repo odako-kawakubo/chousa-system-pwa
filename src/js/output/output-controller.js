@@ -31,7 +31,13 @@ let settingsDraft=null;
 let materialLocationMode='room-no';
 let wheelPageLockUntil=0;
 
+/**
+ * Output専用CSS linkが未挿入ならheadへ追加する。重複linkは作らない。
+ */
 function ensureOutputStyles(){if(document.querySelector('link[data-output-styles]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./css/output.css';link.dataset.outputStyles='1';document.head.appendChild(link);}
+/**
+ * Outputタブのroot DOM要素を返す。未表示/未生成時はnullになり得る。
+ */
 function outputRoot(){return document.getElementById('sync');}
 /**
  * 保存済み設定と編集中draftのどちらをPreview/Exportに使うか決め、正規化済み設定を返す。
