@@ -245,40 +245,18 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   border-color: var(--main);
   color: var(--text-on-accent);
 }
-.tab-guide-wrap {
-  position: relative;
-  margin-left: auto;
-  align-self: center;
-  flex: 0 0 auto;
-}
 .tab-guide-button,
 .tab-operation-button {
   align-self: center;
   white-space: nowrap;
   touch-action: manipulation;
 }
+.tab-guide-button {
+  margin-left: auto;
+}
 .tab-operation-button {
   margin-left: 0;
 }
-.tab-guide-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  width: 190px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  box-shadow: 0 12px 30px rgba(15,23,42,.18);
-  z-index: 120;
-}
-.tab-guide-menu[hidden] { display: none; }
-.tab-guide-menu .btn {
-  width: 100%;
-  margin: 0;
-  text-align: left;
-}
-.tab-guide-menu .btn + .btn { margin-top: 6px; }
 
 .content {
   padding: 14px 16px 26px;
@@ -753,3 +731,7 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   body.header-collapsed .content{padding-top:6px}
   body.header-collapsed #photos.content{padding:0 4px 4px}
 }
+
+/* ガイドは操作パネルと同じ右ドロワー。iPadでも内容幅を確保する。 */
+#guideDrawer .guide-drawer-card .hint{line-height:1.6}
+#guideDrawer .guide-drawer-card .btn{margin-top:10px}
