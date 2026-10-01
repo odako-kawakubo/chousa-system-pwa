@@ -10,6 +10,7 @@ import { buildFloorRoomSeed, buildFlatRoomSeed } from '../finish-table/finish-ta
 import { getProject, saveProjectSnapshot } from '../projects/project-store.js';
 
 export const TUTORIAL_PROJECT_ID = 'TUTORIAL-001';
+const TUTORIAL_START_KEY = 'shirabe-start-basic-tutorial';
 
 export const tutorialProject = {
   projectId: TUTORIAL_PROJECT_ID,
@@ -58,4 +59,24 @@ export function resetTutorialProjectSnapshot() {
     syncMeta: {},
     source: 'tutorial-reset'
   });
+}
+
+
+/** トップページから案件画面へ遷移した直後に基本チュートリアルを開始するための一回限りフラグ。 */
+export function requestTutorialAutoStart() {
+  try {
+    sessionStorage.setItem(TUTORIAL_START_KEY, '1');
+  } catch {
+    // sessionStorageが使えなくても、案件自体は通常どおり開ける。
+  }
+}
+
+export function consumeTutorialAutoStart() {
+  try {
+    const requested = sessionStorage.getItem(TUTORIAL_START_KEY) === '1';
+    sessionStorage.removeItem(TUTORIAL_START_KEY);
+    return requested;
+  } catch {
+    return false;
+  }
 }
