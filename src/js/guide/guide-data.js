@@ -30,10 +30,6 @@ function lastFirstFloorAction(action) {
   return rooms.map((room) => room.querySelector(`[data-action="${action}"]`)).find(Boolean) || null;
 }
 
-function firstMaterialControl(field) {
-  return document.querySelector(`#materials [data-material-row] [data-material-control][data-field="${field}"]`);
-}
-
 function roomKeyAt(index) {
   return String(roomBlock(index)?.dataset.roomKey || '');
 }
@@ -67,8 +63,16 @@ function newMaterialAllowed(roomIndex, partIndex, { requirePart = false } = {}) 
   return [finishCell(roomIndex, partIndex, 'name', 1)].filter(Boolean);
 }
 
+function activeMaterials() {
+  return materialRecordStore.getAll().filter((record) => record.status === 'active');
+}
+
 function firstMaterial() {
-  return materialRecordStore.getAll().find((record) => record.status === 'active') || null;
+  return activeMaterials()[0] || null;
+}
+
+function secondMaterial() {
+  return activeMaterials()[1] || null;
 }
 
 function firstMaterialId() {
@@ -77,6 +81,14 @@ function firstMaterialId() {
 
 function firstMaterialFieldTarget(field) {
   const materialId = firstMaterialId();
+  if (!materialId) return null;
+  return document.querySelector(
+    `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-control][data-field="${field}"]`
+  );
+}
+
+function secondMaterialFieldTarget(field) {
+  const materialId = String(secondMaterial()?.materialId || '');
   if (!materialId) return null;
   return document.querySelector(
     `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-control][data-field="${field}"]`
@@ -269,8 +281,11 @@ export const TUTORIAL_STEPS = [
     section: '建材リスト',
     tab: 'materials',
     title: '分析の要否',
-    text: '採取する建材は「採取・分析」を使用します。目視・みなし・対象外にすると採取設定は使用しません。',
-    target: () => firstMaterialControl('analysisRequired')
+    text: '1-1の「その他」で登録した建材を「目視」に変更します。目視・みなし・対象外にすると採取設定は使用しません。',
+    target: () => secondMaterialFieldTarget('analysisRequired'),
+    interactive: true,
+    allowed: () => secondMaterialFieldTarget('analysisRequired'),
+    completeWhen: () => String(secondMaterial()?.analysisRequired || '') === '目視'
   },
   {
     id: 'materials-sample-count',
