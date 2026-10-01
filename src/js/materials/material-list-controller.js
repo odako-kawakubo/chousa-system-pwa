@@ -139,6 +139,7 @@ export function refreshMaterialList() {
   });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
 }
 
 function materialInteractionRule(target) {
