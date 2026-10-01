@@ -1,16 +1,14 @@
 /**
  * src/js/guide/guide-overlay.js
  *
- * チュートリアル／操作ガイドの表示だけを担当する。
- * 操作制限は行わない。visual layerは常にpointer-events:none、
- * guide cardはbody直下の独立UIとして通常のbuttonイベントを使う。
+ * チュートリアル／操作ガイドの表示専用。
+ * 操作制限・DOM監視・完了判定は持たない。
  */
 
 let visualLayer = null;
 let spotlight = null;
 let card = null;
-let observer = null;
-let repositionCallback = null;
+let currentTarget = null;
 
 function ensureOverlay() {
   if (visualLayer && card) return;
@@ -51,7 +49,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function visibleCollisionRects() {
+function visibleCandidateRects() {
   return [...document.querySelectorAll('#finishCandidatePopup:not([hidden])')]
     .map((node) => node.getBoundingClientRect())
     .filter((rect) => rect.width > 0 && rect.height > 0);
@@ -61,8 +59,9 @@ function rectsOverlap(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
-function placeCardForTarget(target) {
+function placeCard(target) {
   if (!card || card.hidden) return;
+
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const cardRect = card.getBoundingClientRect();
@@ -84,7 +83,7 @@ function placeCardForTarget(target) {
     { left: clamp(rect.right + gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) },
     { left: clamp(rect.left - cardRect.width - gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) }
   ];
-  const collisions = visibleCollisionRects();
+  const collisions = visibleCandidateRects();
   const chosen = candidates.find((candidate) => {
     const candidateRect = {
       left: candidate.left,
@@ -99,18 +98,20 @@ function placeCardForTarget(target) {
   card.style.top = `${chosen.top}px`;
 }
 
-export function positionGuideOverlay(target) {
+export function positionGuideOverlay(target = currentTarget) {
   if (!visualLayer || visualLayer.hidden || !card || card.hidden) return;
+
+  currentTarget = target?.isConnected ? target : null;
   const dim = visualLayer.querySelector('[data-guide-dim]');
 
-  if (!target?.isConnected) {
+  if (!currentTarget) {
     spotlight.hidden = true;
     dim.hidden = false;
-    placeCardForTarget(null);
+    placeCard(null);
     return;
   }
 
-  const rect = target.getBoundingClientRect();
+  const rect = currentTarget.getBoundingClientRect();
   const pad = 6;
   spotlight.hidden = false;
   dim.hidden = true;
@@ -118,11 +119,21 @@ export function positionGuideOverlay(target) {
   spotlight.style.top = `${Math.max(4, rect.top - pad)}px`;
   spotlight.style.width = `${Math.max(18, rect.width + pad * 2)}px`;
   spotlight.style.height = `${Math.max(18, rect.height + pad * 2)}px`;
-  placeCardForTarget(target);
+  placeCard(currentTarget);
 }
 
-export function showGuideOverlay({ step, index, total, target, interactive = false, onPrev, onNext, onClose }) {
+export function showGuideOverlay({
+  step,
+  index,
+  total,
+  target,
+  interactive = false,
+  onPrev,
+  onNext,
+  onClose
+}) {
   ensureOverlay();
+  currentTarget = target?.isConnected ? target : null;
   visualLayer.hidden = false;
   card.hidden = false;
 
@@ -134,26 +145,21 @@ export function showGuideOverlay({ step, index, total, target, interactive = fal
   const prev = card.querySelector('[data-guide-prev]');
   const next = card.querySelector('[data-guide-next]');
   const close = card.querySelector('[data-guide-close]');
+
   prev.disabled = index <= 0;
   next.hidden = Boolean(interactive);
   next.disabled = Boolean(interactive);
   next.textContent = index >= total - 1 ? '完了' : '次へ';
+
   prev.onclick = onPrev;
   next.onclick = onNext;
   close.onclick = onClose;
 
-  positionGuideOverlay(target);
-}
-
-export function watchGuideOverlayPosition(callback) {
-  repositionCallback = callback;
-  observer?.disconnect();
-  observer = new MutationObserver(() => repositionCallback?.());
-  observer.observe(document.body, { childList: true, subtree: true });
+  positionGuideOverlay(currentTarget);
 }
 
 export function initializeGuideOverlayPositionEvents() {
-  const reposition = () => repositionCallback?.();
+  const reposition = () => positionGuideOverlay(currentTarget);
   window.addEventListener('resize', reposition);
   window.addEventListener('scroll', reposition, true);
 }
@@ -161,7 +167,5 @@ export function initializeGuideOverlayPositionEvents() {
 export function hideGuideOverlay() {
   if (visualLayer) visualLayer.hidden = true;
   if (card) card.hidden = true;
-  observer?.disconnect();
-  observer = null;
-  repositionCallback = null;
+  currentTarget = null;
 }
