@@ -66,6 +66,7 @@ import {
   resetFinishTableEditSession
 } from './finish-table-edit-session.js';
 import { bindFinishTableInteractions } from './finish-table-interactions.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 
 
 
@@ -224,6 +225,7 @@ function bindDrawerFinishTools() {
     const button = event.target.closest('[data-finish-add-kind]');
     if (!button) return;
     const kind = String(button.dataset.finishAddKind || '');
+    if (!isTutorialActionAllowed('finish.drawer.structure.add', { kind })) return;
     const roomCount = roomCountForDrawerButton(button);
     void confirmDrawerStructureAdd(kind, roomCount);
   });
@@ -259,11 +261,13 @@ function scrollToAddedFloor(floorKey) {
 /** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴。 */
 function bindUndoRedoButtons() {
   document.getElementById('finishUndoBtn')?.addEventListener('click', () => {
+    if (!isTutorialActionAllowed('finish.history.undo')) return;
     const restored = popUndo(getUndoableSnapshot());
     if (restored) restoreUndoableSnapshot(restored);
     updateUndoRedoButtons();
   });
   document.getElementById('finishRedoBtn')?.addEventListener('click', () => {
+    if (!isTutorialActionAllowed('finish.history.redo')) return;
     const restored = popRedo(getUndoableSnapshot());
     if (restored) restoreUndoableSnapshot(restored);
     updateUndoRedoButtons();
@@ -402,24 +406,34 @@ async function handleCopyRoomClick(roomKeyValue) {
 function handleAction(button) {
   switch (button.dataset.action) {
     case 'add-normal-floor':
+      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'normal' })) return true;
       withHistory(() => addNormalFloor());
       return true;
     case 'add-basement-floor':
+      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'basement' })) return true;
       withHistory(() => addBasementFloor());
       return true;
     case 'add-stairs':
+      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'stairs' })) return true;
       withHistory(() => addStairs());
       return true;
     case 'add-roof':
+      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'roof' })) return true;
       withHistory(() => addRoof());
       return true;
     case 'add-external-room':
+      if (!isTutorialActionAllowed('finish.room.add', { floorKey: 'external' })) return true;
       withHistory(() => addExternalRoom());
       return true;
     case 'add-row':
+      if (!isTutorialActionAllowed('finish.row.add', { roomKey: button.dataset.roomKey })) return true;
       withHistory(() => addInputRow(button.dataset.roomKey));
       return true;
     case 'add-room': {
+      if (!isTutorialActionAllowed('finish.room.add', {
+        floorKey: button.dataset.floorKey || '',
+        roomKey: button.dataset.roomKey || ''
+      })) return true;
       if (button.dataset.floorKey && !button.dataset.floorKey.includes('group')) {
         withHistory(() => addRoomToFloor(button.dataset.floorKey));
       } else {
