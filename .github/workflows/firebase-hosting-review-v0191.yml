@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.10 Review
+name: Deploy v0.1.9.11 Review
 
 on:
   push:
@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.10 review consistency checks
+      - name: v0.1.9.11 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.10'" src/config/app-config.js
+          grep -q "version: '0.1.9.11'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.10"' src/version.json
+          grep -q '"version": "0.1.9.11"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.10" src/service-worker.js
-          grep -q "chousa-output-libs-v01910" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.11" src/service-worker.js
+          grep -q "chousa-output-libs-v01911" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -284,6 +284,10 @@ jobs:
           grep -q "chousa:finish-candidate-change" src/js/finish-table/finish-table-candidate-input.js || { echo "candidate popup guide notification missing"; exit 1; }
           grep -q "roomFieldInput.blur()" src/js/finish-table/finish-table-interactions.js || { echo "room field Enter commit missing"; exit 1; }
           grep -q "includeCandidate:true" src/js/guide/guide-controller.js || { echo "candidate popup spotlight inclusion missing"; exit 1; }
+          grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
+          grep -q "finish-add-row-result" src/js/guide/guide-data.js || { echo "add-row result step missing"; exit 1; }
+          grep -q "finish-add-room-result" src/js/guide/guide-data.js || { echo "add-room result step missing"; exit 1; }
+          grep -q "finish-add-floor-result" src/js/guide/guide-data.js || { echo "add-floor result step missing"; exit 1; }
           if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
             echo "obsolete tutorial event/blocker lock remains"
             exit 1
