@@ -72,16 +72,6 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function visibleCandidateRects() {
-  return [...document.querySelectorAll('#finishCandidatePopup:not([hidden])')]
-    .map((node) => node.getBoundingClientRect())
-    .filter((rect) => rect.width > 0 && rect.height > 0);
-}
-
-function rectsOverlap(a, b) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
 function placeCard(targetRect) {
   if (!card || card.hidden) return;
 
@@ -105,16 +95,7 @@ function placeCard(targetRect) {
     { left: clamp(targetRect.right + gap, margin, maxLeft), top: clamp(targetRect.top, margin, maxTop) },
     { left: clamp(targetRect.left - cardRect.width - gap, margin, maxLeft), top: clamp(targetRect.top, margin, maxTop) }
   ];
-  const collisions = visibleCandidateRects();
-  const chosen = candidates.find((candidate) => {
-    const candidateRect = {
-      left: candidate.left,
-      top: candidate.top,
-      right: candidate.left + cardRect.width,
-      bottom: candidate.top + cardRect.height
-    };
-    return !collisions.some((collision) => rectsOverlap(candidateRect, collision));
-  }) || candidates[0];
+  const chosen = candidates[0];
 
   card.style.left = `${chosen.left}px`;
   card.style.top = `${chosen.top}px`;
