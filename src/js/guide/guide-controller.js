@@ -3,7 +3,7 @@
  *
  * チュートリアル／操作ガイドの進行を管理する。
  * 実案件へ練習操作を混ぜないため、チュートリアル開始時は専用ローカル案件へ切り替える。
- * v0.1.9.4では操作対象を限定し、Store状態を完了条件として自動進行する。
+ * v0.1.9.6では操作対象を限定し、Store状態を完了条件として自動進行する。
  * 戻る操作では各ステップ開始時の3Recordスナップショットへ復元する。
  */
 import { showTab } from '../ui/tabs.js';
@@ -60,6 +60,38 @@ function resolveTarget(step) {
   } catch {
     return null;
   }
+}
+
+function interactionRegionFor(node) {
+  if (!node?.isConnected) return null;
+  return node.closest(
+    '.room-name-cell, .room-no-cell, .finish-data-cell, [data-material-control], .material-cell, .photo-mode-card, .photo-stage-card'
+  ) || node;
+}
+
+function visibleCandidatePopup() {
+  const popup = document.querySelector('#finishCandidatePopup:not([hidden]), .finish-candidate-popup:not([hidden])');
+  if (!popup?.isConnected) return null;
+  const rect = popup.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 ? popup : null;
+}
+
+function resolveGuideLockTargets(step) {
+  if (!tutorialMode) return [];
+  if (!step?.interactive) return [];
+
+  const allowed = resolveAllowed(step)
+    .map(interactionRegionFor)
+    .filter(Boolean);
+  const candidatePopup = visibleCandidatePopup();
+  if (candidatePopup) allowed.push(candidatePopup);
+
+  if (!allowed.length) {
+    const target = interactionRegionFor(resolveTarget(step));
+    if (target) allowed.push(target);
+  }
+
+  return [...new Set(allowed)];
 }
 
 function ensureStepSnapshot(index) {
@@ -143,18 +175,23 @@ async function renderActiveStep() {
       total: activeSteps.length,
       target: targetElement,
       interactive: Boolean(tutorialMode && step.interactive),
+      locked: tutorialMode,
+      lockTargets: resolveGuideLockTargets(step),
       onPrev: () => moveStep(-1),
       onNext: () => moveStep(1),
       onClose: closeGuide
     });
     watchGuideOverlayPosition(() => {
-      targetElement = resolveTarget(activeSteps?.[activeIndex]);
-      positionGuideOverlay(targetElement);
+      const activeStep = activeSteps?.[activeIndex];
+      targetElement = resolveTarget(activeStep);
+      positionGuideOverlay(targetElement, {
+        locked: tutorialMode,
+        lockTargets: resolveGuideLockTargets(activeStep)
+      });
     });
 
     if (tutorialMode && step.interactive) {
       startTutorialRuntime({
-        resolveAllowed: () => resolveAllowed(activeSteps?.[activeIndex]),
         checkCompletion: () => {
           refreshInteractiveTarget();
           void completeInteractiveStep();
@@ -175,7 +212,10 @@ function refreshInteractiveTarget() {
   const step = activeSteps[activeIndex];
   targetElement = resolveTarget(step);
   scrollTargetIntoView(targetElement);
-  positionGuideOverlay(targetElement);
+  positionGuideOverlay(targetElement, {
+    locked: tutorialMode,
+    lockTargets: resolveGuideLockTargets(step)
+  });
 }
 
 async function completeInteractiveStep() {
@@ -290,8 +330,12 @@ export function initializeGuide() {
   window.addEventListener('chousa:tab-change', () => {
     if (!activeSteps?.length) return;
     requestAnimationFrame(() => {
-      targetElement = resolveTarget(activeSteps[activeIndex]);
-      positionGuideOverlay(targetElement);
+      const step = activeSteps[activeIndex];
+      targetElement = resolveTarget(step);
+      positionGuideOverlay(targetElement, {
+        locked: tutorialMode,
+        lockTargets: resolveGuideLockTargets(step)
+      });
     });
   });
 }
