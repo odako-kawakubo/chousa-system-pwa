@@ -27,18 +27,65 @@ import {
   showGuideOverlay,
   watchGuideOverlayPosition
 } from './guide-overlay.js';
+import {
+  captureTutorialSnapshot,
+  restoreTutorialSnapshot,
+  startTutorialRuntime,
+  stopTutorialRuntime
+} from './tutorial-runtime.js';
 
 let activeSteps = null;
 let activeIndex = 0;
 let targetElement = null;
 let initialized = false;
+let tutorialMode = false;
+let stepSnapshots = new Map();
+let advancing = false;
+
+function resolveAllowed(step) {
+  try {
+    if (typeof step?.allowed !== 'function') return [];
+    const value = step.allowed();
+    return (Array.isArray(value) ? value : [value]).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 function resolveTarget(step) {
   try {
+    const allowed = resolveAllowed(step);
+    if (step?.interactive && allowed.length) return allowed[0];
     return typeof step?.target === 'function' ? step.target() : null;
   } catch {
     return null;
   }
+}
+
+function ensureStepSnapshot(index) {
+  if (!tutorialMode || stepSnapshots.has(index)) return;
+  stepSnapshots.set(index, captureTutorialSnapshot());
+}
+
+function stepContext(index = activeIndex) {
+  return { snapshot: stepSnapshots.get(index) || null, index };
+}
+
+function stepIsComplete(step) {
+  if (!tutorialMode || !step?.interactive || typeof step.completeWhen !== 'function') return false;
+  try {
+    return Boolean(step.completeWhen(stepContext()));
+  } catch {
+    return false;
+  }
+}
+
+function waitForStepTarget(step, attempts = 0) {
+  const target = resolveTarget(step);
+  if (target?.isConnected || attempts >= 60) return Promise.resolve(target || null);
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve(waitForStepTarget(step, attempts + 1)));
+  });
 }
 
 function scrollTargetIntoView(target) {
@@ -50,30 +97,62 @@ function scrollTargetIntoView(target) {
   }
 }
 
-function renderActiveStep() {
+async function renderActiveStep() {
   if (!activeSteps?.length) return;
   const step = activeSteps[activeIndex];
+  ensureStepSnapshot(activeIndex);
   if (step.tab) showTab(step.tab);
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      targetElement = resolveTarget(step);
-      scrollTargetIntoView(targetElement);
-      showGuideOverlay({
-        step,
-        index: activeIndex,
-        total: activeSteps.length,
-        target: targetElement,
-        onPrev: () => moveStep(-1),
-        onNext: () => moveStep(1),
-        onClose: closeGuide
-      });
-      watchGuideOverlayPosition(() => {
-        targetElement = resolveTarget(activeSteps?.[activeIndex]);
-        positionGuideOverlay(targetElement);
-      });
-    });
+  targetElement = await waitForStepTarget(step);
+  if (!activeSteps?.length || step !== activeSteps[activeIndex]) return;
+
+  scrollTargetIntoView(targetElement);
+  showGuideOverlay({
+    step,
+    index: activeIndex,
+    total: activeSteps.length,
+    target: targetElement,
+    interactive: Boolean(tutorialMode && step.interactive),
+    onPrev: () => moveStep(-1),
+    onNext: () => moveStep(1),
+    onClose: closeGuide
   });
+  watchGuideOverlayPosition(() => {
+    targetElement = resolveTarget(activeSteps?.[activeIndex]);
+    positionGuideOverlay(targetElement);
+  });
+
+  if (stepIsComplete(step)) void completeInteractiveStep();
+}
+
+function refreshInteractiveTarget() {
+  if (!activeSteps?.length) return;
+  const step = activeSteps[activeIndex];
+  targetElement = resolveTarget(step);
+  scrollTargetIntoView(targetElement);
+  positionGuideOverlay(targetElement);
+}
+
+async function completeInteractiveStep() {
+  if (advancing || !activeSteps?.length) return;
+  const step = activeSteps[activeIndex];
+  if (!stepIsComplete(step)) {
+    refreshInteractiveTarget();
+    return;
+  }
+
+  advancing = true;
+  try {
+    const next = activeIndex + 1;
+    if (next >= activeSteps.length) {
+      closeGuide();
+      return;
+    }
+    activeIndex = next;
+    await renderActiveStep();
+  } finally {
+    advancing = false;
+  }
 }
 
 function moveStep(delta) {
@@ -84,22 +163,50 @@ function moveStep(delta) {
     closeGuide();
     return;
   }
+
+  if (tutorialMode && delta < 0) {
+    const snapshot = stepSnapshots.get(next);
+    if (snapshot) restoreTutorialSnapshot(snapshot);
+    [...stepSnapshots.keys()].forEach((index) => {
+      if (index > next) stepSnapshots.delete(index);
+    });
+  }
+
   activeIndex = next;
-  renderActiveStep();
+  void renderActiveStep();
 }
 
-function startSteps(steps) {
+function startSteps(steps, { tutorial = false } = {}) {
+  stopTutorialRuntime();
   activeSteps = steps;
   activeIndex = 0;
+  tutorialMode = tutorial;
+  stepSnapshots = new Map();
+  advancing = false;
   closeDrawer();
-  renderActiveStep();
+
+  if (tutorialMode) {
+    startTutorialRuntime({
+      resolveAllowed: () => resolveAllowed(activeSteps?.[activeIndex]),
+      checkCompletion: () => {
+        refreshInteractiveTarget();
+        void completeInteractiveStep();
+      }
+    });
+  }
+
+  void renderActiveStep();
 }
 
 export function closeGuide() {
   hideGuideOverlay();
+  stopTutorialRuntime();
   activeSteps = null;
   activeIndex = 0;
   targetElement = null;
+  tutorialMode = false;
+  stepSnapshots = new Map();
+  advancing = false;
 }
 
 export async function startBasicTutorial() {
@@ -120,12 +227,12 @@ export async function startBasicTutorial() {
   // 通常案件の既定値は変えず、練習開始時だけ閉じる。
   setSimpleListOpen(false);
   showTab('finish');
-  startSteps(TUTORIAL_STEPS);
+  startSteps(TUTORIAL_STEPS, { tutorial:true });
 }
 
 export function openOperationGuide() {
   closeGuideDrawer();
-  startSteps(OPERATION_GUIDE_STEPS);
+  startSteps(OPERATION_GUIDE_STEPS, { tutorial:false });
 }
 
 export async function startRequestedTutorialIfNeeded() {
