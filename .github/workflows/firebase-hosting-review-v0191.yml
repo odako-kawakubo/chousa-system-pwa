@@ -289,9 +289,9 @@ jobs:
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
-          grep -q "chousa:finish-candidate-change" src/js/finish-table/finish-table-candidate-input.js || { echo "candidate popup guide notification missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/finish-table/finish-table-candidate-input.js || { echo "generic finish guide layout notification missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/materials/material-list-interactions.js || { echo "generic material guide layout notification missing"; exit 1; }
           grep -q "roomFieldInput.blur()" src/js/finish-table/finish-table-interactions.js || { echo "room field Enter commit missing"; exit 1; }
-          grep -q "includeCandidate:true" src/js/guide/guide-controller.js || { echo "candidate popup spotlight inclusion missing"; exit 1; }
           grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
           grep -q "watchStores" src/js/guide/guide-controller.js || { echo "generic tutorial store watch missing"; exit 1; }
           grep -q "FINISH_TUTORIAL_STEPS" src/js/guide/tutorial-steps-finish.js || { echo "finish tutorial section missing"; exit 1; }
