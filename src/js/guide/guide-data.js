@@ -4,6 +4,9 @@
  * チュートリアル／操作ガイドの表示内容と対象DOMだけを定義する。
  * ガイドの描画・タブ遷移・進行状態は guide-controller / guide-overlay 側へ分離する。
  */
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
 
 function roomBlock(index) {
   return document.querySelectorAll('#finish .finish-room-block')[index] || null;
@@ -35,6 +38,124 @@ function firstMaterialText(kind) {
   return document.querySelector(`#materials [data-material-row] [data-material-text-display][data-editor-kind="${kind}"]`);
 }
 
+function roomKeyAt(index) {
+  return String(roomBlock(index)?.dataset.roomKey || '');
+}
+
+function finishRecordFor(roomIndex, partIndex, row = 1) {
+  const roomKey = roomKeyAt(roomIndex);
+  if (!roomKey) return null;
+  const position = Number(partIndex) * 100 + Number(row);
+  return finishRecordStore.getAll().find((record) =>
+    record.status === 'active'
+    && String(record.roomUid || '') === roomKey
+    && Number(record.position) === position
+  ) || null;
+}
+
+function registerButton(roomIndex, partIndex, row = 1) {
+  const roomKey = roomKeyAt(roomIndex);
+  return document.querySelector(
+    `#finish [data-action="register-material"][data-room-key="${CSS.escape(roomKey)}"][data-part-index="${partIndex}"][data-input-row="${row}"]`
+  );
+}
+
+function newMaterialAllowed(roomIndex, partIndex, { requirePart = false } = {}) {
+  const record = finishRecordFor(roomIndex, partIndex, 1);
+  if (record?.materialId) return [];
+  if (requirePart && !String(record?.part || '').trim()) {
+    return [finishCell(roomIndex, partIndex, 'part', 1)].filter(Boolean);
+  }
+  const register = registerButton(roomIndex, partIndex, 1);
+  if (register) return [register];
+  return [finishCell(roomIndex, partIndex, 'name', 1)].filter(Boolean);
+}
+
+function firstMaterial() {
+  return materialRecordStore.getAll().find((record) => record.status === 'active') || null;
+}
+
+function firstMaterialId() {
+  return String(firstMaterial()?.materialId || '');
+}
+
+function firstMaterialFieldTarget(field) {
+  const materialId = firstMaterialId();
+  if (!materialId) return null;
+  return document.querySelector(
+    `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-control][data-field="${field}"]`
+  );
+}
+
+function firstMaterialTextTarget(kind) {
+  const materialId = firstMaterialId();
+  if (!materialId) return null;
+  return document.querySelector(
+    `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-text-display][data-editor-kind="${kind}"], #materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-text-input][data-editor-kind="${kind}"]`
+  );
+}
+
+function firstMaterialMultiSelectTarget() {
+  const materialId = firstMaterialId();
+  if (!materialId) return null;
+  return document.querySelector(
+    `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-multi-select]`
+  );
+}
+
+function materialFromSnapshot(snapshot, materialId) {
+  return (snapshot?.materialRecords || []).find((record) => String(record.materialId || '') === String(materialId || '')) || null;
+}
+
+function firstRoomName() {
+  const key = roomKeyAt(0);
+  return finishRecordStore.getAll().find((record) => String(record.roomUid || '') === key)?.roomName || '';
+}
+
+function activeFinishRoomCount(areaCode, floor) {
+  return new Set(
+    finishRecordStore.getAll()
+      .filter((record) => record.status === 'active' && record.areaCode === areaCode && Number(record.floor) === Number(floor))
+      .map((record) => record.roomUid)
+  ).size;
+}
+
+function normalFloorCount() {
+  return new Set(
+    finishRecordStore.getAll()
+      .filter((record) => record.status === 'active' && record.areaCode === 'I')
+      .map((record) => Number(record.floor))
+  ).size;
+}
+
+function snapshotRoomCount(snapshot, areaCode, floor) {
+  return new Set(
+    (snapshot?.finishRecords || [])
+      .filter((record) => record.status === 'active' && record.areaCode === areaCode && Number(record.floor) === Number(floor))
+      .map((record) => record.roomUid)
+  ).size;
+}
+
+function snapshotNormalFloorCount(snapshot) {
+  return new Set(
+    (snapshot?.finishRecords || [])
+      .filter((record) => record.status === 'active' && record.areaCode === 'I')
+      .map((record) => Number(record.floor))
+  ).size;
+}
+
+function photoCount() {
+  return photoRecordStore.getAll().filter((record) => !record.deleted).length;
+}
+
+function snapshotPhotoCount(snapshot) {
+  return (snapshot?.photoRecords || []).filter((record) => !record.deleted).length;
+}
+
+function cameraClosed() {
+  return !document.body.classList.contains('camera-open');
+}
+
 export const TUTORIAL_STEPS = [
   {
     id: 'tutorial-intro',
@@ -49,7 +170,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-1の部屋名',
     text: '部屋名を入力します。内容は自由です。部屋名の表示部分を押すと入力できます。',
-    target: () => roomBlock(0)?.querySelector('[data-field="room-name"]')
+    target: () => roomBlock(0)?.querySelector('[data-field="room-name"]'),
+    interactive: true,
+    allowed: () => roomBlock(0)?.querySelector('[data-field="room-name"]'),
+    completeWhen: () => Boolean(String(firstRoomName()).trim())
   },
   {
     id: 'finish-new-floor-material',
@@ -57,7 +181,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-1 床：新規建材',
     text: '1-1の「床」に建材名称を入力し、新しい建材として登録します。建材名は自由です。',
-    target: () => finishCell(0, 1, 'name', 1)
+    target: () => registerButton(0, 1, 1) || finishCell(0, 1, 'name', 1),
+    interactive: true,
+    allowed: () => newMaterialAllowed(0, 1),
+    completeWhen: () => Boolean(finishRecordFor(0, 1, 1)?.materialId)
   },
   {
     id: 'finish-new-other-material',
@@ -65,7 +192,17 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-1 その他1：新規建材',
     text: 'その他1では、先に部位を入力してから建材名称を登録します。部位・建材名は自由です。',
-    target: () => finishCell(0, 5, 'part', 1) || finishCell(0, 5, 'name', 1)
+    target: () => {
+      const record = finishRecordFor(0, 5, 1);
+      if (!String(record?.part || '').trim()) return finishCell(0, 5, 'part', 1);
+      return registerButton(0, 5, 1) || finishCell(0, 5, 'name', 1);
+    },
+    interactive: true,
+    allowed: () => newMaterialAllowed(0, 5, { requirePart:true }),
+    completeWhen: () => {
+      const record = finishRecordFor(0, 5, 1);
+      return Boolean(record?.materialId && String(record.part || '').trim());
+    }
   },
   {
     id: 'finish-existing-floor-material',
@@ -73,7 +210,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-2 床：既存建材',
     text: '1-1で登録した床の建材を、候補から1-2の床へ入力します。',
-    target: () => finishCell(1, 1, 'name', 1)
+    target: () => finishCell(1, 1, 'name', 1),
+    interactive: true,
+    allowed: () => finishCell(1, 1, 'name', 1),
+    completeWhen: () => Boolean(finishRecordFor(1, 1, 1)?.materialId)
   },
   {
     id: 'finish-existing-other-material',
@@ -81,7 +221,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-2 その他1：既存建材',
     text: '1-1で登録した「その他」の建材を候補から選びます。登録済みの部位も確認します。',
-    target: () => finishCell(1, 5, 'name', 1)
+    target: () => finishCell(1, 5, 'name', 1),
+    interactive: true,
+    allowed: () => finishCell(1, 5, 'name', 1),
+    completeWhen: () => Boolean(finishRecordFor(1, 5, 1)?.materialId)
   },
   {
     id: 'finish-add-row',
@@ -89,7 +232,15 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-2に行を追加',
     text: '同じ部屋・同じ部位に複数の仕上がある場合は「＋行」で入力行を増やせます。',
-    target: () => roomAction(1, 'add-row')
+    target: () => roomAction(1, 'add-row'),
+    interactive: true,
+    allowed: () => roomAction(1, 'add-row'),
+    completeWhen: ({ snapshot }) => {
+      const key = roomKeyAt(1);
+      const before = (snapshot?.finishRecords || []).filter((record) => String(record.roomUid || '') === key).length;
+      const after = finishRecordStore.getAll().filter((record) => String(record.roomUid || '') === key).length;
+      return after > before;
+    }
   },
   {
     id: 'finish-add-room',
@@ -97,7 +248,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1Fに部屋を追加',
     text: '1Fの一番下にある「＋部屋」で部屋を追加します。練習案件では1-6が追加されます。',
-    target: () => lastFirstFloorAction('add-room')
+    target: () => lastFirstFloorAction('add-room'),
+    interactive: true,
+    allowed: () => lastFirstFloorAction('add-room'),
+    completeWhen: ({ snapshot }) => activeFinishRoomCount('I', 1) > snapshotRoomCount(snapshot, 'I', 1)
   },
   {
     id: 'finish-add-floor',
@@ -105,7 +259,10 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '階を追加',
     text: '仕上表の一番下にある「＋階」から次の地上階を追加します。操作パネルから追加する方法は操作ガイドで案内します。',
-    target: () => document.querySelector('#finish [data-action="add-normal-floor"]')
+    target: () => document.querySelector('#finish [data-action="add-normal-floor"]'),
+    interactive: true,
+    allowed: () => document.querySelector('#finish [data-action="add-normal-floor"]'),
+    completeWhen: ({ snapshot }) => normalFloorCount() > snapshotNormalFloorCount(snapshot)
   },
   {
     id: 'materials-open',
@@ -129,7 +286,10 @@ export const TUTORIAL_STEPS = [
     tab: 'materials',
     title: '採取数',
     text: '採取する箇所数を設定します。チュートリアルでは2箇所にすると、採取場所2まで入力できます。',
-    target: () => firstMaterialControl('sampleCount')
+    target: () => firstMaterialFieldTarget('sampleCount'),
+    interactive: true,
+    allowed: () => firstMaterialFieldTarget('sampleCount'),
+    completeWhen: () => Number(firstMaterial()?.sampleCount || 0) === 2
   },
   {
     id: 'materials-sample-place',
@@ -137,7 +297,10 @@ export const TUTORIAL_STEPS = [
     tab: 'materials',
     title: '採取場所',
     text: '仕上表の使用箇所から採取場所を選びます。採取数に応じて採取場所1〜3を設定します。',
-    target: () => firstMaterialControl('sampleLocation1')
+    target: () => firstMaterialFieldTarget('sampleLocation1'),
+    interactive: true,
+    allowed: () => firstMaterialFieldTarget('sampleLocation1'),
+    completeWhen: () => Boolean(String(firstMaterial()?.sampleLocation1 || '').trim())
   },
   {
     id: 'materials-sample-part',
@@ -145,7 +308,10 @@ export const TUTORIAL_STEPS = [
     tab: 'materials',
     title: '採取部位',
     text: '建材の使用部位から、実際に採取する部位を選択します。複数選択もできます。',
-    target: () => document.querySelector('#materials [data-material-row] [data-material-multi-select]')
+    target: () => firstMaterialMultiSelectTarget(),
+    interactive: true,
+    allowed: () => firstMaterialMultiSelectTarget(),
+    completeWhen: () => Array.isArray(firstMaterial()?.samplePart) && firstMaterial().samplePart.length > 0
   },
   {
     id: 'materials-note',
@@ -153,7 +319,10 @@ export const TUTORIAL_STEPS = [
     tab: 'materials',
     title: '調査備考',
     text: '必要な補足は調査備考へ入力します。内容は自由です。',
-    target: () => firstMaterialText('note')
+    target: () => firstMaterialTextTarget('note'),
+    interactive: true,
+    allowed: () => firstMaterialTextTarget('note'),
+    completeWhen: () => Boolean(String(firstMaterial()?.note || '').trim())
   },
   {
     id: 'materials-sample-finish',
@@ -161,7 +330,14 @@ export const TUTORIAL_STEPS = [
     tab: 'materials',
     title: '採取チェック・採取日',
     text: '採取が終わったらチェックと採取日を記録します。レベルは分析結果に伴うため、ここでは操作しません。',
-    target: () => firstMaterialControl('sampleDone')
+    target: () => firstMaterial()?.sampleDone
+      ? firstMaterialFieldTarget('sampleDate')
+      : firstMaterialFieldTarget('sampleDone'),
+    interactive: true,
+    allowed: () => firstMaterial()?.sampleDone
+      ? firstMaterialFieldTarget('sampleDate')
+      : firstMaterialFieldTarget('sampleDone'),
+    completeWhen: () => Boolean(firstMaterial()?.sampleDone && String(firstMaterial()?.sampleDate || '').trim())
   },
   {
     id: 'photos-visual',
@@ -170,7 +346,11 @@ export const TUTORIAL_STEPS = [
     title: '目視写真',
     text: '目視調査では左から場所を選び、右側の部位ごとの「＋」からカメラを起動します。',
     target: () => document.querySelector('#photos [data-photo-camera-visual]')
-      || document.querySelector('#photos [data-photo-camera-global]')
+      || document.querySelector('#photos [data-photo-camera-global]'),
+    interactive: true,
+    allowed: () => document.querySelector('#photos [data-photo-camera-visual]')
+      || document.querySelector('#photos [data-photo-camera-global]'),
+    completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
     id: 'photos-sampling-mode',
@@ -178,7 +358,10 @@ export const TUTORIAL_STEPS = [
     tab: 'photos',
     title: '建材採取へ切替',
     text: '採取写真は「建材採取」に切り替えます。建材リストの採取数・採取場所・採取部位がここへ反映されます。',
-    target: () => document.querySelector('#photos [data-photo-mode="sampling"]')
+    target: () => document.querySelector('#photos [data-photo-mode="sampling"]'),
+    interactive: true,
+    allowed: () => document.querySelector('#photos [data-photo-mode="sampling"]'),
+    completeWhen: () => document.querySelector('#photos [data-photo-mode="sampling"]')?.classList.contains('active')
   },
   {
     id: 'photos-sampling-before',
@@ -187,7 +370,10 @@ export const TUTORIAL_STEPS = [
     title: '施工前を撮影',
     text: '対象建材・採取箇所を確認し、まず「施工前」の＋から撮影します。カメラ内の詳しい案内は看板カメラ側のチュートリアル方式を後続で統合します。',
     target: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="before"]')
-      || document.querySelector('#photos [data-photo-mode="sampling"]')
+      || document.querySelector('#photos [data-photo-mode="sampling"]'),
+    interactive: true,
+    allowed: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="before"]'),
+    completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
     id: 'photos-sampling-section',
@@ -196,7 +382,10 @@ export const TUTORIAL_STEPS = [
     title: '断面を撮影',
     text: '同じ採取箇所で「断面」も撮影します。施工中・施工後も同じ撮影区分の切替で登録できます。',
     target: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="section"]')
-      || document.querySelector('#photos [data-photo-mode="sampling"]')
+      || document.querySelector('#photos [data-photo-mode="sampling"]'),
+    interactive: true,
+    allowed: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="section"]'),
+    completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
     id: 'analysis-placeholder',
