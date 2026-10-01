@@ -406,34 +406,24 @@ async function handleCopyRoomClick(roomKeyValue) {
 function handleAction(button) {
   switch (button.dataset.action) {
     case 'add-normal-floor':
-      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'normal' })) return true;
       withHistory(() => addNormalFloor());
       return true;
     case 'add-basement-floor':
-      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'basement' })) return true;
       withHistory(() => addBasementFloor());
       return true;
     case 'add-stairs':
-      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'stairs' })) return true;
       withHistory(() => addStairs());
       return true;
     case 'add-roof':
-      if (!isTutorialActionAllowed('finish.floor.add', { kind: 'roof' })) return true;
       withHistory(() => addRoof());
       return true;
     case 'add-external-room':
-      if (!isTutorialActionAllowed('finish.room.add', { floorKey: 'external' })) return true;
       withHistory(() => addExternalRoom());
       return true;
     case 'add-row':
-      if (!isTutorialActionAllowed('finish.row.add', { roomKey: button.dataset.roomKey })) return true;
       withHistory(() => addInputRow(button.dataset.roomKey));
       return true;
     case 'add-room': {
-      if (!isTutorialActionAllowed('finish.room.add', {
-        floorKey: button.dataset.floorKey || '',
-        roomKey: button.dataset.roomKey || ''
-      })) return true;
       if (button.dataset.floorKey && !button.dataset.floorKey.includes('group')) {
         withHistory(() => addRoomToFloor(button.dataset.floorKey));
       } else {
