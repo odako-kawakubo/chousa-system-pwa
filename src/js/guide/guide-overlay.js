@@ -3,12 +3,13 @@
  *
  * チュートリアル／操作ガイドの表示専用。
  * 操作制限・DOM監視・完了判定は持たない。
+ * targetは1要素または複数要素を受け取り、複数時は外接矩形を1つの青枠として表示する。
  */
 
 let visualLayer = null;
 let spotlight = null;
 let card = null;
-let currentTarget = null;
+let currentTargets = [];
 
 function ensureOverlay() {
   if (visualLayer && card) return;
@@ -45,6 +46,28 @@ function ensureOverlay() {
   spotlight = visualLayer.querySelector('[data-guide-spotlight]');
 }
 
+function normalizeTargets(target) {
+  const list = Array.isArray(target) ? target : [target];
+  return list.filter((node) => node?.isConnected);
+}
+
+function combinedRect(targets) {
+  const rects = targets
+    .map((node) => node.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+
+  if (!rects.length) return null;
+
+  return {
+    left: Math.min(...rects.map((rect) => rect.left)),
+    top: Math.min(...rects.map((rect) => rect.top)),
+    right: Math.max(...rects.map((rect) => rect.right)),
+    bottom: Math.max(...rects.map((rect) => rect.bottom)),
+    width: Math.max(...rects.map((rect) => rect.right)) - Math.min(...rects.map((rect) => rect.left)),
+    height: Math.max(...rects.map((rect) => rect.bottom)) - Math.min(...rects.map((rect) => rect.top))
+  };
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -59,7 +82,7 @@ function rectsOverlap(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
-function placeCard(target) {
+function placeCard(targetRect) {
   if (!card || card.hidden) return;
 
   const viewportWidth = window.innerWidth;
@@ -67,21 +90,20 @@ function placeCard(target) {
   const cardRect = card.getBoundingClientRect();
   const margin = 12;
 
-  if (!target?.isConnected) {
+  if (!targetRect) {
     card.style.left = `${Math.max(margin, (viewportWidth - cardRect.width) / 2)}px`;
     card.style.top = `${Math.max(margin, (viewportHeight - cardRect.height) / 2)}px`;
     return;
   }
 
-  const rect = target.getBoundingClientRect();
   const gap = 12;
   const maxLeft = Math.max(margin, viewportWidth - cardRect.width - margin);
   const maxTop = Math.max(margin, viewportHeight - cardRect.height - margin);
   const candidates = [
-    { left: clamp(rect.left, margin, maxLeft), top: clamp(rect.bottom + gap, margin, maxTop) },
-    { left: clamp(rect.left, margin, maxLeft), top: clamp(rect.top - cardRect.height - gap, margin, maxTop) },
-    { left: clamp(rect.right + gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) },
-    { left: clamp(rect.left - cardRect.width - gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) }
+    { left: clamp(targetRect.left, margin, maxLeft), top: clamp(targetRect.bottom + gap, margin, maxTop) },
+    { left: clamp(targetRect.left, margin, maxLeft), top: clamp(targetRect.top - cardRect.height - gap, margin, maxTop) },
+    { left: clamp(targetRect.right + gap, margin, maxLeft), top: clamp(targetRect.top, margin, maxTop) },
+    { left: clamp(targetRect.left - cardRect.width - gap, margin, maxLeft), top: clamp(targetRect.top, margin, maxTop) }
   ];
   const collisions = visibleCandidateRects();
   const chosen = candidates.find((candidate) => {
@@ -98,28 +120,28 @@ function placeCard(target) {
   card.style.top = `${chosen.top}px`;
 }
 
-export function positionGuideOverlay(target = currentTarget) {
+export function positionGuideOverlay(target = currentTargets) {
   if (!visualLayer || visualLayer.hidden || !card || card.hidden) return;
 
-  currentTarget = target?.isConnected ? target : null;
+  currentTargets = normalizeTargets(target);
+  const targetRect = combinedRect(currentTargets);
   const dim = visualLayer.querySelector('[data-guide-dim]');
 
-  if (!currentTarget) {
+  if (!targetRect) {
     spotlight.hidden = true;
     dim.hidden = false;
     placeCard(null);
     return;
   }
 
-  const rect = currentTarget.getBoundingClientRect();
   const pad = 6;
   spotlight.hidden = false;
   dim.hidden = true;
-  spotlight.style.left = `${Math.max(4, rect.left - pad)}px`;
-  spotlight.style.top = `${Math.max(4, rect.top - pad)}px`;
-  spotlight.style.width = `${Math.max(18, rect.width + pad * 2)}px`;
-  spotlight.style.height = `${Math.max(18, rect.height + pad * 2)}px`;
-  placeCard(currentTarget);
+  spotlight.style.left = `${Math.max(4, targetRect.left - pad)}px`;
+  spotlight.style.top = `${Math.max(4, targetRect.top - pad)}px`;
+  spotlight.style.width = `${Math.max(18, targetRect.width + pad * 2)}px`;
+  spotlight.style.height = `${Math.max(18, targetRect.height + pad * 2)}px`;
+  placeCard(targetRect);
 }
 
 export function showGuideOverlay({
@@ -133,7 +155,7 @@ export function showGuideOverlay({
   onClose
 }) {
   ensureOverlay();
-  currentTarget = target?.isConnected ? target : null;
+  currentTargets = normalizeTargets(target);
   visualLayer.hidden = false;
   card.hidden = false;
 
@@ -155,11 +177,11 @@ export function showGuideOverlay({
   next.onclick = onNext;
   close.onclick = onClose;
 
-  positionGuideOverlay(currentTarget);
+  positionGuideOverlay(currentTargets);
 }
 
 export function initializeGuideOverlayPositionEvents() {
-  const reposition = () => positionGuideOverlay(currentTarget);
+  const reposition = () => positionGuideOverlay(currentTargets);
   window.addEventListener('resize', reposition);
   window.addEventListener('scroll', reposition, true);
 }
@@ -167,5 +189,5 @@ export function initializeGuideOverlayPositionEvents() {
 export function hideGuideOverlay() {
   if (visualLayer) visualLayer.hidden = true;
   if (card) card.hidden = true;
-  currentTarget = null;
+  currentTargets = [];
 }
