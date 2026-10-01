@@ -16,7 +16,7 @@ import { closeDrawer, closeGuideDrawer } from '../ui/drawer.js';
 import { openProjectById } from '../projects/project-controller.js';
 import { openProjectSession } from '../projects/project-session.js';
 import { getCurrentProject } from '../projects/project-store.js';
-import { setOpenProjectId } from '../projects/project-navigation.js';
+import { openHomePage, setOpenProjectId } from '../projects/project-navigation.js';
 import { setSimpleListOpen } from '../finish-table/finish-table-state.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import {
@@ -54,6 +54,17 @@ let advancing = false;
 
 function currentStep() {
   return activeSteps?.[activeIndex] || null;
+}
+
+function handleGuideClose() {
+  if (!tutorialMode) {
+    closeGuide();
+    return;
+  }
+
+  closeGuide();
+  resetTutorialProjectSnapshot();
+  openHomePage({ replace:true });
 }
 
 function resolveTarget(step) {
@@ -245,7 +256,8 @@ async function renderActiveStep() {
         interactive: false,
         onPrev: () => moveStep(-1),
         onNext: () => moveStep(1),
-        onClose: closeGuide
+        onClose: handleGuideClose,
+        closeLabel: tutorialMode ? '中断' : '閉じる'
       });
       return;
     }
@@ -263,7 +275,8 @@ async function renderActiveStep() {
       interactive: Boolean(tutorialMode && step.interactive),
       onPrev: () => moveStep(-1),
       onNext: () => moveStep(1),
-      onClose: closeGuide
+      onClose: handleGuideClose,
+      closeLabel: tutorialMode ? '中断' : '閉じる'
     });
 
     startStepStoreWatch(step);
