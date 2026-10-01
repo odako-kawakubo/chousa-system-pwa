@@ -3,7 +3,7 @@
  *
  * チュートリアル／操作ガイドの進行を管理する。
  * 実案件へ練習操作を混ぜないため、チュートリアル開始時は専用ローカル案件へ切り替える。
- * v0.1.9.6では操作対象を限定し、Store状態を完了条件として自動進行する。
+ * v0.1.9.7では操作制限をDOMイベント遮断からアプリ側の操作許可判定へ移行する。
  * 戻る操作では各ステップ開始時の3Recordスナップショットへ復元する。
  */
 import { showTab } from '../ui/tabs.js';
@@ -33,6 +33,11 @@ import {
   startTutorialRuntime,
   stopTutorialRuntime
 } from './tutorial-runtime.js';
+import {
+  clearTutorialState,
+  startTutorialState,
+  updateTutorialState
+} from './tutorial-state.js';
 
 let activeSteps = null;
 let activeIndex = 0;
@@ -42,56 +47,33 @@ let tutorialMode = false;
 let stepSnapshots = new Map();
 let advancing = false;
 
-function resolveAllowed(step) {
-  try {
-    if (typeof step?.allowed !== 'function') return [];
-    const value = step.allowed();
-    return (Array.isArray(value) ? value : [value]).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
 function resolveTarget(step) {
   try {
-    const allowed = resolveAllowed(step);
-    if (step?.interactive && allowed.length) return allowed[0];
     return typeof step?.target === 'function' ? step.target() : null;
   } catch {
     return null;
   }
 }
 
-function interactionRegionFor(node) {
-  if (!node?.isConnected) return null;
-  return node.closest(
-    '.room-name-cell, .room-no-cell, .finish-data-cell, [data-material-control], .material-cell, .photo-mode-card, .photo-stage-card'
-  ) || node;
-}
-
-function visibleCandidatePopup() {
-  const popup = document.querySelector('#finishCandidatePopup:not([hidden]), .finish-candidate-popup:not([hidden])');
-  if (!popup?.isConnected) return null;
-  const rect = popup.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 ? popup : null;
-}
-
-function resolveGuideLockTargets(step) {
-  if (!tutorialMode) return [];
-  if (!step?.interactive) return [];
-
-  const allowed = resolveAllowed(step)
-    .map(interactionRegionFor)
-    .filter(Boolean);
-  const candidatePopup = visibleCandidatePopup();
-  if (candidatePopup) allowed.push(candidatePopup);
-
-  if (!allowed.length) {
-    const target = interactionRegionFor(resolveTarget(step));
-    if (target) allowed.push(target);
+function resolvePermissions(step) {
+  try {
+    if (typeof step?.permissions === 'function') {
+      const value = step.permissions(stepContext());
+      return Array.isArray(value) ? value : [value];
+    }
+    if (Array.isArray(step?.permissions)) return step.permissions;
+    return [];
+  } catch {
+    return [];
   }
+}
 
-  return [...new Set(allowed)];
+function syncTutorialState(step) {
+  if (!tutorialMode) return;
+  updateTutorialState({
+    currentStepId: step?.id || '',
+    resolvePermissions: () => resolvePermissions(activeSteps?.[activeIndex])
+  });
 }
 
 function ensureStepSnapshot(index) {
@@ -113,7 +95,7 @@ function stepIsComplete(step) {
 }
 
 function stepNeedsTarget(step) {
-  return Boolean(step?.interactive || typeof step?.target === 'function' || typeof step?.allowed === 'function');
+  return Boolean(step?.interactive || typeof step?.target === 'function');
 }
 
 function waitForStepTarget(step, attempts = 0) {
@@ -138,9 +120,9 @@ async function renderActiveStep() {
   if (!activeSteps?.length) return;
   const step = activeSteps[activeIndex];
 
-  // 描画途中の古いRuntimeを必ず解除する。
-  // 新しいステップはOverlayと操作対象が正常に表示できてからロックを開始する。
+  // 前stepの完了監視だけを解除し、現在stepの操作許可へ切り替える。
   stopTutorialRuntime();
+  syncTutorialState(step);
 
   try {
     ensureStepSnapshot(activeIndex);
@@ -175,8 +157,6 @@ async function renderActiveStep() {
       total: activeSteps.length,
       target: targetElement,
       interactive: Boolean(tutorialMode && step.interactive),
-      locked: tutorialMode,
-      lockTargets: resolveGuideLockTargets(step),
       onPrev: () => moveStep(-1),
       onNext: () => moveStep(1),
       onClose: closeGuide
@@ -184,10 +164,7 @@ async function renderActiveStep() {
     watchGuideOverlayPosition(() => {
       const activeStep = activeSteps?.[activeIndex];
       targetElement = resolveTarget(activeStep);
-      positionGuideOverlay(targetElement, {
-        locked: tutorialMode,
-        lockTargets: resolveGuideLockTargets(activeStep)
-      });
+      positionGuideOverlay(targetElement);
     });
 
     if (tutorialMode && step.interactive) {
@@ -212,10 +189,7 @@ function refreshInteractiveTarget() {
   const step = activeSteps[activeIndex];
   targetElement = resolveTarget(step);
   scrollTargetIntoView(targetElement);
-  positionGuideOverlay(targetElement, {
-    locked: tutorialMode,
-    lockTargets: resolveGuideLockTargets(step)
-  });
+  positionGuideOverlay(targetElement);
 }
 
 async function completeInteractiveStep() {
@@ -267,6 +241,14 @@ function startSteps(steps, { tutorial = false } = {}) {
   activeIndex = 0;
   tutorialMode = tutorial;
   stepSnapshots = new Map();
+  if (tutorialMode) {
+    startTutorialState({
+      currentStepId: steps?.[0]?.id || '',
+      resolvePermissions: () => resolvePermissions(activeSteps?.[activeIndex])
+    });
+  } else {
+    clearTutorialState();
+  }
   advancing = false;
   closeDrawer();
 
@@ -276,6 +258,7 @@ function startSteps(steps, { tutorial = false } = {}) {
 export function closeGuide() {
   hideGuideOverlay();
   stopTutorialRuntime();
+  clearTutorialState();
   activeSteps = null;
   activeIndex = 0;
   targetElement = null;
@@ -332,10 +315,7 @@ export function initializeGuide() {
     requestAnimationFrame(() => {
       const step = activeSteps[activeIndex];
       targetElement = resolveTarget(step);
-      positionGuideOverlay(targetElement, {
-        locked: tutorialMode,
-        lockTargets: resolveGuideLockTargets(step)
-      });
+      positionGuideOverlay(targetElement);
     });
   });
 }
