@@ -7,7 +7,7 @@
  * 各操作のStore状態による自動完了判定は次段階で追加できる構造に留める。
  */
 import { showTab } from '../ui/tabs.js';
-import { closeDrawer } from '../ui/drawer.js';
+import { closeDrawer, closeGuideDrawer } from '../ui/drawer.js';
 import { openProjectById } from '../projects/project-controller.js';
 import { openProjectSession } from '../projects/project-session.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -32,18 +32,6 @@ let activeSteps = null;
 let activeIndex = 0;
 let targetElement = null;
 let initialized = false;
-
-function setGuideMenuOpen(open) {
-  const menu = document.getElementById('guideMenu');
-  const button = document.getElementById('guideMenuButton');
-  if (!menu || !button) return;
-  menu.hidden = !open;
-  button.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-function closeGuideMenu() {
-  setGuideMenuOpen(false);
-}
 
 function resolveTarget(step) {
   try {
@@ -116,7 +104,7 @@ export function closeGuide() {
 
 export async function startBasicTutorial() {
   closeGuide();
-  closeGuideMenu();
+  closeGuideDrawer();
   closeDrawer();
 
   const snapshot = resetTutorialProjectSnapshot();
@@ -136,7 +124,7 @@ export async function startBasicTutorial() {
 }
 
 export function openOperationGuide() {
-  closeGuideMenu();
+  closeGuideDrawer();
   startSteps(OPERATION_GUIDE_STEPS);
 }
 
@@ -151,14 +139,6 @@ export function initializeGuide() {
   initialized = true;
   initializeTutorialProjectSnapshot();
   initializeGuideOverlayPositionEvents();
-
-  document.getElementById('guideMenuButton')?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const menu = document.getElementById('guideMenu');
-    setGuideMenuOpen(Boolean(menu?.hidden));
-  });
-  document.getElementById('guideMenu')?.addEventListener('click', (event) => event.stopPropagation());
-  document.addEventListener('click', closeGuideMenu);
 
   document.getElementById('startBasicTutorialButton')?.addEventListener('click', () => {
     void startBasicTutorial();
