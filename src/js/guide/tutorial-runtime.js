@@ -64,8 +64,22 @@ function allowedByTutorial(target) {
   return false;
 }
 
+function focusedAllowedInput() {
+  const focused = document.activeElement;
+  if (!(focused instanceof Element)) return null;
+  if (!focused.matches('input, textarea, select, [contenteditable="true"]')) return null;
+  return allowedByTutorial(focused) ? focused : null;
+}
+
 function blockOutsideTutorialTarget(event) {
-  if (!active || allowedByTutorial(event.target)) return;
+  if (!active) return;
+
+  // iPad/Safariではソフトキーボード由来のkeydownのtargetが
+  // フォーカス中input自身にならない場合がある。現在フォーカス中の入力欄が
+  // 許可対象なら、文字入力・変換・カーソル移動を妨げない。
+  if (event.type === 'keydown' && focusedAllowedInput()) return;
+
+  if (allowedByTutorial(event.target)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }
