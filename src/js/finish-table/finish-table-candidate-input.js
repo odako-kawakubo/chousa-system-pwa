@@ -22,6 +22,10 @@ import {
 let activeCandidateInput = null;
 let activeCandidateOptions = [];
 
+function notifyCandidateUiChanged() {
+  window.dispatchEvent(new CustomEvent('chousa:finish-candidate-change'));
+}
+
 function normalizeCandidateFilter(value) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -115,10 +119,12 @@ export function closeCandidatePopup() {
   const popup = candidatePopup();
   if (!popup) return;
 
+  const wasVisible = !popup.hidden;
   popup.hidden = true;
   popup.innerHTML = '';
   activeCandidateInput = null;
   activeCandidateOptions = [];
+  if (wasVisible) notifyCandidateUiChanged();
 }
 
 export function renderCandidatePopup(input) {
@@ -148,6 +154,7 @@ export function renderCandidatePopup(input) {
   ).join('');
   popup.hidden = false;
   positionCandidatePopup(input);
+  notifyCandidateUiChanged();
 }
 
 export function updateFinishInputCandidates(input) {
