@@ -82,7 +82,7 @@ function bindMaterialListTabScrollState() {
     if (previousTab === 'materials') captureMaterialListScroll();
     if (currentTab === 'materials') {
       requestAnimationFrame(() => {
-        restoreMaterialListScroll(String(getCurrentProject()?.projectId || ''));
+        refreshMaterialList();
       });
     }
   });
@@ -106,7 +106,6 @@ export function initializeMaterialList() {
     allowInteraction: materialInteractionAllowed
   });
   bindMaterialListTabScrollState();
-  document.querySelector('.tabs .tab[data-tab="materials"]')?.addEventListener('click', refreshMaterialList);
   refreshMaterialList();
 }
 
