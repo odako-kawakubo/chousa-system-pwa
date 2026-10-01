@@ -1,60 +1,57 @@
 /**
  * src/js/guide/tutorial-state.js
  *
- * チュートリアル中の操作許可だけを管理する。
- * DOMイベントの捕捉・停止は行わない。各機能の正式なユーザー操作入口から
- * isTutorialActionAllowed() を呼び、現在stepで許可された操作だけを実行する。
+ * チュートリアル中の現在stepと許可操作だけを保持する。
+ * DOM・イベント・Storeは監視しない。
  */
 
 let active = false;
 let stepId = '';
-let permissionResolver = null;
+let permissions = [];
 
 function normalizeRule(rule) {
   if (typeof rule === 'string') return { actionId: rule, context: {} };
   if (!rule || typeof rule !== 'object') return null;
+  const actionId = String(rule.actionId || rule.id || '');
+  if (!actionId) return null;
   return {
-    actionId: String(rule.actionId || rule.id || ''),
-    context: rule.context && typeof rule.context === 'object' ? rule.context : {}
+    actionId,
+    context: rule.context && typeof rule.context === 'object'
+      ? { ...rule.context }
+      : {}
   };
+}
+
+function normalizePermissions(rules) {
+  const list = Array.isArray(rules) ? rules : [rules];
+  return list.map(normalizeRule).filter(Boolean);
 }
 
 function contextMatches(expected = {}, actual = {}) {
   return Object.entries(expected).every(([key, value]) => {
-    if (typeof value === 'function') {
-      try { return Boolean(value(actual[key], actual)); } catch { return false; }
+    if (Array.isArray(value)) {
+      return value.map(String).includes(String(actual[key] ?? ''));
     }
-    if (Array.isArray(value)) return value.map(String).includes(String(actual[key] ?? ''));
     return String(value ?? '') === String(actual[key] ?? '');
   });
 }
 
-function currentRules() {
-  if (typeof permissionResolver !== 'function') return [];
-  try {
-    const value = permissionResolver();
-    return (Array.isArray(value) ? value : [value]).map(normalizeRule).filter((rule) => rule?.actionId);
-  } catch {
-    return [];
-  }
-}
-
-export function startTutorialState({ currentStepId = '', resolvePermissions = null } = {}) {
+export function startTutorialState({ currentStepId = '', allowedActions = [] } = {}) {
   active = true;
   stepId = String(currentStepId || '');
-  permissionResolver = typeof resolvePermissions === 'function' ? resolvePermissions : null;
+  permissions = normalizePermissions(allowedActions);
 }
 
-export function updateTutorialState({ currentStepId = stepId, resolvePermissions = permissionResolver } = {}) {
+export function setTutorialStepState({ currentStepId = '', allowedActions = [] } = {}) {
   if (!active) return;
   stepId = String(currentStepId || '');
-  permissionResolver = typeof resolvePermissions === 'function' ? resolvePermissions : null;
+  permissions = normalizePermissions(allowedActions);
 }
 
 export function clearTutorialState() {
   active = false;
   stepId = '';
-  permissionResolver = null;
+  permissions = [];
 }
 
 export function isTutorialActive() {
@@ -69,5 +66,7 @@ export function isTutorialActionAllowed(actionId, context = {}) {
   if (!active) return true;
   const id = String(actionId || '');
   if (!id) return false;
-  return currentRules().some((rule) => rule.actionId === id && contextMatches(rule.context, context));
+  return permissions.some((rule) =>
+    rule.actionId === id && contextMatches(rule.context, context)
+  );
 }
