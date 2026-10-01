@@ -12,6 +12,7 @@ import { collectOutputSettings } from './output-settings-ui.js';
 import { initializeOutputPhotoSelectionBridge,openVisualOutputPhotoViewer,openSamplingOutputPhotoViewer } from './output-photo-selection.js';
 import { initializeOutputExportController } from './output-export-controller.js';
 import { renderOutputSidePanels, hasOutputSidePanel } from './output-side-panels.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 import {
   getOutputPdfPreviewState,
   resetOutputPdfPreviewView,
@@ -77,6 +78,25 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
 /**
  * 建材リスト出力時の使用箇所表示を部屋No./部屋名で切り替えるtoolbar HTMLを返す。
  */
+function outputClickAllowed(target){
+  const view=target?.closest?.('[data-output-view]');
+  if(view)return isTutorialActionAllowed('output.view.change',{view:String(view.dataset.outputView||'')});
+  const location=target?.closest?.('[data-output-location-mode]');
+  if(location)return isTutorialActionAllowed('output.location.change',{mode:String(location.dataset.outputLocationMode||'')});
+  if(target?.closest?.('[data-output-page-prev],[data-output-page-next]'))return isTutorialActionAllowed('output.page.change',{});
+  if(target?.closest?.('[data-output-zoom-reset],[data-output-zoom-out],[data-output-zoom-in]'))return isTutorialActionAllowed('output.zoom.change',{});
+  if(target?.closest?.('[data-output-settings-open],[data-output-settings-close],[data-output-settings-undo],[data-output-settings-default],[data-output-settings-save]'))return isTutorialActionAllowed('output.settings.change',{});
+  const visual=target?.closest?.('[data-output-visual-expand]');
+  if(visual)return isTutorialActionAllowed('output.photo.visual.select',{materialId:String(visual.dataset.outputVisualExpand||'')});
+  const sampling=target?.closest?.('[data-output-sampling-expand]');
+  if(sampling)return isTutorialActionAllowed('output.photo.sampling.select',{
+    materialId:String(sampling.dataset.outputSamplingExpand||''),
+    branch:String(sampling.dataset.outputBranch||''),
+    stage:String(sampling.dataset.outputStage||'')
+  });
+  return true;
+}
+
 function renderLocationSwitch(){if(activeView!=='materials')return '';return `<span class="output-toolbar-label">使用箇所</span><div class="output-segmented"><button type="button" class="btn small ${materialLocationMode==='room-no'?'active':''}" data-output-location-mode="room-no">部屋No.</button><button type="button" class="btn small ${materialLocationMode==='room-name'?'active':''}" data-output-location-mode="room-name">部屋名</button></div><span class="output-toolbar-separator"></span>`;}
 
 /**
@@ -98,7 +118,7 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   activeView,
   vm: currentVm,
   settings: effectiveSettings()
-});}
+});window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));}
 
 /**
  * 出力タブの初期化入口。PDF Preview Controller、写真選択、設定panel、Export Controller、Store購読、wheel/zoom/page操作を接続する。
@@ -108,6 +128,7 @@ export function initializeOutputTab(){
   initializeOutputExportController(root,{getSettings:effectiveSettings,getViewModel:buildCurrentVm});
   const tab=document.querySelector('.tab[data-tab="sync"]');if(tab)tab.textContent='出力';
   root.addEventListener('click',(event)=>{
+    if(!outputClickAllowed(event.target)){event.preventDefault();return;}
     const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';resetOutputPdfPreviewView({page:1,zoom:100});renderOutputTab();return;}
     const locationButton=event.target.closest('[data-output-location-mode]');if(locationButton){materialLocationMode=locationButton.dataset.outputLocationMode==='room-name'?'room-name':'room-no';resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});renderOutputTab();return;}
     if(event.target.closest('[data-output-page-prev]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page-1,{edge:'bottom'});return;}
