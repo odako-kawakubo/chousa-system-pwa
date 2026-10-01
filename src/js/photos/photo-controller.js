@@ -428,7 +428,6 @@ export function refreshPhotoTab() {
     selectedMaterialId: state.selectedMaterialId,
     localPreviewCount: getLocalPreviewCount()
   });
-  bindPhotoTabRefresh();
   render();
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
 }
@@ -620,6 +619,7 @@ export function initializePhotoTab() {
     }
   });
 
+  bindPhotoTabRefresh();
   render();
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
   window.addEventListener('online', () => {
