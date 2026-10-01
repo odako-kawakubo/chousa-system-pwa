@@ -44,29 +44,52 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function visibleCollisionRects() {
+  return [...document.querySelectorAll('.finish-candidate-popup:not([hidden])')]
+    .map((node) => node.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+}
+
+function rectsOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 function placeCardForTarget(target) {
   if (!card) return;
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const cardRect = card.getBoundingClientRect();
+  const margin = 12;
 
   if (!target) {
-    card.style.left = `${Math.max(12, (viewportWidth - cardRect.width) / 2)}px`;
-    card.style.top = `${Math.max(12, (viewportHeight - cardRect.height) / 2)}px`;
+    card.style.left = `${Math.max(margin, (viewportWidth - cardRect.width) / 2)}px`;
+    card.style.top = `${Math.max(margin, (viewportHeight - cardRect.height) / 2)}px`;
     return;
   }
 
   const rect = target.getBoundingClientRect();
   const gap = 12;
-  const left = clamp(rect.left, 12, Math.max(12, viewportWidth - cardRect.width - 12));
-  const below = rect.bottom + gap;
-  const above = rect.top - cardRect.height - gap;
-  const top = below + cardRect.height <= viewportHeight - 12
-    ? below
-    : clamp(above, 12, Math.max(12, viewportHeight - cardRect.height - 12));
+  const maxLeft = Math.max(margin, viewportWidth - cardRect.width - margin);
+  const maxTop = Math.max(margin, viewportHeight - cardRect.height - margin);
+  const candidates = [
+    { left: clamp(rect.left, margin, maxLeft), top: clamp(rect.bottom + gap, margin, maxTop) },
+    { left: clamp(rect.left, margin, maxLeft), top: clamp(rect.top - cardRect.height - gap, margin, maxTop) },
+    { left: clamp(rect.right + gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) },
+    { left: clamp(rect.left - cardRect.width - gap, margin, maxLeft), top: clamp(rect.top, margin, maxTop) }
+  ];
+  const collisions = visibleCollisionRects();
+  const chosen = candidates.find((candidate) => {
+    const candidateRect = {
+      left:candidate.left,
+      top:candidate.top,
+      right:candidate.left + cardRect.width,
+      bottom:candidate.top + cardRect.height
+    };
+    return !collisions.some((collision) => rectsOverlap(candidateRect, collision));
+  }) || candidates[0];
 
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
+  card.style.left = `${chosen.left}px`;
+  card.style.top = `${chosen.top}px`;
 }
 
 export function positionGuideOverlay(target) {
@@ -91,7 +114,7 @@ export function positionGuideOverlay(target) {
   placeCardForTarget(target);
 }
 
-export function showGuideOverlay({ step, index, total, target, onPrev, onNext, onClose }) {
+export function showGuideOverlay({ step, index, total, target, interactive = false, onPrev, onNext, onClose }) {
   ensureLayer();
   layer.hidden = false;
 
@@ -104,6 +127,8 @@ export function showGuideOverlay({ step, index, total, target, onPrev, onNext, o
   const next = layer.querySelector('[data-guide-next]');
   const close = layer.querySelector('[data-guide-close]');
   prev.disabled = index <= 0;
+  next.hidden = Boolean(interactive);
+  next.disabled = Boolean(interactive);
   next.textContent = index >= total - 1 ? '完了' : '次へ';
   prev.onclick = onPrev;
   next.onclick = onNext;
