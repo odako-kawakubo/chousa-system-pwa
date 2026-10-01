@@ -32,6 +32,8 @@
  *   タブ固有処理はここへ直接書かず、各担当モジュールが通知を購読する。
  */
 
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+
 /** 現在activeになっている上部タブIDを返す。 */
 function activeTabId() {
   return document.querySelector('.tabs .tab[data-tab].active')?.dataset?.tab || '';
@@ -74,7 +76,9 @@ export function showTab(tabId) {
 export function bindTabEvents() {
   document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
     tabButton.addEventListener('click', () => {
-      showTab(tabButton.dataset.tab);
+      const tabId = String(tabButton.dataset.tab || '');
+      if (!isTutorialActionAllowed('tab.change', { tabId })) return;
+      showTab(tabId);
     });
   });
 }
