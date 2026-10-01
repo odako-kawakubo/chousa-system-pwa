@@ -34,10 +34,6 @@ function firstMaterialControl(field) {
   return document.querySelector(`#materials [data-material-row] [data-material-control][data-field="${field}"]`);
 }
 
-function firstMaterialText(kind) {
-  return document.querySelector(`#materials [data-material-row] [data-material-text-display][data-editor-kind="${kind}"]`);
-}
-
 function roomKeyAt(index) {
   return String(roomBlock(index)?.dataset.roomKey || '');
 }
@@ -101,10 +97,6 @@ function firstMaterialMultiSelectTarget() {
   return document.querySelector(
     `#materials [data-material-row][data-material-id="${CSS.escape(materialId)}"] [data-material-multi-select]`
   );
-}
-
-function materialFromSnapshot(snapshot, materialId) {
-  return (snapshot?.materialRecords || []).find((record) => String(record.materialId || '') === String(materialId || '')) || null;
 }
 
 function firstRoomName() {
