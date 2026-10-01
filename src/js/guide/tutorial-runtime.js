@@ -55,7 +55,7 @@ function allowedByTutorial(target) {
   if (cameraOpen() && target.closest('.camera-overlay')) return true;
 
   const allowed = currentAllowedElements();
-  if (allowed.some((node) => node === target || node.contains(target) || target.contains(node))) return true;
+  if (allowed.some((node) => node === target || node.contains(target))) return true;
 
   // 仕上表候補popupは現在の入力欄に付随する一時UIなので、入力操作ステップ中だけ許可する。
   if (allowed.some((node) => node.matches?.('[data-kind="name"],[data-kind="part"]'))
