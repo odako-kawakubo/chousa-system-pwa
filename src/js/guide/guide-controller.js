@@ -64,6 +64,19 @@ function resolveTarget(step) {
   }
 }
 
+function connectedTargets(target) {
+  const list = Array.isArray(target) ? target : [target];
+  return list.filter((node) => node?.isConnected);
+}
+
+function hasConnectedTarget(target) {
+  return connectedTargets(target).length > 0;
+}
+
+function firstConnectedTarget(target) {
+  return connectedTargets(target)[0] || null;
+}
+
 function stepContext(index = activeIndex) {
   return {
     snapshot: stepSnapshots.get(index) || null,
@@ -165,7 +178,7 @@ function waitForStepTarget(step, attempts = 0) {
   if (!stepNeedsTarget(step)) return Promise.resolve(null);
 
   const target = resolveTarget(step);
-  if (target?.isConnected || attempts >= 60) return Promise.resolve(target || null);
+  if (hasConnectedTarget(target) || attempts >= 60) return Promise.resolve(target || null);
 
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
@@ -175,12 +188,13 @@ function waitForStepTarget(step, attempts = 0) {
 }
 
 function scrollTargetIntoView(target) {
-  if (!target?.isConnected) return;
+  const firstTarget = firstConnectedTarget(target);
+  if (!firstTarget) return;
 
-  const rect = target.getBoundingClientRect();
+  const rect = firstTarget.getBoundingClientRect();
   const margin = 90;
   if (rect.top < margin || rect.bottom > window.innerHeight - margin) {
-    target.scrollIntoView({
+    firstTarget.scrollIntoView({
       block: 'center',
       inline: 'nearest',
       behavior: 'smooth'
@@ -203,7 +217,7 @@ async function renderActiveStep() {
     targetElement = await waitForStepTarget(step);
     if (step !== currentStep()) return;
 
-    if (tutorialMode && step.interactive && !targetElement?.isConnected) {
+    if (tutorialMode && step.interactive && !hasConnectedTarget(targetElement)) {
       setTutorialStepState({
         currentStepId: step.id,
         allowedActions: []
@@ -370,6 +384,11 @@ export function initializeGuide() {
   document.getElementById('openOperationGuideButton')?.addEventListener('click', openOperationGuide);
 
   window.addEventListener('chousa:tab-change', () => {
+    if (!activeSteps?.length) return;
+    requestAnimationFrame(refreshCurrentTarget);
+  });
+
+  window.addEventListener('chousa:finish-candidate-change', () => {
     if (!activeSteps?.length) return;
     requestAnimationFrame(refreshCurrentTarget);
   });
