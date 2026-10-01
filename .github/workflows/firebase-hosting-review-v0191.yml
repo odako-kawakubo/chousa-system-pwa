@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.8 Review
+name: Deploy v0.1.9.9 Review
 
 on:
   push:
@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.8 review consistency checks
+      - name: v0.1.9.9 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.8'" src/config/app-config.js
+          grep -q "version: '0.1.9.9'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.8"' src/version.json
+          grep -q '"version": "0.1.9.9"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.8" src/service-worker.js
-          grep -q "chousa-output-libs-v0198" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.9" src/service-worker.js
+          grep -q "chousa-output-libs-v0199" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -281,6 +281,7 @@ jobs:
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
+          grep -q "chousa:finish-candidate-change" src/js/finish-table/finish-table-candidate-input.js || { echo "candidate popup guide notification missing"; exit 1; }
           if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
             echo "obsolete tutorial event/blocker lock remains"
             exit 1
