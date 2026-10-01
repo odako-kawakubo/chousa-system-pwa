@@ -1,33 +1,23 @@
 /**
  * guide.css
- * 実画面の操作を妨げずに対象だけを強調するチュートリアル／操作ガイド共通UI。
+ * チュートリアル／操作ガイドの表示専用UI。
+ * 操作制限は各機能側のtutorial-state判定で行い、このCSSではイベントを遮断しない。
  */
-.guide-layer{
+.guide-visual-layer{
   position:fixed;
   inset:0;
   z-index:30000;
   pointer-events:none;
 }
-.guide-layer[hidden]{display:none}
-.guide-blocker{
-  position:fixed;
-  z-index:1;
-  background:transparent;
-  pointer-events:auto;
-  touch-action:none;
-  overscroll-behavior:contain;
-}
-.guide-blocker[hidden]{display:none}
+.guide-visual-layer[hidden]{display:none!important}
 .guide-dim{
   position:absolute;
-  z-index:2;
   inset:0;
   background:rgba(15,23,42,.52);
   pointer-events:none;
 }
 .guide-spotlight{
   position:fixed;
-  z-index:3;
   border:3px solid var(--main);
   border-radius:10px;
   box-shadow:0 0 0 9999px rgba(15,23,42,.52),0 0 0 3px rgba(255,255,255,.92);
@@ -36,7 +26,7 @@
 }
 .guide-card{
   position:fixed;
-  z-index:10;
+  z-index:30010;
   width:min(360px,calc(100vw - 24px));
   max-height:min(70dvh,520px);
   overflow:auto;
@@ -46,8 +36,9 @@
   background:var(--panel);
   color:var(--text);
   box-shadow:0 16px 44px rgba(15,23,42,.3);
-  pointer-events:auto;
 }
+.guide-card[hidden],
+.guide-card [hidden]{display:none!important}
 .guide-card-meta{
   display:flex;
   justify-content:space-between;
@@ -78,6 +69,6 @@
   }
 }
 
-/* チュートリアルからカメラへ入った間は撮影UIを全面利用させる。
- * Runtimeは継続しているため、カメラを閉じれば同じステップへ自動復帰する。 */
-body.camera-open .guide-layer{display:none!important}
+/* カメラへ入った間はしらべ側の案内表示だけ退避する。 */
+body.camera-open .guide-visual-layer,
+body.camera-open .guide-card{display:none!important}
