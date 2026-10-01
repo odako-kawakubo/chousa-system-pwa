@@ -52,17 +52,6 @@ function registerButton(roomIndex, partIndex, row = 1) {
   );
 }
 
-function newMaterialAllowed(roomIndex, partIndex, { requirePart = false } = {}) {
-  const record = finishRecordFor(roomIndex, partIndex, 1);
-  if (record?.materialId) return [];
-  if (requirePart && !String(record?.part || '').trim()) {
-    return [finishCell(roomIndex, partIndex, 'part', 1)].filter(Boolean);
-  }
-  const register = registerButton(roomIndex, partIndex, 1);
-  if (register) return [register];
-  return [finishCell(roomIndex, partIndex, 'name', 1)].filter(Boolean);
-}
-
 function activeMaterials() {
   return materialRecordStore.getAll().filter((record) => record.status === 'active');
 }
@@ -176,7 +165,10 @@ export const TUTORIAL_STEPS = [
     text: '部屋名を入力します。内容は自由です。部屋名の表示部分を押すと入力できます。',
     target: () => roomBlock(0)?.querySelector('[data-field="room-name"]'),
     interactive: true,
-    allowed: () => roomBlock(0)?.querySelector('[data-field="room-name"]'),
+    permissions: () => [{
+      actionId: 'finish.room-field.edit',
+      context: { roomKey: roomKeyAt(0), field: 'room-name' }
+    }],
     completeWhen: () => Boolean(String(firstRoomName()).trim())
   },
   {
@@ -187,7 +179,14 @@ export const TUTORIAL_STEPS = [
     text: '1-1の「床」に建材名称を入力し、新しい建材として登録します。建材名は自由です。',
     target: () => registerButton(0, 1, 1) || finishCell(0, 1, 'name', 1),
     interactive: true,
-    allowed: () => newMaterialAllowed(0, 1),
+    permissions: () => {
+      const context = { roomKey: roomKeyAt(0), partIndex: 1, row: 1 };
+      return [
+        { actionId: 'finish.material.edit', context: { ...context, kind: 'name' } },
+        { actionId: 'finish.material.candidate', context: { ...context, kind: 'name' } },
+        { actionId: 'finish.material.register', context }
+      ];
+    },
     completeWhen: () => Boolean(finishRecordFor(0, 1, 1)?.materialId)
   },
   {
@@ -202,7 +201,22 @@ export const TUTORIAL_STEPS = [
       return registerButton(0, 5, 1) || finishCell(0, 5, 'name', 1);
     },
     interactive: true,
-    allowed: () => newMaterialAllowed(0, 5, { requirePart:true }),
+    permissions: () => {
+      const record = finishRecordFor(0, 5, 1);
+      const context = { roomKey: roomKeyAt(0), partIndex: 5, row: 1 };
+      const rules = [
+        { actionId: 'finish.material.part.edit', context: { ...context, kind: 'part' } },
+        { actionId: 'finish.material.candidate', context: { ...context, kind: 'part' } }
+      ];
+      if (String(record?.part || '').trim()) {
+        rules.push(
+          { actionId: 'finish.material.edit', context: { ...context, kind: 'name' } },
+          { actionId: 'finish.material.candidate', context: { ...context, kind: 'name' } },
+          { actionId: 'finish.material.register', context }
+        );
+      }
+      return rules;
+    },
     completeWhen: () => {
       const record = finishRecordFor(0, 5, 1);
       return Boolean(record?.materialId && String(record.part || '').trim());
@@ -216,7 +230,13 @@ export const TUTORIAL_STEPS = [
     text: '1-1で登録した床の建材を、候補から1-2の床へ入力します。',
     target: () => finishCell(1, 1, 'name', 1),
     interactive: true,
-    allowed: () => finishCell(1, 1, 'name', 1),
+    permissions: () => {
+      const context = { roomKey: roomKeyAt(1), partIndex: 1, row: 1, kind: 'name' };
+      return [
+        { actionId: 'finish.material.edit', context },
+        { actionId: 'finish.material.candidate', context }
+      ];
+    },
     completeWhen: () => Boolean(finishRecordFor(1, 1, 1)?.materialId)
   },
   {
@@ -227,7 +247,13 @@ export const TUTORIAL_STEPS = [
     text: '1-1で登録した「その他」の建材を候補から選びます。登録済みの部位も確認します。',
     target: () => finishCell(1, 5, 'name', 1),
     interactive: true,
-    allowed: () => finishCell(1, 5, 'name', 1),
+    permissions: () => {
+      const context = { roomKey: roomKeyAt(1), partIndex: 5, row: 1 };
+      return [
+        { actionId: 'finish.material.edit', context: { ...context, kind: 'name' } },
+        { actionId: 'finish.material.candidate', context: { ...context, kind: 'name' } }
+      ];
+    },
     completeWhen: () => Boolean(finishRecordFor(1, 5, 1)?.materialId)
   },
   {
@@ -238,7 +264,10 @@ export const TUTORIAL_STEPS = [
     text: '同じ部屋・同じ部位に複数の仕上がある場合は「＋行」で入力行を増やせます。',
     target: () => roomAction(1, 'add-row'),
     interactive: true,
-    allowed: () => roomAction(1, 'add-row'),
+    permissions: () => [{
+      actionId: 'finish.row.add',
+      context: { roomKey: roomKeyAt(1) }
+    }],
     completeWhen: ({ snapshot }) => {
       const key = roomKeyAt(1);
       const before = (snapshot?.finishRecords || []).filter((record) => String(record.roomUid || '') === key).length;
@@ -254,7 +283,10 @@ export const TUTORIAL_STEPS = [
     text: '1Fの一番下にある「＋部屋」で部屋を追加します。練習案件では1-6が追加されます。',
     target: () => lastFirstFloorAction('add-room'),
     interactive: true,
-    allowed: () => lastFirstFloorAction('add-room'),
+    permissions: () => [{
+      actionId: 'finish.room.add',
+      context: { floorKey: 'floor-I-1' }
+    }],
     completeWhen: ({ snapshot }) => activeFinishRoomCount('I', 1) > snapshotRoomCount(snapshot, 'I', 1)
   },
   {
@@ -265,7 +297,10 @@ export const TUTORIAL_STEPS = [
     text: '仕上表の一番下にある「＋階」から次の地上階を追加します。操作パネルから追加する方法は操作ガイドで案内します。',
     target: () => document.querySelector('#finish [data-action="add-normal-floor"]'),
     interactive: true,
-    allowed: () => document.querySelector('#finish [data-action="add-normal-floor"]'),
+    permissions: () => [{
+      actionId: 'finish.floor.add',
+      context: { kind: 'normal' }
+    }],
     completeWhen: ({ snapshot }) => normalFloorCount() > snapshotNormalFloorCount(snapshot)
   },
   {
@@ -284,7 +319,6 @@ export const TUTORIAL_STEPS = [
     text: '1-1の「その他」で登録した建材を「目視」に変更します。目視・みなし・対象外にすると採取設定は使用しません。',
     target: () => secondMaterialFieldTarget('analysisRequired'),
     interactive: true,
-    allowed: () => secondMaterialFieldTarget('analysisRequired'),
     completeWhen: () => String(secondMaterial()?.analysisRequired || '') === '目視'
   },
   {
@@ -295,7 +329,6 @@ export const TUTORIAL_STEPS = [
     text: '採取する箇所数を設定します。チュートリアルでは2箇所にすると、採取場所2まで入力できます。',
     target: () => firstMaterialFieldTarget('sampleCount'),
     interactive: true,
-    allowed: () => firstMaterialFieldTarget('sampleCount'),
     completeWhen: () => Number(firstMaterial()?.sampleCount || 0) === 2
   },
   {
@@ -306,7 +339,6 @@ export const TUTORIAL_STEPS = [
     text: '仕上表の使用箇所から採取場所を選びます。採取数に応じて採取場所1〜3を設定します。',
     target: () => firstMaterialFieldTarget('sampleLocation1'),
     interactive: true,
-    allowed: () => firstMaterialFieldTarget('sampleLocation1'),
     completeWhen: () => Boolean(String(firstMaterial()?.sampleLocation1 || '').trim())
   },
   {
@@ -317,7 +349,6 @@ export const TUTORIAL_STEPS = [
     text: '建材の使用部位から、実際に採取する部位を選択します。複数選択もできます。',
     target: () => firstMaterialMultiSelectTarget(),
     interactive: true,
-    allowed: () => firstMaterialMultiSelectTarget(),
     completeWhen: () => Array.isArray(firstMaterial()?.samplePart) && firstMaterial().samplePart.length > 0
   },
   {
@@ -328,7 +359,6 @@ export const TUTORIAL_STEPS = [
     text: '必要な補足は調査備考へ入力します。内容は自由です。',
     target: () => firstMaterialTextTarget('note'),
     interactive: true,
-    allowed: () => firstMaterialTextTarget('note'),
     completeWhen: () => Boolean(String(firstMaterial()?.note || '').trim())
   },
   {
@@ -341,9 +371,6 @@ export const TUTORIAL_STEPS = [
       ? firstMaterialFieldTarget('sampleDate')
       : firstMaterialFieldTarget('sampleDone'),
     interactive: true,
-    allowed: () => firstMaterial()?.sampleDone
-      ? firstMaterialFieldTarget('sampleDate')
-      : firstMaterialFieldTarget('sampleDone'),
     completeWhen: () => Boolean(firstMaterial()?.sampleDone && String(firstMaterial()?.sampleDate || '').trim())
   },
   {
@@ -355,8 +382,6 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('#photos [data-photo-camera-visual]')
       || document.querySelector('#photos [data-photo-camera-global]'),
     interactive: true,
-    allowed: () => document.querySelector('#photos [data-photo-camera-visual]')
-      || document.querySelector('#photos [data-photo-camera-global]'),
     completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
@@ -367,7 +392,6 @@ export const TUTORIAL_STEPS = [
     text: '採取写真は「建材採取」に切り替えます。建材リストの採取数・採取場所・採取部位がここへ反映されます。',
     target: () => document.querySelector('#photos [data-photo-mode="sampling"]'),
     interactive: true,
-    allowed: () => document.querySelector('#photos [data-photo-mode="sampling"]'),
     completeWhen: () => document.querySelector('#photos [data-photo-mode="sampling"]')?.classList.contains('active')
   },
   {
@@ -379,7 +403,6 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="before"]')
       || document.querySelector('#photos [data-photo-mode="sampling"]'),
     interactive: true,
-    allowed: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="before"]'),
     completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
@@ -391,7 +414,6 @@ export const TUTORIAL_STEPS = [
     target: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="section"]')
       || document.querySelector('#photos [data-photo-mode="sampling"]'),
     interactive: true,
-    allowed: () => document.querySelector('#photos [data-photo-camera-sampling-stage][data-photo-stage="section"]'),
     completeWhen: ({ snapshot }) => cameraClosed() && photoCount() > snapshotPhotoCount(snapshot)
   },
   {
