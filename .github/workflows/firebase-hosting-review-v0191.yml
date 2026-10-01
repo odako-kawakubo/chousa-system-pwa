@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.15 Review
+name: Deploy v0.1.9.16 Review
 
 on:
   push:
@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.15 review consistency checks
+      - name: v0.1.9.16 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.15'" src/config/app-config.js
+          grep -q "version: '0.1.9.16'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.15"' src/version.json
+          grep -q '"version": "0.1.9.16"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.15" src/service-worker.js
-          grep -q "chousa-output-libs-v01915" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.16" src/service-worker.js
+          grep -q "chousa-output-libs-v01916" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -272,6 +272,7 @@ jobs:
           test -f src/js/guide/tutorial-steps-finish.js
           test -f src/js/guide/tutorial-steps-materials.js
           test -f src/js/guide/tutorial-steps-photos.js
+          test -f src/js/guide/tutorial-steps-output.js
           test -f src/js/guide/operation-guide-data.js
           grep -q "export function isTutorialActionAllowed" src/js/guide/tutorial-state.js || { echo "tutorial permission API missing"; exit 1; }
           grep -q "export function captureTutorialSnapshot" src/js/guide/tutorial-snapshot.js || { echo "tutorial snapshot API missing"; exit 1; }
@@ -299,6 +300,14 @@ jobs:
           grep -q "finish-existing-material-id-note" src/js/guide/tutorial-steps-finish.js || { echo "existing material ID guidance missing"; exit 1; }
           grep -q "MATERIAL_TUTORIAL_STEPS" src/js/guide/tutorial-steps-materials.js || { echo "material tutorial section missing"; exit 1; }
           grep -q "PHOTO_TUTORIAL_STEPS" src/js/guide/tutorial-steps-photos.js || { echo "photo tutorial section missing"; exit 1; }
+          grep -q "OUTPUT_TUTORIAL_STEPS" src/js/guide/tutorial-steps-output.js || { echo "output tutorial section missing"; exit 1; }
+          grep -q "analysis-show-columns" src/js/guide/tutorial-steps-output.js || { echo "analysis columns tutorial step missing"; exit 1; }
+          grep -q "output-rooms" src/js/guide/tutorial-steps-output.js || { echo "output rooms tutorial step missing"; exit 1; }
+          grep -q "output-visual-photos" src/js/guide/tutorial-steps-output.js || { echo "output visual photos tutorial step missing"; exit 1; }
+          grep -q "output-sampling-photos" src/js/guide/tutorial-steps-output.js || { echo "output sampling photos tutorial step missing"; exit 1; }
+          grep -q "output-export-info" src/js/guide/tutorial-steps-output.js || { echo "output export guidance missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
           grep -q "photos-switch-sampling" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling switch step missing"; exit 1; }
           grep -q "photos-sampling-reflection" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling reflection step missing"; exit 1; }
           grep -q "photos-before-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo before-stage step missing"; exit 1; }
