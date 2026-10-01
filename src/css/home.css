@@ -343,6 +343,8 @@
 }
 
 .shirabe-home-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   padding: 0 16px 16px;
 }
 
@@ -357,6 +359,13 @@
   font-size: 11px;
   text-align: left;
   cursor: pointer;
+}
+.shirabe-home-secondary .shirabe-sample-button + .shirabe-sample-button {
+  border-left: 1px solid #edf0f3;
+}
+.shirabe-tutorial-button {
+  color: var(--main, #2563eb);
+  font-weight: 700;
 }
 
 .header-home-btn {
