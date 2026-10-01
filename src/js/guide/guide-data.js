@@ -1,7 +1,7 @@
 /**
  * src/js/guide/guide-data.js
  *
- * チュートリアル／操作ガイドの表示内容と対象DOMだけを定義する。
+ * チュートリアル／操作ガイドの表示内容・対象DOM・stepごとの操作許可を定義する。
  * ガイドの描画・タブ遷移・進行状態は guide-controller / guide-overlay 側へ分離する。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
