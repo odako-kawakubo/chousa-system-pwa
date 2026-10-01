@@ -80,7 +80,12 @@ function stepIsComplete(step) {
   }
 }
 
+function stepNeedsTarget(step) {
+  return Boolean(step?.interactive || typeof step?.target === 'function' || typeof step?.allowed === 'function');
+}
+
 function waitForStepTarget(step, attempts = 0) {
+  if (!stepNeedsTarget(step)) return Promise.resolve(null);
   const target = resolveTarget(step);
   if (target?.isConnected || attempts >= 60) return Promise.resolve(target || null);
   return new Promise((resolve) => {
@@ -100,29 +105,69 @@ function scrollTargetIntoView(target) {
 async function renderActiveStep() {
   if (!activeSteps?.length) return;
   const step = activeSteps[activeIndex];
-  ensureStepSnapshot(activeIndex);
-  if (step.tab) showTab(step.tab);
 
-  targetElement = await waitForStepTarget(step);
-  if (!activeSteps?.length || step !== activeSteps[activeIndex]) return;
+  // 描画途中の古いRuntimeを必ず解除する。
+  // 新しいステップはOverlayと操作対象が正常に表示できてからロックを開始する。
+  stopTutorialRuntime();
 
-  scrollTargetIntoView(targetElement);
-  showGuideOverlay({
-    step,
-    index: activeIndex,
-    total: activeSteps.length,
-    target: targetElement,
-    interactive: Boolean(tutorialMode && step.interactive),
-    onPrev: () => moveStep(-1),
-    onNext: () => moveStep(1),
-    onClose: closeGuide
-  });
-  watchGuideOverlayPosition(() => {
-    targetElement = resolveTarget(activeSteps?.[activeIndex]);
-    positionGuideOverlay(targetElement);
-  });
+  try {
+    ensureStepSnapshot(activeIndex);
+    if (step.tab) showTab(step.tab);
 
-  if (stepIsComplete(step)) void completeInteractiveStep();
+    targetElement = await waitForStepTarget(step);
+    if (!activeSteps?.length || step !== activeSteps[activeIndex]) return;
+
+    if (tutorialMode && step.interactive && !targetElement?.isConnected) {
+      // 操作対象が見つからない状態では画面をロックしない。
+      // ガイド自体は表示して閉じる／戻る操作ができる状態を保つ。
+      showGuideOverlay({
+        step: {
+          ...step,
+          text: `${step.text || ''}\n\n操作対象を表示できませんでした。画面を閉じるか、前の手順へ戻ってください。`
+        },
+        index: activeIndex,
+        total: activeSteps.length,
+        target: null,
+        interactive: false,
+        onPrev: () => moveStep(-1),
+        onNext: () => moveStep(1),
+        onClose: closeGuide
+      });
+      return;
+    }
+
+    scrollTargetIntoView(targetElement);
+    showGuideOverlay({
+      step,
+      index: activeIndex,
+      total: activeSteps.length,
+      target: targetElement,
+      interactive: Boolean(tutorialMode && step.interactive),
+      onPrev: () => moveStep(-1),
+      onNext: () => moveStep(1),
+      onClose: closeGuide
+    });
+    watchGuideOverlayPosition(() => {
+      targetElement = resolveTarget(activeSteps?.[activeIndex]);
+      positionGuideOverlay(targetElement);
+    });
+
+    if (tutorialMode && step.interactive) {
+      startTutorialRuntime({
+        resolveAllowed: () => resolveAllowed(activeSteps?.[activeIndex]),
+        checkCompletion: () => {
+          refreshInteractiveTarget();
+          void completeInteractiveStep();
+        }
+      });
+    }
+
+    if (stepIsComplete(step)) void completeInteractiveStep();
+  } catch (error) {
+    stopTutorialRuntime();
+    hideGuideOverlay();
+    console.error('[guide] failed to render tutorial step', error);
+  }
 }
 
 function refreshInteractiveTarget() {
@@ -184,16 +229,6 @@ function startSteps(steps, { tutorial = false } = {}) {
   stepSnapshots = new Map();
   advancing = false;
   closeDrawer();
-
-  if (tutorialMode) {
-    startTutorialRuntime({
-      resolveAllowed: () => resolveAllowed(activeSteps?.[activeIndex]),
-      checkCompletion: () => {
-        refreshInteractiveTarget();
-        void completeInteractiveStep();
-      }
-    });
-  }
 
   void renderActiveStep();
 }
