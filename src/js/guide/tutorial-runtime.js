@@ -1,6 +1,6 @@
 /**
- * チュートリアル専用の進行状態・操作ロック・3Recordスナップショットを管理する。
- * 通常のUndo/Redoや案件保存履歴とは分離し、練習案件内だけで使用する。
+ * チュートリアル専用の完了監視・3Recordスナップショットを管理する。
+ * 通常のUndo/Redoや案件保存履歴とは分離し、操作可否はtutorial-state.jsへ分離する。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
