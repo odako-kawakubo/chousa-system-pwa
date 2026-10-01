@@ -132,8 +132,8 @@ async function renderActiveStep() {
     if (!activeSteps?.length || step !== activeSteps[activeIndex]) return;
 
     if (tutorialMode && step.interactive && !targetElement?.isConnected) {
-      // 操作対象が見つからない状態では画面をロックしない。
-      // ガイド自体は表示して閉じる／戻る操作ができる状態を保つ。
+      // 操作対象を取得できない場合もガイドカードは残し、
+      // 閉じる／戻る／次へで脱出できる状態を保つ。
       showGuideOverlay({
         step: {
           ...step,
@@ -178,9 +178,8 @@ async function renderActiveStep() {
 
     if (stepIsComplete(step)) void completeInteractiveStep();
   } catch (error) {
-    stopTutorialRuntime();
-    hideGuideOverlay();
     console.error('[guide] failed to render tutorial step', error);
+    closeGuide();
   }
 }
 
