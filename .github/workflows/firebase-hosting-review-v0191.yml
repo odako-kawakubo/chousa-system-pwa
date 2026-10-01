@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.13 Review
+name: Deploy v0.1.9.14 Review
 
 on:
   push:
@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.13 review consistency checks
+      - name: v0.1.9.14 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.13'" src/config/app-config.js
+          grep -q "version: '0.1.9.14'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.13"' src/version.json
+          grep -q '"version": "0.1.9.14"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.13" src/service-worker.js
-          grep -q "chousa-output-libs-v01913" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.14" src/service-worker.js
+          grep -q "chousa-output-libs-v01914" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -295,6 +295,7 @@ jobs:
           grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
           grep -q "watchStores" src/js/guide/guide-controller.js || { echo "generic tutorial store watch missing"; exit 1; }
           grep -q "FINISH_TUTORIAL_STEPS" src/js/guide/tutorial-steps-finish.js || { echo "finish tutorial section missing"; exit 1; }
+          grep -q "finish-existing-material-id-note" src/js/guide/tutorial-steps-finish.js || { echo "existing material ID guidance missing"; exit 1; }
           grep -q "MATERIAL_TUTORIAL_STEPS" src/js/guide/tutorial-steps-materials.js || { echo "material tutorial section missing"; exit 1; }
           grep -q "materials-analysis-required" src/js/guide/tutorial-steps-materials.js || { echo "material analysis tutorial step missing"; exit 1; }
           grep -q "materials-sample-done" src/js/guide/tutorial-steps-materials.js || { echo "material sample-done tutorial step missing"; exit 1; }
