@@ -140,7 +140,11 @@ export const MATERIAL_TUTORIAL_STEPS = [
     title: '採取部位',
     text: '採取部位は使用部位から候補が作られます。使用部位が1つの場合は自動で補完されます。',
     target: () => materialMultiSelect(floorMaterialId()),
-    extraTargets: () => openMaterialMultiMenu(floorMaterialId())
+    extraTargets: () => openMaterialMultiMenu(floorMaterialId()),
+    permissions: () => [{
+      actionId: 'material.sample-part.open',
+      context: { materialId: floorMaterialId() }
+    }]
   },
   {
     id: 'materials-note',
