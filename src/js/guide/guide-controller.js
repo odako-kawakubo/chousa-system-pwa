@@ -388,6 +388,11 @@ export function initializeGuide() {
 
   window.addEventListener('chousa:guide-layout-change', () => {
     if (!activeSteps?.length) return;
+    const step = currentStep();
+    if (tutorialMode && step?.interactive && typeof step.completeWhen === 'function') {
+      scheduleCurrentStepCheck(step.id);
+      return;
+    }
     requestAnimationFrame(refreshCurrentTarget);
   });
 }
