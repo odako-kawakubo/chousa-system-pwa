@@ -17,7 +17,6 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { persistFinishForProject } from '../sync/project-record-persistence.js';
 import { persistAddedStructureMarker, persistFinishStructureChange } from './finish-table-persistence.js';
 
-const ROOMS_PER_FLOOR = 10;
 const PART_COUNT = 6;
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
@@ -110,37 +109,60 @@ function insertFlatRoomAt(areaCode, insertIndex) {
   persistFinishStructureChange(before, finishRecordStore.getAll());
 }
 
-export function addNormalFloor() {
+function normalizeRoomCount(roomCount, fallback = 1) {
+  const value = Number(roomCount);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(99, Math.trunc(value)));
+}
+
+export function getNextNormalFloorNumber() {
   const floors = listFloorNumbers('I');
-  const next = floors.length ? Math.max(...floors) + 1 : 1;
+  return floors.length ? Math.max(...floors) + 1 : 1;
+}
+
+export function getNextBasementFloorNumber() {
+  const floors = listFloorNumbers('B');
+  return floors.length ? Math.max(...floors) + 1 : 1;
+}
+
+export function addNormalFloor(roomCount = 10) {
+  const next = getNextNormalFloorNumber();
+  const count = normalizeRoomCount(roomCount, 10);
   const records = [];
-  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
+  for (let i = 1; i <= count; i += 1) records.push(...buildFloorRoomSeed('I', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
+  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === count));
   return `floor-I-${next}`;
 }
 
-export function addBasementFloor() {
-  const floors = listFloorNumbers('B');
-  const next = floors.length ? Math.max(...floors) + 1 : 1;
+export function addBasementFloor(roomCount = 10) {
+  const next = getNextBasementFloorNumber();
+  const count = normalizeRoomCount(roomCount, 10);
   const records = [];
-  for (let i = 1; i <= ROOMS_PER_FLOOR; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
+  for (let i = 1; i <= count; i += 1) records.push(...buildFloorRoomSeed('B', next, i));
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === ROOMS_PER_FLOOR));
+  persistAddedStructureMarker(records.filter((record) => roomIndexFromRoomPosition(record.roomPosition) === count));
   return `floor-B-${next}`;
 }
 
-export function addStairs() {
-  const records = buildFlatRoomSeed('S', countFlatRooms('S') + 1);
+function addFlatRooms(areaCode, roomCount = 1) {
+  const count = normalizeRoomCount(roomCount, 1);
+  const start = countFlatRooms(areaCode) + 1;
+  const records = [];
+  for (let offset = 0; offset < count; offset += 1) {
+    records.push(...buildFlatRoomSeed(areaCode, start + offset));
+  }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
   persistAddedStructureMarker(records);
+}
+
+export function addStairs(roomCount = 1) {
+  addFlatRooms('S', roomCount);
   return 'stairs-group';
 }
 
-export function addRoof() {
-  const records = buildFlatRoomSeed('R', countFlatRooms('R') + 1);
-  finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
-  persistAddedStructureMarker(records);
+export function addRoof(roomCount = 1) {
+  addFlatRooms('R', roomCount);
   return 'roof-group';
 }
 
