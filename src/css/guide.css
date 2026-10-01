@@ -65,3 +65,7 @@
     padding:11px;
   }
 }
+
+/* チュートリアルからカメラへ入った間は撮影UIを全面利用させる。
+ * Runtimeは継続しているため、カメラを閉じれば同じステップへ自動復帰する。 */
+body.camera-open .guide-layer{display:none!important}
