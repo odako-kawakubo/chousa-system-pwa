@@ -265,6 +265,17 @@ jobs:
             exit 1
           fi
 
+          # チュートリアル操作制限はアプリ側permission stateへ集約
+          test -f src/js/guide/tutorial-state.js
+          grep -q "export function isTutorialActionAllowed" src/js/guide/tutorial-state.js || { echo "tutorial permission API missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
+          if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
+            echo "obsolete tutorial event/blocker lock remains"
+            exit 1
+          fi
+
           # 仕上表候補入力UIをcontrollerから分離
           test -f src/js/finish-table/finish-table-candidate-input.js
           grep -q "getActiveCandidateSelection" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate module API missing"; exit 1; }
