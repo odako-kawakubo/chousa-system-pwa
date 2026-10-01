@@ -638,4 +638,4 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
           projectId: odako-chousa-system-pwa
-          channelId: v0191
+          channelId: v0163a
