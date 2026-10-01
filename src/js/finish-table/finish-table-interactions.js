@@ -632,10 +632,18 @@ export function bindFinishTableInteractions(root, {
     closeCandidatePopup();
   }, true);
 
-  // その他1/2ではEnter確定でも「建材名 <-> 部位」を往復できるようにする。
-  // 通常のfocusoutでは移動させず、明示的にEnterを押した場合だけ適用する。
+  // 部屋No./部屋名はEnterでblurし、既存のfocusout正式確定経路へ流す。
+  // Enter専用の別commit経路は作らず、1操作=1commitを維持する。
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
+
+    const roomFieldInput = event.target.closest('.room-no-input, .room-name-input');
+    if (roomFieldInput) {
+      event.preventDefault();
+      roomFieldInput.blur();
+      return;
+    }
+
     const input = event.target.closest('.finish-cell-input');
     if (!input || !['name', 'part'].includes(input.dataset.kind)) return;
 
