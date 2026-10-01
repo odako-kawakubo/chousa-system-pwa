@@ -1,10 +1,15 @@
 /**
  * src/js/guide/guide-controller.js
  *
- * チュートリアル／操作ガイドの進行を管理する。
- * 実案件へ練習操作を混ぜないため、チュートリアル開始時は専用ローカル案件へ切り替える。
- * v0.1.9.7では操作制限をDOMイベント遮断からアプリ側の操作許可判定へ移行する。
- * 戻る操作では各ステップ開始時の3Recordスナップショットへ復元する。
+ * チュートリアル／操作ガイドの進行だけを管理する。
+ *
+ * 基本チュートリアル:
+ * - 操作可否は tutorial-state.js
+ * - 戻る用3Recordは tutorial-snapshot.js
+ * - interactive stepの完了確認は Record Store の変更通知
+ * - 表示は guide-overlay.js
+ *
+ * documentイベント監視・DOM MutationObserver・イベント遮断は行わない。
  */
 import { showTab } from '../ui/tabs.js';
 import { closeDrawer, closeGuideDrawer } from '../ui/drawer.js';
@@ -13,6 +18,7 @@ import { openProjectSession } from '../projects/project-session.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { setOpenProjectId } from '../projects/project-navigation.js';
 import { setSimpleListOpen } from '../finish-table/finish-table-state.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
 import {
   TUTORIAL_PROJECT_ID,
   initializeTutorialProjectSnapshot,
@@ -24,19 +30,16 @@ import {
   hideGuideOverlay,
   initializeGuideOverlayPositionEvents,
   positionGuideOverlay,
-  showGuideOverlay,
-  watchGuideOverlayPosition
+  showGuideOverlay
 } from './guide-overlay.js';
 import {
   captureTutorialSnapshot,
-  restoreTutorialSnapshot,
-  startTutorialRuntime,
-  stopTutorialRuntime
-} from './tutorial-runtime.js';
+  restoreTutorialSnapshot
+} from './tutorial-snapshot.js';
 import {
   clearTutorialState,
   startTutorialState,
-  updateTutorialState
+  setTutorialStepState
 } from './tutorial-state.js';
 
 let activeSteps = null;
@@ -45,7 +48,13 @@ let targetElement = null;
 let initialized = false;
 let tutorialMode = false;
 let stepSnapshots = new Map();
+let unsubscribeStepStore = null;
+let stepCheckScheduled = false;
 let advancing = false;
+
+function currentStep() {
+  return activeSteps?.[activeIndex] || null;
+}
 
 function resolveTarget(step) {
   try {
@@ -55,34 +64,36 @@ function resolveTarget(step) {
   }
 }
 
+function stepContext(index = activeIndex) {
+  return {
+    snapshot: stepSnapshots.get(index) || null,
+    index
+  };
+}
+
 function resolvePermissions(step) {
   try {
     if (typeof step?.permissions === 'function') {
       const value = step.permissions(stepContext());
-      return Array.isArray(value) ? value : [value];
+      return (Array.isArray(value) ? value : [value]).filter(Boolean);
     }
-    if (Array.isArray(step?.permissions)) return step.permissions;
-    return [];
+    return Array.isArray(step?.permissions) ? step.permissions.filter(Boolean) : [];
   } catch {
     return [];
   }
 }
 
-function syncTutorialState(step) {
+function syncTutorialStepState(step) {
   if (!tutorialMode) return;
-  updateTutorialState({
+  setTutorialStepState({
     currentStepId: step?.id || '',
-    resolvePermissions: () => resolvePermissions(activeSteps?.[activeIndex])
+    allowedActions: resolvePermissions(step)
   });
 }
 
 function ensureStepSnapshot(index) {
   if (!tutorialMode || stepSnapshots.has(index)) return;
   stepSnapshots.set(index, captureTutorialSnapshot());
-}
-
-function stepContext(index = activeIndex) {
-  return { snapshot: stepSnapshots.get(index) || null, index };
 }
 
 function stepIsComplete(step) {
@@ -94,50 +105,107 @@ function stepIsComplete(step) {
   }
 }
 
+function stopStepStoreWatch() {
+  unsubscribeStepStore?.();
+  unsubscribeStepStore = null;
+  stepCheckScheduled = false;
+}
+
+function refreshCurrentTarget() {
+  const step = currentStep();
+  if (!step) return;
+  targetElement = resolveTarget(step);
+  positionGuideOverlay(targetElement);
+}
+
+function scheduleCurrentStepCheck(expectedStepId) {
+  if (stepCheckScheduled) return;
+  stepCheckScheduled = true;
+
+  queueMicrotask(() => {
+    stepCheckScheduled = false;
+
+    const step = currentStep();
+    if (!tutorialMode || !step || step.id !== expectedStepId) return;
+
+    // Store変更後の正式UI再描画が終わった状態で、
+    // 動的permissionとtargetを現在Recordから再解決する。
+    syncTutorialStepState(step);
+
+    if (stepIsComplete(step)) {
+      void advanceFromCompletedStep(step);
+      return;
+    }
+
+    refreshCurrentTarget();
+  });
+}
+
+function startStepStoreWatch(step) {
+  stopStepStoreWatch();
+  if (!tutorialMode || !step?.interactive) return;
+
+  const expectedStepId = step.id;
+  unsubscribeStepStore = finishRecordStore.subscribe(() => {
+    scheduleCurrentStepCheck(expectedStepId);
+  });
+}
+
 function stepNeedsTarget(step) {
   return Boolean(step?.interactive || typeof step?.target === 'function');
 }
 
 function waitForStepTarget(step, attempts = 0) {
   if (!stepNeedsTarget(step)) return Promise.resolve(null);
+
   const target = resolveTarget(step);
   if (target?.isConnected || attempts >= 60) return Promise.resolve(target || null);
+
   return new Promise((resolve) => {
-    requestAnimationFrame(() => resolve(waitForStepTarget(step, attempts + 1)));
+    requestAnimationFrame(() => {
+      resolve(waitForStepTarget(step, attempts + 1));
+    });
   });
 }
 
 function scrollTargetIntoView(target) {
   if (!target?.isConnected) return;
+
   const rect = target.getBoundingClientRect();
   const margin = 90;
   if (rect.top < margin || rect.bottom > window.innerHeight - margin) {
-    target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    target.scrollIntoView({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth'
+    });
   }
 }
 
 async function renderActiveStep() {
-  if (!activeSteps?.length) return;
-  const step = activeSteps[activeIndex];
+  stopStepStoreWatch();
 
-  // 前stepの完了監視だけを解除し、現在stepの操作許可へ切り替える。
-  stopTutorialRuntime();
-  syncTutorialState(step);
+  const step = currentStep();
+  if (!step) return;
 
   try {
     ensureStepSnapshot(activeIndex);
+
     if (step.tab) showTab(step.tab);
+    syncTutorialStepState(step);
 
     targetElement = await waitForStepTarget(step);
-    if (!activeSteps?.length || step !== activeSteps[activeIndex]) return;
+    if (step !== currentStep()) return;
 
     if (tutorialMode && step.interactive && !targetElement?.isConnected) {
-      // 操作対象を取得できない場合もガイドカードは残し、
-      // 閉じる／戻る／次へで脱出できる状態を保つ。
+      setTutorialStepState({
+        currentStepId: step.id,
+        allowedActions: []
+      });
       showGuideOverlay({
         step: {
           ...step,
-          text: `${step.text || ''}\n\n操作対象を表示できませんでした。画面を閉じるか、前の手順へ戻ってください。`
+          text: `${step.text || ''}\n\n操作対象を表示できませんでした。前の手順へ戻るか、チュートリアルを閉じてください。`
         },
         index: activeIndex,
         total: activeSteps.length,
@@ -161,52 +229,31 @@ async function renderActiveStep() {
       onNext: () => moveStep(1),
       onClose: closeGuide
     });
-    watchGuideOverlayPosition(() => {
-      const activeStep = activeSteps?.[activeIndex];
-      targetElement = resolveTarget(activeStep);
-      positionGuideOverlay(targetElement);
-    });
 
-    if (tutorialMode && step.interactive) {
-      startTutorialRuntime({
-        checkCompletion: () => {
-          refreshInteractiveTarget();
-          void completeInteractiveStep();
-        }
-      });
+    startStepStoreWatch(step);
+
+    if (stepIsComplete(step)) {
+      await advanceFromCompletedStep(step);
     }
-
-    if (stepIsComplete(step)) void completeInteractiveStep();
   } catch (error) {
-    console.error('[guide] failed to render tutorial step', error);
+    console.error('[guide] failed to render step', error);
     closeGuide();
   }
 }
 
-function refreshInteractiveTarget() {
-  if (!activeSteps?.length) return;
-  const step = activeSteps[activeIndex];
-  targetElement = resolveTarget(step);
-  scrollTargetIntoView(targetElement);
-  positionGuideOverlay(targetElement);
-}
-
-async function completeInteractiveStep() {
-  if (advancing || !activeSteps?.length) return;
-  const step = activeSteps[activeIndex];
-  if (!stepIsComplete(step)) {
-    refreshInteractiveTarget();
-    return;
-  }
+async function advanceFromCompletedStep(step) {
+  if (advancing || step !== currentStep() || !stepIsComplete(step)) return;
 
   advancing = true;
   try {
-    const next = activeIndex + 1;
-    if (next >= activeSteps.length) {
+    stopStepStoreWatch();
+    const nextIndex = activeIndex + 1;
+    if (nextIndex >= activeSteps.length) {
       closeGuide();
       return;
     }
-    activeIndex = next;
+
+    activeIndex = nextIndex;
     await renderActiveStep();
   } finally {
     advancing = false;
@@ -214,50 +261,58 @@ async function completeInteractiveStep() {
 }
 
 function moveStep(delta) {
-  if (!activeSteps?.length) return;
-  const next = activeIndex + delta;
-  if (next < 0) return;
-  if (next >= activeSteps.length) {
+  if (!activeSteps?.length || advancing) return;
+
+  const nextIndex = activeIndex + delta;
+  if (nextIndex < 0) return;
+
+  if (nextIndex >= activeSteps.length) {
     closeGuide();
     return;
   }
 
+  stopStepStoreWatch();
+
   if (tutorialMode && delta < 0) {
-    const snapshot = stepSnapshots.get(next);
+    const snapshot = stepSnapshots.get(nextIndex);
     if (snapshot) restoreTutorialSnapshot(snapshot);
+
     [...stepSnapshots.keys()].forEach((index) => {
-      if (index > next) stepSnapshots.delete(index);
+      if (index > nextIndex) stepSnapshots.delete(index);
     });
   }
 
-  activeIndex = next;
+  activeIndex = nextIndex;
   void renderActiveStep();
 }
 
 function startSteps(steps, { tutorial = false } = {}) {
-  stopTutorialRuntime();
+  stopStepStoreWatch();
+
   activeSteps = steps;
   activeIndex = 0;
   tutorialMode = tutorial;
   stepSnapshots = new Map();
+  advancing = false;
+  closeDrawer();
+
   if (tutorialMode) {
     startTutorialState({
       currentStepId: steps?.[0]?.id || '',
-      resolvePermissions: () => resolvePermissions(activeSteps?.[activeIndex])
+      allowedActions: []
     });
   } else {
     clearTutorialState();
   }
-  advancing = false;
-  closeDrawer();
 
   void renderActiveStep();
 }
 
 export function closeGuide() {
+  stopStepStoreWatch();
   hideGuideOverlay();
-  stopTutorialRuntime();
   clearTutorialState();
+
   activeSteps = null;
   activeIndex = 0;
   targetElement = null;
@@ -280,8 +335,6 @@ export async function startBasicTutorial() {
     await openProjectById(TUTORIAL_PROJECT_ID);
   }
 
-  // 基本チュートリアルでは簡易リストをノイズにしない。
-  // 通常案件の既定値は変えず、練習開始時だけ閉じる。
   setSimpleListOpen(false);
   showTab('finish');
   startSteps(TUTORIAL_STEPS, { tutorial:true });
@@ -301,6 +354,7 @@ export async function startRequestedTutorialIfNeeded() {
 export function initializeGuide() {
   if (initialized) return;
   initialized = true;
+
   initializeTutorialProjectSnapshot();
   initializeGuideOverlayPositionEvents();
 
@@ -311,10 +365,6 @@ export function initializeGuide() {
 
   window.addEventListener('chousa:tab-change', () => {
     if (!activeSteps?.length) return;
-    requestAnimationFrame(() => {
-      const step = activeSteps[activeIndex];
-      targetElement = resolveTarget(step);
-      positionGuideOverlay(targetElement);
-    });
+    requestAnimationFrame(refreshCurrentTarget);
   });
 }
