@@ -147,6 +147,12 @@ function startStepStoreWatch(step) {
 
   const expectedStepId = step.id;
   unsubscribeStepStore = finishRecordStore.subscribe(() => {
+    const activeStep = currentStep();
+    if (tutorialMode && activeStep?.id === expectedStepId) {
+      // Record値だけで解決できるpermissionは同期的に更新する。
+      // focusout直後の同一クリックでも、次に許可された入力へそのまま進める。
+      syncTutorialStepState(activeStep);
+    }
     scheduleCurrentStepCheck(expectedStepId);
   });
 }
