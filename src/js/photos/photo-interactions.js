@@ -35,7 +35,8 @@ export function bindPhotoInteractions({
   globalCameraContext,
   externalImportContext,
   openFilePicker,
-  addPickedFiles
+  addPickedFiles,
+  allowInteraction = () => true
 }) {
   if (!root || boundRoot === root) return;
   boundRoot = root;
@@ -43,6 +44,11 @@ export function bindPhotoInteractions({
   bindPhotoTabExitReset(state, clearSelectionMode);
 
   root.addEventListener('click', (event) => {
+    if (!allowInteraction(event.target)) {
+      event.preventDefault();
+      return;
+    }
+
     const selectionButton = event.target.closest('[data-photo-selection-mode]');
     if (selectionButton) {
       const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
