@@ -122,14 +122,8 @@
         <button class="tab" data-tab="settings">設定</button>
         <button class="tab" data-tab="records">レコード</button>
         <button class="btn header-collapse-button" id="headerCollapseToggle" type="button" aria-pressed="false" title="通常ヘッダーを隠す" aria-label="通常ヘッダーを隠す">▲</button>
-        <div class="tab-guide-wrap">
-          <button class="btn tab-guide-button" id="guideMenuButton" type="button" aria-expanded="false">ガイド</button>
-          <div class="tab-guide-menu" id="guideMenu" hidden>
-            <button type="button" class="btn primary" id="startBasicTutorialButton">基本チュートリアル</button>
-            <button type="button" class="btn" id="openOperationGuideButton">操作ガイド</button>
-          </div>
-        </div>
-        <button class="btn tab-operation-button" data-drawer-open>操作</button>
+        <button class="btn tab-guide-button" type="button" data-drawer-open="guide">ガイド</button>
+        <button class="btn tab-operation-button" type="button" data-drawer-open="operation">操作</button>
       </nav>
     </div>
 
@@ -171,9 +165,26 @@
   </main>
 </div>
 
-<div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
+<div class="drawer-backdrop" id="guideDrawerBackdrop" data-drawer-close="guide"></div>
+<aside class="drawer" id="guideDrawer">
+  <div class="drawer-head"><b>ガイド</b><button class="btn small" type="button" data-drawer-close="guide">閉じる</button></div>
+  <div class="drawer-body">
+    <div class="drawer-box guide-drawer-card">
+      <h4>基本チュートリアル</h4>
+      <div class="hint">専用の練習案件を使って、仕上表・建材・写真・出力の基本操作を実際に確認します。</div>
+      <button type="button" class="btn primary" id="startBasicTutorialButton">開始する</button>
+    </div>
+    <div class="drawer-box guide-drawer-card">
+      <h4>操作ガイド</h4>
+      <div class="hint">現在の案件を開いたまま、機能ごとの使い方を画面上で確認します。</div>
+      <button type="button" class="btn" id="openOperationGuideButton">開く</button>
+    </div>
+  </div>
+</aside>
+
+<div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close="operation"></div>
 <aside class="drawer" id="drawer">
-  <div class="drawer-head"><b>操作パネル</b><button class="btn small" data-drawer-close>閉じる</button></div>
+  <div class="drawer-head"><b>操作パネル</b><button class="btn small" data-drawer-close="operation">閉じる</button></div>
   <div class="drawer-body">
     <div class="drawer-box" id="drawerMaintenanceTools">
       <h4>アプリ情報</h4>
