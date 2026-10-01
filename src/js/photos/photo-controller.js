@@ -34,6 +34,7 @@ import {
   deletePhotos
 } from './photo-record-actions.js';
 import { bindPhotoInteractions } from './photo-interactions.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 
 const state = {
   mode: 'visual',
@@ -52,6 +53,7 @@ const state = {
 let root = null;
 let body = null;
 let renderedMode = 'visual';
+let photoTabChangeBound = false;
 
 /**
  * 目視/採取それぞれの左ペインscrollTopを保存する。タブ再描画やmode切替後の位置復元用。
@@ -118,6 +120,10 @@ function clearSelectionMode({ renderNow = false } = {}) {
 /**
  * 現在の写真表示mode・選択対象・Preview状態からDOMを再構築する。描画後にthumbnail hydrateと選択UI復元を行う。
  */
+function notifyGuideLayoutChanged() {
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
+}
+
 function render() {
   if (!root) return;
   rememberPhotoScroll(renderedMode);
@@ -135,6 +141,7 @@ function render() {
     applySelectionUi();
     renderedMode = state.mode;
     restorePhotoScroll();
+    notifyGuideLayoutChanged();
     return;
   }
 
@@ -145,6 +152,7 @@ function render() {
   applySelectionUi();
   renderedMode = state.mode;
   restorePhotoScroll();
+  notifyGuideLayoutChanged();
 }
 
 /**
@@ -420,8 +428,141 @@ export function refreshPhotoTab() {
     selectedMaterialId: state.selectedMaterialId,
     localPreviewCount: getLocalPreviewCount()
   });
+  bindPhotoTabRefresh();
   render();
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
+}
+
+function photoInteractionRule(target) {
+  if (!target?.closest) return null;
+
+  const mode = target.closest('[data-photo-mode]');
+  if (mode) {
+    return {
+      actionId: 'photo.mode.change',
+      context: { mode: String(mode.dataset.photoMode || '') }
+    };
+  }
+
+  const room = target.closest('[data-photo-room]');
+  if (room) {
+    return {
+      actionId: 'photo.room.select',
+      context: { roomUid: String(room.dataset.photoRoom || '') }
+    };
+  }
+
+  const material = target.closest('[data-photo-material]');
+  if (material) {
+    return {
+      actionId: 'photo.material.select',
+      context: { materialId: String(material.dataset.photoMaterial || '') }
+    };
+  }
+
+  const cameraVisual = target.closest('[data-photo-camera-visual]');
+  if (cameraVisual) {
+    return {
+      actionId: 'photo.camera.visual',
+      context: { key: String(cameraVisual.dataset.photoCameraVisual || '') }
+    };
+  }
+
+  const cameraSamplingStage = target.closest('[data-photo-camera-sampling-stage]');
+  if (cameraSamplingStage) {
+    return {
+      actionId: 'photo.camera.sampling-stage',
+      context: {
+        key: String(cameraSamplingStage.dataset.photoCameraSamplingStage || ''),
+        stage: String(cameraSamplingStage.dataset.photoStage || '')
+      }
+    };
+  }
+
+  const cameraSampling = target.closest('[data-photo-camera-sampling]');
+  if (cameraSampling) {
+    return {
+      actionId: 'photo.camera.sampling',
+      context: { key: String(cameraSampling.dataset.photoCameraSampling || '') }
+    };
+  }
+
+  if (target.closest('[data-photo-camera-global]')) return { actionId: 'photo.camera.global', context: {} };
+  if (target.closest('[data-photo-picker]')) return { actionId: 'photo.picker.open', context: {} };
+
+  const listGroup = target.closest('[data-photo-list-group]');
+  if (listGroup) {
+    return {
+      actionId: 'photo.group.toggle',
+      context: { key: String(listGroup.dataset.photoListGroup || '') }
+    };
+  }
+
+  const visualToggle = target.closest('[data-photo-toggle]');
+  if (visualToggle) {
+    return {
+      actionId: 'photo.visual.toggle',
+      context: { key: String(visualToggle.dataset.photoToggle || '') }
+    };
+  }
+
+  const sampleToggle = target.closest('[data-photo-toggle-sampling]');
+  if (sampleToggle) {
+    return {
+      actionId: 'photo.sampling.toggle',
+      context: { key: String(sampleToggle.dataset.photoToggleSampling || '') }
+    };
+  }
+
+  const representative = target.closest('[data-photo-representative]');
+  if (representative) {
+    return {
+      actionId: 'photo.representative.set',
+      context: { photoId: String(representative.dataset.photoRepresentative || '') }
+    };
+  }
+
+  const expand = target.closest('[data-photo-expand]');
+  if (expand) {
+    return {
+      actionId: 'photo.viewer.open',
+      context: { photoId: String(expand.dataset.photoExpand || '') }
+    };
+  }
+
+  const selectionMode = target.closest('[data-photo-selection-mode]');
+  if (selectionMode) {
+    return {
+      actionId: 'photo.selection.mode',
+      context: { mode: String(selectionMode.dataset.photoSelectionMode || '') }
+    };
+  }
+
+  const thumb = target.closest('.photo-thumb-card[data-photo-id]');
+  if (thumb) {
+    return {
+      actionId: 'photo.selection.toggle',
+      context: { photoId: String(thumb.dataset.photoId || '') }
+    };
+  }
+
+  return null;
+}
+
+function photoInteractionAllowed(target) {
+  const rule = photoInteractionRule(target);
+  if (!rule) return true;
+  return isTutorialActionAllowed(rule.actionId, rule.context);
+}
+
+function bindPhotoTabRefresh() {
+  if (photoTabChangeBound) return;
+  photoTabChangeBound = true;
+
+  window.addEventListener('chousa:tab-change', (event) => {
+    if (String(event.detail?.currentTab || '') !== 'photos') return;
+    requestAnimationFrame(refreshPhotoTab);
+  });
 }
 
 /**
@@ -448,7 +589,8 @@ export function initializePhotoTab() {
     globalCameraContext,
     externalImportContext,
     openFilePicker,
-    addPickedFiles
+    addPickedFiles,
+    allowInteraction: photoInteractionAllowed
   });
 
   initializePhotoViewer({
