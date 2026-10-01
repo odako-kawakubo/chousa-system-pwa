@@ -64,9 +64,18 @@ function resolveTarget(step) {
   }
 }
 
-function connectedTargets(target) {
-  const list = Array.isArray(target) ? target : [target];
-  return list.filter((node) => node?.isConnected);
+function visibleCandidatePopup() {
+  const popup = document.getElementById('finishCandidatePopup');
+  return popup && !popup.hidden && popup.isConnected ? popup : null;
+}
+
+function connectedTargets(target, { includeCandidate = false } = {}) {
+  const list = Array.isArray(target) ? [...target] : [target];
+  if (includeCandidate) {
+    const popup = visibleCandidatePopup();
+    if (popup) list.push(popup);
+  }
+  return [...new Set(list.filter((node) => node?.isConnected))];
 }
 
 function hasConnectedTarget(target) {
@@ -128,7 +137,10 @@ function refreshCurrentTarget() {
   const step = currentStep();
   if (!step) return;
   targetElement = resolveTarget(step);
-  positionGuideOverlay(targetElement);
+  const displayTargets = tutorialMode && step.interactive
+    ? connectedTargets(targetElement, { includeCandidate:true })
+    : connectedTargets(targetElement);
+  positionGuideOverlay(displayTargets);
 }
 
 function scheduleCurrentStepCheck(expectedStepId) {
@@ -239,11 +251,15 @@ async function renderActiveStep() {
     }
 
     scrollTargetIntoView(targetElement);
+    const displayTargets = tutorialMode && step.interactive
+      ? connectedTargets(targetElement, { includeCandidate:true })
+      : connectedTargets(targetElement);
+
     showGuideOverlay({
       step,
       index: activeIndex,
       total: activeSteps.length,
-      target: targetElement,
+      target: displayTargets,
       interactive: Boolean(tutorialMode && step.interactive),
       onPrev: () => moveStep(-1),
       onNext: () => moveStep(1),
