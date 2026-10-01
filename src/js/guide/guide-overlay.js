@@ -45,7 +45,7 @@ function clamp(value, min, max) {
 }
 
 function visibleCollisionRects() {
-  return [...document.querySelectorAll('.finish-candidate-popup:not([hidden])')]
+  return [...document.querySelectorAll('#finishCandidatePopup:not([hidden])')]
     .map((node) => node.getBoundingClientRect())
     .filter((rect) => rect.width > 0 && rect.height > 0);
 }
