@@ -218,6 +218,14 @@ export const FINISH_TUTORIAL_STEPS = [
     completeWhen: () => Boolean(finishRecordFor(1, 1, 1)?.materialId)
   },
   {
+    id: 'finish-existing-material-id-note',
+    section: '仕上表',
+    tab: 'finish',
+    title: '既存建材の入力',
+    text: '登録済みの建材は、建材名称の候補から選ぶほか、入力IDを直接入力して指定することもできます。',
+    target: () => finishGroupTargets(1, 1, 1)
+  },
+  {
     id: 'finish-existing-other-material',
     section: '仕上表',
     tab: 'finish',
