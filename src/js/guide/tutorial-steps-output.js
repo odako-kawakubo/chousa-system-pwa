@@ -18,8 +18,8 @@ function analysisColumnTargets() {
   ].filter(Boolean);
 }
 
-function analysisImportButton() {
-  return document.getElementById('analysisImportButton');
+function operationButton() {
+  return document.querySelector('[data-drawer-open="operation"]');
 }
 
 function outputToolbar() {
@@ -79,7 +79,7 @@ export const OUTPUT_TUTORIAL_STEPS = [
     tab: 'materials',
     title: '分析結果取込',
     text: '定性速報PDFは、右上の「操作」→「分析結果取込」から読み込み、試料名称を照合して一括反映できます。',
-    target: () => analysisImportButton() || document.querySelector('[data-drawer-open="operation"]')
+    target: () => operationButton()
   },
   {
     id: 'output-intro',
