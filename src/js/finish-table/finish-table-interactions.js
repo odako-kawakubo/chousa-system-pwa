@@ -145,8 +145,7 @@ export function bindFinishTableInteractions(root, {
   commitAndRefresh,
   getUndoableSnapshot,
   handleCopyRoomClick,
-  handleAction,
-  updateDrawerInsertButtonState
+  handleAction
 } = {}) {
   if (root.dataset.finishEventsBound === '1') return;
   root.dataset.finishEventsBound = '1';
@@ -250,7 +249,6 @@ export function bindFinishTableInteractions(root, {
       // 入力デバイスに関係なく、先に部屋・入力グループの選択状態を確定する。
       setSelectedRoomKey(dataCell.dataset.roomKey);
       setSelectedGroupKey(dataCell.dataset.groupKey);
-      updateDrawerInsertButtonState();
 
       // チップ入力は「モードON」と「入力ターゲット選択済み」の両方が揃った時だけ実行する。
       // 簡易リストの通常参照 selectedMaterialInputId はここでは参照しない。
@@ -320,7 +318,6 @@ export function bindFinishTableInteractions(root, {
     if (roomFieldDisplay) {
       // spanをinputへ差し替える前に部屋選択を確定する。
       setSelectedRoomKey(roomFieldDisplay.dataset.roomKey);
-      updateDrawerInsertButtonState();
       applyRoomSelection();
 
       const input = swapDisplayToInput(roomFieldDisplay);
@@ -331,7 +328,6 @@ export function bindFinishTableInteractions(root, {
     const roomBlock = target.closest('.finish-room-block[data-room-key]');
     if (roomBlock) {
       setSelectedRoomKey(roomBlock.dataset.roomKey);
-      updateDrawerInsertButtonState();
       applyRoomSelection();
     }
   }
@@ -446,7 +442,6 @@ export function bindFinishTableInteractions(root, {
     setSelectedRoomKey(input.dataset.roomKey);
     setSelectedGroupKey(td.dataset.groupKey);
     setFocusedInputKey(input.dataset.inputKey);
-    updateDrawerInsertButtonState();
 
     // セル選択・フォーカス移動では、部屋選択・入力グループ選択・
     // フォーカス枠だけを更新する（建材一致判定＝全セル走査は行わない）。
