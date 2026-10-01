@@ -14,12 +14,17 @@ let unsubscribeStores = [];
 let mutationObserver = null;
 let scheduled = false;
 
+function deepClone(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
 function cloneSnapshot() {
-  return {
+  return deepClone({
     finishRecords: finishRecordStore.exportSnapshot(),
     materialRecords: materialRecordStore.exportSnapshot(),
     photoRecords: photoRecordStore.exportSnapshot()
-  };
+  });
 }
 
 export function captureTutorialSnapshot() {
@@ -65,6 +70,13 @@ function blockOutsideTutorialTarget(event) {
   event.stopImmediatePropagation();
 }
 
+function commitSimpleTextInputOnEnter(event) {
+  if (!active || event.key !== 'Enter' || !allowedByTutorial(event.target)) return;
+  const input = event.target.closest?.('.room-name-input, .room-no-input, .material-cell-input');
+  if (!input) return;
+  requestAnimationFrame(() => input.blur());
+}
+
 function scheduleCompletionCheck() {
   if (!active || scheduled) return;
   scheduled = true;
@@ -80,10 +92,11 @@ export function startTutorialRuntime({ resolveAllowed, checkCompletion } = {}) {
   allowedResolver = resolveAllowed || null;
   completionCallback = checkCompletion || null;
 
-  ['pointerdown','click','focusin','keydown'].forEach((type) => {
+  ['pointerdown','touchstart','wheel','click','focusin','keydown'].forEach((type) => {
     document.addEventListener(type, blockOutsideTutorialTarget, true);
   });
-  ['input','change','click'].forEach((type) => {
+  document.addEventListener('keydown', commitSimpleTextInputOnEnter, true);
+  ['input','change','click','focusout'].forEach((type) => {
     document.addEventListener(type, scheduleCompletionCheck, true);
   });
 
@@ -99,10 +112,11 @@ export function startTutorialRuntime({ resolveAllowed, checkCompletion } = {}) {
 
 export function stopTutorialRuntime() {
   if (active) {
-    ['pointerdown','click','focusin','keydown'].forEach((type) => {
+    ['pointerdown','touchstart','wheel','click','focusin','keydown'].forEach((type) => {
       document.removeEventListener(type, blockOutsideTutorialTarget, true);
     });
-    ['input','change','click'].forEach((type) => {
+    document.removeEventListener('keydown', commitSimpleTextInputOnEnter, true);
+    ['input','change','click','focusout'].forEach((type) => {
       document.removeEventListener(type, scheduleCompletionCheck, true);
     });
   }
