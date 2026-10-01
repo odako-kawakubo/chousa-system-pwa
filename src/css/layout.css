@@ -245,12 +245,40 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   border-color: var(--main);
   color: var(--text-on-accent);
 }
-.tab-operation-button {
+.tab-guide-wrap {
+  position: relative;
   margin-left: auto;
+  align-self: center;
+  flex: 0 0 auto;
+}
+.tab-guide-button,
+.tab-operation-button {
   align-self: center;
   white-space: nowrap;
   touch-action: manipulation;
 }
+.tab-operation-button {
+  margin-left: 0;
+}
+.tab-guide-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 190px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 30px rgba(15,23,42,.18);
+  z-index: 120;
+}
+.tab-guide-menu[hidden] { display: none; }
+.tab-guide-menu .btn {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+.tab-guide-menu .btn + .btn { margin-top: 6px; }
 
 .content {
   padding: 14px 16px 26px;
@@ -340,6 +368,42 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
 .drawer-theme-toggle.active{background:var(--main);border-color:var(--main);color:var(--text-on-accent)}
 .drawer-maintenance-version{margin-bottom:8px;font-size:12px;color:var(--text-secondary)}
 .drawer-maintenance-version b{color:var(--text)}
+.drawer-operation-accordion{
+  margin-top:8px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--panel);
+  overflow:hidden;
+}
+.drawer-operation-accordion summary{
+  padding:9px 10px;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:800;
+  user-select:none;
+  touch-action:manipulation;
+}
+.drawer-operation-accordion[open] summary{border-bottom:1px solid var(--line)}
+.drawer-operation-body{padding:8px 10px 10px}
+.drawer-operation-body>.btn{margin-top:0}
+.drawer-operation-input-row{
+  display:grid;
+  grid-template-columns:76px minmax(0,1fr);
+  gap:7px;
+  margin-top:7px;
+}
+.drawer-operation-input-row input{
+  width:100%;
+  min-width:0;
+  height:34px;
+  padding:5px 8px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--panel);
+  color:var(--text);
+  font:inherit;
+}
+.drawer-operation-input-row .btn{width:100%;margin-top:0}
 
 .drawer-version {
   text-align: center;
@@ -680,6 +744,7 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
     font-size:11px;
     flex:0 0 auto
   }
+  body.header-collapsed .tab-guide-button,
   body.header-collapsed .tab-operation-button{
     min-height:28px;
     padding:3px 8px;
