@@ -9,14 +9,25 @@
   pointer-events:none;
 }
 .guide-layer[hidden]{display:none}
+.guide-blocker{
+  position:fixed;
+  z-index:1;
+  background:transparent;
+  pointer-events:auto;
+  touch-action:none;
+  overscroll-behavior:contain;
+}
+.guide-blocker[hidden]{display:none}
 .guide-dim{
   position:absolute;
+  z-index:2;
   inset:0;
   background:rgba(15,23,42,.52);
   pointer-events:none;
 }
 .guide-spotlight{
   position:fixed;
+  z-index:3;
   border:3px solid var(--main);
   border-radius:10px;
   box-shadow:0 0 0 9999px rgba(15,23,42,.52),0 0 0 3px rgba(255,255,255,.92);
@@ -25,6 +36,7 @@
 }
 .guide-card{
   position:fixed;
+  z-index:10;
   width:min(360px,calc(100vw - 24px));
   max-height:min(70dvh,520px);
   overflow:auto;
