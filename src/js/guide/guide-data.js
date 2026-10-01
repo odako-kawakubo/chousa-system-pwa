@@ -52,6 +52,35 @@ function lastFirstFloorAction(action) {
   return last?.querySelector(`[data-action="${action}"]`) || null;
 }
 
+function lastAddedRowTarget(roomIndex) {
+  const room = roomBlock(roomIndex);
+  const rows = [...room?.querySelectorAll('.finish-material-row') || []];
+  return rows[rows.length - 1] || null;
+}
+
+function lastFirstFloorRoomTarget() {
+  const rooms = [...document.querySelectorAll('#finish .finish-room-block')];
+  const firstFloorRooms = rooms.filter((room) =>
+    room.querySelector('[data-action="add-room"]')?.dataset.floorKey === 'floor-I-1'
+  );
+  return firstFloorRooms[firstFloorRooms.length - 1] || null;
+}
+
+function lastNormalFloorTargets() {
+  const headings = [...document.querySelectorAll('#finish .finish-floor-heading[data-floor-key^="floor-I-"]')];
+  const lastHeading = headings[headings.length - 1] || null;
+  const floorKey = String(lastHeading?.dataset.floorKey || '');
+  if (!floorKey) return lastHeading ? [lastHeading] : [];
+
+  const floorNumber = Number(floorKey.split('-').pop());
+  const firstRoom = [...document.querySelectorAll('#finish .finish-room-block')].find((room) => {
+    const button = room.querySelector('[data-action="add-room"]');
+    return button?.dataset.floorKey === floorKey;
+  }) || null;
+
+  return [lastHeading, firstRoom].filter(Boolean);
+}
+
 function finishRecordFor(roomIndex, partIndex, row = 1) {
   const roomKey = roomKeyAt(roomIndex);
   if (!roomKey) return null;
@@ -251,6 +280,14 @@ export const TUTORIAL_STEPS = [
     }
   },
   {
+    id: 'finish-add-row-result',
+    section: '仕上表',
+    tab: 'finish',
+    title: '入力行が追加されました',
+    text: '「＋行」を押すと、このように同じ部屋へ新しい入力行が追加されます。',
+    target: () => lastAddedRowTarget(1)
+  },
+  {
     id: 'finish-add-room',
     section: '仕上表',
     tab: 'finish',
@@ -266,6 +303,14 @@ export const TUTORIAL_STEPS = [
       activeFinishRoomCount('I', 1) > snapshotRoomCount(snapshot, 'I', 1)
   },
   {
+    id: 'finish-add-room-result',
+    section: '仕上表',
+    tab: 'finish',
+    title: '部屋が追加されました',
+    text: '「＋部屋」を押すと、同じ階の一番下へ新しい部屋が追加されます。',
+    target: () => lastFirstFloorRoomTarget()
+  },
+  {
     id: 'finish-add-floor',
     section: '仕上表',
     tab: 'finish',
@@ -279,6 +324,14 @@ export const TUTORIAL_STEPS = [
     }],
     completeWhen: ({ snapshot }) =>
       normalFloorCount() > snapshotNormalFloorCount(snapshot)
+  },
+  {
+    id: 'finish-add-floor-result',
+    section: '仕上表',
+    tab: 'finish',
+    title: '階が追加されました',
+    text: '「＋階」を押すと、次の地上階と最初の部屋が追加されます。',
+    target: () => lastNormalFloorTargets()
   },
   {
     id: 'finish-tutorial-done',
