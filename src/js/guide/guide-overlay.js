@@ -8,8 +8,11 @@
 let layer = null;
 let spotlight = null;
 let card = null;
+let blockers = [];
 let observer = null;
 let repositionCallback = null;
+let currentLockTargets = [];
+let currentLocked = false;
 
 function ensureLayer() {
   if (layer) return layer;
@@ -18,6 +21,10 @@ function ensureLayer() {
   layer.className = 'guide-layer';
   layer.hidden = true;
   layer.innerHTML = `
+    <div class="guide-blocker guide-blocker-top" data-guide-blocker="top"></div>
+    <div class="guide-blocker guide-blocker-right" data-guide-blocker="right"></div>
+    <div class="guide-blocker guide-blocker-bottom" data-guide-blocker="bottom"></div>
+    <div class="guide-blocker guide-blocker-left" data-guide-blocker="left"></div>
     <div class="guide-dim" data-guide-dim></div>
     <div class="guide-spotlight" data-guide-spotlight></div>
     <section class="guide-card" data-guide-card role="dialog" aria-live="polite">
@@ -37,6 +44,11 @@ function ensureLayer() {
   document.body.appendChild(layer);
   spotlight = layer.querySelector('[data-guide-spotlight]');
   card = layer.querySelector('[data-guide-card]');
+  blockers = [...layer.querySelectorAll('[data-guide-blocker]')];
+  blockers.forEach((blocker) => {
+    blocker.addEventListener('wheel', (event) => event.preventDefault(), { passive:false });
+    blocker.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
   return layer;
 }
 
@@ -92,8 +104,70 @@ function placeCardForTarget(target) {
   card.style.top = `${chosen.top}px`;
 }
 
-export function positionGuideOverlay(target) {
+function visibleRectFor(node) {
+  if (!node?.isConnected) return null;
+  const rect = node.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    left: clamp(rect.left, 0, window.innerWidth),
+    top: clamp(rect.top, 0, window.innerHeight),
+    right: clamp(rect.right, 0, window.innerWidth),
+    bottom: clamp(rect.bottom, 0, window.innerHeight)
+  };
+}
+
+function combinedLockRect(targets = []) {
+  const rects = targets.map(visibleRectFor).filter(Boolean);
+  if (!rects.length) return null;
+  return rects.reduce((result, rect) => ({
+    left: Math.min(result.left, rect.left),
+    top: Math.min(result.top, rect.top),
+    right: Math.max(result.right, rect.right),
+    bottom: Math.max(result.bottom, rect.bottom)
+  }));
+}
+
+function setBlockerRect(blocker, left, top, width, height) {
+  if (!blocker) return;
+  blocker.hidden = width <= 0 || height <= 0;
+  blocker.style.left = `${Math.max(0, left)}px`;
+  blocker.style.top = `${Math.max(0, top)}px`;
+  blocker.style.width = `${Math.max(0, width)}px`;
+  blocker.style.height = `${Math.max(0, height)}px`;
+}
+
+function positionGuideBlockers() {
   if (!layer || layer.hidden) return;
+  blockers.forEach((blocker) => { blocker.hidden = !currentLocked; });
+  if (!currentLocked) return;
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const rect = combinedLockRect(currentLockTargets);
+
+  if (!rect) {
+    setBlockerRect(blockers[0], 0, 0, viewportWidth, viewportHeight);
+    blockers.slice(1).forEach((blocker) => { blocker.hidden = true; });
+    return;
+  }
+
+  const pad = 7;
+  const left = clamp(rect.left - pad, 0, viewportWidth);
+  const top = clamp(rect.top - pad, 0, viewportHeight);
+  const right = clamp(rect.right + pad, 0, viewportWidth);
+  const bottom = clamp(rect.bottom + pad, 0, viewportHeight);
+
+  setBlockerRect(blockers[0], 0, 0, viewportWidth, top);
+  setBlockerRect(blockers[1], right, top, viewportWidth - right, bottom - top);
+  setBlockerRect(blockers[2], 0, bottom, viewportWidth, viewportHeight - bottom);
+  setBlockerRect(blockers[3], 0, top, left, bottom - top);
+}
+
+export function positionGuideOverlay(target, { locked = currentLocked, lockTargets = currentLockTargets } = {}) {
+  if (!layer || layer.hidden) return;
+  currentLocked = Boolean(locked);
+  currentLockTargets = (Array.isArray(lockTargets) ? lockTargets : [lockTargets]).filter((node) => node?.isConnected);
+  positionGuideBlockers();
   const dim = layer.querySelector('[data-guide-dim]');
 
   if (!target || !target.isConnected) {
@@ -114,7 +188,7 @@ export function positionGuideOverlay(target) {
   placeCardForTarget(target);
 }
 
-export function showGuideOverlay({ step, index, total, target, interactive = false, onPrev, onNext, onClose }) {
+export function showGuideOverlay({ step, index, total, target, interactive = false, locked = false, lockTargets = [], onPrev, onNext, onClose }) {
   ensureLayer();
   layer.hidden = false;
 
@@ -134,7 +208,7 @@ export function showGuideOverlay({ step, index, total, target, interactive = fal
   next.onclick = onNext;
   close.onclick = onClose;
 
-  positionGuideOverlay(target);
+  positionGuideOverlay(target, { locked, lockTargets });
 }
 
 export function watchGuideOverlayPosition(callback) {
@@ -152,6 +226,9 @@ export function initializeGuideOverlayPositionEvents() {
 
 export function hideGuideOverlay() {
   if (layer) layer.hidden = true;
+  currentLocked = false;
+  currentLockTargets = [];
+  blockers.forEach((blocker) => { blocker.hidden = true; });
   if (observer) observer.disconnect();
   observer = null;
   repositionCallback = null;
