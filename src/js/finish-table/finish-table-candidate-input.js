@@ -22,8 +22,8 @@ import {
 let activeCandidateInput = null;
 let activeCandidateOptions = [];
 
-function notifyCandidateUiChanged() {
-  window.dispatchEvent(new CustomEvent('chousa:finish-candidate-change'));
+function notifyGuideLayoutChanged() {
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
 }
 
 function normalizeCandidateFilter(value) {
@@ -124,7 +124,7 @@ export function closeCandidatePopup() {
   popup.innerHTML = '';
   activeCandidateInput = null;
   activeCandidateOptions = [];
-  if (wasVisible) notifyCandidateUiChanged();
+  if (wasVisible) notifyGuideLayoutChanged();
 }
 
 export function renderCandidatePopup(input) {
@@ -154,7 +154,7 @@ export function renderCandidatePopup(input) {
   ).join('');
   popup.hidden = false;
   positionCandidatePopup(input);
-  notifyCandidateUiChanged();
+  notifyGuideLayoutChanged();
 }
 
 export function updateFinishInputCandidates(input) {
