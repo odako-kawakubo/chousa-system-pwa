@@ -31,6 +31,14 @@ function finishCellTarget(roomIndex, partIndex, kind = 'name', row = 1) {
   return finishCell(roomIndex, partIndex, kind, row)?.closest('.finish-data-cell') || null;
 }
 
+function finishGroupTargets(roomIndex, partIndex, row = 1) {
+  const room = roomBlock(roomIndex);
+  if (!room) return [];
+  return [...room.querySelectorAll(
+    `.finish-data-cell[data-part-index="${partIndex}"][data-input-row="${row}"]`
+  )];
+}
+
 function roomAction(roomIndex, action) {
   return roomBlock(roomIndex)?.querySelector(`[data-action="${action}"]`) || null;
 }
@@ -130,7 +138,7 @@ export const TUTORIAL_STEPS = [
     tab: 'finish',
     title: '1-1 床：新規建材',
     text: '1-1の「床」に建材名称を入力し、新しい建材として登録します。建材名は自由です。',
-    target: () => finishCellTarget(0, 1, 'name', 1),
+    target: () => finishGroupTargets(0, 1, 1),
     interactive: true,
     permissions: () => {
       const context = { roomKey: roomKeyAt(0), partIndex: 1, row: 1 };
@@ -143,16 +151,20 @@ export const TUTORIAL_STEPS = [
     completeWhen: () => Boolean(finishRecordFor(0, 1, 1)?.materialId)
   },
   {
+    id: 'finish-new-floor-material-note',
+    section: '仕上表',
+    tab: 'finish',
+    title: '新規建材の登録',
+    text: '入力した建材名称は「登録」を押すことで建材として登録されます。登録しない場合は対象外建材になります。',
+    target: () => finishGroupTargets(0, 1, 1)
+  },
+  {
     id: 'finish-new-other-material',
     section: '仕上表',
     tab: 'finish',
     title: '1-1 その他1：新規建材',
     text: 'その他1では、先に部位を入力してから建材名称を登録します。部位・建材名は自由です。',
-    target: () => {
-      const record = finishRecordFor(0, 5, 1);
-      const kind = String(record?.part || '').trim() ? 'name' : 'part';
-      return finishCellTarget(0, 5, kind, 1);
-    },
+    target: () => finishGroupTargets(0, 5, 1),
     interactive: true,
     permissions: () => {
       const record = finishRecordFor(0, 5, 1);
@@ -174,6 +186,14 @@ export const TUTORIAL_STEPS = [
       const record = finishRecordFor(0, 5, 1);
       return Boolean(record?.materialId && String(record.part || '').trim());
     }
+  },
+  {
+    id: 'finish-new-other-material-note',
+    section: '仕上表',
+    tab: 'finish',
+    title: '新規建材の登録',
+    text: 'その他1も同じく、「登録」を押すことで建材として登録されます。登録しない場合は対象外建材になります。',
+    target: () => finishGroupTargets(0, 5, 1)
   },
   {
     id: 'finish-existing-floor-material',
