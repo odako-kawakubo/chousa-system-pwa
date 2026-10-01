@@ -58,6 +58,12 @@ function tutorialRows() {
     .filter(Boolean);
 }
 
+function tutorialNoteTargets() {
+  return [floorMaterialId(), otherMaterialId()]
+    .map((materialId) => materialText(materialId, 'note'))
+    .filter(Boolean);
+}
+
 function record(materialId) {
   return materialRecordStore.get(materialId) || null;
 }
@@ -74,6 +80,14 @@ export const MATERIAL_TUTORIAL_STEPS = [
     title: '仕上表の基本操作は完了です',
     text: '仕上表で登録した建材は、建材リストへ一覧として反映されます。',
     target: () => tutorialRows()
+  },
+  {
+    id: 'materials-note-info',
+    section: '仕上表',
+    tab: 'materials',
+    title: '調査備考',
+    text: '建材ごとの調査備考は、建材リストの「調査備考」へ入力します。',
+    target: () => tutorialNoteTargets()
   },
   {
     id: 'materials-intro',
@@ -118,19 +132,34 @@ export const MATERIAL_TUTORIAL_STEPS = [
     section: '建材リスト',
     tab: 'materials',
     title: '採取場所',
-    text: '採取場所1を選択します。仕上表で使用した部屋が候補として表示されます。',
-    target: () => materialControl(floorMaterialId(), 'sampleLocation1'),
+    text: '採取場所1と採取場所2をそれぞれ選択します。仕上表で使用した部屋が候補として表示されます。',
+    target: () => [
+      materialControl(floorMaterialId(), 'sampleLocation1'),
+      materialControl(floorMaterialId(), 'sampleLocation2')
+    ].filter(Boolean),
     interactive: true,
     watchStores: ['material'],
-    permissions: () => [{
-      actionId: 'material.control.change',
-      context: { materialId: floorMaterialId(), field: 'sampleLocation1' }
-    }],
+    permissions: () => [
+      {
+        actionId: 'material.control.change',
+        context: { materialId: floorMaterialId(), field: 'sampleLocation1' }
+      },
+      {
+        actionId: 'material.control.change',
+        context: { materialId: floorMaterialId(), field: 'sampleLocation2' }
+      }
+    ],
     completeWhen: ({ snapshot }) => {
       const id = floorMaterialId();
-      const before = String(snapshotRecord(snapshot, id)?.sampleLocation1 || '');
-      const after = String(record(id)?.sampleLocation1 || '');
-      return Boolean(after) && after !== before;
+      const before = snapshotRecord(snapshot, id);
+      const current = record(id);
+      const before1 = String(before?.sampleLocation1 || '');
+      const before2 = String(before?.sampleLocation2 || '');
+      const after1 = String(current?.sampleLocation1 || '');
+      const after2 = String(current?.sampleLocation2 || '');
+      return Boolean(after1 && after2)
+        && after1 !== before1
+        && after2 !== before2;
     }
   },
   {
@@ -145,26 +174,6 @@ export const MATERIAL_TUTORIAL_STEPS = [
       actionId: 'material.sample-part.open',
       context: { materialId: floorMaterialId() }
     }]
-  },
-  {
-    id: 'materials-note',
-    section: '建材リスト',
-    tab: 'materials',
-    title: '調査備考',
-    text: '調査備考へ任意の内容を入力します。',
-    target: () => materialText(floorMaterialId(), 'note'),
-    interactive: true,
-    watchStores: ['material'],
-    permissions: () => [{
-      actionId: 'material.text.edit',
-      context: { materialId: floorMaterialId(), kind: 'note' }
-    }],
-    completeWhen: ({ snapshot }) => {
-      const id = floorMaterialId();
-      const before = String(snapshotRecord(snapshot, id)?.note || '');
-      const after = String(record(id)?.note || '');
-      return Boolean(after.trim()) && after !== before;
-    }
   },
   {
     id: 'materials-sample-done',
