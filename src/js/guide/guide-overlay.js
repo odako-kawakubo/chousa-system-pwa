@@ -152,7 +152,8 @@ export function showGuideOverlay({
   interactive = false,
   onPrev,
   onNext,
-  onClose
+  onClose,
+  closeLabel = '閉じる'
 }) {
   ensureOverlay();
   currentTargets = normalizeTargets(target);
@@ -168,6 +169,7 @@ export function showGuideOverlay({
   const next = card.querySelector('[data-guide-next]');
   const close = card.querySelector('[data-guide-close]');
 
+  close.textContent = closeLabel;
   prev.disabled = index <= 0;
   next.hidden = Boolean(interactive);
   next.disabled = Boolean(interactive);
