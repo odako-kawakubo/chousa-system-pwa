@@ -274,6 +274,10 @@ jobs:
             echo "obsolete tutorial runtime still exists"
             exit 1
           fi
+          if grep -R "new MutationObserver" -n src/js/guide; then
+            echo "guide MutationObserver must not return"
+            exit 1
+          fi
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
