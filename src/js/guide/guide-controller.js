@@ -16,7 +16,8 @@ import { setSimpleListOpen } from '../finish-table/finish-table-state.js';
 import {
   TUTORIAL_PROJECT_ID,
   initializeTutorialProjectSnapshot,
-  resetTutorialProjectSnapshot
+  resetTutorialProjectSnapshot,
+  consumeTutorialAutoStart
 } from './tutorial-project.js';
 import { TUTORIAL_STEPS, OPERATION_GUIDE_STEPS } from './guide-data.js';
 import {
@@ -31,6 +32,18 @@ let activeSteps = null;
 let activeIndex = 0;
 let targetElement = null;
 let initialized = false;
+
+function setGuideMenuOpen(open) {
+  const menu = document.getElementById('guideMenu');
+  const button = document.getElementById('guideMenuButton');
+  if (!menu || !button) return;
+  menu.hidden = !open;
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function closeGuideMenu() {
+  setGuideMenuOpen(false);
+}
 
 function resolveTarget(step) {
   try {
@@ -103,6 +116,7 @@ export function closeGuide() {
 
 export async function startBasicTutorial() {
   closeGuide();
+  closeGuideMenu();
   closeDrawer();
 
   const snapshot = resetTutorialProjectSnapshot();
@@ -122,7 +136,14 @@ export async function startBasicTutorial() {
 }
 
 export function openOperationGuide() {
+  closeGuideMenu();
   startSteps(OPERATION_GUIDE_STEPS);
+}
+
+export async function startRequestedTutorialIfNeeded() {
+  if (!consumeTutorialAutoStart()) return false;
+  await startBasicTutorial();
+  return true;
 }
 
 export function initializeGuide() {
@@ -130,6 +151,14 @@ export function initializeGuide() {
   initialized = true;
   initializeTutorialProjectSnapshot();
   initializeGuideOverlayPositionEvents();
+
+  document.getElementById('guideMenuButton')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const menu = document.getElementById('guideMenu');
+    setGuideMenuOpen(Boolean(menu?.hidden));
+  });
+  document.getElementById('guideMenu')?.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', closeGuideMenu);
 
   document.getElementById('startBasicTutorialButton')?.addEventListener('click', () => {
     void startBasicTutorial();
