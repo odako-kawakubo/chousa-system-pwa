@@ -155,6 +155,65 @@ export function getState() {
   return state;
 }
 
+export function captureFinishUiState() {
+  if (!state) return null;
+  return {
+    activeAreaMode: state.activeAreaMode,
+    colorMode: Boolean(state.colorMode),
+    chipInputMode: Boolean(state.chipInputMode),
+    chipInputMaterialInputId: state.chipInputMaterialInputId,
+    simpleListOpen: Boolean(state.simpleListOpen),
+    activeRoomKey: state.activeRoomKey,
+    activeGroupKey: state.activeGroupKey,
+    focusedInputKey: state.focusedInputKey,
+    selectedMaterialInputId: state.selectedMaterialInputId,
+    roomCopy: typeof structuredClone === 'function'
+      ? structuredClone(state.roomCopy || emptyRoomCopyState())
+      : JSON.parse(JSON.stringify(state.roomCopy || emptyRoomCopyState())),
+    collapsedFloors: [...(state.collapsedFloors || [])],
+    pendingCellNames: [...(state.pendingCellNames || new Map()).entries()]
+  };
+}
+
+export function restoreFinishUiState(snapshot, { notifyNow = true } = {}) {
+  if (!state || !snapshot) return;
+  state.activeAreaMode = snapshot.activeAreaMode === 'external' ? 'external' : 'internal';
+  state.colorMode = Boolean(snapshot.colorMode);
+  state.chipInputMode = Boolean(snapshot.chipInputMode);
+  state.chipInputMaterialInputId = snapshot.chipInputMaterialInputId ?? null;
+  state.simpleListOpen = Boolean(snapshot.simpleListOpen);
+  state.activeRoomKey = snapshot.activeRoomKey || null;
+  state.activeGroupKey = snapshot.activeGroupKey || null;
+  state.focusedInputKey = snapshot.focusedInputKey || null;
+  state.selectedMaterialInputId = snapshot.selectedMaterialInputId ?? null;
+  state.roomCopy = snapshot.roomCopy
+    ? (typeof structuredClone === 'function'
+      ? structuredClone(snapshot.roomCopy)
+      : JSON.parse(JSON.stringify(snapshot.roomCopy)))
+    : emptyRoomCopyState();
+  state.collapsedFloors = new Set(snapshot.collapsedFloors || []);
+  state.pendingCellNames = new Map(snapshot.pendingCellNames || []);
+  reconcileRoomCopyIdentity();
+  if (notifyNow) notify();
+}
+
+export function resetFinishUiStateForTutorial({ notifyNow = true } = {}) {
+  if (!state) return;
+  state.activeAreaMode = 'internal';
+  state.colorMode = false;
+  state.chipInputMode = false;
+  state.chipInputMaterialInputId = null;
+  state.simpleListOpen = false;
+  state.activeRoomKey = null;
+  state.activeGroupKey = null;
+  state.focusedInputKey = null;
+  state.selectedMaterialInputId = null;
+  state.roomCopy = emptyRoomCopyState();
+  state.collapsedFloors = new Set();
+  state.pendingCellNames = new Map();
+  if (notifyNow) notify();
+}
+
 export function setProject(project) {
   if (!state) return;
   state.project = project ? { ...project } : null;
