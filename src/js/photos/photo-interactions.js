@@ -5,18 +5,86 @@
 import { openPhotoViewer } from './photo-viewer.js';
 import { openCamera } from '../camera/camera-controller.js';
 import { setRepresentativePhoto } from './photo-record-actions.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+import { notifyTutorialAction } from '../guide/tutorial-action.js';
 
 let boundRoot = null;
 let tabExitBound = false;
+
+function interactionRule(target) {
+  if (!target?.closest) return null;
+
+  const mode = target.closest('[data-photo-mode]');
+  if (mode) return { actionId:'photo.mode.change', context:{ mode:String(mode.dataset.photoMode || '') } };
+
+  const room = target.closest('[data-photo-room]');
+  if (room) return { actionId:'photo.room.select', context:{ roomUid:String(room.dataset.photoRoom || '') } };
+
+  const material = target.closest('[data-photo-material]');
+  if (material) return { actionId:'photo.material.select', context:{ materialId:String(material.dataset.photoMaterial || '') } };
+
+  const cameraVisual = target.closest('[data-photo-camera-visual]');
+  if (cameraVisual) return { actionId:'photo.camera.visual', context:{ key:String(cameraVisual.dataset.photoCameraVisual || '') } };
+
+  const cameraSamplingStage = target.closest('[data-photo-camera-sampling-stage]');
+  if (cameraSamplingStage) {
+    return {
+      actionId:'photo.camera.sampling-stage',
+      context:{
+        key:String(cameraSamplingStage.dataset.photoCameraSamplingStage || ''),
+        stage:String(cameraSamplingStage.dataset.photoStage || '')
+      }
+    };
+  }
+
+  const cameraSampling = target.closest('[data-photo-camera-sampling]');
+  if (cameraSampling) return { actionId:'photo.camera.sampling', context:{ key:String(cameraSampling.dataset.photoCameraSampling || '') } };
+
+  if (target.closest('[data-photo-camera-global]')) return { actionId:'photo.camera.global', context:{} };
+  if (target.closest('[data-photo-picker]')) return { actionId:'photo.picker.open', context:{} };
+
+  const listGroup = target.closest('[data-photo-list-group]');
+  if (listGroup) return { actionId:'photo.group.toggle', context:{ key:String(listGroup.dataset.photoListGroup || '') } };
+
+  const visualToggle = target.closest('[data-photo-toggle]');
+  if (visualToggle) return { actionId:'photo.visual.toggle', context:{ key:String(visualToggle.dataset.photoToggle || '') } };
+
+  const sampleToggle = target.closest('[data-photo-toggle-sampling]');
+  if (sampleToggle) return { actionId:'photo.sampling.toggle', context:{ key:String(sampleToggle.dataset.photoToggleSampling || '') } };
+
+  const representative = target.closest('[data-photo-representative]');
+  if (representative) {
+    return { actionId:'photo.representative.set', context:{ photoId:String(representative.dataset.photoRepresentative || '') } };
+  }
+
+  const expand = target.closest('[data-photo-expand]');
+  if (expand) return { actionId:'photo.viewer.open', context:{ photoId:String(expand.dataset.photoExpand || '') } };
+
+  const selectionMode = target.closest('[data-photo-selection-mode]');
+  if (selectionMode) return { actionId:'photo.selection.mode', context:{ mode:String(selectionMode.dataset.photoSelectionMode || '') } };
+
+  const thumb = target.closest('.photo-thumb-card[data-photo-id]');
+  if (thumb) return { actionId:'photo.selection.toggle', context:{ photoId:String(thumb.dataset.photoId || '') } };
+
+  return null;
+}
+
+function tutorialAllows(target) {
+  const rule = interactionRule(target);
+  if (!rule) return true;
+  return isTutorialActionAllowed(rule.actionId, rule.context);
+}
 
 function bindPhotoTabExitReset(state, clearSelectionMode) {
   if (tabExitBound) return;
   tabExitBound = true;
 
-  document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
-    tabButton.addEventListener('click', () => {
-      if (tabButton.dataset.tab !== 'photos' && state.selectionMode) clearSelectionMode();
-    });
+  window.addEventListener('chousa:tab-change', (event) => {
+    const previousTab = String(event.detail?.previousTab || '');
+    const currentTab = String(event.detail?.currentTab || '');
+    if (previousTab === 'photos' && currentTab !== 'photos' && state.selectionMode) {
+      clearSelectionMode();
+    }
   });
 }
 
@@ -43,6 +111,11 @@ export function bindPhotoInteractions({
   bindPhotoTabExitReset(state, clearSelectionMode);
 
   root.addEventListener('click', (event) => {
+    if (!tutorialAllows(event.target)) {
+      event.preventDefault();
+      return;
+    }
+
     const selectionButton = event.target.closest('[data-photo-selection-mode]');
     if (selectionButton) {
       const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
@@ -84,6 +157,7 @@ export function bindPhotoInteractions({
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
       state.reviewScrollTop[state.mode] = 0;
       render();
+      notifyTutorialAction('photo.mode.change', { mode:state.mode });
       return;
     }
 
@@ -102,6 +176,7 @@ export function bindPhotoInteractions({
       state.selectedRoomUid = room.dataset.photoRoom || '';
       state.reviewScrollTop.visual = 0;
       render();
+      notifyTutorialAction('photo.room.select', { roomUid:state.selectedRoomUid });
       return;
     }
 
@@ -110,6 +185,7 @@ export function bindPhotoInteractions({
       state.selectedMaterialId = material.dataset.photoMaterial || '';
       state.reviewScrollTop.sampling = 0;
       render();
+      notifyTutorialAction('photo.material.select', { materialId:state.selectedMaterialId });
       return;
     }
 

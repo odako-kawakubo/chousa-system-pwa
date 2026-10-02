@@ -2,7 +2,7 @@
  * src/js/camera/camera-controller.js
  *
  * 内蔵カメラ全体の進行を調整するController。
- * - 左：撮影済み / 上下反転 / メインパネル
+ * - 左：撮影済み / メインパネル
  * - 中央：4:3撮影領域 + 電子看板
  * - 右：撮影 / 断面 / 区分
  * - 目視・採取の候補は写真タブ側のViewModelから受け取り、独自番号を生成しない。
@@ -16,8 +16,10 @@ import { getDeviceCode } from '../device-code.js';
 import { createPhotoRecord, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { BOARD_POSITIONS, renderBoardPreview } from './camera-board.js';
+import { BOARD_POSITIONS, getBoardRect, renderBoardPreview } from './camera-board.js';
 import { BOARD_SIZE_ORDER, saveCameraPreferences } from './camera-preferences.js';
+import { bindCameraOrientationChange, isCameraLandscape } from './camera-orientation.js';
+import { playShutterSound } from './camera-shutter-sound.js';
 import {
   currentVisualTarget,
   currentSamplingTarget,
@@ -42,7 +44,6 @@ import { createCameraSession, getVideoInputCount, getCameraErrorMessage } from '
 import { nextPhotoId } from './camera-photo-id.js';
 
 let root = null;
-let orientationShell = null;
 let video = null;
 let boardCanvas = null;
 let review = null;
@@ -56,6 +57,11 @@ let taking = false;
 let pendingReviewResolve = null;
 let listenersBound = false;
 let activePanel = null;
+let cameraReady = false;
+let cameraLandscape = true;
+let lastTorchTapAt = 0;
+let lastTorchTapPoint = null;
+let cameraToastTimer = null;
 
 /**
  * Camera stateと案件contextから電子看板描画用データを組み立てる。目視/採取で表示項目を切り替える。
@@ -76,11 +82,35 @@ function ensureCameraScreen() {
   root.innerHTML = `
     <div class="camera-orientation-shell" data-camera-orientation-shell>
       <div class="camera-screen">
+        <button type="button" class="camera-settings-button" data-camera-settings-open aria-label="カメラ設定">⚙</button>
+        <div class="camera-settings-panel" data-camera-settings-panel hidden>
+          <div class="camera-settings-head">
+            <b>撮影音設定</b>
+            <button type="button" class="camera-settings-close" data-camera-settings-close aria-label="閉じる">×</button>
+          </div>
+          <label class="camera-settings-row">
+            <span>撮影音</span>
+            <select data-camera-sound>
+              <option value="off">無音</option>
+              <option value="camera1">カメラ1</option>
+              <option value="camera2">カメラ2</option>
+              <option value="click">クリック</option>
+              <option value="chime">チャイム</option>
+            </select>
+          </label>
+          <label class="camera-settings-row">
+            <span>音量</span>
+            <select data-camera-volume>
+              <option value="small">小</option>
+              <option value="medium">中</option>
+              <option value="large">大</option>
+            </select>
+          </label>
+          <button type="button" class="camera-settings-preview" data-camera-sound-preview>試聴</button>
+        </div>
         <aside class="camera-left-panel" aria-label="撮影補助操作">
           <button type="button" class="camera-close-button" data-camera-close>戻る</button>
           <div class="camera-photo-count" data-camera-photo-count>撮影済み\n0枚</div>
-          <button type="button" class="camera-panel-mini-button camera-landscape-flip" data-camera-landscape-flip>上下<br>反転</button>
-
           <div class="camera-board-control-panel">
             <div class="camera-panel-slot" data-camera-panel-slot="room">
               <button type="button" class="camera-panel-main-button" data-open-camera-panel="room">部屋</button>
@@ -127,13 +157,14 @@ function ensureCameraScreen() {
           </div>
         </aside>
 
-        <main class="camera-capture-frame">
+        <main class="camera-capture-frame" data-camera-capture-frame>
           <video class="camera-video" data-camera-video playsinline muted autoplay></video>
           <div class="camera-guide" data-camera-guide>カメラを準備しています</div>
           <div class="camera-board-layer" data-camera-board-layer>
             <canvas class="camera-board-canvas" data-camera-board></canvas>
           </div>
           <div class="camera-flash" data-camera-flash></div>
+          <div class="camera-toast" data-camera-toast hidden></div>
         </main>
 
         <aside class="camera-controls" aria-label="撮影操作">
@@ -142,6 +173,10 @@ function ensureCameraScreen() {
           <button type="button" class="camera-control-button camera-mode-button" data-camera-stage>目視</button>
         </aside>
       </div>
+    </div>
+
+    <div class="camera-orientation-blocker" data-camera-orientation-blocker hidden>
+      <div>端末を横向きにしてください</div>
     </div>
 
     <div class="camera-review" data-camera-review hidden>
@@ -154,12 +189,13 @@ function ensureCameraScreen() {
   `;
 
   document.body.appendChild(root);
-  orientationShell = root.querySelector('[data-camera-orientation-shell]');
   video = root.querySelector('[data-camera-video]');
   boardCanvas = root.querySelector('[data-camera-board]');
   review = root.querySelector('[data-camera-review]');
   reviewImage = root.querySelector('[data-camera-review-image]');
   root.addEventListener('click', handleCameraClick);
+  root.addEventListener('change', handleCameraChange);
+  root.querySelector('[data-camera-capture-frame]')?.addEventListener('pointerup', handleCameraCapturePointerUp);
 }
 
 /**
@@ -199,6 +235,19 @@ function closeSidePanel() {
  * Camera画面内clickを撮影・区分切替・panel操作・完了等へ振り分けるイベント入口。
  */
 function handleCameraClick(event) {
+  if (event.target.closest('[data-camera-settings-open]')) {
+    toggleCameraSettings();
+    return;
+  }
+  if (event.target.closest('[data-camera-settings-close]')) {
+    setCameraSettingsOpen(false);
+    return;
+  }
+  if (event.target.closest('[data-camera-sound-preview]')) {
+    void playShutterSound(state?.shutterSound, state?.shutterVolume);
+    return;
+  }
+
   const openButton = event.target.closest('[data-open-camera-panel]');
   if (openButton) {
     openSidePanel(openButton.dataset.openCameraPanel);
@@ -206,10 +255,6 @@ function handleCameraClick(event) {
   }
   if (event.target.closest('[data-camera-close]')) {
     closeCamera();
-    return;
-  }
-  if (event.target.closest('[data-camera-landscape-flip]')) {
-    toggleLandscapeFlip();
     return;
   }
   if (event.target.closest('[data-room-prev]')) {
@@ -267,25 +312,128 @@ function handleCameraClick(event) {
   if (event.target.closest('[data-camera-accept]')) resolveReview(true);
 }
 
-/**
- * 横向き撮影時の上下反転設定を切り替え、previewと設定Storeへ反映する。
- */
-function toggleLandscapeFlip() {
-  state.landscapeFlipped = !state.landscapeFlipped;
-  saveCameraPreferences(state);
-  applyLandscapeFlip();
-  setTimeout(handleResize, 80);
+function syncCameraSettingsUi() {
+  if (!root || !state) return;
+  const sound = root.querySelector('[data-camera-sound]');
+  const volume = root.querySelector('[data-camera-volume]');
+  if (sound) sound.value = state.shutterSound || 'camera1';
+  if (volume) volume.value = state.shutterVolume || 'medium';
 }
 
-/**
- * 現在flip設定をvideo previewのCSS transformへ反映する。画像Record値は変更しない。
- */
-function applyLandscapeFlip() {
-  orientationShell?.classList.toggle('flipped', Boolean(state?.landscapeFlipped));
-  root?.querySelector('[data-camera-landscape-flip]')?.setAttribute(
-    'aria-pressed',
-    state?.landscapeFlipped ? 'true' : 'false'
+function setCameraSettingsOpen(open) {
+  const panel = root?.querySelector('[data-camera-settings-panel]');
+  if (!panel) return;
+  panel.hidden = !open;
+  root?.querySelector('[data-camera-settings-open]')?.classList.toggle('active', Boolean(open));
+  if (open) syncCameraSettingsUi();
+}
+
+function toggleCameraSettings() {
+  const panel = root?.querySelector('[data-camera-settings-panel]');
+  if (!panel) return;
+  setCameraSettingsOpen(panel.hidden);
+}
+
+function handleCameraChange(event) {
+  if (!state) return;
+  const sound = event.target.closest?.('[data-camera-sound]');
+  if (sound) {
+    state.shutterSound = String(sound.value || 'camera1');
+    saveCameraPreferences(state);
+    return;
+  }
+
+  const volume = event.target.closest?.('[data-camera-volume]');
+  if (volume) {
+    state.shutterVolume = String(volume.value || 'medium');
+    saveCameraPreferences(state);
+  }
+}
+
+function showCameraToast(text) {
+  const toast = root?.querySelector('[data-camera-toast]');
+  if (!toast) return;
+  if (cameraToastTimer) clearTimeout(cameraToastTimer);
+  toast.textContent = String(text || '');
+  toast.hidden = false;
+  cameraToastTimer = setTimeout(() => {
+    toast.hidden = true;
+    cameraToastTimer = null;
+  }, 850);
+}
+
+function pointInsideRect(x, y, rect) {
+  return Boolean(
+    rect
+    && x >= rect.x
+    && x <= rect.x + rect.width
+    && y >= rect.y
+    && y <= rect.y + rect.height
   );
+}
+
+function isTorchTapArea(event) {
+  const frame = root?.querySelector('[data-camera-capture-frame]');
+  if (!frame || !state || !cameraSession?.supportsTorch()) return false;
+  const rect = frame.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+
+  const x = Number(event.clientX) - rect.left;
+  const y = Number(event.clientY) - rect.top;
+  if (x < 0 || x > rect.width || y < 0 || y > rect.height / 2) return false;
+
+  const boardHidden = Boolean(state.sectionMode && state.photoType === PHOTO_TYPES.SAMPLING);
+  if (!boardHidden) {
+    const boardRect = getBoardRect(rect.width, rect.height, state.boardPosition, state.boardSize);
+    if (pointInsideRect(x, y, boardRect)) return false;
+  }
+  return true;
+}
+
+async function toggleTorchFromDoubleTap() {
+  if (!cameraSession?.supportsTorch()) return;
+  const next = !cameraSession.isTorchEnabled();
+  const changed = await cameraSession.setTorch(next);
+  if (changed) showCameraToast(next ? 'ライト ON' : 'ライト OFF');
+}
+
+function handleCameraCapturePointerUp(event) {
+  if (!root || root.hidden || review?.hidden === false) return;
+  if (!isTorchTapArea(event)) {
+    lastTorchTapAt = 0;
+    lastTorchTapPoint = null;
+    return;
+  }
+
+  const now = performance.now();
+  const point = { x:Number(event.clientX), y:Number(event.clientY) };
+  const withinTime = lastTorchTapAt > 0 && now - lastTorchTapAt <= 350;
+  const withinDistance = lastTorchTapPoint
+    ? Math.hypot(point.x - lastTorchTapPoint.x, point.y - lastTorchTapPoint.y) <= 48
+    : false;
+
+  if (withinTime && withinDistance) {
+    lastTorchTapAt = 0;
+    lastTorchTapPoint = null;
+    void toggleTorchFromDoubleTap();
+    return;
+  }
+
+  lastTorchTapAt = now;
+  lastTorchTapPoint = point;
+}
+
+function syncShutterAvailability() {
+  const shutter = root?.querySelector('[data-camera-shutter]');
+  if (shutter) shutter.disabled = !cameraReady || !cameraLandscape || taking;
+}
+
+function syncCameraOrientation(isLandscape = isCameraLandscape()) {
+  cameraLandscape = Boolean(isLandscape);
+  const blocker = root?.querySelector('[data-camera-orientation-blocker]');
+  if (blocker) blocker.hidden = cameraLandscape || review?.hidden === false;
+  root?.classList.toggle('camera-portrait-blocked', !cameraLandscape);
+  syncShutterAvailability();
 }
 
 /**
@@ -314,7 +462,8 @@ function updateCameraUi() {
   const boardPosition = root.querySelector('[data-board-position]');
 
   updatePhotoCount();
-  applyLandscapeFlip();
+  syncCameraSettingsUi();
+  syncCameraOrientation();
 
   if (state.photoType === PHOTO_TYPES.SAMPLING) {
     const target = currentSamplingTarget(state);
@@ -434,12 +583,12 @@ function changeBoardSize(delta) {
  * MediaStream準備完了状態を更新し、撮影button等の活性を切り替える。
  */
 function setCameraReady(ready, guideText = '') {
-  const shutter = root?.querySelector('[data-camera-shutter]');
+  cameraReady = Boolean(ready);
   const guide = root?.querySelector('[data-camera-guide]');
-  if (shutter) shutter.disabled = !ready;
+  syncShutterAvailability();
   if (guide) {
-    guide.hidden = ready;
-    if (!ready && guideText) guide.textContent = guideText;
+    guide.hidden = cameraReady;
+    if (!cameraReady && guideText) guide.textContent = guideText;
   }
 }
 
@@ -449,6 +598,7 @@ function setCameraReady(ready, guideText = '') {
 function showReview(dataUrl) {
   reviewImage.src = dataUrl;
   review.hidden = false;
+  syncCameraOrientation();
   return new Promise((resolve) => {
     pendingReviewResolve = resolve;
   });
@@ -463,6 +613,7 @@ function resolveReview(accepted) {
   pendingReviewResolve = null;
   review.hidden = true;
   reviewImage.removeAttribute('src');
+  syncCameraOrientation();
   resolve(Boolean(accepted));
 }
 
@@ -470,10 +621,11 @@ function resolveReview(accepted) {
  * 現在video frameをCanvasへ取り込みBlob化し、確認画面→Photo Record登録までの撮影1回分を実行する。
  */
 async function takePhoto() {
-  if (taking || !cameraSession?.isReady() || video.readyState < 2) return;
+  if (taking || !cameraLandscape || !cameraSession?.isReady() || video.readyState < 2) return;
   taking = true;
-  const shutter = root.querySelector('[data-camera-shutter]');
-  if (shutter) shutter.disabled = true;
+  syncShutterAvailability();
+
+  void playShutterSound(state?.shutterSound, state?.shutterVolume);
 
   const snapshot = createCaptureSnapshot(state);
   const boardData = { ...buildBoardData() };
@@ -538,7 +690,7 @@ async function takePhoto() {
     window.alert(`撮影データの保存に失敗しました。\n${error?.message || error}`);
   } finally {
     taking = false;
-    if (shutter) shutter.disabled = !cameraSession?.isReady();
+    syncShutterAvailability();
   }
 }
 
@@ -560,8 +712,12 @@ export async function openCamera(initialContext = {}) {
   }
 
   closeSidePanel();
+  setCameraSettingsOpen(false);
+  lastTorchTapAt = 0;
+  lastTorchTapPoint = null;
   root.hidden = false;
   document.body.classList.add('camera-open');
+  syncCameraOrientation();
   updateCameraUi();
 
   try {
@@ -584,6 +740,10 @@ export function closeCamera() {
 
   cameraSession?.invalidate();
   cameraSession?.stop();
+  cameraReady = false;
+  setCameraSettingsOpen(false);
+  lastTorchTapAt = 0;
+  lastTorchTapPoint = null;
   root.hidden = true;
   document.body.classList.remove('camera-open');
 }
@@ -600,7 +760,10 @@ async function resumeCameraIfNeeded() {
  * 画面回転/resize時に撮影領域・看板位置・preview transformを再計算する。
  */
 function handleResize() {
-  if (root && !root.hidden && state) updateCameraUi();
+  if (root && !root.hidden && state) {
+    syncCameraOrientation();
+    updateCameraUi();
+  }
 }
 
 /**
@@ -615,7 +778,10 @@ export function initializeCameraController(options = {}) {
       getRoot: () => root,
       getVideo: () => video,
       setReady: setCameraReady,
-      onReady: updateCameraUi
+      onReady: () => {
+        syncCameraOrientation();
+        updateCameraUi();
+      }
     });
   }
 
@@ -624,4 +790,12 @@ export function initializeCameraController(options = {}) {
   document.addEventListener('visibilitychange', resumeCameraIfNeeded);
   window.addEventListener('pageshow', resumeCameraIfNeeded);
   window.addEventListener('resize', handleResize);
+  bindCameraOrientationChange((landscape) => {
+    if (!root || root.hidden) {
+      cameraLandscape = Boolean(landscape);
+      return;
+    }
+    syncCameraOrientation(landscape);
+    updateCameraUi();
+  });
 }

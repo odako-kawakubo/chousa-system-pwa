@@ -11,6 +11,10 @@ let penPointer = null;
 let ignoreNextPenClick = false;
 let ignorePenClickUntil = 0;
 
+function notifyGuideLayoutChanged() {
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
+}
+
 function handlePenPointerDown(event) {
   if (event.pointerType !== 'pen') return;
 
@@ -37,7 +41,7 @@ function handlePenPointerMove(event) {
   if (Math.hypot(dx, dy) >= PEN_DRAG_THRESHOLD_PX) penPointer.dragged = true;
 }
 
-function handlePenPointerUp(event, activateTarget) {
+function handlePenPointerUp(event, activateTarget, allowInteraction) {
   if (!penPointer || event.pointerType !== 'pen' || event.pointerId !== penPointer.pointerId) return;
 
   const gesture = penPointer;
@@ -53,6 +57,7 @@ function handlePenPointerUp(event, activateTarget) {
   ignoreNextPenClick = true;
   ignorePenClickUntil = performance.now() + PEN_CLICK_SUPPRESS_MS;
   if (wasDrag) return;
+  if (!allowInteraction('activate', gesture.target)) return;
 
   activateTarget(gesture.target, { fromPen: true });
 }
@@ -72,9 +77,13 @@ function bindOutsideMultiSelectClose(rootProvider) {
     const root = rootProvider();
     if (!root) return;
     if (event.target.closest('[data-material-multi-select]')) return;
+
+    let changed = false;
     root.querySelectorAll('[data-material-multi-select][open]').forEach((details) => {
       details.removeAttribute('open');
+      changed = true;
     });
+    if (changed) notifyGuideLayoutChanged();
   }, { passive: true });
 }
 
@@ -85,14 +94,17 @@ export function bindMaterialListInteractions({
   activateTextDisplay,
   commitTextEditor,
   updateSampleParts,
-  updateControl
+  updateControl,
+  allowInteraction = () => true
 }) {
   if (!root || root.dataset.eventsBound === '1') return;
   root.dataset.eventsBound = '1';
 
   root.addEventListener('pointerdown', handlePenPointerDown, { passive: true });
   root.addEventListener('pointermove', handlePenPointerMove, { passive: true });
-  root.addEventListener('pointerup', (event) => handlePenPointerUp(event, activateTarget), { passive: true });
+  root.addEventListener('pointerup', (event) => {
+    handlePenPointerUp(event, activateTarget, allowInteraction);
+  }, { passive: true });
   root.addEventListener('pointercancel', handlePenPointerCancel, { passive: true });
 
   root.addEventListener('click', (event) => {
@@ -104,11 +116,17 @@ export function bindMaterialListInteractions({
     ignoreNextPenClick = false;
     ignorePenClickUntil = 0;
 
+    if (!allowInteraction('activate', event.target)) {
+      event.preventDefault();
+      return;
+    }
+
     const closeMultiSelect = event.target.closest('[data-action="close-material-multi-select"]');
     if (closeMultiSelect) {
       event.preventDefault();
       event.stopPropagation();
       closeMultiSelect.closest('[data-material-multi-select]')?.removeAttribute('open');
+      notifyGuideLayoutChanged();
       return;
     }
 
@@ -117,6 +135,10 @@ export function bindMaterialListInteractions({
 
   root.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && event.target.matches('[data-material-text-input]')) {
+      if (!allowInteraction('text', event.target)) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       event.target.blur();
       return;
@@ -126,6 +148,10 @@ export function bindMaterialListInteractions({
       (event.key === 'Enter' || event.key === ' ')
       && event.target.matches('[data-material-text-display]')
     ) {
+      if (!allowInteraction('activate', event.target)) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       activateTextDisplay(event.target);
     }
@@ -134,21 +160,28 @@ export function bindMaterialListInteractions({
   root.addEventListener('focusout', (event) => {
     const input = event.target.closest('[data-material-text-input]');
     if (!input) return;
+    if (!allowInteraction('text', input)) return;
     commitTextEditor(input);
   });
 
   root.addEventListener('change', (event) => {
     const multiPart = event.target.closest('[data-material-multi-part]');
     if (multiPart) {
-      if (multiPart.disabled) return;
+      if (multiPart.disabled || !allowInteraction('change', multiPart)) return;
       updateSampleParts(multiPart.dataset.materialId);
       return;
     }
 
     const control = event.target.closest('[data-material-control]');
-    if (!control) return;
+    if (!control || !allowInteraction('change', control)) return;
     updateControl(control);
   });
+
+  root.addEventListener('toggle', (event) => {
+    if (event.target.matches?.('[data-material-multi-select]')) {
+      notifyGuideLayoutChanged();
+    }
+  }, true);
 
   bindOutsideMultiSelectClose(getRoot);
 }

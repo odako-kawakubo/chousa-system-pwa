@@ -36,6 +36,7 @@ export function openProjectPanel() {
   panel?.classList.add('open');
   panel?.setAttribute('aria-hidden', 'false');
   backdrop?.classList.add('open');
+  document.body.classList.add('project-panel-open');
 }
 
 /**
@@ -47,6 +48,7 @@ export function closeProjectPanel() {
   panel?.classList.remove('open');
   panel?.setAttribute('aria-hidden', 'true');
   backdrop?.classList.remove('open');
+  document.body.classList.remove('project-panel-open');
 }
 
 /**

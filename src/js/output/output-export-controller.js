@@ -10,6 +10,7 @@ import { OUTPUT_TARGETS,OUTPUT_TARGET_ORDER } from './output-targets.js';
 import { formatSamplingCode } from './output-format.js';
 import { getOutputSettings } from './output-settings-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 
 let modal=null;
 let method='pdf';
@@ -59,4 +60,4 @@ async function runExport(){
   finally{running=false;modal.querySelector('[data-output-export-run]').disabled=false;}
 }
 
-export function initializeOutputExportController(root,{getSettings=null,getViewModel=null}={}){ensureModal();if(typeof getSettings==='function')settingsProvider=getSettings;if(typeof getViewModel==='function')viewModelProvider=getViewModel;root?.addEventListener('click',(event)=>{const button=event.target.closest('[data-output-export]');if(!button)return;const requested=button.dataset.outputExport;if(!['pdf','print','excel'].includes(requested))return;openModal(requested);});}
+export function initializeOutputExportController(root,{getSettings=null,getViewModel=null}={}){ensureModal();if(typeof getSettings==='function')settingsProvider=getSettings;if(typeof getViewModel==='function')viewModelProvider=getViewModel;root?.addEventListener('click',(event)=>{const button=event.target.closest('[data-output-export]');if(!button)return;const requested=button.dataset.outputExport;if(!['pdf','print','excel'].includes(requested))return;if(!isTutorialActionAllowed('output.export.open',{method:String(requested)})){event.preventDefault();return;}openModal(requested);});}

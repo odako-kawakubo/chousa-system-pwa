@@ -27,6 +27,8 @@ import {
   applyMaterialSamplingAutofill
 } from './material-list-edit-actions.js';
 import { bindMaterialListInteractions } from './material-list-interactions.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+import { notifyTutorialAction } from '../guide/tutorial-action.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -81,7 +83,7 @@ function bindMaterialListTabScrollState() {
     if (previousTab === 'materials') captureMaterialListScroll();
     if (currentTab === 'materials') {
       requestAnimationFrame(() => {
-        restoreMaterialListScroll(String(getCurrentProject()?.projectId || ''));
+        refreshMaterialList();
       });
     }
   });
@@ -101,10 +103,10 @@ export function initializeMaterialList() {
     activateTextDisplay,
     commitTextEditor,
     updateSampleParts: updateSamplePartsFromChecklist,
-    updateControl: updateMaterialControl
+    updateControl: updateMaterialControl,
+    allowInteraction: materialInteractionAllowed
   });
   bindMaterialListTabScrollState();
-  document.querySelector('.tabs .tab[data-tab="materials"]')?.addEventListener('click', refreshMaterialList);
   refreshMaterialList();
 }
 
@@ -138,6 +140,79 @@ export function refreshMaterialList() {
   });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
+}
+
+function materialInteractionRule(target) {
+  const node = target?.closest
+    ? target.closest(
+      '[data-material-multi-part], [data-material-control], [data-material-text-display], [data-material-text-input], [data-material-multi-select], [data-action], [data-material-row]'
+    )
+    : null;
+  if (!node) return null;
+
+  const multiPart = target.closest('[data-material-multi-part]');
+  if (multiPart) {
+    return {
+      actionId: 'material.sample-part.change',
+      context: { materialId: String(multiPart.dataset.materialId || '') }
+    };
+  }
+
+  const control = target.closest('[data-material-control]');
+  if (control) {
+    return {
+      actionId: 'material.control.change',
+      context: {
+        materialId: String(control.dataset.materialId || ''),
+        field: String(control.dataset.field || '')
+      }
+    };
+  }
+
+  const text = target.closest('[data-material-text-display], [data-material-text-input]');
+  if (text) {
+    return {
+      actionId: 'material.text.edit',
+      context: {
+        materialId: String(text.dataset.materialId || ''),
+        kind: String(text.dataset.editorKind || '')
+      }
+    };
+  }
+
+  const multiSelect = target.closest('[data-material-multi-select]');
+  if (multiSelect) {
+    const row = multiSelect.closest('[data-material-row]');
+    return {
+      actionId: 'material.sample-part.open',
+      context: { materialId: String(row?.dataset.materialId || '') }
+    };
+  }
+
+  const action = target.closest('[data-action]');
+  if (action) {
+    return {
+      actionId: `material.action.${String(action.dataset.action || 'unknown')}`,
+      context: {}
+    };
+  }
+
+  const row = target.closest('[data-material-row]');
+  if (row) {
+    return {
+      actionId: 'material.row.select',
+      context: { materialId: String(row.dataset.materialId || '') }
+    };
+  }
+
+  return null;
+}
+
+function materialInteractionAllowed(_phase, target) {
+  const rule = materialInteractionRule(target);
+  if (!rule) return true;
+  return isTutorialActionAllowed(rule.actionId, rule.context);
 }
 
 /**
@@ -168,6 +243,7 @@ function handleMaterialActivation(target, options = {}) {
   if (analysisColumnsButton) {
     materialListAnalysisColumnsOpen = !materialListAnalysisColumnsOpen;
     refreshMaterialList();
+    notifyTutorialAction('material.action.toggle-material-analysis-columns', {});
     return;
   }
 
@@ -245,6 +321,10 @@ function activateTextDisplay(display) {
  * 編集UIの値を種類別の更新関数へ渡し、保存後に表示状態へ戻す。建材名/備考/分析欄で更新規則が異なる。
  */
 function commitTextEditor(input) {
+  if (!materialInteractionAllowed('text', input)) {
+    refreshMaterialList();
+    return;
+  }
   const materialId = input.dataset.materialId;
   const kind = input.dataset.editorKind;
   if (kind === 'name') updateMaterialName(materialId, input.value);
@@ -280,10 +360,18 @@ function activateNativeControl(control) {
  * level・分析要否・採取数・採取場所・採取日等のcontrol値をedit-actionsへ渡し、必要な画面を再描画する。
  */
 function updateMaterialControl(control) {
+  if (!materialInteractionAllowed('change', control)) {
+    refreshMaterialList();
+    return;
+  }
   const result = updateMaterialControlValue(control);
   if (!result.changed) return;
   refreshMaterialList();
   refreshRecordView();
+  notifyTutorialAction('material.control.change', {
+    materialId:String(control.dataset.materialId || ''),
+    field:String(control.dataset.field || '')
+  });
 }
 
 /**
@@ -294,6 +382,11 @@ function updateSamplePartsFromChecklist(materialId) {
 
   const inputs = [...rootElement.querySelectorAll('[data-material-multi-part]')]
     .filter((input) => input.dataset.materialId === materialId);
+  if (inputs[0] && !materialInteractionAllowed('change', inputs[0])) {
+    refreshMaterialList();
+    return;
+  }
+
   const selected = inputs
     .filter((input) => input.checked)
     .map((input) => String(input.value || '').trim())
@@ -360,6 +453,50 @@ function refreshConnectedViews() {
   refreshMaterialList();
   refreshFinishTableFromStores();
   refreshRecordView();
+}
+
+export function captureMaterialListUiState() {
+  captureMaterialListScroll();
+  const projectId = String(getCurrentProject()?.projectId || '');
+  const scroll = scrollStateByProject.get(projectId) || { top:0, left:0 };
+  return {
+    selectedMaterialId,
+    colorMode: materialListColorMode,
+    roomNameMode: materialListRoomNameMode,
+    analysisColumnsOpen: materialListAnalysisColumnsOpen,
+    scroll: {
+      top:Number(scroll.top || 0),
+      left:Number(scroll.left || 0)
+    }
+  };
+}
+
+export function restoreMaterialListUiState(snapshot, { renderNow = true } = {}) {
+  if (!snapshot) return;
+  selectedMaterialId = snapshot.selectedMaterialId || null;
+  materialListColorMode = Boolean(snapshot.colorMode);
+  materialListRoomNameMode = Boolean(snapshot.roomNameMode);
+  materialListAnalysisColumnsOpen = Boolean(snapshot.analysisColumnsOpen);
+
+  const projectId = String(getCurrentProject()?.projectId || '');
+  scrollStateByProject.set(projectId, {
+    top:Number(snapshot.scroll?.top || 0),
+    left:Number(snapshot.scroll?.left || 0)
+  });
+
+  if (renderNow) refreshMaterialList();
+}
+
+export function resetMaterialListUiStateForTutorial({ renderNow = true } = {}) {
+  selectedMaterialId = null;
+  materialListColorMode = false;
+  materialListRoomNameMode = false;
+  materialListAnalysisColumnsOpen = false;
+
+  const projectId = String(getCurrentProject()?.projectId || '');
+  scrollStateByProject.set(projectId, { top:0, left:0 });
+
+  if (renderNow) refreshMaterialList();
 }
 
 /**

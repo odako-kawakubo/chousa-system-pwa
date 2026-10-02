@@ -6,6 +6,7 @@ import { getProjectList, formatProjectLabel, subscribe } from '../projects/proje
 import { createTemporaryProjectSnapshot } from '../projects/project-creation.js';
 import { openProjectPage } from '../projects/project-navigation.js';
 import { sampleProject } from '../demo/sample-project.js';
+import { TUTORIAL_PROJECT_ID, resetTutorialProjectSnapshot, requestTutorialAutoStart } from '../guide/tutorial-project.js';
 import { openModal, closeModal } from '../ui/modal.js';
 import { beginLoading, endLoading } from '../ui/loading-ui.js';
 import { getAuthUiState, reconnectMicrosoftAuth, subscribeAuthUiState } from '../ui/auth-ui.js';
@@ -182,6 +183,11 @@ function bindHomeEvents() {
   });
 
   document.getElementById('homeOpenSampleButton')?.addEventListener('click', () => openProjectPage(sampleProject.projectId));
+  document.getElementById('homeOpenTutorialButton')?.addEventListener('click', () => {
+    resetTutorialProjectSnapshot();
+    requestTutorialAutoStart();
+    openProjectPage(TUTORIAL_PROJECT_ID);
+  });
 
   document.getElementById('homeReconnectMicrosoftButton')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;

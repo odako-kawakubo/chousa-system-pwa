@@ -55,6 +55,162 @@ import {
   completeCellEdit,
   finalizePendingEdit
 } from './finish-table-edit-session.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+
+function materialTutorialContext(input) {
+  return {
+    roomKey: String(input?.dataset?.roomKey || ''),
+    partIndex: Number(input?.dataset?.partIndex || 0),
+    row: Number(input?.dataset?.inputRow || 0),
+    kind: String(input?.dataset?.kind || '')
+  };
+}
+
+function canUseMaterialInput(input, actionId) {
+  return isTutorialActionAllowed(actionId, materialTutorialContext(input));
+}
+
+function activationTutorialRule(target, root) {
+  const candidateButton = target.closest('[data-candidate-index]');
+  if (candidateButton) {
+    const selection = getActiveCandidateSelection(candidateButton.dataset.candidateIndex);
+    if (!selection?.input) return null;
+    return {
+      actionId: 'finish.material.candidate',
+      context: materialTutorialContext(selection.input)
+    };
+  }
+
+  const registerButton = target.closest('[data-action="register-material"]');
+  if (registerButton) {
+    return {
+      actionId: 'finish.material.register',
+      context: {
+        roomKey: String(registerButton.dataset.roomKey || ''),
+        partIndex: Number(registerButton.dataset.partIndex || 0),
+        row: Number(registerButton.dataset.inputRow || 0)
+      }
+    };
+  }
+
+  const copyButton = target.closest('[data-action="copy-room"]');
+  if (copyButton) {
+    return {
+      actionId: 'finish.room.copy',
+      context: { roomKey: String(copyButton.dataset.roomKey || '') }
+    };
+  }
+
+  const actionButton = target.closest('[data-action]');
+  if (actionButton) {
+    const action = String(actionButton.dataset.action || '');
+    if (action === 'add-row') {
+      return {
+        actionId: 'finish.row.add',
+        context: { roomKey: String(actionButton.dataset.roomKey || '') }
+      };
+    }
+    if (action === 'add-room') {
+      return {
+        actionId: 'finish.room.add',
+        context: {
+          floorKey: String(actionButton.dataset.floorKey || ''),
+          roomKey: String(actionButton.dataset.roomKey || '')
+        }
+      };
+    }
+    const floorKinds = {
+      'add-normal-floor': 'normal',
+      'add-basement-floor': 'basement',
+      'add-stairs': 'stairs',
+      'add-roof': 'roof'
+    };
+    if (floorKinds[action]) {
+      return {
+        actionId: 'finish.floor.add',
+        context: { kind: floorKinds[action] }
+      };
+    }
+    if (action === 'add-external-room') {
+      return {
+        actionId: 'finish.room.add',
+        context: { floorKey: 'external' }
+      };
+    }
+    return {
+      actionId: `finish.action.${action || 'unknown'}`,
+      context: {}
+    };
+  }
+
+  const areaButton = target.closest('.finish-area-btn');
+  if (areaButton) {
+    return {
+      actionId: 'finish.area.change',
+      context: { areaMode: String(areaButton.dataset.areaMode || '') }
+    };
+  }
+
+  if (target.closest('#finishColorToggleBtn')) {
+    return { actionId: 'finish.color.toggle', context: {} };
+  }
+  if (target.closest('#finishChipInputToggleBtn')) {
+    return { actionId: 'finish.chip-input.toggle', context: {} };
+  }
+  if (target.closest('#finishSimpleListToggleBtn')) {
+    return { actionId: 'finish.simple-list.toggle', context: {} };
+  }
+
+  const floorHeading = target.closest('.finish-floor-heading');
+  if (floorHeading) {
+    return {
+      actionId: 'finish.floor.toggle',
+      context: { floorKey: String(floorHeading.dataset.floorKey || '') }
+    };
+  }
+
+  const dataCell = target.closest('.finish-data-cell');
+  if (dataCell) {
+    const field = target.closest('.finish-cell-display, .finish-cell-input')
+      || dataCell.querySelector('.finish-cell-display, .finish-cell-input');
+    if (!field) return { actionId: 'finish.material.edit', context: {} };
+    return {
+      actionId: field.dataset.kind === 'part'
+        ? 'finish.material.part.edit'
+        : 'finish.material.edit',
+      context: materialTutorialContext(field)
+    };
+  }
+
+  const roomField = target.closest(
+    '.room-no-cell .finish-cell-display, .room-name-cell .finish-cell-display'
+  );
+  if (roomField) {
+    return {
+      actionId: 'finish.room-field.edit',
+      context: {
+        roomKey: String(roomField.dataset.roomKey || ''),
+        field: String(roomField.dataset.field || '')
+      }
+    };
+  }
+
+  const roomBlock = target.closest('.finish-room-block[data-room-key]');
+  if (roomBlock) {
+    return {
+      actionId: 'finish.room.select',
+      context: { roomKey: String(roomBlock.dataset.roomKey || '') }
+    };
+  }
+
+  return null;
+}
+
+function finishActivationAllowed(target, root) {
+  const rule = activationTutorialRule(target, root);
+  if (!rule) return true;
+  return isTutorialActionAllowed(rule.actionId, rule.context);
+}
 
 /**
  * 候補popupで選択された値を現在編集セルへ1回だけcommitする。focusoutとの二重保存を防ぐため明示commit済み状態も更新する。
@@ -124,6 +280,8 @@ function focusOtherCompanionField(roomKeyValue, partIndex, row, targetKind) {
       && Number(candidate.dataset.inputRow) === Number(row)
     );
     if (!field) return;
+    const actionId = targetKind === 'part' ? 'finish.material.part.edit' : 'finish.material.edit';
+    if (!canUseMaterialInput(field, actionId)) return;
 
     const input = field.classList.contains('finish-cell-input') ? field : swapDisplayToInput(field);
     if (input) input.focus();
@@ -145,8 +303,7 @@ export function bindFinishTableInteractions(root, {
   commitAndRefresh,
   getUndoableSnapshot,
   handleCopyRoomClick,
-  handleAction,
-  updateDrawerInsertButtonState
+  handleAction
 } = {}) {
   if (root.dataset.finishEventsBound === '1') return;
   root.dataset.finishEventsBound = '1';
@@ -169,6 +326,8 @@ export function bindFinishTableInteractions(root, {
   let ignorePenClickUntil = 0;
 
   function handleFinishActivation(target) {
+    if (!finishActivationAllowed(target, root)) return;
+
     const candidateButton = target.closest('[data-candidate-index]');
     if (candidateButton) {
       const selection = getActiveCandidateSelection(candidateButton.dataset.candidateIndex);
@@ -247,10 +406,12 @@ export function bindFinishTableInteractions(root, {
 
     const dataCell = target.closest('.finish-data-cell');
     if (dataCell) {
+      const field = target.closest('.finish-cell-display, .finish-cell-input')
+        || dataCell.querySelector('.finish-cell-display, .finish-cell-input');
+      if (!field) return;
       // 入力デバイスに関係なく、先に部屋・入力グループの選択状態を確定する。
       setSelectedRoomKey(dataCell.dataset.roomKey);
       setSelectedGroupKey(dataCell.dataset.groupKey);
-      updateDrawerInsertButtonState();
 
       // チップ入力は「モードON」と「入力ターゲット選択済み」の両方が揃った時だけ実行する。
       // 簡易リストの通常参照 selectedMaterialInputId はここでは参照しない。
@@ -260,7 +421,6 @@ export function bindFinishTableInteractions(root, {
         const inputId = getChipInputMaterialInputId();
         const material = inputId != null ? materialRecordStore.findByInputId(inputId) : undefined;
         if (material) {
-          const field = dataCell.querySelector('.finish-cell-display, .finish-cell-input');
           if (field) {
             const roomKeyValue = field.dataset.roomKey;
             const partIndex = Number(field.dataset.partIndex);
@@ -320,7 +480,6 @@ export function bindFinishTableInteractions(root, {
     if (roomFieldDisplay) {
       // spanをinputへ差し替える前に部屋選択を確定する。
       setSelectedRoomKey(roomFieldDisplay.dataset.roomKey);
-      updateDrawerInsertButtonState();
       applyRoomSelection();
 
       const input = swapDisplayToInput(roomFieldDisplay);
@@ -331,7 +490,6 @@ export function bindFinishTableInteractions(root, {
     const roomBlock = target.closest('.finish-room-block[data-room-key]');
     if (roomBlock) {
       setSelectedRoomKey(roomBlock.dataset.roomKey);
-      updateDrawerInsertButtonState();
       applyRoomSelection();
     }
   }
@@ -446,7 +604,6 @@ export function bindFinishTableInteractions(root, {
     setSelectedRoomKey(input.dataset.roomKey);
     setSelectedGroupKey(td.dataset.groupKey);
     setFocusedInputKey(input.dataset.inputKey);
-    updateDrawerInsertButtonState();
 
     // セル選択・フォーカス移動では、部屋選択・入力グループ選択・
     // フォーカス枠だけを更新する（建材一致判定＝全セル走査は行わない）。
@@ -475,10 +632,18 @@ export function bindFinishTableInteractions(root, {
     closeCandidatePopup();
   }, true);
 
-  // その他1/2ではEnter確定でも「建材名 <-> 部位」を往復できるようにする。
-  // 通常のfocusoutでは移動させず、明示的にEnterを押した場合だけ適用する。
+  // 部屋No./部屋名はEnterでblurし、既存のfocusout正式確定経路へ流す。
+  // Enter専用の別commit経路は作らず、1操作=1commitを維持する。
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
+
+    const roomFieldInput = event.target.closest('.room-no-input, .room-name-input');
+    if (roomFieldInput) {
+      event.preventDefault();
+      roomFieldInput.blur();
+      return;
+    }
+
     const input = event.target.closest('.finish-cell-input');
     if (!input || !['name', 'part'].includes(input.dataset.kind)) return;
 

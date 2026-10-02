@@ -1,0 +1,431 @@
+/**
+ * src/js/guide/guide-controller.js
+ *
+ * チュートリアル／操作ガイドの共通進行Controller。
+ * step側が target / extraTargets / permissions / watchStores / completeWhen を宣言し、
+ * Controllerは特定画面のDOMや業務処理を知らない。
+ */
+import { showTab } from '../ui/tabs.js';
+import { closeDrawer, closeGuideDrawer } from '../ui/drawer.js';
+import { openProjectById } from '../projects/project-controller.js';
+import { openProjectSession, refreshOpenProjectSessionViews } from '../projects/project-session.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { openHomePage, setOpenProjectId } from '../projects/project-navigation.js';
+import { resetFinishUiStateForTutorial } from '../finish-table/finish-table-state.js';
+import { resetMaterialListUiStateForTutorial } from '../materials/material-list-controller.js';
+import { resetPhotoUiStateForTutorial } from '../photos/photo-controller.js';
+import { resetOutputUiStateForTutorial } from '../output/output-controller.js';
+import * as finishRecordStore from '../store/finish-record-store.js';
+import * as materialRecordStore from '../store/material-record-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+import {
+  TUTORIAL_PROJECT_ID,
+  initializeTutorialProjectSnapshot,
+  resetTutorialProjectSnapshot,
+  consumeTutorialAutoStart
+} from './tutorial-project.js';
+import { TUTORIAL_STEPS } from './tutorial-steps.js';
+import { OPERATION_GUIDE_STEPS } from './operation-guide-data.js';
+import {
+  hideGuideOverlay,
+  initializeGuideOverlayPositionEvents,
+  positionGuideOverlay,
+  showGuideOverlay
+} from './guide-overlay.js';
+import {
+  captureTutorialSnapshot,
+  restoreTutorialSnapshot
+} from './tutorial-snapshot.js';
+import {
+  clearTutorialState,
+  startTutorialState,
+  setTutorialStepState
+} from './tutorial-state.js';
+import { subscribeTutorialActions } from './tutorial-action.js';
+
+const STORE_BY_NAME = {
+  finish: finishRecordStore,
+  material: materialRecordStore,
+  photo: photoRecordStore
+};
+
+let activeSteps = null;
+let activeIndex = 0;
+let targetElement = null;
+let initialized = false;
+let tutorialMode = false;
+let stepSnapshots = new Map();
+let stepActions = new Map();
+let unsubscribeStepStores = [];
+let stepCheckScheduled = false;
+let advancing = false;
+
+function currentStep() {
+  return activeSteps?.[activeIndex] || null;
+}
+
+function handleGuideClose() {
+  if (!tutorialMode) {
+    closeGuide();
+    return;
+  }
+  closeGuide();
+  resetTutorialProjectSnapshot();
+  openHomePage({ replace:true });
+}
+
+function actionContextMatches(expected = {}, actual = {}) {
+  return Object.entries(expected).every(([key, value]) => {
+    if (Array.isArray(value)) return value.map(String).includes(String(actual?.[key] ?? ''));
+    return String(value ?? '') === String(actual?.[key] ?? '');
+  });
+}
+
+function stepContext(index = activeIndex) {
+  const actions = stepActions.get(index) || [];
+  return {
+    snapshot: stepSnapshots.get(index) || null,
+    actions,
+    didAction(actionId, expectedContext = {}) {
+      const id = String(actionId || '');
+      return actions.some((event) =>
+        event.actionId === id && actionContextMatches(expectedContext, event.context || {})
+      );
+    },
+    index
+  };
+}
+
+function resolveValue(value, context) {
+  try {
+    return typeof value === 'function' ? value(context) : value;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTargets(value) {
+  const list = Array.isArray(value) ? value : [value];
+  return [...new Set(list.filter((node) => node?.isConnected))];
+}
+
+function resolveTarget(step) {
+  return resolveValue(step?.target, stepContext());
+}
+
+function resolveDisplayTargets(step, baseTarget = resolveTarget(step)) {
+  const base = normalizeTargets(baseTarget);
+  const extra = normalizeTargets(resolveValue(step?.extraTargets, stepContext()));
+  return [...new Set([...base, ...extra])];
+}
+
+function hasConnectedTarget(target) {
+  return normalizeTargets(target).length > 0;
+}
+
+function firstConnectedTarget(target) {
+  return normalizeTargets(target)[0] || null;
+}
+
+function resolvePermissions(step) {
+  const value = resolveValue(step?.permissions, stepContext());
+  return (Array.isArray(value) ? value : [value]).filter(Boolean);
+}
+
+function syncTutorialStepState(step) {
+  if (!tutorialMode) return;
+  setTutorialStepState({
+    currentStepId: step?.id || '',
+    allowedActions: resolvePermissions(step)
+  });
+}
+
+function ensureStepSnapshot(index) {
+  if (!tutorialMode || stepSnapshots.has(index)) return;
+  stepSnapshots.set(index, captureTutorialSnapshot());
+}
+
+function stepIsComplete(step) {
+  if (!tutorialMode || !step?.interactive || typeof step.completeWhen !== 'function') return false;
+  try {
+    return Boolean(step.completeWhen(stepContext()));
+  } catch {
+    return false;
+  }
+}
+
+function stopStepStoreWatch() {
+  unsubscribeStepStores.forEach((unsubscribe) => unsubscribe?.());
+  unsubscribeStepStores = [];
+  stepCheckScheduled = false;
+}
+
+function refreshCurrentTarget() {
+  const step = currentStep();
+  if (!step) return;
+  targetElement = resolveTarget(step);
+  positionGuideOverlay(resolveDisplayTargets(step, targetElement));
+}
+
+function scheduleCurrentStepCheck(expectedStepId) {
+  if (stepCheckScheduled) return;
+  stepCheckScheduled = true;
+
+  queueMicrotask(() => {
+    stepCheckScheduled = false;
+    const step = currentStep();
+    if (!tutorialMode || !step || step.id !== expectedStepId) return;
+
+    syncTutorialStepState(step);
+
+    if (stepIsComplete(step)) {
+      void advanceFromCompletedStep(step);
+      return;
+    }
+    refreshCurrentTarget();
+  });
+}
+
+function startStepStoreWatch(step) {
+  stopStepStoreWatch();
+  if (!tutorialMode || !step?.interactive) return;
+
+  const expectedStepId = step.id;
+  const names = Array.isArray(step.watchStores) ? step.watchStores : [];
+  unsubscribeStepStores = names
+    .map((name) => STORE_BY_NAME[name])
+    .filter(Boolean)
+    .map((store) => store.subscribe(() => {
+      const activeStep = currentStep();
+      if (tutorialMode && activeStep?.id === expectedStepId) {
+        syncTutorialStepState(activeStep);
+      }
+      scheduleCurrentStepCheck(expectedStepId);
+    }));
+}
+
+function stepNeedsTarget(step) {
+  return Boolean(step?.interactive || typeof step?.target === 'function');
+}
+
+function waitForStepTarget(step, attempts = 0) {
+  if (!stepNeedsTarget(step)) return Promise.resolve(null);
+  const target = resolveTarget(step);
+  if (hasConnectedTarget(target) || attempts >= 60) return Promise.resolve(target || null);
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve(waitForStepTarget(step, attempts + 1)));
+  });
+}
+
+function scrollTargetIntoView(target) {
+  const firstTarget = firstConnectedTarget(target);
+  if (!firstTarget) return;
+
+  const rect = firstTarget.getBoundingClientRect();
+  const margin = 90;
+  if (rect.top < margin || rect.bottom > window.innerHeight - margin) {
+    firstTarget.scrollIntoView({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth'
+    });
+  }
+}
+
+async function renderActiveStep() {
+  stopStepStoreWatch();
+  const step = currentStep();
+  if (!step) return;
+
+  try {
+    ensureStepSnapshot(activeIndex);
+    if (step.tab) showTab(step.tab);
+    syncTutorialStepState(step);
+
+    targetElement = await waitForStepTarget(step);
+    if (step !== currentStep()) return;
+
+    if (tutorialMode && step.interactive && !hasConnectedTarget(targetElement)) {
+      setTutorialStepState({ currentStepId: step.id, allowedActions: [] });
+      showGuideOverlay({
+        step: {
+          ...step,
+          text: `${step.text || ''}\n\n操作対象を表示できませんでした。前の手順へ戻るか、チュートリアルを中断してください。`
+        },
+        index: activeIndex,
+        total: activeSteps.length,
+        target: null,
+        interactive: false,
+        onPrev: () => moveStep(-1),
+        onNext: () => moveStep(1),
+        onClose: handleGuideClose,
+        closeLabel: tutorialMode ? '中断' : '閉じる'
+      });
+      return;
+    }
+
+    scrollTargetIntoView(targetElement);
+    showGuideOverlay({
+      step,
+      index: activeIndex,
+      total: activeSteps.length,
+      target: resolveDisplayTargets(step, targetElement),
+      interactive: Boolean(tutorialMode && step.interactive),
+      onPrev: () => moveStep(-1),
+      onNext: () => moveStep(1),
+      onClose: handleGuideClose,
+      closeLabel: tutorialMode ? '中断' : '閉じる'
+    });
+
+    startStepStoreWatch(step);
+    if (stepIsComplete(step)) await advanceFromCompletedStep(step);
+  } catch (error) {
+    console.error('[guide] failed to render step', error);
+    closeGuide();
+  }
+}
+
+async function advanceFromCompletedStep(step) {
+  if (advancing || step !== currentStep() || !stepIsComplete(step)) return;
+  advancing = true;
+  try {
+    stopStepStoreWatch();
+    const nextIndex = activeIndex + 1;
+    if (nextIndex >= activeSteps.length) {
+      closeGuide();
+      return;
+    }
+    activeIndex = nextIndex;
+    await renderActiveStep();
+  } finally {
+    advancing = false;
+  }
+}
+
+function moveStep(delta) {
+  if (!activeSteps?.length || advancing) return;
+  const nextIndex = activeIndex + delta;
+  if (nextIndex < 0) return;
+
+  if (nextIndex >= activeSteps.length) {
+    closeGuide();
+    return;
+  }
+
+  stopStepStoreWatch();
+
+  if (tutorialMode && delta < 0) {
+    const snapshot = stepSnapshots.get(nextIndex);
+    if (snapshot) restoreTutorialSnapshot(snapshot);
+    [...stepSnapshots.keys()].forEach((index) => {
+      if (index > nextIndex) stepSnapshots.delete(index);
+    });
+    [...stepActions.keys()].forEach((index) => {
+      if (index >= nextIndex) stepActions.delete(index);
+    });
+  }
+
+  activeIndex = nextIndex;
+  void renderActiveStep();
+}
+
+function startSteps(steps, { tutorial = false } = {}) {
+  stopStepStoreWatch();
+  activeSteps = steps;
+  activeIndex = 0;
+  tutorialMode = tutorial;
+  stepSnapshots = new Map();
+  stepActions = new Map();
+  advancing = false;
+  closeDrawer();
+
+  if (tutorialMode) {
+    startTutorialState({
+      currentStepId: steps?.[0]?.id || '',
+      allowedActions: []
+    });
+  } else {
+    clearTutorialState();
+  }
+
+  void renderActiveStep();
+}
+
+export function closeGuide() {
+  stopStepStoreWatch();
+  hideGuideOverlay();
+  clearTutorialState();
+  activeSteps = null;
+  activeIndex = 0;
+  targetElement = null;
+  tutorialMode = false;
+  stepSnapshots = new Map();
+  stepActions = new Map();
+  advancing = false;
+}
+
+export async function startBasicTutorial() {
+  closeGuide();
+  closeGuideDrawer();
+  closeDrawer();
+
+  const snapshot = resetTutorialProjectSnapshot();
+  setOpenProjectId(TUTORIAL_PROJECT_ID);
+
+  if (getCurrentProject()?.projectId === TUTORIAL_PROJECT_ID) {
+    openProjectSession(snapshot);
+  } else {
+    await openProjectById(TUTORIAL_PROJECT_ID);
+  }
+
+  resetFinishUiStateForTutorial({ notifyNow:false });
+  resetMaterialListUiStateForTutorial({ renderNow:false });
+  resetPhotoUiStateForTutorial({ renderNow:false });
+  resetOutputUiStateForTutorial({ renderNow:true });
+  refreshOpenProjectSessionViews();
+  showTab('finish');
+  startSteps(TUTORIAL_STEPS, { tutorial:true });
+}
+
+export function openOperationGuide() {
+  closeGuideDrawer();
+  startSteps(OPERATION_GUIDE_STEPS, { tutorial:false });
+}
+
+export async function startRequestedTutorialIfNeeded() {
+  if (!consumeTutorialAutoStart()) return false;
+  await startBasicTutorial();
+  return true;
+}
+
+export function initializeGuide() {
+  if (initialized) return;
+  initialized = true;
+
+  initializeTutorialProjectSnapshot();
+  initializeGuideOverlayPositionEvents();
+  subscribeTutorialActions((event) => {
+    if (!tutorialMode || !activeSteps?.length) return;
+    const step = currentStep();
+    if (!step?.interactive) return;
+    const list = stepActions.get(activeIndex) || [];
+    list.push(event);
+    stepActions.set(activeIndex, list);
+    scheduleCurrentStepCheck(step.id);
+  });
+
+  document.getElementById('startBasicTutorialButton')?.addEventListener('click', () => {
+    void startBasicTutorial();
+  });
+  document.getElementById('openOperationGuideButton')?.addEventListener('click', openOperationGuide);
+
+  window.addEventListener('chousa:tab-change', () => {
+    if (!activeSteps?.length) return;
+    requestAnimationFrame(refreshCurrentTarget);
+  });
+
+  window.addEventListener('chousa:guide-layout-change', () => {
+    if (!activeSteps?.length) return;
+    requestAnimationFrame(refreshCurrentTarget);
+  });
+}

@@ -52,6 +52,7 @@ const state = {
 let root = null;
 let body = null;
 let renderedMode = 'visual';
+let photoTabChangeBound = false;
 
 /**
  * 目視/採取それぞれの左ペインscrollTopを保存する。タブ再描画やmode切替後の位置復元用。
@@ -118,6 +119,10 @@ function clearSelectionMode({ renderNow = false } = {}) {
 /**
  * 現在の写真表示mode・選択対象・Preview状態からDOMを再構築する。描画後にthumbnail hydrateと選択UI復元を行う。
  */
+function notifyGuideLayoutChanged() {
+  window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));
+}
+
 function render() {
   if (!root) return;
   rememberPhotoScroll(renderedMode);
@@ -135,6 +140,7 @@ function render() {
     applySelectionUi();
     renderedMode = state.mode;
     restorePhotoScroll();
+    notifyGuideLayoutChanged();
     return;
   }
 
@@ -145,6 +151,7 @@ function render() {
   applySelectionUi();
   renderedMode = state.mode;
   restorePhotoScroll();
+  notifyGuideLayoutChanged();
 }
 
 /**
@@ -386,6 +393,61 @@ function togglePhotoSelection(photoId) {
   applySelectionUi();
 }
 
+export function capturePhotoUiState() {
+  rememberPhotoScroll(renderedMode);
+  return {
+    mode: state.mode,
+    selectedRoomUid: state.selectedRoomUid,
+    selectedMaterialId: state.selectedMaterialId,
+    openVisualKeys: [...state.openVisualKeys],
+    openSamplingKeys: [...state.openSamplingKeys],
+    collapsedLocationGroups: [...state.collapsedLocationGroups],
+    listScrollTop: { ...state.listScrollTop },
+    reviewScrollTop: { ...state.reviewScrollTop },
+    selectionMode: state.selectionMode,
+    selectedPhotoIds: [...state.selectedPhotoIds]
+  };
+}
+
+export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
+  if (!snapshot) return;
+  state.mode = snapshot.mode === 'sampling' ? 'sampling' : 'visual';
+  state.selectedRoomUid = String(snapshot.selectedRoomUid || '');
+  state.selectedMaterialId = String(snapshot.selectedMaterialId || '');
+  state.openVisualKeys = new Set(snapshot.openVisualKeys || []);
+  state.openSamplingKeys = new Set(snapshot.openSamplingKeys || []);
+  state.collapsedLocationGroups = new Set(snapshot.collapsedLocationGroups || []);
+  state.listScrollTop = {
+    visual:Number(snapshot.listScrollTop?.visual || 0),
+    sampling:Number(snapshot.listScrollTop?.sampling || 0)
+  };
+  state.reviewScrollTop = {
+    visual:Number(snapshot.reviewScrollTop?.visual || 0),
+    sampling:Number(snapshot.reviewScrollTop?.sampling || 0)
+  };
+  state.selectionMode = snapshot.selectionMode || null;
+  state.selectedPhotoIds = new Set(snapshot.selectedPhotoIds || []);
+  state.pendingImportContext = null;
+  renderedMode = state.mode;
+  if (renderNow) render();
+}
+
+export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
+  state.mode = 'visual';
+  state.selectedRoomUid = '';
+  state.selectedMaterialId = '';
+  state.openVisualKeys = new Set();
+  state.openSamplingKeys = new Set();
+  state.collapsedLocationGroups = new Set();
+  state.pendingImportContext = null;
+  state.listScrollTop = { visual:0, sampling:0 };
+  state.reviewScrollTop = { visual:0, sampling:0 };
+  state.selectionMode = null;
+  state.selectedPhotoIds = new Set();
+  renderedMode = 'visual';
+  if (renderNow) render();
+}
+
 /** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
 export function resetPhotoUiStateForProject() {
   resetPhotoPreviewManager();
@@ -422,6 +484,16 @@ export function refreshPhotoTab() {
   });
   render();
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
+}
+
+function bindPhotoTabRefresh() {
+  if (photoTabChangeBound) return;
+  photoTabChangeBound = true;
+
+  window.addEventListener('chousa:tab-change', (event) => {
+    if (String(event.detail?.currentTab || '') !== 'photos') return;
+    requestAnimationFrame(refreshPhotoTab);
+  });
 }
 
 /**
@@ -478,6 +550,7 @@ export function initializePhotoTab() {
     }
   });
 
+  bindPhotoTabRefresh();
   render();
   void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
   window.addEventListener('online', () => {

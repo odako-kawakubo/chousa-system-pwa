@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="./css/camera.css" />
 <link rel="stylesheet" href="./css/settings.css" />
 <link rel="stylesheet" href="./css/pwa-offline.css" />
+<link rel="stylesheet" href="./css/guide.css" />
 </head>
 <body>
 
@@ -121,7 +122,8 @@
         <button class="tab" data-tab="settings">設定</button>
         <button class="tab" data-tab="records">レコード</button>
         <button class="btn header-collapse-button" id="headerCollapseToggle" type="button" aria-pressed="false" title="通常ヘッダーを隠す" aria-label="通常ヘッダーを隠す">▲</button>
-        <button class="btn tab-operation-button" data-drawer-open>操作</button>
+        <button class="btn tab-guide-button" type="button" data-drawer-open="guide">ガイド</button>
+        <button class="btn tab-operation-button" type="button" data-drawer-open="operation">操作</button>
       </nav>
     </div>
 
@@ -163,32 +165,91 @@
   </main>
 </div>
 
-<div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close></div>
-<aside class="drawer" id="drawer">
-  <div class="drawer-head"><b>操作パネル</b><button class="btn small" data-drawer-close>閉じる</button></div>
+<div class="drawer-backdrop" id="guideDrawerBackdrop" data-drawer-close="guide"></div>
+<aside class="drawer" id="guideDrawer">
+  <div class="drawer-head"><b>ガイド</b><button class="btn small" type="button" data-drawer-close="guide">閉じる</button></div>
   <div class="drawer-body">
-    <div class="drawer-box" id="drawerDisplayTools">
-      <h4>表示</h4>
-      <div class="drawer-setting-row">
-        <div><b>ダークモード</b><div class="hint">この端末だけに保存されます。</div></div>
-        <button type="button" class="btn drawer-theme-toggle" id="drawerDarkModeToggle" aria-pressed="false">OFF</button>
-      </div>
+    <div class="drawer-box guide-drawer-card">
+      <h4>基本チュートリアル</h4>
+      <div class="hint">専用の練習案件を使って、仕上表・建材・写真・出力の基本操作を実際に確認します。</div>
+      <button type="button" class="btn primary" id="startBasicTutorialButton">開始する</button>
     </div>
-    <div id="materialOperationsMount"></div>
-    <div class="drawer-box" id="finishDrawerTools">
-      <h4>仕上表操作</h4>
-      <div class="hint">通常画面から移した操作です。＋B階は1-1ブロックの階セルからも実行できます。</div>
-      <button type="button" class="btn" id="drawerAddBasementFloor">＋地下階（10部屋）</button>
-      <button type="button" class="btn" id="drawerAddNormalFloor">＋地上階（10部屋）</button>
-      <button type="button" class="btn" id="drawerAddStairs">＋階段</button>
-      <button type="button" class="btn" id="drawerAddRoof">＋屋上</button>
-      <button type="button" class="btn" id="drawerInsertRoom" disabled>＋挿入（選択中の部屋の直後へ）</button>
+    <div class="drawer-box guide-drawer-card">
+      <h4>操作ガイド</h4>
+      <div class="hint">現在の案件を開いたまま、機能ごとの使い方を画面上で確認します。</div>
+      <button type="button" class="btn" id="openOperationGuideButton">開く</button>
     </div>
+  </div>
+</aside>
+
+<div class="drawer-backdrop" id="drawerBackdrop" data-drawer-close="operation"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><b>操作パネル</b><button class="btn small" data-drawer-close="operation">閉じる</button></div>
+  <div class="drawer-body">
     <div class="drawer-box" id="drawerMaintenanceTools">
       <h4>アプリ情報</h4>
       <div class="drawer-maintenance-version">現在：<b id="drawerMaintenanceVersion"></b></div>
       <div class="hint">最新バージョンがあるか確認します。</div>
       <button type="button" class="btn" id="showUpdatePromptButton">アップデートを確認</button>
+    </div>
+
+    <div id="materialOperationsMount"></div>
+
+    <div class="drawer-box" id="finishDrawerTools">
+      <h4>仕上表操作</h4>
+      <div class="hint">階・階段・屋上を追加します。実行前に追加内容を確認します。</div>
+
+      <details class="drawer-operation-accordion" data-finish-add-accordion="basement">
+        <summary>地下階追加</summary>
+        <div class="drawer-operation-body">
+          <button type="button" class="btn" data-finish-add-kind="basement" data-room-count="10">＋10部屋追加</button>
+          <div class="drawer-operation-input-row">
+            <input type="number" min="1" max="99" inputmode="numeric" value="1" data-finish-room-count="basement" aria-label="地下階の部屋数">
+            <button type="button" class="btn" data-finish-add-kind="basement" data-room-count-source="basement">＋部屋追加</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="drawer-operation-accordion" data-finish-add-accordion="normal">
+        <summary>地上階追加</summary>
+        <div class="drawer-operation-body">
+          <button type="button" class="btn" data-finish-add-kind="normal" data-room-count="10">＋10部屋追加</button>
+          <div class="drawer-operation-input-row">
+            <input type="number" min="1" max="99" inputmode="numeric" value="1" data-finish-room-count="normal" aria-label="地上階の部屋数">
+            <button type="button" class="btn" data-finish-add-kind="normal" data-room-count-source="normal">＋部屋追加</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="drawer-operation-accordion" data-finish-add-accordion="stairs">
+        <summary>階段追加</summary>
+        <div class="drawer-operation-body">
+          <div class="drawer-operation-input-row">
+            <input type="number" min="1" max="99" inputmode="numeric" value="1" data-finish-room-count="stairs" aria-label="階段の部屋数">
+            <button type="button" class="btn" data-finish-add-kind="stairs" data-room-count-source="stairs">＋部屋追加</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="drawer-operation-accordion" data-finish-add-accordion="roof">
+        <summary>屋上追加</summary>
+        <div class="drawer-operation-body">
+          <div class="drawer-operation-input-row">
+            <input type="number" min="1" max="99" inputmode="numeric" value="1" data-finish-room-count="roof" aria-label="屋上の部屋数">
+            <button type="button" class="btn" data-finish-add-kind="roof" data-room-count-source="roof">＋部屋追加</button>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div id="analysisImportMount"></div>
+
+    <div class="drawer-box" id="drawerDisplayTools">
+      <h4>表示</h4>
+      <div class="drawer-setting-row">
+        <div><b>ダークモード</b><div class="hint">将来は表示モード設定へまとめる予定です。</div></div>
+        <button type="button" class="btn drawer-theme-toggle" id="drawerDarkModeToggle" aria-pressed="false">OFF</button>
+      </div>
     </div>
   </div>
 </aside>

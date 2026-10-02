@@ -91,6 +91,7 @@ body.camera-open {
   font-family: inherit;
   cursor: pointer;
   flex: 0 0 auto;
+  touch-action: manipulation;
 }
 
 .camera-photo-count {
@@ -253,8 +254,94 @@ body.camera-open {
   font-size: 10px;
 }
 
-.camera-landscape-flip {
-  display: none;
+.camera-settings-button {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(10px + env(safe-area-inset-right));
+  z-index: 45;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.62);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.camera-settings-button.active {
+  background: rgba(255,255,255,0.2);
+}
+
+.camera-settings-panel {
+  position: absolute;
+  top: calc(50px + env(safe-area-inset-top));
+  right: calc(10px + env(safe-area-inset-right));
+  z-index: 44;
+  width: 220px;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.24);
+  border-radius: 14px;
+  background: rgba(10,10,10,0.94);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+
+.camera-settings-panel[hidden] {
+  display: none !important;
+}
+
+.camera-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.camera-settings-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.camera-settings-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.camera-settings-row select {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.camera-settings-preview {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 9px;
+  background: #fff;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 /* ---------------------------------------------------------
@@ -270,6 +357,7 @@ body.camera-open {
   overflow: hidden;
   background: #000;
   flex: 0 0 auto;
+  touch-action: manipulation;
 }
 
 .camera-video {
@@ -335,6 +423,27 @@ body.camera-open {
 .camera-flash.flash {
   opacity: 0.92;
   transition: opacity 0.04s ease;
+}
+
+.camera-toast {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 7;
+  transform: translate(-50%, -50%);
+  min-width: 118px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.camera-toast[hidden] {
+  display: none !important;
 }
 
 /* ---------------------------------------------------------
@@ -469,33 +578,37 @@ body.camera-open {
 }
 
 /* ---------------------------------------------------------
- * v64と同じ縦向き強制横画面 + 上下反転
+ * v0.1.9.19 横向き撮影
+ * 縦向き時はUIを90度回転させず、撮影を止めて案内だけ表示する。
  * --------------------------------------------------------- */
-@media (orientation: portrait) {
-  .camera-overlay {
-    --app-vw: 100dvh;
-    --app-vh: 100vw;
-  }
-
-  .camera-orientation-shell {
-    left: 50%;
-    top: 50%;
-    right: auto;
-    bottom: auto;
-    transform: translate(-50%, -50%) rotate(90deg);
-  }
-
-  .camera-orientation-shell.flipped {
-    transform: translate(-50%, -50%) rotate(-90deg);
-  }
-
-  .camera-landscape-flip {
-    display: block;
-  }
+.camera-orientation-blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.62);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  pointer-events: none;
 }
 
-@media (orientation: landscape) {
-  .camera-orientation-shell.flipped {
-    transform: rotate(180deg);
+.camera-orientation-blocker[hidden] {
+  display: none !important;
+}
+
+.camera-portrait-blocked .camera-shoot-button {
+  opacity: 0.35;
+}
+
+@media (orientation: portrait) {
+  .camera-settings-panel {
+    max-width: calc(100vw - 20px);
   }
 }

@@ -24,7 +24,6 @@ import {
   initFinishTableState,
   getState,
   subscribe,
-  getSelectedRoomKey,
   getRoomCopyState,
   startRoomCopySource,
   cancelRoomCopySource,
@@ -49,7 +48,9 @@ import {
   addExternalRoom,
   addRoomToFloor,
   addRoomAfter,
-  addInputRow
+  addInputRow,
+  getNextNormalFloorNumber,
+  getNextBasementFloorNumber
 } from './finish-table-structure-actions.js';
 import {
   renderFinishTab,
@@ -65,6 +66,7 @@ import {
   resetFinishTableEditSession
 } from './finish-table-edit-session.js';
 import { bindFinishTableInteractions } from './finish-table-interactions.js';
+import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 
 
 
@@ -94,8 +96,7 @@ export function initializeFinishTable() {
     commitAndRefresh,
     getUndoableSnapshot,
     handleCopyRoomClick,
-    handleAction,
-    updateDrawerInsertButtonState
+    handleAction
   });
   bindDrawerFinishTools();
   bindUndoRedoButtons();
@@ -122,7 +123,6 @@ function refreshFromStores() {
   renderToolbarState();
   renderRooms();
   renderSimpleList();
-  updateDrawerInsertButtonState();
   const root = document.getElementById('finish');
   if (root) updateStickyMetrics(root);
 }
@@ -166,30 +166,79 @@ function setupStickyMetrics(root) {
  * 操作パネル（ドロワー）内の仕上表用ボタンを配線する。
  * src/js/ui/drawer.js（開閉ロジック）は一切変更しない。
  */
-function bindDrawerFinishTools() {
-  document.getElementById('drawerAddBasementFloor')?.addEventListener('click', () => {
-    scrollToAddedFloor(withHistory(() => addBasementFloor()));
-  });
-  document.getElementById('drawerAddNormalFloor')?.addEventListener('click', () => {
-    scrollToAddedFloor(withHistory(() => addNormalFloor()));
-  });
-  document.getElementById('drawerAddStairs')?.addEventListener('click', () => {
-    scrollToAddedFloor(withHistory(() => addStairs()));
-  });
-  document.getElementById('drawerAddRoof')?.addEventListener('click', () => {
-    scrollToAddedFloor(withHistory(() => addRoof()));
-  });
-  document.getElementById('drawerInsertRoom')?.addEventListener('click', () => {
-    const key = getSelectedRoomKey();
-    if (key) withHistory(() => addRoomAfter(key));
-  });
-  updateDrawerInsertButtonState();
+function normalizeDrawerRoomCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return 1;
+  return Math.max(1, Math.min(99, Math.trunc(count)));
+}
+
+function roomCountForDrawerButton(button) {
+  const fixed = button.dataset.roomCount;
+  if (fixed) return normalizeDrawerRoomCount(fixed);
+
+  const source = String(button.dataset.roomCountSource || '');
+  const input = source
+    ? document.querySelector(`[data-finish-room-count="${source}"]`)
+    : null;
+  return normalizeDrawerRoomCount(input?.value || 1);
+}
+
+async function confirmDrawerStructureAdd(kind, roomCount) {
+  const count = normalizeDrawerRoomCount(roomCount);
+  let label = '';
+  let mutate = null;
+
+  if (kind === 'basement') {
+    label = `地下${getNextBasementFloorNumber()}階`;
+    mutate = () => addBasementFloor(count);
+  } else if (kind === 'normal') {
+    label = `${getNextNormalFloorNumber()}階`;
+    mutate = () => addNormalFloor(count);
+  } else if (kind === 'stairs') {
+    label = '階段';
+    mutate = () => addStairs(count);
+  } else if (kind === 'roof') {
+    label = '屋上';
+    mutate = () => addRoof(count);
+  }
+
+  if (!mutate) return;
+  const confirmed = await showFinishConfirm(
+    `${label}を${count}部屋で追加しますか？`,
+    '追加する'
+  );
+  if (!confirmed) return;
+
+  scrollToAddedFloor(withHistory(mutate));
 }
 
 /**
- * 操作パネルから階を追加した直後、その階見出しまで仕上表の縦スクロールだけを移動する。
- * ドロワー自体は閉じない。スクロール対象は既存の data-floor-key を使い、
- * 新しい階識別DOMや一時ハイライトは追加しない。
+ * 操作パネルの仕上表操作を配線する。
+ * 追加数の入力と確認はUI側、Record生成・保存はstructure-actions側へ分離する。
+ */
+function bindDrawerFinishTools() {
+  const root = document.getElementById('finishDrawerTools');
+  if (!root || root.dataset.finishDrawerBound === '1') return;
+  root.dataset.finishDrawerBound = '1';
+
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-finish-add-kind]');
+    if (!button) return;
+    const kind = String(button.dataset.finishAddKind || '');
+    if (!isTutorialActionAllowed('finish.drawer.structure.add', { kind })) return;
+    const roomCount = roomCountForDrawerButton(button);
+    void confirmDrawerStructureAdd(kind, roomCount);
+  });
+
+  root.addEventListener('change', (event) => {
+    const input = event.target.closest('[data-finish-room-count]');
+    if (!input) return;
+    input.value = String(normalizeDrawerRoomCount(input.value));
+  });
+}
+
+/**
+ * 操作パネルから構造を追加した直後、該当見出しまで仕上表を移動する。
  */
 function scrollToAddedFloor(floorKey) {
   if (!floorKey) return;
@@ -209,23 +258,16 @@ function scrollToAddedFloor(floorKey) {
   });
 }
 
-/**
- * ドロワーの「＋挿入」は当面の保留機能。
- * 挿入ロジック本体は残すが、現行運用では常時押せない状態に固定する。
- */
-function updateDrawerInsertButtonState() {
-  const button = document.getElementById('drawerInsertRoom');
-  if (button) button.disabled = true;
-}
-
 /** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴。 */
 function bindUndoRedoButtons() {
   document.getElementById('finishUndoBtn')?.addEventListener('click', () => {
+    if (!isTutorialActionAllowed('finish.history.undo')) return;
     const restored = popUndo(getUndoableSnapshot());
     if (restored) restoreUndoableSnapshot(restored);
     updateUndoRedoButtons();
   });
   document.getElementById('finishRedoBtn')?.addEventListener('click', () => {
+    if (!isTutorialActionAllowed('finish.history.redo')) return;
     const restored = popRedo(getUndoableSnapshot());
     if (restored) restoreUndoableSnapshot(restored);
     updateUndoRedoButtons();

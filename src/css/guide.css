@@ -1,0 +1,74 @@
+/**
+ * guide.css
+ * チュートリアル／操作ガイドの表示専用UI。
+ * 操作制限は各機能側のtutorial-state判定で行い、このCSSではイベントを遮断しない。
+ */
+.guide-visual-layer{
+  position:fixed;
+  inset:0;
+  z-index:30000;
+  pointer-events:none;
+}
+.guide-visual-layer[hidden]{display:none!important}
+.guide-dim{
+  position:absolute;
+  inset:0;
+  background:rgba(15,23,42,.52);
+  pointer-events:none;
+}
+.guide-spotlight{
+  position:fixed;
+  border:3px solid var(--main);
+  border-radius:10px;
+  box-shadow:0 0 0 9999px rgba(15,23,42,.52),0 0 0 3px rgba(255,255,255,.92);
+  transition:left .12s ease,top .12s ease,width .12s ease,height .12s ease;
+  pointer-events:none;
+}
+.guide-card{
+  position:fixed;
+  z-index:30010;
+  width:min(360px,calc(100vw - 24px));
+  max-height:min(70dvh,520px);
+  overflow:auto;
+  padding:14px;
+  border:1px solid var(--line-strong);
+  border-radius:12px;
+  background:var(--panel);
+  color:var(--text);
+  box-shadow:0 16px 44px rgba(15,23,42,.3);
+}
+.guide-card[hidden],
+.guide-card [hidden]{display:none!important}
+.guide-card-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:6px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+}
+.guide-card h3{margin:0 0 8px;font-size:16px}
+.guide-card p{margin:0;white-space:pre-line;font-size:13px;line-height:1.65}
+.guide-card-actions{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin-top:14px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.guide-card-fill{flex:1 1 auto}
+#drawerGuideTools .btn{margin-top:7px}
+#drawerGuideTools .guide-drawer-note{margin-top:6px}
+@media(max-width:700px){
+  .guide-card{
+    width:calc(100vw - 16px);
+    max-height:46dvh;
+    padding:11px;
+  }
+}
+
+/* カメラへ入った間はしらべ側の案内表示だけ退避する。 */
+body.camera-open .guide-visual-layer,
+body.camera-open .guide-card{display:none!important}

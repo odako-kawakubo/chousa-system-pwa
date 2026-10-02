@@ -1,10 +1,10 @@
 /*
- * v0.1.8.1 Service Worker
+ * v0.1.9.1 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.8.1';
+const APP_CACHE = 'chousa-app-v0.1.9.1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0181';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0191';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -16,8 +16,8 @@ const OUTPUT_LIB_URLS = new Set([
 
 const APP_SHELL = [
   './','./index.html','./app.html','./manifest.json','./version.json',
-  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
-  './assets/microsoft-symbol.svg',
+  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
+  './assets/microsoft-symbol.svg','./assets/audio/camera1.mp3.gz','./assets/audio/camera2.mp3.gz','./assets/audio/click.mp3.gz','./assets/audio/chime.mp3.gz',
   './js/home/home-init.js','./js/home/home-controller.js','./js/home/home-return-control.js',
   './js/app-init.js','./js/app-update.js','./js/app-version.js','./js/device-code.js',
   './js/pwa/pwa-controller.js',
@@ -36,8 +36,9 @@ const APP_SHELL = [
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
-  './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-photo-id.js','./js/camera/camera-controller.js',
+  './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-photo-id.js','./js/camera/camera-orientation.js','./js/camera/camera-shutter-sound.js','./js/camera/camera-controller.js',
   './js/debug/sync-diagnostic-log.js',
+  './js/guide/guide-controller.js','./js/guide/guide-overlay.js','./js/guide/tutorial-project.js','./js/guide/tutorial-snapshot.js','./js/guide/tutorial-state.js','./js/guide/tutorial-action.js','./js/guide/tutorial-steps.js','./js/guide/tutorial-steps-finish.js','./js/guide/tutorial-steps-materials.js','./js/guide/tutorial-steps-photos.js','./js/guide/tutorial-steps-output.js','./js/guide/operation-guide-data.js',
   './js/demo/sample-session.js','./js/demo/sample-project.js','./js/demo/sample-finish-data.js','./js/demo/sample-materials.js','./js/demo/sample-photos.js',
   './js/default/default-finish-data.js',
   './config/app-config.js','./config/firebase-config.js','./config/microsoft-config.js'

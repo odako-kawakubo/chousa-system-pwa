@@ -267,14 +267,10 @@ async function handleFile(file) {
   }
 }
 function mountOperationButton() {
-  const drawerBody = document.querySelector('#drawer .drawer-body');
-  if (!drawerBody || document.getElementById('analysisImportButton')) return;
-  const box = document.createElement('div');
-  box.className = 'drawer-box';
-  box.id = 'analysisImportTools';
-  box.innerHTML = `<h4>分析</h4><div class="hint">定性速報PDFの試料名称を照合し、分析結果と備考を建材レコードへ反映します。</div><button type="button" class="btn" id="analysisImportButton">分析結果取込</button>`;
-  const maintenance = document.getElementById('drawerMaintenanceTools');
-  drawerBody.insertBefore(box, maintenance || null);
+  const mount = document.getElementById('analysisImportMount');
+  if (!mount || document.getElementById('analysisImportButton')) return;
+  mount.innerHTML = `<div class="drawer-box" id="analysisImportTools"><h4>分析</h4><div class="hint">定性速報PDFの試料名称を照合し、分析結果と備考を建材レコードへ反映します。</div><button type="button" class="btn" id="analysisImportButton">分析結果取込</button></div>`;
+  const box = document.getElementById('analysisImportTools');
   fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = 'application/pdf,.pdf';

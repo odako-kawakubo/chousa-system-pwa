@@ -7,6 +7,7 @@ import { bindAppUpdateEvents } from '../app-update.js';
 import { initializeDeviceIdentity } from '../device-code.js';
 import { initializeNetworkStatusEvents } from '../sync/sync-status.js';
 import { initializeSampleProjectSnapshot } from '../demo/sample-session.js';
+import { initializeTutorialProjectSnapshot } from '../guide/tutorial-project.js';
 import { initializeProjectEntryUi } from '../projects/project-entry-ui.js';
 import { initializeFirestoreProjectBrowser } from '../projects/firestore-project-browser.js';
 import { initializeOneDriveProjectBrowser } from '../projects/onedrive-project-browser.js';
@@ -21,6 +22,7 @@ function initHome() {
   initializeDeviceIdentity();
   initializeNetworkStatusEvents();
   initializeSampleProjectSnapshot();
+  initializeTutorialProjectSnapshot();
 
   initializeProjectEntryUi();
   bindModalEvents();
