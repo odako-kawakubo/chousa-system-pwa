@@ -439,7 +439,7 @@ function syncShutterAvailability() {
 function syncCameraOrientation(isLandscape = isCameraLandscape()) {
   cameraLandscape = Boolean(isLandscape);
   const blocker = root?.querySelector('[data-camera-orientation-blocker]');
-  if (blocker) blocker.hidden = cameraLandscape;
+  if (blocker) blocker.hidden = cameraLandscape || review?.hidden === false;
   root?.classList.toggle('camera-portrait-blocked', !cameraLandscape);
   syncShutterAvailability();
 }
@@ -628,6 +628,7 @@ function setCameraReady(ready, guideText = '') {
 function showReview(dataUrl) {
   reviewImage.src = dataUrl;
   review.hidden = false;
+  syncCameraOrientation();
   return new Promise((resolve) => {
     pendingReviewResolve = resolve;
   });
@@ -642,6 +643,7 @@ function resolveReview(accepted) {
   pendingReviewResolve = null;
   review.hidden = true;
   reviewImage.removeAttribute('src');
+  syncCameraOrientation();
   resolve(Boolean(accepted));
 }
 
