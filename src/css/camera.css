@@ -361,6 +361,7 @@ body.camera-open {
   overflow: hidden;
   background: #000;
   flex: 0 0 auto;
+  touch-action: manipulation;
 }
 
 .camera-video {
