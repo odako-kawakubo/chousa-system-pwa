@@ -393,6 +393,61 @@ function togglePhotoSelection(photoId) {
   applySelectionUi();
 }
 
+export function capturePhotoUiState() {
+  rememberPhotoScroll(renderedMode);
+  return {
+    mode: state.mode,
+    selectedRoomUid: state.selectedRoomUid,
+    selectedMaterialId: state.selectedMaterialId,
+    openVisualKeys: [...state.openVisualKeys],
+    openSamplingKeys: [...state.openSamplingKeys],
+    collapsedLocationGroups: [...state.collapsedLocationGroups],
+    listScrollTop: { ...state.listScrollTop },
+    reviewScrollTop: { ...state.reviewScrollTop },
+    selectionMode: state.selectionMode,
+    selectedPhotoIds: [...state.selectedPhotoIds]
+  };
+}
+
+export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
+  if (!snapshot) return;
+  state.mode = snapshot.mode === 'sampling' ? 'sampling' : 'visual';
+  state.selectedRoomUid = String(snapshot.selectedRoomUid || '');
+  state.selectedMaterialId = String(snapshot.selectedMaterialId || '');
+  state.openVisualKeys = new Set(snapshot.openVisualKeys || []);
+  state.openSamplingKeys = new Set(snapshot.openSamplingKeys || []);
+  state.collapsedLocationGroups = new Set(snapshot.collapsedLocationGroups || []);
+  state.listScrollTop = {
+    visual:Number(snapshot.listScrollTop?.visual || 0),
+    sampling:Number(snapshot.listScrollTop?.sampling || 0)
+  };
+  state.reviewScrollTop = {
+    visual:Number(snapshot.reviewScrollTop?.visual || 0),
+    sampling:Number(snapshot.reviewScrollTop?.sampling || 0)
+  };
+  state.selectionMode = snapshot.selectionMode || null;
+  state.selectedPhotoIds = new Set(snapshot.selectedPhotoIds || []);
+  state.pendingImportContext = null;
+  renderedMode = state.mode;
+  if (renderNow) render();
+}
+
+export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
+  state.mode = 'visual';
+  state.selectedRoomUid = '';
+  state.selectedMaterialId = '';
+  state.openVisualKeys = new Set();
+  state.openSamplingKeys = new Set();
+  state.collapsedLocationGroups = new Set();
+  state.pendingImportContext = null;
+  state.listScrollTop = { visual:0, sampling:0 };
+  state.reviewScrollTop = { visual:0, sampling:0 };
+  state.selectionMode = null;
+  state.selectedPhotoIds = new Set();
+  renderedMode = 'visual';
+  if (renderNow) render();
+}
+
 /** 案件切替時だけ呼ぶ。写真UI状態と案件依存プレビューを次案件へ持ち越さない。 */
 export function resetPhotoUiStateForProject() {
   resetPhotoPreviewManager();
