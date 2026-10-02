@@ -28,6 +28,7 @@ import {
 } from './material-list-edit-actions.js';
 import { bindMaterialListInteractions } from './material-list-interactions.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+import { notifyTutorialAction } from '../guide/tutorial-action.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -242,6 +243,7 @@ function handleMaterialActivation(target, options = {}) {
   if (analysisColumnsButton) {
     materialListAnalysisColumnsOpen = !materialListAnalysisColumnsOpen;
     refreshMaterialList();
+    notifyTutorialAction('material.action.toggle-material-analysis-columns', {});
     return;
   }
 
@@ -366,6 +368,10 @@ function updateMaterialControl(control) {
   if (!result.changed) return;
   refreshMaterialList();
   refreshRecordView();
+  notifyTutorialAction('material.control.change', {
+    materialId:String(control.dataset.materialId || ''),
+    field:String(control.dataset.field || '')
+  });
 }
 
 /**
