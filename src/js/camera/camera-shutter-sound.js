@@ -1,7 +1,7 @@
 /**
  * camera-shutter-sound.js
  * 撮影音の選択・再生だけを担当する。
- * OtoLogicのMP3原音をgzipでPWA内へ同梱し、初回再生時に展開して利用する。
+ * OtoLogicのMP3原音をgzipでPWA内へ同梱し、Web Audio APIのGainNodeで音量を制御する。
  * 再生失敗時も撮影処理は止めない。
  */
 
@@ -26,14 +26,35 @@ const SOUND_ASSETS = Object.freeze({
   chime: new URL('../../assets/audio/chime.mp3.gz', import.meta.url).href
 });
 
-const soundObjectUrls = new Map();
+const soundBuffers = new Map();
+let audioContext = null;
 
 function volumeGain(volume) {
   return SHUTTER_VOLUME_OPTIONS.find((item) => item.value === volume)?.gain ?? 0.55;
 }
 
-async function resolveSoundObjectUrl(sound) {
-  if (soundObjectUrls.has(sound)) return soundObjectUrls.get(sound);
+function getAudioContext() {
+  if (audioContext) return audioContext;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    throw new Error('この端末では撮影音の音量調整に対応していません。');
+  }
+
+  audioContext = new AudioContextClass();
+  return audioContext;
+}
+
+async function ensureAudioContextRunning() {
+  const context = getAudioContext();
+  if (context.state === 'suspended') {
+    await context.resume();
+  }
+  return context;
+}
+
+async function loadSoundBuffer(sound, context) {
+  if (soundBuffers.has(sound)) return soundBuffers.get(sound);
 
   const assetUrl = SOUND_ASSETS[sound];
   if (!assetUrl) return null;
@@ -48,22 +69,29 @@ async function resolveSoundObjectUrl(sound) {
 
   const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
   const bytes = await new Response(stream).arrayBuffer();
-  const objectUrl = URL.createObjectURL(new Blob([bytes], { type:'audio/mpeg' }));
-  soundObjectUrls.set(sound, objectUrl);
-  return objectUrl;
+  const buffer = await context.decodeAudioData(bytes.slice(0));
+  soundBuffers.set(sound, buffer);
+  return buffer;
 }
 
 export async function playShutterSound(sound='camera1', volume='medium') {
   if (sound === 'off') return false;
 
   try {
-    const url = await resolveSoundObjectUrl(sound);
-    if (!url) return false;
+    // iPhone/iPadではユーザー操作中にAudioContextをresumeしておく必要があるため、
+    // 音源読み込みより先に実行する。
+    const context = await ensureAudioContextRunning();
+    const buffer = await loadSoundBuffer(sound, context);
+    if (!buffer) return false;
 
-    const audio = new Audio(url);
-    audio.preload = 'auto';
-    audio.volume = volumeGain(volume);
-    await audio.play();
+    const source = context.createBufferSource();
+    const gainNode = context.createGain();
+    gainNode.gain.value = volumeGain(volume);
+
+    source.buffer = buffer;
+    source.connect(gainNode);
+    gainNode.connect(context.destination);
+    source.start(0);
     return true;
   } catch (error) {
     console.warn('Shutter sound playback failed:', error);
