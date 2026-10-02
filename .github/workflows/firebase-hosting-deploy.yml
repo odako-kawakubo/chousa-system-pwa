@@ -1,4 +1,4 @@
-name: Deploy to Firebase Hosting
+name: Deploy v0.1.9.1 Stable
 
 on:
   push:
@@ -187,18 +187,18 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8.1 stable consistency checks
+      - name: v0.1.9.1 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8.1'" src/config/app-config.js
+          grep -q "version: '0.1.9.1'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.8.1"' src/version.json
+          grep -q '"version": "0.1.9.1"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8.1" src/service-worker.js
-          grep -q "chousa-output-libs-v0181" src/service-worker.js
-          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
+          grep -q "chousa-app-v0.1.9.1" src/service-worker.js
+          grep -q "chousa-output-libs-v0191" src/service-worker.js
+          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
           if grep -q "sampleProject" src/js/camera/camera-*.js; then
@@ -207,6 +207,45 @@ jobs:
           fi
           grep -q "import { nextPhotoId } from './camera-photo-id.js';" src/js/camera/camera-controller.js || { echo "nextPhotoId import is missing"; exit 1; }
           grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
+          grep -q "export function isCameraLandscape" src/js/camera/camera-orientation.js || { echo "camera landscape gate missing"; exit 1; }
+          grep -q "export async function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
+          grep -q "DecompressionStream('gzip')" src/js/camera/camera-shutter-sound.js || { echo "bundled shutter sound decompression missing"; exit 1; }
+          grep -q "createGain()" src/js/camera/camera-shutter-sound.js || { echo "GainNode volume control missing"; exit 1; }
+          grep -q "gainNode.gain.value = volumeGain(volume)" src/js/camera/camera-shutter-sound.js || { echo "shutter volume gain assignment missing"; exit 1; }
+          grep -q "{ value:'small', label:'小', gain:0.10 }" src/js/camera/camera-shutter-sound.js || { echo "small shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'medium', label:'中', gain:0.40 }" src/js/camera/camera-shutter-sound.js || { echo "medium shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'large', label:'大', gain:1 }" src/js/camera/camera-shutter-sound.js || { echo "large shutter volume gain changed"; exit 1; }
+          grep -q "createBufferSource()" src/js/camera/camera-shutter-sound.js || { echo "AudioBuffer playback missing"; exit 1; }
+          if grep -q "new Audio(url)\|audio.volume" src/js/camera/camera-shutter-sound.js; then
+            echo "legacy HTMLAudio volume control remains"
+            exit 1
+          fi
+          for sound in camera1 camera2 click chime; do
+            test -s "src/assets/audio/${sound}.mp3.gz" || { echo "bundled shutter sound missing: ${sound}"; exit 1; }
+            grep -q "./assets/audio/${sound}.mp3.gz" src/service-worker.js || { echo "shutter sound not cached: ${sound}"; exit 1; }
+          done
+          grep -q "OtoLogic" src/js/settings/settings-renderer.js || { echo "OtoLogic credit missing"; exit 1; }
+          grep -q "https://otologic.jp/" src/js/settings/settings-renderer.js || { echo "OtoLogic credit link missing"; exit 1; }
+          if grep -R "landscapeFlipped\|camera-landscape-flip" -n src/js/camera src/css/camera.css; then
+            echo "obsolete camera flip implementation remains"
+            exit 1
+          fi
+          grep -q "supportsTorch" src/js/camera/camera-session.js || { echo "camera torch capability missing"; exit 1; }
+          grep -q "applyConstraints({ advanced:\[{ torch:next }\] })" src/js/camera/camera-session.js || { echo "camera torch constraint missing"; exit 1; }
+          grep -q "data-camera-settings-open" src/js/camera/camera-controller.js || { echo "camera settings gear missing"; exit 1; }
+          grep -q "data-camera-sound-preview" src/js/camera/camera-controller.js || { echo "camera sound preview missing"; exit 1; }
+          grep -q "handleCameraCapturePointerUp" src/js/camera/camera-controller.js || { echo "camera torch double tap handler missing"; exit 1; }
+          grep -q "getBoardRect(rect.width, rect.height" src/js/camera/camera-controller.js || { echo "camera torch board exclusion missing"; exit 1; }
+          grep -q "ライト ON" src/js/camera/camera-controller.js || { echo "camera torch ON toast missing"; exit 1; }
+          grep -q "ライト OFF" src/js/camera/camera-controller.js || { echo "camera torch OFF toast missing"; exit 1; }
+          grep -q "shutterSound" src/js/camera/camera-preferences.js || { echo "camera shutter sound preference missing"; exit 1; }
+          grep -q "shutterVolume" src/js/camera/camera-preferences.js || { echo "camera shutter volume preference missing"; exit 1; }
+          grep -q "camera-orientation.js" src/service-worker.js || { echo "camera orientation module not cached"; exit 1; }
+          grep -q "camera-shutter-sound.js" src/service-worker.js || { echo "camera shutter sound module not cached"; exit 1; }
+          if grep -q "rotate(90deg)\|rotate(-90deg)" src/css/camera.css; then
+            echo "obsolete portrait forced rotation remains"
+            exit 1
+          fi
           if grep -q "currentSamplingTarget()" src/js/camera/camera-controller.js; then
             echo "camera state argument missing: currentSamplingTarget"
             exit 1
@@ -262,6 +301,91 @@ jobs:
           fi
           if grep -q "formatProjectLabel" src/js/finish-table/finish-table-controller.js src/js/projects/project-session.js; then
             echo "legacy project label writer remains"
+            exit 1
+          fi
+
+          # チュートリアル操作制限はアプリ側permission stateへ集約
+          test -f src/js/guide/tutorial-state.js
+          test -f src/js/guide/tutorial-snapshot.js
+          test -f src/js/guide/tutorial-action.js
+          test -f src/js/guide/tutorial-steps.js
+          test -f src/js/guide/tutorial-steps-finish.js
+          test -f src/js/guide/tutorial-steps-materials.js
+          test -f src/js/guide/tutorial-steps-photos.js
+          test -f src/js/guide/tutorial-steps-output.js
+          test -f src/js/guide/operation-guide-data.js
+          grep -q "export function isTutorialActionAllowed" src/js/guide/tutorial-state.js || { echo "tutorial permission API missing"; exit 1; }
+          grep -q "export function captureTutorialSnapshot" src/js/guide/tutorial-snapshot.js || { echo "tutorial snapshot API missing"; exit 1; }
+          if test -e src/js/guide/tutorial-runtime.js; then
+            echo "obsolete tutorial runtime still exists"
+            exit 1
+          fi
+          if test -e src/js/guide/guide-data.js; then
+            echo "obsolete combined guide-data still exists"
+            exit 1
+          fi
+          if grep -R "new MutationObserver" -n src/js/guide; then
+            echo "guide MutationObserver must not return"
+            exit 1
+          fi
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/finish-table/finish-table-candidate-input.js || { echo "generic finish guide layout notification missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/materials/material-list-interactions.js || { echo "generic material guide layout notification missing"; exit 1; }
+          grep -q "roomFieldInput.blur()" src/js/finish-table/finish-table-interactions.js || { echo "room field Enter commit missing"; exit 1; }
+          grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
+          grep -q "watchStores" src/js/guide/guide-controller.js || { echo "generic tutorial store watch missing"; exit 1; }
+          grep -q "FINISH_TUTORIAL_STEPS" src/js/guide/tutorial-steps-finish.js || { echo "finish tutorial section missing"; exit 1; }
+          grep -q "finish-existing-material-id-note" src/js/guide/tutorial-steps-finish.js || { echo "existing material ID guidance missing"; exit 1; }
+          grep -q "MATERIAL_TUTORIAL_STEPS" src/js/guide/tutorial-steps-materials.js || { echo "material tutorial section missing"; exit 1; }
+          grep -q "PHOTO_TUTORIAL_STEPS" src/js/guide/tutorial-steps-photos.js || { echo "photo tutorial section missing"; exit 1; }
+          grep -q "OUTPUT_TUTORIAL_STEPS" src/js/guide/tutorial-steps-output.js || { echo "output tutorial section missing"; exit 1; }
+          grep -q "analysis-show-columns" src/js/guide/tutorial-steps-output.js || { echo "analysis columns tutorial step missing"; exit 1; }
+          grep -q "output-rooms" src/js/guide/tutorial-steps-output.js || { echo "output rooms tutorial step missing"; exit 1; }
+          grep -q "output-visual-photos" src/js/guide/tutorial-steps-output.js || { echo "output visual photos tutorial step missing"; exit 1; }
+          grep -q "output-sampling-photos" src/js/guide/tutorial-steps-output.js || { echo "output sampling photos tutorial step missing"; exit 1; }
+          grep -q "output-export-info" src/js/guide/tutorial-steps-output.js || { echo "output export guidance missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
+
+          # v0.1.9.17 Tutorial State Lifecycle
+          grep -q "captureFinishUiState" src/js/finish-table/finish-table-state.js || { echo "finish tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureMaterialListUiState" src/js/materials/material-list-controller.js || { echo "material tutorial UI snapshot missing"; exit 1; }
+          grep -q "capturePhotoUiState" src/js/photos/photo-controller.js || { echo "photo tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureOutputUiState" src/js/output/output-controller.js || { echo "output tutorial UI snapshot missing"; exit 1; }
+          grep -q "subscribeTutorialActions" src/js/guide/guide-controller.js || { echo "tutorial semantic action subscription missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/photos/photo-interactions.js || { echo "photo semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/materials/material-list-controller.js || { echo "material semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/output/output-controller.js || { echo "output semantic action notification missing"; exit 1; }
+          if grep -q "tutorialMode && step?.interactive && typeof step.completeWhen" src/js/guide/guide-controller.js; then
+            echo "guide-layout-change still owns completion checks"
+            exit 1
+          fi
+          if grep -q "document.querySelectorAll('.tabs .tab\[data-tab\]')" src/js/photos/photo-interactions.js; then
+            echo "photo tab exit still uses direct tab click listeners"
+            exit 1
+          fi
+          grep -q "photos-switch-sampling" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling switch step missing"; exit 1; }
+          grep -q "photos-sampling-reflection" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling reflection step missing"; exit 1; }
+          grep -q "photos-before-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo before-stage step missing"; exit 1; }
+          grep -q "photos-section-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo section-stage step missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/photos/photo-interactions.js || { echo "photo tutorial guard missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/photos/photo-controller.js || { echo "photo guide layout notification missing"; exit 1; }
+          grep -q "materials-analysis-required" src/js/guide/tutorial-steps-materials.js || { echo "material analysis tutorial step missing"; exit 1; }
+          grep -q "materials-sample-done" src/js/guide/tutorial-steps-materials.js || { echo "material sample-done tutorial step missing"; exit 1; }
+          grep -q "materials-note-info" src/js/guide/tutorial-steps-materials.js || { echo "material note guidance step missing"; exit 1; }
+          if grep -q "id: 'materials-note'" src/js/guide/tutorial-steps-materials.js; then
+            echo "obsolete interactive material note step remains"
+            exit 1
+          fi
+          grep -q "sampleLocation1" src/js/guide/tutorial-steps-materials.js || { echo "sample location1 tutorial target missing"; exit 1; }
+          grep -q "sampleLocation2" src/js/guide/tutorial-steps-materials.js || { echo "sample location2 tutorial target missing"; exit 1; }
+          grep -q "refreshMaterialList();" src/js/materials/material-list-controller.js || { echo "material list tab refresh missing"; exit 1; }
+          grep -q "materialInteractionAllowed" src/js/materials/material-list-controller.js || { echo "material tutorial guard missing"; exit 1; }
+
+          if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
+            echo "obsolete tutorial event/blocker lock remains"
             exit 1
           fi
 
