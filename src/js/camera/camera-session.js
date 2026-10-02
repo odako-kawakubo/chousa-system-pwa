@@ -7,6 +7,7 @@ export function createCameraSession({ getRoot, getVideo, setReady, onReady } = {
   let stream = null;
   let sessionId = 0;
   let startingSessionId = null;
+  let torchEnabled = false;
 
   async function requestFullscreenSafe() {
     const target = document.documentElement;
@@ -18,9 +19,47 @@ export function createCameraSession({ getRoot, getVideo, setReady, onReady } = {
     }
   }
 
+  function currentVideoTrack() {
+    return stream?.getVideoTracks?.().find((track) => track.readyState === 'live') || null;
+  }
+
+  function supportsTorch() {
+    const track = currentVideoTrack();
+    if (!track?.getCapabilities) return false;
+    try {
+      return track.getCapabilities()?.torch === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function setTorch(enabled) {
+    const track = currentVideoTrack();
+    if (!track || !supportsTorch()) return false;
+    const next = Boolean(enabled);
+    try {
+      await track.applyConstraints({ advanced:[{ torch:next }] });
+      torchEnabled = next;
+      return true;
+    } catch (error) {
+      console.warn('Camera torch change failed:', error);
+      return false;
+    }
+  }
+
+  function isTorchEnabled() {
+    return Boolean(torchEnabled && supportsTorch());
+  }
+
   function stop() {
+    const track = currentVideoTrack();
+    if (track && torchEnabled && supportsTorch()) {
+      try { void track.applyConstraints({ advanced:[{ torch:false }] }); } catch {}
+    }
+    torchEnabled = false;
+
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((item) => item.stop());
       stream = null;
     }
 
@@ -63,6 +102,7 @@ export function createCameraSession({ getRoot, getVideo, setReady, onReady } = {
       }
 
       stream = acquiredStream;
+      torchEnabled = false;
       const video = getVideo?.();
       if (!video) {
         stop();
@@ -120,7 +160,16 @@ export function createCameraSession({ getRoot, getVideo, setReady, onReady } = {
     return Boolean(stream && stream.getVideoTracks?.().some((track) => track.readyState === 'live'));
   }
 
-  return { start, stop, resume, invalidate, isReady };
+  return {
+    start,
+    stop,
+    resume,
+    invalidate,
+    isReady,
+    supportsTorch,
+    setTorch,
+    isTorchEnabled
+  };
 }
 
 export async function getVideoInputCount() {
