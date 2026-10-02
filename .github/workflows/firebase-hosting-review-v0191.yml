@@ -208,7 +208,7 @@ jobs:
           grep -q "import { nextPhotoId } from './camera-photo-id.js';" src/js/camera/camera-controller.js || { echo "nextPhotoId import is missing"; exit 1; }
           grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
           grep -q "export function isCameraLandscape" src/js/camera/camera-orientation.js || { echo "camera landscape gate missing"; exit 1; }
-          grep -q "export function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
+          grep -q "export async function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
           grep -q "supportsTorch" src/js/camera/camera-session.js || { echo "camera torch capability missing"; exit 1; }
           grep -q "applyConstraints({ advanced:\[{ torch:next }\] })" src/js/camera/camera-session.js || { echo "camera torch constraint missing"; exit 1; }
           grep -q "data-camera-settings-open" src/js/camera/camera-controller.js || { echo "camera settings gear missing"; exit 1; }
