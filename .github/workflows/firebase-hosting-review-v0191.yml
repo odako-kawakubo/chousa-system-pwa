@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.21 Review
+name: Validate v0.1.9.1 Formal Candidate
 
 on:
   push:
@@ -187,17 +187,17 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.21 review consistency checks
+      - name: v0.1.9.1 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.21'" src/config/app-config.js
+          grep -q "version: '0.1.9.1'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
-          grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.21"' src/version.json
+          grep -q "mode: 'stable'" src/config/app-config.js
+          grep -q '"version": "0.1.9.1"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.21" src/service-worker.js
-          grep -q "chousa-output-libs-v01921" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.1" src/service-worker.js
+          grep -q "chousa-output-libs-v0191" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
