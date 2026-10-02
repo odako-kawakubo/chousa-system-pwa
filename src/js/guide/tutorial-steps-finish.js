@@ -95,14 +95,14 @@ function normalFloorCount() {
 }
 function snapshotRoomCount(snapshot, areaCode, floor) {
   return new Set(
-    (snapshot?.finishRecords || [])
+    (snapshot?.records?.finish || [])
       .filter((record) => record.status === 'active' && record.areaCode === areaCode && Number(record.floor) === Number(floor))
       .map((record) => record.roomUid)
   ).size;
 }
 function snapshotNormalFloorCount(snapshot) {
   return new Set(
-    (snapshot?.finishRecords || [])
+    (snapshot?.records?.finish || [])
       .filter((record) => record.status === 'active' && record.areaCode === 'I')
       .map((record) => Number(record.floor))
   ).size;
@@ -259,7 +259,7 @@ export const FINISH_TUTORIAL_STEPS = [
     }],
     completeWhen: ({ snapshot }) => {
       const key = roomKeyAt(1);
-      const before = (snapshot?.finishRecords || []).filter((record) => String(record.roomUid || '') === key).length;
+      const before = (snapshot?.records?.finish || []).filter((record) => String(record.roomUid || '') === key).length;
       const after = finishRecordStore.getAll().filter((record) => String(record.roomUid || '') === key).length;
       return after > before;
     }
