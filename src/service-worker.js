@@ -1,10 +1,10 @@
 /*
- * v0.1.9.18 Service Worker
+ * v0.1.9.19 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.18';
+const APP_CACHE = 'chousa-app-v0.1.9.19';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01918';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01919';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -17,7 +17,7 @@ const OUTPUT_LIB_URLS = new Set([
 const APP_SHELL = [
   './','./index.html','./app.html','./manifest.json','./version.json',
   './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
-  './assets/microsoft-symbol.svg',
+  './assets/microsoft-symbol.svg','./assets/audio/camera1.mp3','./assets/audio/camera2.mp3','./assets/audio/click.mp3','./assets/audio/chime.mp3',
   './js/home/home-init.js','./js/home/home-controller.js','./js/home/home-return-control.js',
   './js/app-init.js','./js/app-update.js','./js/app-version.js','./js/device-code.js',
   './js/pwa/pwa-controller.js',
