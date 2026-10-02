@@ -69,7 +69,7 @@ function record(materialId) {
 }
 
 function snapshotRecord(snapshot, materialId) {
-  return (snapshot?.materialRecords || []).find((item) => String(item.materialId) === String(materialId)) || null;
+  return (snapshot?.records?.material || []).find((item) => String(item.materialId) === String(materialId)) || null;
 }
 
 export const MATERIAL_TUTORIAL_STEPS = [
@@ -149,17 +149,13 @@ export const MATERIAL_TUTORIAL_STEPS = [
         context: { materialId: floorMaterialId(), field: 'sampleLocation2' }
       }
     ],
-    completeWhen: ({ snapshot }) => {
+    completeWhen: ({ didAction }) => {
       const id = floorMaterialId();
-      const before = snapshotRecord(snapshot, id);
       const current = record(id);
-      const before1 = String(before?.sampleLocation1 || '');
-      const before2 = String(before?.sampleLocation2 || '');
       const after1 = String(current?.sampleLocation1 || '');
       const after2 = String(current?.sampleLocation2 || '');
       return Boolean(after1 && after2)
-        && after1 !== before1
-        && after2 !== before2;
+        && didAction('material.control.change', { materialId:id });
     }
   },
   {
