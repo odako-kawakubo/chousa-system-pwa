@@ -32,7 +32,6 @@ export function loadCameraPreferences() {
       boardPosition: BOARD_POSITIONS.includes(saved.boardPosition) ? saved.boardPosition : 'bottom-left',
       boardSize: BOARD_SIZE_ORDER.includes(saved.boardSize) ? saved.boardSize : 'medium',
       quality: CAMERA_QUALITY[saved.quality] ? saved.quality : 'standard',
-      landscapeFlipped: Boolean(saved.landscapeFlipped),
       shutterSound: SHUTTER_SOUND_VALUES.has(saved.shutterSound) ? saved.shutterSound : 'camera1',
       shutterVolume: SHUTTER_VOLUME_VALUES.has(saved.shutterVolume) ? saved.shutterVolume : 'medium'
     };
@@ -41,7 +40,6 @@ export function loadCameraPreferences() {
       boardPosition: 'bottom-left',
       boardSize: 'medium',
       quality: 'standard',
-      landscapeFlipped: false,
       shutterSound: 'camera1',
       shutterVolume: 'medium'
     };
@@ -53,7 +51,6 @@ export function saveCameraPreferences(state = {}) {
     boardPosition: state.boardPosition,
     boardSize: state.boardSize,
     quality: state.quality,
-    landscapeFlipped: Boolean(state.landscapeFlipped),
     shutterSound: SHUTTER_SOUND_VALUES.has(state.shutterSound) ? state.shutterSound : 'camera1',
     shutterVolume: SHUTTER_VOLUME_VALUES.has(state.shutterVolume) ? state.shutterVolume : 'medium'
   }));
