@@ -455,6 +455,50 @@ function refreshConnectedViews() {
   refreshRecordView();
 }
 
+export function captureMaterialListUiState() {
+  captureMaterialListScroll();
+  const projectId = String(getCurrentProject()?.projectId || '');
+  const scroll = scrollStateByProject.get(projectId) || { top:0, left:0 };
+  return {
+    selectedMaterialId,
+    colorMode: materialListColorMode,
+    roomNameMode: materialListRoomNameMode,
+    analysisColumnsOpen: materialListAnalysisColumnsOpen,
+    scroll: {
+      top:Number(scroll.top || 0),
+      left:Number(scroll.left || 0)
+    }
+  };
+}
+
+export function restoreMaterialListUiState(snapshot, { renderNow = true } = {}) {
+  if (!snapshot) return;
+  selectedMaterialId = snapshot.selectedMaterialId || null;
+  materialListColorMode = Boolean(snapshot.colorMode);
+  materialListRoomNameMode = Boolean(snapshot.roomNameMode);
+  materialListAnalysisColumnsOpen = Boolean(snapshot.analysisColumnsOpen);
+
+  const projectId = String(getCurrentProject()?.projectId || '');
+  scrollStateByProject.set(projectId, {
+    top:Number(snapshot.scroll?.top || 0),
+    left:Number(snapshot.scroll?.left || 0)
+  });
+
+  if (renderNow) refreshMaterialList();
+}
+
+export function resetMaterialListUiStateForTutorial({ renderNow = true } = {}) {
+  selectedMaterialId = null;
+  materialListColorMode = false;
+  materialListRoomNameMode = false;
+  materialListAnalysisColumnsOpen = false;
+
+  const projectId = String(getCurrentProject()?.projectId || '');
+  scrollStateByProject.set(projectId, { top:0, left:0 });
+
+  if (renderNow) refreshMaterialList();
+}
+
 /**
  * 現在選択中のmaterialIdを外部module向けに返す。
  */
