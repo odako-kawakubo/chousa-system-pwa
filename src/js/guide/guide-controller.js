@@ -381,7 +381,7 @@ export async function startBasicTutorial() {
   resetFinishUiStateForTutorial({ notifyNow:false });
   resetMaterialListUiStateForTutorial({ renderNow:false });
   resetPhotoUiStateForTutorial({ renderNow:false });
-  resetOutputUiStateForTutorial({ renderNow:false });
+  resetOutputUiStateForTutorial({ renderNow:true });
   refreshOpenProjectSessionViews();
   showTab('finish');
   startSteps(TUTORIAL_STEPS, { tutorial:true });
