@@ -120,6 +120,42 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   settings: effectiveSettings()
 });window.dispatchEvent(new CustomEvent('chousa:guide-layout-change'));}
 
+export function captureOutputUiState() {
+  const preview = getOutputPdfPreviewState();
+  return {
+    activeView,
+    settingsOpen,
+    settingsDraft: settingsDraft ? { ...settingsDraft } : null,
+    materialLocationMode,
+    page:Number(preview.page || 1),
+    zoom:Number(preview.zoom || 100)
+  };
+}
+
+export function restoreOutputUiState(snapshot, { renderNow = true } = {}) {
+  if (!snapshot) return;
+  activeView = ['materials','rooms','visual-photos','sampling-photos'].includes(snapshot.activeView)
+    ? snapshot.activeView
+    : 'materials';
+  settingsOpen = Boolean(snapshot.settingsOpen);
+  settingsDraft = snapshot.settingsDraft ? { ...snapshot.settingsDraft } : null;
+  materialLocationMode = snapshot.materialLocationMode === 'room-name' ? 'room-name' : 'room-no';
+  resetOutputPdfPreviewView({
+    page:Math.max(1, Number(snapshot.page || 1)),
+    zoom:Math.min(200, Math.max(50, Number(snapshot.zoom || 100)))
+  });
+  if (renderNow) renderOutputTab();
+}
+
+export function resetOutputUiStateForTutorial({ renderNow = true } = {}) {
+  activeView = 'materials';
+  settingsOpen = false;
+  settingsDraft = null;
+  materialLocationMode = 'room-no';
+  resetOutputPdfPreviewView({ page:1, zoom:100 });
+  if (renderNow) renderOutputTab();
+}
+
 /**
  * 出力タブの初期化入口。PDF Preview Controller、写真選択、設定panel、Export Controller、Store購読、wheel/zoom/page操作を接続する。
  */
