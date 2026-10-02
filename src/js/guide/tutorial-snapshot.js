@@ -57,7 +57,7 @@ export function restoreTutorialSnapshot(snapshot) {
   restoreFinishUiState(snapshot.ui?.finish, { notifyNow:false });
   restoreMaterialListUiState(snapshot.ui?.material, { renderNow:false });
   restorePhotoUiState(snapshot.ui?.photo, { renderNow:false });
-  restoreOutputUiState(snapshot.ui?.output, { renderNow:false });
+  restoreOutputUiState(snapshot.ui?.output, { renderNow:true });
 
   refreshOpenProjectSessionViews();
 }
