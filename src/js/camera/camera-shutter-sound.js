@@ -14,8 +14,8 @@ export const SHUTTER_SOUND_OPTIONS = Object.freeze([
 ]);
 
 export const SHUTTER_VOLUME_OPTIONS = Object.freeze([
-  { value:'small', label:'小', gain:0.25 },
-  { value:'medium', label:'中', gain:0.55 },
+  { value:'small', label:'小', gain:0.10 },
+  { value:'medium', label:'中', gain:0.40 },
   { value:'large', label:'大', gain:1 }
 ]);
 
@@ -30,7 +30,7 @@ const soundBuffers = new Map();
 let audioContext = null;
 
 function volumeGain(volume) {
-  return SHUTTER_VOLUME_OPTIONS.find((item) => item.value === volume)?.gain ?? 0.55;
+  return SHUTTER_VOLUME_OPTIONS.find((item) => item.value === volume)?.gain ?? 0.40;
 }
 
 function getAudioContext() {
