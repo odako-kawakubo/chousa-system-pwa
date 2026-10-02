@@ -110,7 +110,9 @@ export const PHOTO_TUTORIAL_STEPS = [
       actionId: 'photo.room.select',
       context: { roomUid: tutorialRoomUid() }
     }],
-    completeWhen: () => tutorialRoomSelected()
+    completeWhen: ({ didAction }) =>
+      tutorialRoomSelected()
+      && didAction('photo.room.select', { roomUid:tutorialRoomUid() })
   },
   {
     id: 'photos-visual-floor',
@@ -132,7 +134,9 @@ export const PHOTO_TUTORIAL_STEPS = [
       actionId: 'photo.mode.change',
       context: { mode: 'sampling' }
     }],
-    completeWhen: () => isSamplingMode()
+    completeWhen: ({ didAction }) =>
+      isSamplingMode()
+      && didAction('photo.mode.change', { mode:'sampling' })
   },
   {
     id: 'photos-sampling-reflection',
