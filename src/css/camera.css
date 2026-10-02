@@ -254,10 +254,6 @@ body.camera-open {
   font-size: 10px;
 }
 
-.camera-landscape-flip {
-  display: block;
-}
-
 .camera-settings-button {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));
@@ -582,13 +578,9 @@ body.camera-open {
 }
 
 /* ---------------------------------------------------------
- * v0.1.9.18 横向き撮影
+ * v0.1.9.19 横向き撮影
  * 縦向き時はUIを90度回転させず、撮影を止めて案内だけ表示する。
  * --------------------------------------------------------- */
-.camera-orientation-shell.flipped {
-  transform: rotate(180deg);
-}
-
 .camera-orientation-blocker {
   position: absolute;
   inset: 0;
