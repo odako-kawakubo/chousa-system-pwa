@@ -1,7 +1,8 @@
 /**
  * camera-shutter-sound.js
  * 撮影音の選択・再生だけを担当する。
- * 音源はPWA内へ同梱したOtoLogic素材を使用し、再生失敗時も撮影処理は止めない。
+ * OtoLogicのMP3原音をgzipでPWA内へ同梱し、初回再生時に展開して利用する。
+ * 再生失敗時も撮影処理は止めない。
  */
 
 export const SHUTTER_SOUND_OPTIONS = Object.freeze([
@@ -18,23 +19,47 @@ export const SHUTTER_VOLUME_OPTIONS = Object.freeze([
   { value:'large', label:'大', gain:1 }
 ]);
 
-const SOUND_URLS = Object.freeze({
-  camera1: new URL('../../assets/audio/camera1.mp3', import.meta.url).href,
-  camera2: new URL('../../assets/audio/camera2.mp3', import.meta.url).href,
-  click: new URL('../../assets/audio/click.mp3', import.meta.url).href,
-  chime: new URL('../../assets/audio/chime.mp3', import.meta.url).href
+const SOUND_ASSETS = Object.freeze({
+  camera1: new URL('../../assets/audio/camera1.mp3.gz', import.meta.url).href,
+  camera2: new URL('../../assets/audio/camera2.mp3.gz', import.meta.url).href,
+  click: new URL('../../assets/audio/click.mp3.gz', import.meta.url).href,
+  chime: new URL('../../assets/audio/chime.mp3.gz', import.meta.url).href
 });
+
+const soundObjectUrls = new Map();
 
 function volumeGain(volume) {
   return SHUTTER_VOLUME_OPTIONS.find((item) => item.value === volume)?.gain ?? 0.55;
 }
 
+async function resolveSoundObjectUrl(sound) {
+  if (soundObjectUrls.has(sound)) return soundObjectUrls.get(sound);
+
+  const assetUrl = SOUND_ASSETS[sound];
+  if (!assetUrl) return null;
+  if (typeof DecompressionStream !== 'function') {
+    throw new Error('この端末では撮影音の展開に対応していません。');
+  }
+
+  const response = await fetch(assetUrl);
+  if (!response.ok || !response.body) {
+    throw new Error(`撮影音を読み込めませんでした: ${response.status}`);
+  }
+
+  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
+  const bytes = await new Response(stream).arrayBuffer();
+  const objectUrl = URL.createObjectURL(new Blob([bytes], { type:'audio/mpeg' }));
+  soundObjectUrls.set(sound, objectUrl);
+  return objectUrl;
+}
+
 export async function playShutterSound(sound='camera1', volume='medium') {
   if (sound === 'off') return false;
-  const url = SOUND_URLS[sound];
-  if (!url) return false;
 
   try {
+    const url = await resolveSoundObjectUrl(sound);
+    if (!url) return false;
+
     const audio = new Audio(url);
     audio.preload = 'auto';
     audio.volume = volumeGain(volume);
