@@ -92,3 +92,10 @@
   white-space: pre;
   overflow: auto;
 }
+
+
+/* v0.1.9.19 撮影音クレジット */
+.settings-credit-card{grid-column:1/-1}
+.settings-credit-body{display:flex;align-items:center;gap:4px;padding:12px 14px;font-size:12px;color:var(--text-secondary)}
+.settings-credit-body a{color:var(--main);font-weight:700;text-decoration:underline;text-underline-offset:2px}
+@media(max-width:900px){.settings-credit-card{grid-column:auto}}
