@@ -68,9 +68,6 @@ function record(materialId) {
   return materialRecordStore.get(materialId) || null;
 }
 
-function snapshotRecord(snapshot, materialId) {
-  return (snapshot?.records?.material || []).find((item) => String(item.materialId) === String(materialId)) || null;
-}
 
 export const MATERIAL_TUTORIAL_STEPS = [
   {
