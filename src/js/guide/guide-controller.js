@@ -8,10 +8,13 @@
 import { showTab } from '../ui/tabs.js';
 import { closeDrawer, closeGuideDrawer } from '../ui/drawer.js';
 import { openProjectById } from '../projects/project-controller.js';
-import { openProjectSession } from '../projects/project-session.js';
+import { openProjectSession, refreshOpenProjectSessionViews } from '../projects/project-session.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { openHomePage, setOpenProjectId } from '../projects/project-navigation.js';
-import { setSimpleListOpen } from '../finish-table/finish-table-state.js';
+import { resetFinishUiStateForTutorial } from '../finish-table/finish-table-state.js';
+import { resetMaterialListUiStateForTutorial } from '../materials/material-list-controller.js';
+import { resetPhotoUiStateForTutorial } from '../photos/photo-controller.js';
+import { resetOutputUiStateForTutorial } from '../output/output-controller.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -38,6 +41,7 @@ import {
   startTutorialState,
   setTutorialStepState
 } from './tutorial-state.js';
+import { subscribeTutorialActions } from './tutorial-action.js';
 
 const STORE_BY_NAME = {
   finish: finishRecordStore,
@@ -51,6 +55,7 @@ let targetElement = null;
 let initialized = false;
 let tutorialMode = false;
 let stepSnapshots = new Map();
+let stepActions = new Map();
 let unsubscribeStepStores = [];
 let stepCheckScheduled = false;
 let advancing = false;
@@ -69,9 +74,24 @@ function handleGuideClose() {
   openHomePage({ replace:true });
 }
 
+function actionContextMatches(expected = {}, actual = {}) {
+  return Object.entries(expected).every(([key, value]) => {
+    if (Array.isArray(value)) return value.map(String).includes(String(actual?.[key] ?? ''));
+    return String(value ?? '') === String(actual?.[key] ?? '');
+  });
+}
+
 function stepContext(index = activeIndex) {
+  const actions = stepActions.get(index) || [];
   return {
     snapshot: stepSnapshots.get(index) || null,
+    actions,
+    didAction(actionId, expectedContext = {}) {
+      const id = String(actionId || '');
+      return actions.some((event) =>
+        event.actionId === id && actionContextMatches(expectedContext, event.context || {})
+      );
+    },
     index
   };
 }
@@ -300,6 +320,9 @@ function moveStep(delta) {
     [...stepSnapshots.keys()].forEach((index) => {
       if (index > nextIndex) stepSnapshots.delete(index);
     });
+    [...stepActions.keys()].forEach((index) => {
+      if (index >= nextIndex) stepActions.delete(index);
+    });
   }
 
   activeIndex = nextIndex;
@@ -312,6 +335,7 @@ function startSteps(steps, { tutorial = false } = {}) {
   activeIndex = 0;
   tutorialMode = tutorial;
   stepSnapshots = new Map();
+  stepActions = new Map();
   advancing = false;
   closeDrawer();
 
@@ -336,6 +360,7 @@ export function closeGuide() {
   targetElement = null;
   tutorialMode = false;
   stepSnapshots = new Map();
+  stepActions = new Map();
   advancing = false;
 }
 
@@ -353,7 +378,11 @@ export async function startBasicTutorial() {
     await openProjectById(TUTORIAL_PROJECT_ID);
   }
 
-  setSimpleListOpen(false);
+  resetFinishUiStateForTutorial({ notifyNow:false });
+  resetMaterialListUiStateForTutorial({ renderNow:false });
+  resetPhotoUiStateForTutorial({ renderNow:false });
+  resetOutputUiStateForTutorial({ renderNow:false });
+  refreshOpenProjectSessionViews();
   showTab('finish');
   startSteps(TUTORIAL_STEPS, { tutorial:true });
 }
@@ -375,6 +404,15 @@ export function initializeGuide() {
 
   initializeTutorialProjectSnapshot();
   initializeGuideOverlayPositionEvents();
+  subscribeTutorialActions((event) => {
+    if (!tutorialMode || !activeSteps?.length) return;
+    const step = currentStep();
+    if (!step?.interactive) return;
+    const list = stepActions.get(activeIndex) || [];
+    list.push(event);
+    stepActions.set(activeIndex, list);
+    scheduleCurrentStepCheck(step.id);
+  });
 
   document.getElementById('startBasicTutorialButton')?.addEventListener('click', () => {
     void startBasicTutorial();
@@ -388,11 +426,6 @@ export function initializeGuide() {
 
   window.addEventListener('chousa:guide-layout-change', () => {
     if (!activeSteps?.length) return;
-    const step = currentStep();
-    if (tutorialMode && step?.interactive && typeof step.completeWhen === 'function') {
-      scheduleCurrentStepCheck(step.id);
-      return;
-    }
     requestAnimationFrame(refreshCurrentTarget);
   });
 }
