@@ -13,6 +13,7 @@ import { initializeOutputPhotoSelectionBridge,openVisualOutputPhotoViewer,openSa
 import { initializeOutputExportController } from './output-export-controller.js';
 import { renderOutputSidePanels, hasOutputSidePanel } from './output-side-panels.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+import { notifyTutorialAction } from '../guide/tutorial-action.js';
 import {
   getOutputPdfPreviewState,
   resetOutputPdfPreviewView,
@@ -165,7 +166,7 @@ export function initializeOutputTab(){
   const tab=document.querySelector('.tab[data-tab="sync"]');if(tab)tab.textContent='出力';
   root.addEventListener('click',(event)=>{
     if(!outputClickAllowed(event.target)){event.preventDefault();return;}
-    const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';resetOutputPdfPreviewView({page:1,zoom:100});renderOutputTab();return;}
+    const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';resetOutputPdfPreviewView({page:1,zoom:100});renderOutputTab();notifyTutorialAction('output.view.change',{view:activeView});return;}
     const locationButton=event.target.closest('[data-output-location-mode]');if(locationButton){materialLocationMode=locationButton.dataset.outputLocationMode==='room-name'?'room-name':'room-no';resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});renderOutputTab();return;}
     if(event.target.closest('[data-output-page-prev]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page-1,{edge:'bottom'});return;}
     if(event.target.closest('[data-output-page-next]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page+1,{edge:'top'});return;}
