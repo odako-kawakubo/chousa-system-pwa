@@ -153,6 +153,19 @@ export function renderSettingsTab(root, viewModel) {
               </table>
             </div>
           </section>
+
+          <section class="settings-card settings-credit-card">
+            <div class="settings-card-head">
+              <div>
+                <h3>効果音素材について</h3>
+                <div class="hint">本アプリの撮影音には、OtoLogicの効果音素材を使用しています。</div>
+              </div>
+            </div>
+            <div class="settings-credit-body">
+              <span>効果音素材：</span>
+              <a href="https://otologic.jp/" target="_blank" rel="noopener noreferrer">OtoLogic</a>
+            </div>
+          </section>
         </div>
       </section>
 
