@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.18 Review
+name: Deploy v0.1.9.19 Review
 
 on:
   push:
@@ -187,7 +187,7 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.18 review consistency checks
+      - name: v0.1.9.19 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
@@ -196,8 +196,8 @@ jobs:
           grep -q "mode: 'review'" src/config/app-config.js
           grep -q '"version": "0.1.9.18"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.18" src/service-worker.js
-          grep -q "chousa-output-libs-v01918" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.19" src/service-worker.js
+          grep -q "chousa-output-libs-v01919" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -209,6 +209,18 @@ jobs:
           grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
           grep -q "export function isCameraLandscape" src/js/camera/camera-orientation.js || { echo "camera landscape gate missing"; exit 1; }
           grep -q "export async function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
+          grep -q "DecompressionStream('gzip')" src/js/camera/camera-shutter-sound.js || { echo "bundled shutter sound decompression missing"; exit 1; }
+          grep -q "new Audio(url)" src/js/camera/camera-shutter-sound.js || { echo "bundled shutter sound playback missing"; exit 1; }
+          for sound in camera1 camera2 click chime; do
+            test -s "src/assets/audio/${sound}.mp3.gz" || { echo "bundled shutter sound missing: ${sound}"; exit 1; }
+            grep -q "./assets/audio/${sound}.mp3.gz" src/service-worker.js || { echo "shutter sound not cached: ${sound}"; exit 1; }
+          done
+          grep -q "OtoLogic" src/js/settings/settings-renderer.js || { echo "OtoLogic credit missing"; exit 1; }
+          grep -q "https://otologic.jp/" src/js/settings/settings-renderer.js || { echo "OtoLogic credit link missing"; exit 1; }
+          if grep -R "landscapeFlipped\|camera-landscape-flip" -n src/js/camera src/css/camera.css; then
+            echo "obsolete camera flip implementation remains"
+            exit 1
+          fi
           grep -q "supportsTorch" src/js/camera/camera-session.js || { echo "camera torch capability missing"; exit 1; }
           grep -q "applyConstraints({ advanced:\[{ torch:next }\] })" src/js/camera/camera-session.js || { echo "camera torch constraint missing"; exit 1; }
           grep -q "data-camera-settings-open" src/js/camera/camera-controller.js || { echo "camera settings gear missing"; exit 1; }
