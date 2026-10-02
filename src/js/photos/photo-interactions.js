@@ -6,6 +6,7 @@ import { openPhotoViewer } from './photo-viewer.js';
 import { openCamera } from '../camera/camera-controller.js';
 import { setRepresentativePhoto } from './photo-record-actions.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
+import { notifyTutorialAction } from '../guide/tutorial-action.js';
 
 let boundRoot = null;
 let tabExitBound = false;
@@ -78,10 +79,12 @@ function bindPhotoTabExitReset(state, clearSelectionMode) {
   if (tabExitBound) return;
   tabExitBound = true;
 
-  document.querySelectorAll('.tabs .tab[data-tab]').forEach((tabButton) => {
-    tabButton.addEventListener('click', () => {
-      if (tabButton.dataset.tab !== 'photos' && state.selectionMode) clearSelectionMode();
-    });
+  window.addEventListener('chousa:tab-change', (event) => {
+    const previousTab = String(event.detail?.previousTab || '');
+    const currentTab = String(event.detail?.currentTab || '');
+    if (previousTab === 'photos' && currentTab !== 'photos' && state.selectionMode) {
+      clearSelectionMode();
+    }
   });
 }
 
@@ -154,6 +157,7 @@ export function bindPhotoInteractions({
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
       state.reviewScrollTop[state.mode] = 0;
       render();
+      notifyTutorialAction('photo.mode.change', { mode:state.mode });
       return;
     }
 
@@ -172,6 +176,7 @@ export function bindPhotoInteractions({
       state.selectedRoomUid = room.dataset.photoRoom || '';
       state.reviewScrollTop.visual = 0;
       render();
+      notifyTutorialAction('photo.room.select', { roomUid:state.selectedRoomUid });
       return;
     }
 
@@ -180,6 +185,7 @@ export function bindPhotoInteractions({
       state.selectedMaterialId = material.dataset.photoMaterial || '';
       state.reviewScrollTop.sampling = 0;
       render();
+      notifyTutorialAction('photo.material.select', { materialId:state.selectedMaterialId });
       return;
     }
 
