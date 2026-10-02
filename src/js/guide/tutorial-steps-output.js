@@ -63,7 +63,9 @@ export const OUTPUT_TUTORIAL_STEPS = [
       actionId: 'material.action.toggle-material-analysis-columns',
       context: {}
     }],
-    completeWhen: () => analysisColumnsVisible()
+    completeWhen: ({ didAction }) =>
+      analysisColumnsVisible()
+      && didAction('material.action.toggle-material-analysis-columns')
   },
   {
     id: 'analysis-columns',
@@ -101,7 +103,9 @@ export const OUTPUT_TUTORIAL_STEPS = [
       actionId: 'output.view.change',
       context: { view: 'rooms' }
     }],
-    completeWhen: () => outputViewActive('rooms')
+    completeWhen: ({ didAction }) =>
+      outputViewActive('rooms')
+      && didAction('output.view.change', { view:'rooms' })
   },
   {
     id: 'output-visual-photos',
@@ -115,7 +119,9 @@ export const OUTPUT_TUTORIAL_STEPS = [
       actionId: 'output.view.change',
       context: { view: 'visual-photos' }
     }],
-    completeWhen: () => outputViewActive('visual-photos')
+    completeWhen: ({ didAction }) =>
+      outputViewActive('visual-photos')
+      && didAction('output.view.change', { view:'visual-photos' })
   },
   {
     id: 'output-sampling-photos',
@@ -129,7 +135,9 @@ export const OUTPUT_TUTORIAL_STEPS = [
       actionId: 'output.view.change',
       context: { view: 'sampling-photos' }
     }],
-    completeWhen: () => outputViewActive('sampling-photos')
+    completeWhen: ({ didAction }) =>
+      outputViewActive('sampling-photos')
+      && didAction('output.view.change', { view:'sampling-photos' })
   },
   {
     id: 'output-export-info',
