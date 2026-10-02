@@ -2,7 +2,7 @@
  * src/js/camera/camera-controller.js
  *
  * 内蔵カメラ全体の進行を調整するController。
- * - 左：撮影済み / 上下反転 / メインパネル
+ * - 左：撮影済み / メインパネル
  * - 中央：4:3撮影領域 + 電子看板
  * - 右：撮影 / 断面 / 区分
  * - 目視・採取の候補は写真タブ側のViewModelから受け取り、独自番号を生成しない。
@@ -44,7 +44,6 @@ import { createCameraSession, getVideoInputCount, getCameraErrorMessage } from '
 import { nextPhotoId } from './camera-photo-id.js';
 
 let root = null;
-let orientationShell = null;
 let video = null;
 let boardCanvas = null;
 let review = null;
@@ -112,8 +111,6 @@ function ensureCameraScreen() {
         <aside class="camera-left-panel" aria-label="撮影補助操作">
           <button type="button" class="camera-close-button" data-camera-close>戻る</button>
           <div class="camera-photo-count" data-camera-photo-count>撮影済み\n0枚</div>
-          <button type="button" class="camera-panel-mini-button camera-landscape-flip" data-camera-landscape-flip>上下<br>反転</button>
-
           <div class="camera-board-control-panel">
             <div class="camera-panel-slot" data-camera-panel-slot="room">
               <button type="button" class="camera-panel-main-button" data-open-camera-panel="room">部屋</button>
@@ -192,7 +189,6 @@ function ensureCameraScreen() {
   `;
 
   document.body.appendChild(root);
-  orientationShell = root.querySelector('[data-camera-orientation-shell]');
   video = root.querySelector('[data-camera-video]');
   boardCanvas = root.querySelector('[data-camera-board]');
   review = root.querySelector('[data-camera-review]');
@@ -259,10 +255,6 @@ function handleCameraClick(event) {
   }
   if (event.target.closest('[data-camera-close]')) {
     closeCamera();
-    return;
-  }
-  if (event.target.closest('[data-camera-landscape-flip]')) {
-    toggleLandscapeFlip();
     return;
   }
   if (event.target.closest('[data-room-prev]')) {
@@ -445,27 +437,6 @@ function syncCameraOrientation(isLandscape = isCameraLandscape()) {
 }
 
 /**
- * 横向き撮影時の上下反転設定を切り替え、previewと設定Storeへ反映する。
- */
-function toggleLandscapeFlip() {
-  state.landscapeFlipped = !state.landscapeFlipped;
-  saveCameraPreferences(state);
-  applyLandscapeFlip();
-  setTimeout(handleResize, 80);
-}
-
-/**
- * 現在flip設定をvideo previewのCSS transformへ反映する。画像Record値は変更しない。
- */
-function applyLandscapeFlip() {
-  orientationShell?.classList.toggle('flipped', Boolean(state?.landscapeFlipped));
-  root?.querySelector('[data-camera-landscape-flip]')?.setAttribute(
-    'aria-pressed',
-    state?.landscapeFlipped ? 'true' : 'false'
-  );
-}
-
-/**
  * 現在targetで撮影済みの写真件数をUIへ反映する。
  */
 function updatePhotoCount() {
@@ -491,7 +462,6 @@ function updateCameraUi() {
   const boardPosition = root.querySelector('[data-board-position]');
 
   updatePhotoCount();
-  applyLandscapeFlip();
   syncCameraSettingsUi();
   syncCameraOrientation();
 
