@@ -268,6 +268,7 @@ jobs:
           # チュートリアル操作制限はアプリ側permission stateへ集約
           test -f src/js/guide/tutorial-state.js
           test -f src/js/guide/tutorial-snapshot.js
+          test -f src/js/guide/tutorial-action.js
           test -f src/js/guide/tutorial-steps.js
           test -f src/js/guide/tutorial-steps-finish.js
           test -f src/js/guide/tutorial-steps-materials.js
@@ -308,6 +309,24 @@ jobs:
           grep -q "output-export-info" src/js/guide/tutorial-steps-output.js || { echo "output export guidance missing"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
+
+          # v0.1.9.17 Tutorial State Lifecycle
+          grep -q "captureFinishUiState" src/js/finish-table/finish-table-state.js || { echo "finish tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureMaterialListUiState" src/js/materials/material-list-controller.js || { echo "material tutorial UI snapshot missing"; exit 1; }
+          grep -q "capturePhotoUiState" src/js/photos/photo-controller.js || { echo "photo tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureOutputUiState" src/js/output/output-controller.js || { echo "output tutorial UI snapshot missing"; exit 1; }
+          grep -q "subscribeTutorialActions" src/js/guide/guide-controller.js || { echo "tutorial semantic action subscription missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/photos/photo-interactions.js || { echo "photo semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/materials/material-list-controller.js || { echo "material semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/output/output-controller.js || { echo "output semantic action notification missing"; exit 1; }
+          if grep -q "tutorialMode && step?.interactive && typeof step.completeWhen" src/js/guide/guide-controller.js; then
+            echo "guide-layout-change still owns completion checks"
+            exit 1
+          fi
+          if grep -q "document.querySelectorAll('.tabs .tab\[data-tab\]')" src/js/photos/photo-interactions.js; then
+            echo "photo tab exit still uses direct tab click listeners"
+            exit 1
+          fi
           grep -q "photos-switch-sampling" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling switch step missing"; exit 1; }
           grep -q "photos-sampling-reflection" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling reflection step missing"; exit 1; }
           grep -q "photos-before-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo before-stage step missing"; exit 1; }
