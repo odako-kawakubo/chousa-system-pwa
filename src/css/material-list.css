@@ -335,6 +335,18 @@
   box-shadow: inset 0 0 0 9999px var(--selected-wash);
 }
 
+/* 石綿含有・みなし等の陽性建材は、建材リストの1行全体を赤文字で表示する。 */
+.material-list-table tbody tr.positive-material-row,
+.material-list-table tbody tr.positive-material-row .material-cell-display,
+.material-list-table tbody tr.positive-material-row .material-select,
+.material-list-table tbody tr.positive-material-row .material-date-input,
+.material-list-table tbody tr.positive-material-row .material-multi-select-summary {
+  color: var(--danger-strong);
+}
+.material-list-table.color-mode tbody tr.positive-material-row .material-color-cell {
+  color: var(--danger-strong);
+}
+
 .material-list-empty {
   padding: 28px !important;
   color: var(--disabled);
