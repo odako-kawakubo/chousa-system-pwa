@@ -12,7 +12,8 @@
 
 import { normalizeSampleParts } from '../records/material-record.js';
 import * as materialRecordStore from '../store/material-record-store.js';
-import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
+import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
+import { getMaterialRoomNameMode, setMaterialRoomNameMode, toggleMaterialRoomNameMode } from './material-room-display-state.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
@@ -38,8 +39,7 @@ const scrollStateByProject = new Map();
 
 // 建材リスト専用の表示状態。仕上表／簡易リストとは独立して切り替える。
 let materialListColorMode = false;
-// OFF=部屋No.、ON=部屋名優先。部屋名空欄は常に部屋No.へフォールバックする。
-let materialListRoomNameMode = false;
+// 部屋表示状態は共有stateへ集約し、出力・採取写真と共通利用する。
 // 調査中は横幅を圧迫しないよう、分析結果／分析備考は初期非表示。
 let materialListAnalysisColumnsOpen = false;
 
@@ -120,14 +120,16 @@ export function refreshMaterialList() {
   captureMaterialListScroll();
   applySamplingAutofill();
 
-  // usageLocation正本は従来どおり部屋No.のまま維持する。
-  // 部屋名表示は画面表示用だけfinishRecordから組み立て、採取場所候補等へ波及させない。
-  const rows = buildMaterialListRows(materialRecordStore.getAll()).map((row) => ({
-    ...row,
-    usageLocationDisplay: getMaterialUsageRoomLabels(row.inputId, {
-      preferRoomName: materialListRoomNameMode
-    }).join('、') || row.usageLocation
-  }));
+  // 正本は部屋No.のまま維持し、表示だけ共有の部屋表示状態に従う。
+  const roomNameMode = getMaterialRoomNameMode();
+  const rows = buildMaterialListRows(materialRecordStore.getAll()).map((row) => {
+    const roomOptions = getMaterialUsageRoomOptions(row.inputId, { preferRoomName: roomNameMode });
+    return {
+      ...row,
+      usageLocationDisplay: roomOptions.map((item) => item.display).join('、') || row.usageLocation,
+      sampleLocationOptions: roomOptions
+    };
+  });
   if (selectedMaterialId && !rows.some((row) => row.materialId === selectedMaterialId)) {
     selectedMaterialId = null;
   }
@@ -135,7 +137,7 @@ export function refreshMaterialList() {
   const projectId = String(getCurrentProject()?.projectId || '');
   renderMaterialList(rootElement, rows, selectedMaterialId, {
     colorMode: materialListColorMode,
-    roomNameMode: materialListRoomNameMode,
+    roomNameMode,
     analysisColumnsOpen: materialListAnalysisColumnsOpen
   });
   renderedProjectId = projectId;
@@ -234,7 +236,7 @@ function handleMaterialActivation(target, options = {}) {
 
   const roomNameButton = target.closest('[data-action="toggle-material-room-name"]');
   if (roomNameButton) {
-    materialListRoomNameMode = !materialListRoomNameMode;
+    toggleMaterialRoomNameMode();
     refreshMaterialList();
     return;
   }
@@ -462,7 +464,7 @@ export function captureMaterialListUiState() {
   return {
     selectedMaterialId,
     colorMode: materialListColorMode,
-    roomNameMode: materialListRoomNameMode,
+    roomNameMode: getMaterialRoomNameMode(),
     analysisColumnsOpen: materialListAnalysisColumnsOpen,
     scroll: {
       top:Number(scroll.top || 0),
@@ -475,7 +477,7 @@ export function restoreMaterialListUiState(snapshot, { renderNow = true } = {}) 
   if (!snapshot) return;
   selectedMaterialId = snapshot.selectedMaterialId || null;
   materialListColorMode = Boolean(snapshot.colorMode);
-  materialListRoomNameMode = Boolean(snapshot.roomNameMode);
+  setMaterialRoomNameMode(Boolean(snapshot.roomNameMode));
   materialListAnalysisColumnsOpen = Boolean(snapshot.analysisColumnsOpen);
 
   const projectId = String(getCurrentProject()?.projectId || '');
@@ -490,7 +492,7 @@ export function restoreMaterialListUiState(snapshot, { renderNow = true } = {}) 
 export function resetMaterialListUiStateForTutorial({ renderNow = true } = {}) {
   selectedMaterialId = null;
   materialListColorMode = false;
-  materialListRoomNameMode = false;
+  setMaterialRoomNameMode(false);
   materialListAnalysisColumnsOpen = false;
 
   const projectId = String(getCurrentProject()?.projectId || '');
