@@ -70,14 +70,14 @@ export function applyProjectRecordChanges(project, changes = []) {
   changes.forEach((change) => {
     const key = `${change.recordType}|${change.id}`;
     const unsent = unsentByKey.get(key);
-    if (unsent?.operation === 'delete') {
+    if (unsent?.operation === 'delete' || (unsent?.operation === 'set' && change.changeType === 'removed')) {
       skipped += 1;
       syncDiagnosticLog('SYNC_APPLY_CHANGE', {
         projectId: project.projectId,
         recordType: change.recordType,
         recordId: String(change.id || ''),
         result: 'skipped',
-        reason: 'unsent-delete'
+        reason: unsent.operation === 'delete' ? 'unsent-delete' : 'unsent-set-vs-remove'
       });
       return;
     }
@@ -262,7 +262,7 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       const current = photoRecordStore.get(id);
       if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-        && sameMergedBusinessRecord('photo', current, hydrateIncomingPhotoRecord(change.record) || change.record)) {
+        && sameMergedBusinessRecord('photo', current, change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -311,8 +311,7 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       let effectiveChange = change;
       if (current && change.record) {
-        const incomingPhoto = hydrateIncomingPhotoRecord(change.record) || change.record;
-        const merged = mergeRecordByFieldEditedAt('photo', current, incomingPhoto, {
+        const merged = mergeRecordByFieldEditedAt('photo', current, change.record, {
           prefer: change.unsent ? 'local' : 'incoming'
         });
         effectiveChange = { ...change, record: merged.record };
