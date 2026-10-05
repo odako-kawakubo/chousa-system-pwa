@@ -55,6 +55,11 @@ export function mergeRecordByFieldEditedAt(recordType,local,incoming,{prefer='in
   fields.forEach((field)=>{
     const localStamp=getFieldEditedAt(local,field);
     const incomingStamp=getFieldEditedAt(incoming,field);
+    const incomingOwnsField=Object.prototype.hasOwnProperty.call(incoming,field) || incomingStamp>0;
+    if(!incomingOwnsField){
+      merged[field]=local?.[field];
+      return;
+    }
     const equalValue=sameValue(local?.[field],incoming?.[field]);
 
     if(localStamp>incomingStamp){
