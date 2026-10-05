@@ -30,7 +30,7 @@ let initialized=false;
 let currentVm=null;
 let settingsOpen=false;
 let settingsDraft=null;
-let materialLocationMode='room-no';
+let includeUnregisteredExcluded=true;
 let wheelPageLockUntil=0;
 
 /**
@@ -46,9 +46,9 @@ function outputRoot(){return document.getElementById('sync');}
  */
 function effectiveSettings(){return normalizeOutputSettings(settingsOpen&&settingsDraft?settingsDraft:getOutputSettings());}
 /**
- * materialLocationModeを含む現在UI条件からOutput ViewModelを再構築する。PDF/Excel/写真帳で同じVMを共有する。
+ * 現在UI条件からOutput ViewModelを再構築する。部屋表示は建材リスト側の共有状態を参照する。
  */
-function buildCurrentVm(){return buildOutputViewModel({materialLocationMode});}
+function buildCurrentVm(){return buildOutputViewModel({includeUnregisteredExcluded});}
 
 /**
  * 建材写真帳の対象materialをPhoto Viewer選択UIで開く。選択確定後はOutputタブを再描画する。
@@ -82,8 +82,7 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
 function outputClickAllowed(target){
   const view=target?.closest?.('[data-output-view]');
   if(view)return isTutorialActionAllowed('output.view.change',{view:String(view.dataset.outputView||'')});
-  const location=target?.closest?.('[data-output-location-mode]');
-  if(location)return isTutorialActionAllowed('output.location.change',{mode:String(location.dataset.outputLocationMode||'')});
+  if(target?.closest?.('[data-output-unregistered-excluded]'))return isTutorialActionAllowed('output.view.change',{view:'rooms'});
   if(target?.closest?.('[data-output-page-prev],[data-output-page-next]'))return isTutorialActionAllowed('output.page.change',{});
   if(target?.closest?.('[data-output-zoom-reset],[data-output-zoom-out],[data-output-zoom-in]'))return isTutorialActionAllowed('output.zoom.change',{});
   if(target?.closest?.('[data-output-settings-open],[data-output-settings-close],[data-output-settings-undo],[data-output-settings-default],[data-output-settings-save]'))return isTutorialActionAllowed('output.settings.change',{});
@@ -98,7 +97,7 @@ function outputClickAllowed(target){
   return true;
 }
 
-function renderLocationSwitch(){if(activeView!=='materials')return '';return `<span class="output-toolbar-label">使用箇所</span><div class="output-segmented"><button type="button" class="btn small ${materialLocationMode==='room-no'?'active':''}" data-output-location-mode="room-no">部屋No.</button><button type="button" class="btn small ${materialLocationMode==='room-name'?'active':''}" data-output-location-mode="room-name">部屋名</button></div><span class="output-toolbar-separator"></span>`;}
+function renderRoomUnregisteredSwitch(){if(activeView!=='rooms')return '';return `<span class="output-toolbar-label">未登録の対象外</span><button type="button" class="btn small ${includeUnregisteredExcluded?'active':''}" data-output-unregistered-excluded>表示 ${includeUnregisteredExcluded?'ON':'OFF'}</button><span class="output-toolbar-separator"></span>`;}
 
 /**
  * 現在の出力種別・設定・ViewModelから出力タブ全体を再描画し、PDF Preview生成を開始する。Previewの内部状態は専用controllerへ委譲する。
@@ -108,7 +107,7 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   <button type="button" class="btn small output-view-btn ${activeView==='rooms'?'active':''}" data-output-view="rooms">部屋別リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='visual-photos'?'active':''}" data-output-view="visual-photos">建材写真帳</button>
   <button type="button" class="btn small output-view-btn ${activeView==='sampling-photos'?'active':''}" data-output-view="sampling-photos">採取写真帳</button>
-  <span class="output-toolbar-separator"></span>${renderLocationSwitch()}
+  <span class="output-toolbar-separator"></span>${renderRoomUnregisteredSwitch()}
   <span class="output-page-counter" data-output-page-counter>${previewState.page} / ${previewState.pageCount}</span>
   <span class="output-toolbar-separator"></span>
   <button type="button" class="btn small" data-output-zoom-out>−</button><button type="button" class="btn small output-zoom-label" data-output-zoom-reset data-output-zoom-label>${previewState.zoom}%</button><button type="button" class="btn small" data-output-zoom-in>＋</button>
@@ -127,7 +126,7 @@ export function captureOutputUiState() {
     activeView,
     settingsOpen,
     settingsDraft: settingsDraft ? { ...settingsDraft } : null,
-    materialLocationMode,
+    includeUnregisteredExcluded,
     page:Number(preview.page || 1),
     zoom:Number(preview.zoom || 100)
   };
@@ -140,7 +139,7 @@ export function restoreOutputUiState(snapshot, { renderNow = true } = {}) {
     : 'materials';
   settingsOpen = Boolean(snapshot.settingsOpen);
   settingsDraft = snapshot.settingsDraft ? { ...snapshot.settingsDraft } : null;
-  materialLocationMode = snapshot.materialLocationMode === 'room-name' ? 'room-name' : 'room-no';
+  includeUnregisteredExcluded = snapshot.includeUnregisteredExcluded !== false;
   resetOutputPdfPreviewView({
     page:Math.max(1, Number(snapshot.page || 1)),
     zoom:Math.min(200, Math.max(50, Number(snapshot.zoom || 100)))
@@ -152,7 +151,7 @@ export function resetOutputUiStateForTutorial({ renderNow = true } = {}) {
   activeView = 'materials';
   settingsOpen = false;
   settingsDraft = null;
-  materialLocationMode = 'room-no';
+  includeUnregisteredExcluded = true;
   resetOutputPdfPreviewView({ page:1, zoom:100 });
   if (renderNow) renderOutputTab();
 }
@@ -167,7 +166,7 @@ export function initializeOutputTab(){
   root.addEventListener('click',(event)=>{
     if(!outputClickAllowed(event.target)){event.preventDefault();return;}
     const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';resetOutputPdfPreviewView({page:1,zoom:100});renderOutputTab();notifyTutorialAction('output.view.change',{view:activeView});return;}
-    const locationButton=event.target.closest('[data-output-location-mode]');if(locationButton){materialLocationMode=locationButton.dataset.outputLocationMode==='room-name'?'room-name':'room-no';resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});renderOutputTab();return;}
+    const unregisteredButton=event.target.closest('[data-output-unregistered-excluded]');if(unregisteredButton){includeUnregisteredExcluded=!includeUnregisteredExcluded;resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});renderOutputTab();return;}
     if(event.target.closest('[data-output-page-prev]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page-1,{edge:'bottom'});return;}
     if(event.target.closest('[data-output-page-next]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page+1,{edge:'top'});return;}
     if(event.target.closest('[data-output-zoom-reset]')){void setOutputPdfPreviewZoom(root,100);return;}
@@ -216,5 +215,6 @@ export function initializeOutputTab(){
     requestAnimationFrame(()=>requestAnimationFrame(()=>{rerenderOutputPdfPreview();}));
   });
   window.addEventListener('chousa:output-settings-change',()=>{if(!settingsOpen)renderOutputTab();});
+  window.addEventListener('chousa:material-room-display-change',()=>renderOutputTab());
   finishRecordStore.subscribe(renderOutputTab);materialRecordStore.subscribe(renderOutputTab);photoRecordStore.subscribe(renderOutputTab);renderOutputTab();
 }
