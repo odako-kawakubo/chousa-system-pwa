@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.23 Review
+name: Deploy v0.1.9.24 Review
 
 on:
   push:
@@ -139,6 +139,16 @@ jobs:
           grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
           grep -q "isPhoneticTextNode" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML phonetic text filter missing"; exit 1; }
           grep -q "current.localName === 'rPh'" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML rPh exclusion missing"; exit 1; }
+          # v0.1.9.24 部屋表示共通化・未登録対象外切替
+          test -f src/js/materials/material-room-display-state.js
+          grep -q "sampleLocationOptions" src/js/materials/material-list-controller.js || { echo "material sample location display mapping missing"; exit 1; }
+          grep -q "getMaterialSampleLocationDisplay" src/js/photos/photo-view-model.js || { echo "photo sampling room display mapping missing"; exit 1; }
+          grep -q "materialLocationLabel" src/js/output/output-view-model.js || { echo "output material location header mapping missing"; exit 1; }
+          grep -q "includeUnregisteredExcluded" src/js/output/output-controller.js || { echo "unregistered excluded output toggle missing"; exit 1; }
+          if grep -q "data-output-location-mode" src/js/output/output-controller.js; then
+            echo "legacy output room display switch remains"
+            exit 1
+          fi
           grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
           grep -q "F2" src/js/onedrive/onedrive-project-file.js
           grep -q "K2" src/js/onedrive/onedrive-project-file.js
@@ -196,17 +206,17 @@ jobs:
           grep -q "applyCommittedFinishEntries" src/js/sync/project-record-persistence.js || { echo "M-01 known finish retry sync missing"; exit 1; }
           grep -q "retryUnsentForProject" src/js/ui/sync-ui.js || { echo "manual retry bypasses sync adapter"; exit 1; }
 
-      - name: v0.1.9.23 review consistency checks
+      - name: v0.1.9.24 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.23'" src/config/app-config.js
+          grep -q "version: '0.1.9.24'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.23"' src/version.json
+          grep -q '"version": "0.1.9.24"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.23" src/service-worker.js
-          grep -q "chousa-output-libs-v01923" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.24" src/service-worker.js
+          grep -q "chousa-output-libs-v01924" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
