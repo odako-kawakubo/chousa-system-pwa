@@ -21,7 +21,9 @@ import {
   touchProjectSyncDevice,
   cleanupExpiredFinishChangeLogs,
   subscribeFinishChangeLog,
-  deleteTestProjectCompletely
+  deleteTestProjectCompletely,
+  retryUnsentBatch,
+  BULK_SYNC_BATCH_SIZE
 } from '../firestore/firestore-repository.js';
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
@@ -141,6 +143,32 @@ export function applyKnownFinishChange(projectId, change) {
   persistSparseCache();
 }
 
+function applyCommittedFinishEntries(projectId, entries = []) {
+  const map = knownFinishMap(projectId);
+  let changed = false;
+
+  entries.forEach((entry) => {
+    if (entry?.recordType !== 'finish') return;
+    const id = String(entry.recordId || entry.record?.finishId || '');
+    if (!id) return;
+
+    if (entry.operation === 'delete') {
+      changed = map.delete(id) || changed;
+      return;
+    }
+    if (entry.record) {
+      map.set(id, { ...entry.record, finishId: id });
+      changed = true;
+    }
+  });
+
+  if (changed) persistSparseCache();
+}
+
+function applyRetryResultToKnownFinish(projectId, result) {
+  applyCommittedFinishEntries(projectId, result?.retriedEntries || []);
+}
+
 /**
  * finish Recordをローカル既知状態へ反映し、同期対象案件ならFirestoreへ保存する。
  */
@@ -156,6 +184,7 @@ export function persistFinishForProject(project, record, source = 'finish-unspec
     if (result?.ok) {
       knownFinishMap(project.projectId).set(String(record.finishId), { ...record });
       persistSparseCache();
+      applyRetryResultToKnownFinish(project.projectId, result);
     }
     return result;
   });
@@ -176,6 +205,7 @@ export function deleteFinishForProject(project, record, source = 'finish-delete-
     if (result?.ok) {
       knownFinishMap(project.projectId).delete(String(record.finishId));
       persistSparseCache();
+      applyRetryResultToKnownFinish(project.projectId, result);
     }
     return result;
   });
@@ -187,12 +217,16 @@ export function deleteFinishForProject(project, record, source = 'finish-delete-
  */
 export function persistMaterialForProject(project, record, source = 'material-unspecified') {
   if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
-  return enqueue(() => saveMaterialRecord({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    record,
-    source
-  }));
+  return enqueue(async () => {
+    const result = await saveMaterialRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
 }
 
 /**
@@ -200,12 +234,34 @@ export function persistMaterialForProject(project, record, source = 'material-un
  */
 export function persistPhotoForProject(project, record, source = 'photo-unspecified') {
   if (!shouldSyncProject(project) || !record?.photoId) return Promise.resolve({ ok: true, skipped: true });
-  return enqueue(() => savePhotoRecord({
-    projectId: project.projectId,
-    environment: projectEnvironment(project),
-    record,
-    source
-  }));
+  return enqueue(async () => {
+    const result = await savePhotoRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
+}
+
+export const PROJECT_BULK_SYNC_BATCH_SIZE = BULK_SYNC_BATCH_SIZE;
+
+export function retryUnsentForProject(project, options = {}) {
+  if (!shouldSyncProject(project)) {
+    return Promise.resolve({ ok: true, skipped: true, sent: 0, remaining: 0, completed: true });
+  }
+  return enqueue(async () => {
+    const result = await retryUnsentBatch({
+      projectId: project.projectId,
+      batchSize: options.batchSize || BULK_SYNC_BATCH_SIZE
+    });
+    if (result?.ok) {
+      applyCommittedFinishEntries(project.projectId, result.committedEntries || []);
+    }
+    return result;
+  });
 }
 
 /**
