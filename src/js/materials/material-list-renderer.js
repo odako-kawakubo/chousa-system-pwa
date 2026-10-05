@@ -101,12 +101,13 @@ function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
     const selected = String(row.materialId) === String(selectedMaterialId)
       ? ' selected-material-row'
       : '';
+    const positive = row.positive ? ' positive-material-row' : '';
     const rowColorStyle = colorMode && row.color
       ? ` style="--material-row-color:${escapeAttr(row.color)}"`
       : '';
 
     return `
-      <tr class="${selected.trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
+      <tr class="${(selected + positive).trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
         <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
         <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
         <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
