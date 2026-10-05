@@ -298,10 +298,17 @@ async function openFirestoreProjectSession(target) {
       };
       target.project = project;
       updateProjectFields(project.projectId, project);
-      await persistProjectMetadataForProject(project);
-      syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
-        projectId: project.projectId
-      });
+      try {
+        await persistProjectMetadataForProject(project);
+        syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
+          projectId: project.projectId
+        });
+      } catch (error) {
+        syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATE_ERROR', {
+          projectId: project.projectId,
+          message: error?.message || String(error)
+        });
+      }
     }
 
     const caughtUpCursors = normalizeProjectRecordCursors(remote.cursors || cursors);
