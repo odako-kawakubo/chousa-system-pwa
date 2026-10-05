@@ -511,6 +511,38 @@ export function savePhotoRecord({ projectId, environment = 'production', record,
   }));
 }
 
+function normalizeBoardSettings(board = {}, project = {}) {
+  return {
+    surveyDate: String(board.surveyDate ?? project.surveyDate ?? ''),
+    surveyor: String(board.surveyor ?? project.surveyor ?? ''),
+    subjectText: String(board.subjectText ?? project.projectName ?? ''),
+    addressText: String(board.addressText ?? project.address ?? ''),
+    subjectFontSize: Number(board.subjectFontSize) || 18,
+    addressFontSize: Number(board.addressFontSize) || 17
+  };
+}
+
+function normalizeProjectMetadataData(data = {}, projectId = '') {
+  const id = String(data.projectId || projectId || '');
+  if (!id) return null;
+  const boardSettings = normalizeBoardSettings(data.boardSettings || {}, data);
+  return {
+    projectId: id,
+    projectNo: String(data.projectNo || id),
+    projectName: String(data.projectName || ''),
+    address: String(data.address || ''),
+    surveyDate: String(data.surveyDate || boardSettings.surveyDate || ''),
+    surveyor: String(data.surveyor || boardSettings.surveyor || ''),
+    boardSettings,
+    projectType: String(data.projectType || ''),
+    isTemporary: Boolean(data.isTemporary),
+    isSample: false,
+    environment: 'production',
+    createdAt: String(data.createdAt || ''),
+    updatedAt: data.updatedAt || null
+  };
+}
+
 /**
  * 案件メタデータをFirestore案件Documentへ保存する。3Record Storeとは別の案件情報用。
  */
@@ -533,6 +565,9 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
       projectNo: String(project.projectNo || project.projectId),
       projectName: String(project.projectName || ''),
       address: String(project.address || ''),
+      surveyDate: String(project.surveyDate || project.boardSettings?.surveyDate || ''),
+      surveyor: String(project.surveyor || project.boardSettings?.surveyor || ''),
+      boardSettings: normalizeBoardSettings(project.boardSettings || {}, project),
       projectType: String(project.projectType || ''),
       isTemporary: Boolean(project.isTemporary),
       createdAt: String(project.createdAt || ''),
@@ -547,6 +582,35 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
   } finally {
     endFirestoreActivity();
   }
+}
+
+/** Firestore案件Documentの現在形を1回取得する。 */
+export async function readProjectMetadata({ projectId, environment = 'production' }) {
+  const id = String(projectId || '');
+  if (!id || !canUseFirestore()) return null;
+  const snapshot = await getDoc(projectDocRef(id, environment));
+  if (!snapshot.exists()) return null;
+  return normalizeProjectMetadataData(snapshot.data(), id);
+}
+
+/** Firestore案件DocumentをRealtime購読する。案件情報・看板設定の端末間同期用。 */
+export function subscribeProjectMetadata({ projectId, environment = 'production', onProject, onState, onError }) {
+  const id = String(projectId || '');
+  if (!id || !canUseFirestore()) return () => {};
+  return onSnapshot(
+    projectDocRef(id, environment),
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      onState?.({
+        fromCache: Boolean(snapshot.metadata?.fromCache),
+        hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites)
+      });
+      if (!snapshot.exists() || snapshot.metadata?.hasPendingWrites) return;
+      const project = normalizeProjectMetadataData(snapshot.data(), id);
+      if (project) onProject?.(project);
+    },
+    (error) => onError?.(error)
+  );
 }
 
 /**
