@@ -13,13 +13,16 @@ import {
   getCurrentProject,
   getProject,
   saveProjectSnapshot,
-  getProjectSyncMeta
+  getProjectSyncMeta,
+  updateProjectFields
 } from './project-store.js';
 import {
   readProjectRecordsForProject,
   subscribeRealtimeProjectRecordsForProject,
   newestCursorsFromChanges,
   latestCursorValue,
+  readProjectMetadataForProject,
+  subscribeProjectMetadataForProject
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
@@ -41,6 +44,8 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
+import * as boardSettingsStore from '../settings/board-settings-store.js';
+import { refreshSettingsTab } from '../settings/settings-controller.js';
 import {
   createFullTypeProjectViewImpact
 } from './project-view-impact.js';
@@ -94,11 +99,38 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
  * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
  */
 async function openFirestoreProjectSession(target) {
-  const project = target.project;
+  let project = target.project;
   syncDiagnosticLog('SYNC_OPEN_START', {
     projectId: project?.projectId || '',
     projectName: project?.projectName || ''
   });
+
+  if (canUseFirestore()) {
+    try {
+      const remoteProject = await readProjectMetadataForProject(project);
+      if (remoteProject) {
+        project = {
+          ...project,
+          ...remoteProject,
+          projectId: project.projectId,
+          environment: project.environment || remoteProject.environment || 'production'
+        };
+        target.project = project;
+        updateProjectFields(project.projectId, project);
+        syncDiagnosticLog('PROJECT_METADATA_INITIAL_APPLY', {
+          projectId: project.projectId,
+          projectNo: project.projectNo,
+          projectName: project.projectName
+        });
+      }
+    } catch (error) {
+      syncDiagnosticLog('PROJECT_METADATA_INITIAL_READ_ERROR', {
+        projectId: project?.projectId || '',
+        message: error?.message || String(error)
+      });
+    }
+  }
+
   const token = ++activeProjectStreamToken;
   const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
   const storedCursors = normalizeProjectRecordCursors(syncMeta.recordCursors || {});
@@ -322,8 +354,42 @@ async function openFirestoreProjectSession(target) {
       }
     });
 
+    const stopMetadata = subscribeProjectMetadataForProject(project, {
+      onProject: (remoteProject) => {
+        if (token !== activeProjectStreamToken) return;
+        const current = getCurrentProject();
+        if (!current?.projectId || current.projectId !== project.projectId) return;
+        const nextProject = updateProjectFields(project.projectId, {
+          ...remoteProject,
+          projectId: project.projectId,
+          environment: project.environment
+        });
+        if (!nextProject) return;
+        boardSettingsStore.applyProjectMetadata(nextProject);
+        refreshSettingsTab();
+        syncDiagnosticLog('PROJECT_METADATA_REALTIME_APPLY', {
+          projectId: project.projectId,
+          projectNo: nextProject.projectNo,
+          projectName: nextProject.projectName
+        });
+      },
+      onState: ({ fromCache }) => {
+        syncDiagnosticLog('PROJECT_METADATA_LISTENER_STATE', {
+          projectId: project.projectId,
+          fromCache
+        });
+      },
+      onError: (error) => {
+        syncDiagnosticLog('PROJECT_METADATA_LISTENER_ERROR', {
+          projectId: project.projectId,
+          message: error?.message || String(error)
+        });
+      }
+    });
+
     stopActiveProjectRecords = () => {
       syncDiagnosticLog('SYNC_LISTENER_STOP', { projectId: project.projectId });
+      stopMetadata();
       stop();
     };
     syncDiagnosticLog('SYNC_OPEN_READY', { projectId: project.projectId });
