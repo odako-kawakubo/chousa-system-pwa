@@ -115,7 +115,8 @@ function roomNoTokens(value) {
 function wrapRoomNoLines(pdf,value,width,size) {
   const tokens=roomNoTokens(value);
   if(!tokens.length)return [];
-  setFont(pdf,size,'normal');
+  pdf.setFont(FONT_FAMILY,'normal');
+  pdf.setFontSize(size);
   const lines=[];
   let current='';
   tokens.forEach((token)=>{
