@@ -168,9 +168,8 @@ async function runBulkSync() {
       }
       if (status.unsentCount <= 0) return;
 
-      const result = await retryUnsentBatch({
-        projectId,
-        batchSize: BULK_SYNC_BATCH_SIZE
+      const result = await retryUnsentForProject(project, {
+        batchSize: PROJECT_BULK_SYNC_BATCH_SIZE
       });
 
       if (String(getCurrentProject()?.projectId || '') !== projectId) return;
