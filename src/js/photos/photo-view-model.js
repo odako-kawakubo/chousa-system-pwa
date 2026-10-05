@@ -15,6 +15,8 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getShootingTypeLabel, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
 import { samplePartsToText } from '../records/material-record.js';
+import { getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
 const SAMPLE_BRANCH_LABELS = Object.freeze(['①', '②', '③']);
@@ -218,7 +220,10 @@ export function buildVisualPhotoView(selectedRoomUid = '') {
 
 /** 建材レコードの採取場所1〜3を枝番に応じてそのまま読む。 */
 function samplingPlaceAt(material, branch) {
-  return String(material[`sampleLocation${branch}`] || '').trim();
+  const raw = String(material[`sampleLocation${branch}`] || '').trim();
+  return getMaterialSampleLocationDisplay(material.inputId, raw, {
+    preferRoomName: getMaterialRoomNameMode()
+  });
 }
 
 function findSamplingStagePhotos(materialId, branch, shootingType) {
@@ -230,7 +235,8 @@ function findSamplingStagePhotos(materialId, branch, shootingType) {
  * sampleCount / sampleLocation1〜3 / samplePartはmaterialRecordから直接参照する。
  */
 function buildSamplePoint(material, branch, sampleNo) {
-  const samplingPlace = samplingPlaceAt(material, branch);
+  const samplingPlaceDisplay = samplingPlaceAt(material, branch);
+  const samplingPlace = samplingPlaceDisplay.value;
   const stages = SAMPLE_STAGE_ORDER.map((shootingType) => {
     const photos = findSamplingStagePhotos(material.materialId, branch, shootingType);
     return {
@@ -252,6 +258,7 @@ function buildSamplePoint(material, branch, sampleNo) {
     key: `sampling|${material.materialId}|${branch}`,
     branch,
     samplingPlace,
+    samplingPlaceLabel: samplingPlaceDisplay.label,
     part: samplePartsToText(material.samplePart),
     // 試料No.は「採取対象建材の連番-枝番」で表示用に組み立てる。
     // 例: 1-① / 1-② / 1-③

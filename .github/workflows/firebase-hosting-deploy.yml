@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.1 Stable
+name: Deploy v0.1.9.2 Stable
 
 on:
   push:
@@ -137,6 +137,18 @@ jobs:
           grep -q "export async function readOpenXmlCells" src/js/onedrive/openxml-workbook-reader.js
           grep -q "DecompressionStream" src/js/onedrive/openxml-workbook-reader.js
           grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
+          grep -q "isPhoneticTextNode" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML phonetic text filter missing"; exit 1; }
+          grep -q "current.localName === 'rPh'" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML rPh exclusion missing"; exit 1; }
+          # v0.1.9.2 部屋表示共通化・未登録対象外切替・陽性行表示
+          test -f src/js/materials/material-room-display-state.js
+          grep -q "sampleLocationOptions" src/js/materials/material-list-controller.js || { echo "material sample location display mapping missing"; exit 1; }
+          grep -q "getMaterialSampleLocationDisplay" src/js/photos/photo-view-model.js || { echo "photo sampling room display mapping missing"; exit 1; }
+          grep -q "materialLocationLabel" src/js/output/output-view-model.js || { echo "output material location header mapping missing"; exit 1; }
+          grep -q "includeUnregisteredExcluded" src/js/output/output-controller.js || { echo "unregistered excluded output toggle missing"; exit 1; }
+          if grep -q "data-output-location-mode" src/js/output/output-controller.js; then
+            echo "legacy output room display switch remains"
+            exit 1
+          fi
           grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
           grep -q "F2" src/js/onedrive/onedrive-project-file.js
           grep -q "K2" src/js/onedrive/onedrive-project-file.js
@@ -187,17 +199,24 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.9.1 review consistency checks
+          # M-01 仕上表の削除漏れ防止
+          grep -q "previousWasPersistable" src/js/finish-table/finish-table-persistence.js || { echo "M-01 transition-aware delete missing"; exit 1; }
+          grep -q "deleteFinishForProject(project, record, 'finish-sparse-reset')" src/js/finish-table/finish-table-persistence.js || { echo "M-01 sparse delete missing"; exit 1; }
+          grep -q "committedEntries" src/js/firestore/firestore-repository.js || { echo "M-01 retry commit result missing"; exit 1; }
+          grep -q "applyCommittedFinishEntries" src/js/sync/project-record-persistence.js || { echo "M-01 known finish retry sync missing"; exit 1; }
+          grep -q "retryUnsentForProject" src/js/ui/sync-ui.js || { echo "manual retry bypasses sync adapter"; exit 1; }
+
+      - name: v0.1.9.2 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.1'" src/config/app-config.js
+          grep -q "version: '0.1.9.2'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.1"' src/version.json
+          grep -q '"version": "0.1.9.2"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.1" src/service-worker.js
-          grep -q "chousa-output-libs-v0191" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.2" src/service-worker.js
+          grep -q "chousa-output-libs-v0192" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
@@ -349,7 +368,7 @@ jobs:
           grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
           grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
 
-          # v0.1.9.17 Tutorial State Lifecycle
+          # v0.1.9.217 Tutorial State Lifecycle
           grep -q "captureFinishUiState" src/js/finish-table/finish-table-state.js || { echo "finish tutorial UI snapshot missing"; exit 1; }
           grep -q "captureMaterialListUiState" src/js/materials/material-list-controller.js || { echo "material tutorial UI snapshot missing"; exit 1; }
           grep -q "capturePhotoUiState" src/js/photos/photo-controller.js || { echo "photo tutorial UI snapshot missing"; exit 1; }
@@ -716,12 +735,20 @@ jobs:
           grep -q "sourceRequired==='対象外'.*positive:sourcePositive" src/js/output/output-view-model.js || { echo "out-of-scope positive source mapping missing"; exit 1; }
           grep -q "positive:reportAnalysis.positive" src/js/output/output-view-model.js || { echo "report positive flag missing"; exit 1; }
           grep -q "row.positive??isPositive" src/js/output/output-pdf-renderer.js || { echo "PDF does not use report positive flag"; exit 1; }
-          grep -q "roomNote.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room note must stay black"; exit 1; }
-
-          # 部屋別リストは階・部屋No.・部屋名を常に黒、部位以降のみ陽性時赤
-          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color must stay black"; exit 1; }
-          grep -q "roomNo.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room number color must stay black"; exit 1; }
-          grep -q "roomName.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room name color must stay black"; exit 1; }
+          if sed -n '/function wrapRoomNoLines/,/^}/p' src/js/output/output-pdf-renderer.js | grep -q "setFont(pdf"; then
+            echo "wrapRoomNoLines must not reset text color"
+            exit 1
+          fi
+          grep -q "positive: isMaterialPositive(record)" src/js/materials/material-list-view-model.js || { echo "material list positive mapping missing"; exit 1; }
+          grep -q "positive-material-row" src/js/materials/material-list-renderer.js || { echo "material list positive row class missing"; exit 1; }
+          grep -q "positive-material-row" src/css/material-list.css || { echo "material list positive red style missing"; exit 1; }
+          grep -q "if(r.positive)row.font" src/js/output/output-export-controller.js || { echo "Excel material positive row color missing"; exit 1; }
+          # 部屋別リストは陽性行の部屋No.・部屋名・部屋備考も含めて赤表示
+          grep -q "roomRows.some.*RED:BLACK" src/js/output/output-pdf-renderer.js || { echo "room group positive color mapping missing"; exit 1; }
+          grep -q "roomNo.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room number does not follow positive row color"; exit 1; }
+          grep -q "roomName.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room name does not follow positive row color"; exit 1; }
+          grep -q "roomNote.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room note does not follow positive row color"; exit 1; }
+          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color rule changed"; exit 1; }
           if grep -q "remarks||record.note\|remarks||material.note" src/js/output/output-view-model.js; then
             echo "analysis remarks are still mixed into survey note output"
             exit 1

@@ -556,4 +556,5 @@ export function initializePhotoTab() {
   window.addEventListener('online', () => {
     void hydrateCurrentPhotoPreviews(root).then(() => hydrateThumbnailImages(root));
   });
+  window.addEventListener('chousa:material-room-display-change', refreshPhotoTab);
 }

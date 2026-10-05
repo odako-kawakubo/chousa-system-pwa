@@ -101,12 +101,13 @@ function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
     const selected = String(row.materialId) === String(selectedMaterialId)
       ? ' selected-material-row'
       : '';
+    const positive = row.positive ? ' positive-material-row' : '';
     const rowColorStyle = colorMode && row.color
       ? ` style="--material-row-color:${escapeAttr(row.color)}"`
       : '';
 
     return `
-      <tr class="${selected.trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
+      <tr class="${(selected + positive).trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
         <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
         <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
         <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
@@ -222,7 +223,7 @@ function renderSamplePlaceCell(row, index) {
   const enabled = row.sampleLocationEnabled[index - 1];
   return `
     <td class="col-sample-place material-control-cell${enabled ? '' : ' disabled-cell'}">
-      ${renderCandidateSelect(row, field, row.usagePlaces, current, !enabled)}
+      ${renderCandidateSelect(row, field, row.sampleLocationOptions || row.usagePlaces, current, !enabled)}
     </td>
   `;
 }
@@ -273,7 +274,17 @@ function renderPartLines(value) {
 }
 
 function renderCandidateSelect(row, field, candidates, current, disabled = false) {
-  const values = uniqueWithCurrent(candidates, current);
+  const options = [];
+  (candidates || []).forEach((candidate) => {
+    const value = String(candidate && typeof candidate === 'object' ? candidate.value : candidate || '').trim();
+    if (!value || options.some((item) => item.value === value)) return;
+    const label = String(candidate && typeof candidate === 'object' ? candidate.display : candidate || value).trim() || value;
+    options.push({ value, label });
+  });
+  const currentValue = String(current || '').trim();
+  if (currentValue && !options.some((item) => item.value === currentValue)) {
+    options.push({ value: currentValue, label: currentValue });
+  }
   return `
     <select
       class="material-select compact-select"
@@ -283,7 +294,7 @@ function renderCandidateSelect(row, field, candidates, current, disabled = false
       ${disabled ? 'disabled' : ''}
     >
       <option value=""></option>
-      ${values.map((value) => `<option value="${escapeAttr(value)}" ${String(current) === String(value) ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}
+      ${options.map((item) => `<option value="${escapeAttr(item.value)}" ${currentValue === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>
   `;
 }

@@ -119,11 +119,25 @@ function findWorksheetPath(workbookDoc, relsDoc, worksheetName) {
   return normalizePackagePath('xl', target);
 }
 
+function isPhoneticTextNode(node, boundary) {
+  let current = node?.parentElement || null;
+  while (current && current !== boundary) {
+    if (current.localName === 'rPh') return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function readSharedStringItem(si) {
+  return Array.from(si.getElementsByTagNameNS('*', 't'))
+    .filter((node) => !isPhoneticTextNode(node, si))
+    .map((node) => node.textContent || '')
+    .join('');
+}
+
 function readSharedStrings(doc) {
   if (!doc) return [];
-  return Array.from(doc.getElementsByTagNameNS('*', 'si')).map((si) => (
-    Array.from(si.getElementsByTagNameNS('*', 't')).map((node) => node.textContent || '').join('')
-  ));
+  return Array.from(doc.getElementsByTagNameNS('*', 'si')).map(readSharedStringItem);
 }
 
 function worksheetCellValue(sheetDoc, address, sharedStrings) {

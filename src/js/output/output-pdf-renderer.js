@@ -115,7 +115,8 @@ function roomNoTokens(value) {
 function wrapRoomNoLines(pdf,value,width,size) {
   const tokens=roomNoTokens(value);
   if(!tokens.length)return [];
-  setFont(pdf,size,'normal');
+  pdf.setFont(FONT_FAMILY,'normal');
+  pdf.setFontSize(size);
   const lines=[];
   let current='';
   tokens.forEach((token)=>{
@@ -219,7 +220,7 @@ function drawListFootnote(pdf,settings,tableEndY) {
   pdf.text(lines,MARGIN_X,tableEndY+FOOTNOTE_GAP+settings.noteSize*.352778,{lineHeightFactor:1.25});
 }
 
-function drawMaterialHeader(pdf,x,y,widths,height,settings) {
+function drawMaterialHeader(pdf,x,y,widths,height,settings,locationLabel='部屋No.') {
   const labels=[['建材','No.'],['建材名'],['部位'],null,['建材','Lv.'],['分析の要否'],['石綿含有','の有無'],['調査備考']];
   let cx=x;
   widths.forEach((width,index)=>{
@@ -228,7 +229,7 @@ function drawMaterialHeader(pdf,x,y,widths,height,settings) {
       const topH=height*.38;
       pdf.setDrawColor(...BLACK);pdf.setLineWidth(.2);pdf.line(cx,y+topH,cx+width,y+topH);
       drawCellText(pdf,'施工範囲',cx,y,width,topH,{align:'center',size:Math.max(6.5,settings.materialHeaderSize-.5),style:'bold',paddingX:.3,lineHeight:1});
-      drawCellText(pdf,'部屋No.',cx,y+topH,width,height-topH,{align:'center',size:settings.materialHeaderSize,style:'bold',paddingX:.3,lineHeight:1});
+      drawCellText(pdf,locationLabel,cx,y+topH,width,height-topH,{align:'center',size:settings.materialHeaderSize,style:'bold',paddingX:.3,lineHeight:1});
     }else drawCellText(pdf,labels[index],cx,y,width,height,{align:'center',size:settings.materialHeaderSize,style:'bold',paddingX:.25,lineHeight:1});
     cx+=width;
   });
@@ -274,7 +275,7 @@ function renderMaterialPages(pdf,vm,state,settings) {
   pages.forEach((page)=>{
     addPage(pdf,state);
     drawTitle(pdf,titleText('調査対象建材リスト',settings.materialTitleSuffix),settings);
-    drawMaterialHeader(pdf,MARGIN_X,LIST_START_Y,widths,headerH,settings);
+    drawMaterialHeader(pdf,MARGIN_X,LIST_START_Y,widths,headerH,settings,vm.materialLocationLabel||'部屋No.');
     let y=LIST_START_Y+headerH;
     page.rows.forEach((row,index)=>{const h=page.heights[index];drawMaterialBodyRow(pdf,row,y,h,widths,settings);y+=h;});
     drawListFootnote(pdf,settings,y);
@@ -354,7 +355,8 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
     const roomKey=(item)=>`${item.floor}\u0000${item.roomNo}`;
     if(!precedingSame(rows,index,roomKey)){
       const span=pageSpan(rows,index,roomKey);const h=spanHeight(heights,index,span);
-      [{col:1,value:row.roomNo,center:true,roomTokens:true,color:BLACK},{col:2,value:row.roomName,center:true,color:BLACK},{col:9,value:row.roomNote,center:false,color:BLACK}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color:cell.color,paddingX:.8,roomTokens:cell.roomTokens});});
+      const roomRows=rows.slice(index,index+span);const roomColor=roomRows.some((item)=>(item.positive??isPositive(item.analysisResult)))?RED:BLACK;
+      [{col:1,value:row.roomNo,center:true,roomTokens:true,color:roomColor},{col:2,value:row.roomName,center:true,color:roomColor},{col:9,value:row.roomNote,center:false,color:roomColor}].forEach((cell)=>{drawRect(pdf,xs[cell.col],y,widths[cell.col],h);drawCellText(pdf,cell.value,xs[cell.col],y,widths[cell.col],h,{align:cell.center?'center':'left',size:settings.roomBodySize,color:cell.color,paddingX:.8,roomTokens:cell.roomTokens});});
     }
     y+=rowH;
   });
@@ -419,7 +421,7 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
   pages.forEach((item)=>{
     addPage(pdf,state);drawTitle(pdf,'試料採取写真',settings,true);
     const leftX=10;const metaY=32;const lineH=8.5;const labelW=15;const rightEdge=190;
-    [['件名：',item.projectName],['試料：',item.sampleName],['場所：',item.samplingPlace?`部屋No.${item.samplingPlace}`:'']].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
+    [['件名：',item.projectName],['試料：',item.sampleName],['場所：',item.samplingPlace?(item.samplingPlaceLabel === '部屋名' ? item.samplingPlace : `部屋No.${item.samplingPlace}`):'']].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
     setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(formatSamplingCode(item),rightEdge,metaY,{align:'right'});
     setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),rightEdge,metaY+lineH,{align:'right'});
     const stageMap=new Map((item.stages||[]).map((stage)=>[stage.type,stage]));

@@ -8,7 +8,10 @@
  */
 import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
 import { getCurrentProject } from '../projects/project-store.js';
-import { retryUnsentBatch, BULK_SYNC_BATCH_SIZE } from '../firestore/firestore-repository.js';
+import {
+  retryUnsentForProject,
+  PROJECT_BULK_SYNC_BATCH_SIZE
+} from '../sync/project-record-persistence.js';
 import { openModal, closeModal } from './modal.js';
 
 const OFFLINE_MODAL_ID = 'manualOfflineModal';
@@ -165,9 +168,8 @@ async function runBulkSync() {
       }
       if (status.unsentCount <= 0) return;
 
-      const result = await retryUnsentBatch({
-        projectId,
-        batchSize: BULK_SYNC_BATCH_SIZE
+      const result = await retryUnsentForProject(project, {
+        batchSize: PROJECT_BULK_SYNC_BATCH_SIZE
       });
 
       if (String(getCurrentProject()?.projectId || '') !== projectId) return;

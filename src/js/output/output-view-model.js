@@ -10,7 +10,8 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { samplePartsToText } from '../records/material-record.js';
 import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
-import { getMaterialUsageRoomLabels } from '../finish-table/material-usage-derived.js';
+import { getMaterialUsageRoomLabels, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import {
   getVisualOutputPhotoId,
   getSamplingOutputPhotoId,
@@ -55,8 +56,8 @@ function reportAnalysisFields(record){
   return { analysisRequired:'採取・分析', analysisResult:sourceResult||'-', positive:sourcePositive };
 }
 
-export function buildMaterialListOutput({locationMode='room-no'}={}){
-  const preferRoomName=locationMode==='room-name';
+export function buildMaterialListOutput(){
+  const preferRoomName=getMaterialRoomNameMode();
   return activeMaterials().map((record)=>{
     const labels=getMaterialUsageRoomLabels(record.inputId,{preferRoomName});
     const reportAnalysis=reportAnalysisFields(record);
@@ -74,7 +75,7 @@ export function buildMaterialListOutput({locationMode='room-no'}={}){
   });
 }
 
-export function buildRoomMaterialOutput(){
+export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
   const materialById=new Map(activeMaterials().map((record)=>[String(record.materialId),record]));
   return finishRecordStore.getAll().filter((record)=>record.status==='active')
     .filter((record)=>record.materialId||text(record.materialName)).slice().sort(compareRoomRecord)
@@ -90,7 +91,8 @@ export function buildRoomMaterialOutput(){
         level:material?(text(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,positive:reportAnalysis.positive,
         registered:Boolean(material)
       };
-    });
+    })
+    .filter((row)=>includeUnregisteredExcluded||row.registered);
 }
 
 export function buildVisualPhotoOutput(){
@@ -137,7 +139,12 @@ export function buildSamplingPhotoOutput(){
       pages.push({
         materialId:material.materialId,materialNo:material.materialNo||material.inputId||'',sampleNo:samplingBaseNo(firstPhoto,materialIndex+1),
         sampleName:buildMaterialSampleName(material),branch,projectName:text(getCurrentProject()?.projectName),projectNo:text(getCurrentProject()?.projectNo||getCurrentProject()?.projectId),
-        materialName:text(material.name),part:samplePartsToText(material.samplePart)||text(material.part),samplingPlace:text(material[`sampleLocation${branch}`]),capturedDate:formatCapturedDate(firstPhoto),stages
+        materialName:text(material.name),part:samplePartsToText(material.samplePart)||text(material.part),
+        ...(() => {
+          const place=getMaterialSampleLocationDisplay(material.inputId,material[`sampleLocation${branch}`],{preferRoomName:getMaterialRoomNameMode()});
+          return {samplingPlace:place.value,samplingPlaceLabel:place.label};
+        })(),
+        capturedDate:formatCapturedDate(firstPhoto),stages
       });
     }
   });
@@ -148,8 +155,9 @@ export function buildOutputViewModel(options={}){
   const validPhotoIds=new Set(photoRecordStore.getActive().map((photo)=>String(photo.photoId)));
   clearInvalidOutputSelections(validPhotoIds);
   return {
-    materialRows:buildMaterialListOutput({locationMode:options.materialLocationMode}),
-    roomRows:buildRoomMaterialOutput(),
+    materialLocationLabel:getMaterialRoomNameMode()?'部屋名':'部屋No.',
+    materialRows:buildMaterialListOutput(),
+    roomRows:buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false}),
     visualPhotoItems:buildVisualPhotoOutput(),
     samplingPhotoPages:buildSamplingPhotoOutput()
   };
