@@ -3,7 +3,7 @@
  * 設定タブの入口。
  */
 
-import { getCurrentProject } from '../projects/project-store.js';
+import { getCurrentProject, updateProjectFields } from '../projects/project-store.js';
 import * as surveyCandidateStore from '../store/survey-candidate-store.js';
 import { renderSettingsTab } from './settings-renderer.js';
 import * as boardSettingsStore from './board-settings-store.js';
@@ -16,6 +16,7 @@ import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosti
 import { getOneDriveConnectionState, subscribeOneDriveConnection } from '../onedrive/onedrive-connection.js';
 import { listSystemDataBackups, saveSystemDataNow } from '../onedrive/system-data-backup.js';
 import { mountOutputSettingsSection, bindOutputSettingsSection } from './output-settings-section.js';
+import { persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
 
 let root = null;
 let unsubscribe = null;
@@ -24,6 +25,7 @@ let unsubscribeAuth = null;
 let unsubscribeDevice = null;
 let unsubscribeOneDrive = null;
 let unsubscribeSyncDiagnosticLog = null;
+let projectMetadataSaveTimer = null;
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -161,6 +163,29 @@ function renderBoardPreview() {
   if (canvas) renderBoardSample(canvas, boardPreviewData());
 }
 
+function scheduleProjectMetadataPersist(project) {
+  if (!project?.projectId || project.isSample) return;
+  if (projectMetadataSaveTimer) window.clearTimeout(projectMetadataSaveTimer);
+  const snapshot = { ...project, boardSettings: { ...(project.boardSettings || {}) } };
+  projectMetadataSaveTimer = window.setTimeout(() => {
+    projectMetadataSaveTimer = null;
+    void persistProjectMetadataForProject(snapshot).catch((error) => {
+      console.error('[M-06] 案件情報をFirestoreへ保存できませんでした。', error);
+    });
+  }, 350);
+}
+
+function currentBoardSettingsPayload(values = {}) {
+  return {
+    surveyDate: String(values.surveyDate || ''),
+    surveyor: String(values.surveyor || ''),
+    subjectText: String(values.subjectText || ''),
+    addressText: String(values.addressText || ''),
+    subjectFontSize: Number(values.subjectFontSize) || 18,
+    addressFontSize: Number(values.addressFontSize) || 17
+  };
+}
+
 function syncBoardFromInputs(changedElement = null) {
   if (!root) return;
   const projectNoInput = root.querySelector('[data-setting-project-field="projectNo"]');
@@ -180,13 +205,43 @@ function syncBoardFromInputs(changedElement = null) {
   if (changedElement?.matches('[data-setting-project-field="projectName"]') && subjectTextInput) subjectTextInput.value = projectName;
   if (changedElement?.matches('[data-setting-project-field="address"]') && addressTextInput) addressTextInput.value = address;
 
-  boardSettingsStore.set({
-    projectNo, projectName, address, surveyDate, surveyor,
-    subjectText:subjectTextInput?.value ?? projectName,
-    addressText:addressTextInput?.value ?? address,
-    subjectFontSize:root.querySelector('[data-board-setting="subjectFontSize"]')?.value,
-    addressFontSize:root.querySelector('[data-board-setting="addressFontSize"]')?.value
+  const boardSettings = currentBoardSettingsPayload({
+    surveyDate,
+    surveyor,
+    subjectText: subjectTextInput?.value ?? projectName,
+    addressText: addressTextInput?.value ?? address,
+    subjectFontSize: root.querySelector('[data-board-setting="subjectFontSize"]')?.value,
+    addressFontSize: root.querySelector('[data-board-setting="addressFontSize"]')?.value
   });
+
+  boardSettingsStore.set({
+    projectNo,
+    projectName,
+    address,
+    ...boardSettings
+  });
+
+  const currentProject = getCurrentProject();
+  if (currentProject?.projectId) {
+    const nextProject = updateProjectFields(currentProject.projectId, {
+      projectNo,
+      projectName,
+      address,
+      surveyDate,
+      surveyor,
+      boardSettings
+    }) || {
+      ...currentProject,
+      projectNo,
+      projectName,
+      address,
+      surveyDate,
+      surveyor,
+      boardSettings
+    };
+    scheduleProjectMetadataPersist(nextProject);
+  }
+
   renderBoardPreview();
 }
 
@@ -233,7 +288,21 @@ async function handleClick(event) {
   if (event.target.closest('[data-action="clear-sync-diagnostic-log"]')) { clearSyncDiagnosticLog(); refreshSyncDiagnosticLogView(); return; }
   const fontAdjust=event.target.closest('[data-board-font-adjust]');
   if(fontAdjust){adjustBoardFontSize(fontAdjust.dataset.boardFontAdjust,Number(fontAdjust.dataset.boardFontDelta||0));return;}
-  if(event.target.closest('[data-action="reset-board-settings"]')){boardSettingsStore.resetFormatting();render();return;}
+  if(event.target.closest('[data-action="reset-board-settings"]')){
+    const board = boardSettingsStore.resetFormatting();
+    const currentProject = getCurrentProject();
+    if (currentProject?.projectId) {
+      const boardSettings = currentBoardSettingsPayload(board);
+      const nextProject = updateProjectFields(currentProject.projectId, {
+        surveyDate: board.surveyDate,
+        surveyor: board.surveyor,
+        boardSettings
+      }) || { ...currentProject, boardSettings };
+      scheduleProjectMetadataPersist(nextProject);
+    }
+    render();
+    return;
+  }
   if(event.target.closest('[data-action="add-setting-material"]')){
     const part=root.querySelector('[data-setting-add-material-part]')?.value||'';
     const baseName=root.querySelector('[data-setting-add-material-name]')?.value||'';
