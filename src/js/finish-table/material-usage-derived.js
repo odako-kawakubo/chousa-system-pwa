@@ -62,7 +62,7 @@ function compareMaterialUsageRecords(a, b) {
   return 0;
 }
 
-export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } = {}) {
+export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } = {}) {
   const material = materialRecordStore.findByInputId(inputId);
   if (!material) return [];
 
@@ -78,9 +78,32 @@ export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } =
     .map((record) => {
       const roomNo = String(record.roomNo || '').trim();
       const roomName = String(record.roomName || '').trim();
-      return preferRoomName ? (roomName || roomNo) : roomNo;
+      const useRoomName = Boolean(preferRoomName && roomName);
+      const value = roomNo || roomName;
+      if (!value) return null;
+      return {
+        value,
+        display: useRoomName ? roomName : value,
+        label: useRoomName ? '部屋名' : '部屋No.',
+        roomNo,
+        roomName
+      };
     })
     .filter(Boolean);
+}
+
+export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } = {}) {
+  return getMaterialUsageRoomOptions(inputId, { preferRoomName }).map((item) => item.display);
+}
+
+export function getMaterialSampleLocationDisplay(inputId, location, { preferRoomName = false } = {}) {
+  const raw = String(location || '').trim();
+  if (!raw) return { value:'', label: preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'' };
+
+  const options = getMaterialUsageRoomOptions(inputId, { preferRoomName });
+  const matched = options.find((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
+  if (matched) return { value: matched.display, label: matched.label, roomNo: matched.roomNo, roomName: matched.roomName };
+  return { value: raw, label:'部屋No.', roomNo:raw, roomName:'' };
 }
 
 export function getMaterialUsageRoomNos(inputId) {
