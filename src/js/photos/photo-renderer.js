@@ -252,7 +252,7 @@ export function renderSamplingPointBlock(point, openKeys) {
     <div class="sample-compact-head">
       <div class="sample-compact-info">
         <span><span class="label">試料No.：</span><b>${esc(point.sampleNo || '-')}</b></span>
-        <span><span class="label">採取場所：</span>${esc(point.samplingPlace || '-')}</span>
+        <span><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span>${esc(point.samplingPlace || '-')}</span>
         <span><span class="label">採取部位：</span>${esc(point.part || '-')}</span>
       </div>
       <span class="sample-next">次：${esc(point.nextStage)}</span>
