@@ -60,6 +60,7 @@ import {
   updateStickyMetrics
 } from './finish-table-renderer.js';
 import { recordHistory, canUndo, canRedo, popUndo, popRedo, resetHistory } from './finish-table-history.js';
+import { persistUndoRedoSnapshotDiff } from './finish-table-history-persistence.js';
 import { initSimpleList, renderSimpleList } from '../materials/simple-list.js';
 import {
   configureFinishTableEditSession,
@@ -260,16 +261,26 @@ function scrollToAddedFloor(floorKey) {
 
 /** 「戻る／進む」ボタンを配線する。コピー専用の「戻す」とは別の履歴。 */
 function bindUndoRedoButtons() {
-  document.getElementById('finishUndoBtn')?.addEventListener('click', () => {
+  document.getElementById('finishUndoBtn')?.addEventListener('click', async () => {
     if (!isTutorialActionAllowed('finish.history.undo')) return;
-    const restored = popUndo(getUndoableSnapshot());
-    if (restored) restoreUndoableSnapshot(restored);
+    const before = getUndoableSnapshot();
+    const restored = popUndo(before);
+    if (restored) {
+      restoreUndoableSnapshot(restored);
+      await persistUndoRedoSnapshotDiff(before, restored, 'finish-history-undo');
+      refreshFromStores();
+    }
     updateUndoRedoButtons();
   });
-  document.getElementById('finishRedoBtn')?.addEventListener('click', () => {
+  document.getElementById('finishRedoBtn')?.addEventListener('click', async () => {
     if (!isTutorialActionAllowed('finish.history.redo')) return;
-    const restored = popRedo(getUndoableSnapshot());
-    if (restored) restoreUndoableSnapshot(restored);
+    const before = getUndoableSnapshot();
+    const restored = popRedo(before);
+    if (restored) {
+      restoreUndoableSnapshot(restored);
+      await persistUndoRedoSnapshotDiff(before, restored, 'finish-history-redo');
+      refreshFromStores();
+    }
     updateUndoRedoButtons();
   });
 }
