@@ -46,7 +46,7 @@ function renderSamplingEditor(vm) {
   return `<div class="output-editor-list">${pages.map((page) => {
     const sampleLabel = [
       page.sampleName,
-      page.samplingPlace ? `${page.samplingPlaceLabel === '部屋名' ? '部屋名 ' : '部屋No.'}${page.samplingPlace}` : ''
+      page.samplingPlace ? (page.samplingPlaceLabel === '部屋名' ? page.samplingPlace : `部屋No.${page.samplingPlace}`) : ''
     ].filter(Boolean).join('　');
 
     const stages = (page.stages || []).map((stage) => `
