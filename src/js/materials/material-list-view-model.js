@@ -16,6 +16,13 @@ export const MATERIAL_LEVEL_OPTIONS = ['-', '3', '2', '1'];
 export const MATERIAL_ANALYSIS_OPTIONS = ['採取・分析', '目視', 'みなし', '対象外'];
 export const MATERIAL_SAMPLE_COUNT_OPTIONS = ['1', '2', '3'];
 
+export function isMaterialPositive(record) {
+  const required = String(record?.analysisRequired || '').trim();
+  const result = String(record?.analysisResult || '').trim();
+  if (required === 'みなし') return true;
+  return result === '石綿含有' || result === '有' || result.includes('石綿含有');
+}
+
 /** 有効建材を建材No.順に並べ、表示用オブジェクトへ変換する。 */
 export function buildMaterialListRows(records) {
   return (records || [])
@@ -39,6 +46,7 @@ export function buildMaterialListRows(records) {
         level: normalizeLevel(record.level),
         analysisRequired: String(record.analysisRequired || '採取・分析'),
         analysisResult: String(record.analysisResult || ''),
+        positive: isMaterialPositive(record),
         remarks: String(record.remarks || ''),
         samplingEnabled: String(record.analysisRequired || '採取・分析') === '採取・分析',
         note: String(record.note || ''),
