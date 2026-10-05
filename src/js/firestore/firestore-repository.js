@@ -199,12 +199,23 @@ function appendRecordOperationToBatch(batch, entry) {
  * 複数Record更新をBULK_SYNC_BATCH_SIZE単位でcommitする。大量同期時にFirestore batch上限へ近づかないよう分割する。
  */
 async function commitRecordEntries(entries = []) {
-  if (!entries.length) return { ok: true, sent: 0 };
+  if (!entries.length) return { ok: true, sent: 0, committedEntries: [] };
   const batch = writeBatch(db);
   entries.forEach((entry) => appendRecordOperationToBatch(batch, entry));
   await batch.commit();
   entries.forEach((entry) => removeUnsent(entry.projectId, entry.recordType, entry.recordId));
-  return { ok: true, sent: entries.length };
+  return {
+    ok: true,
+    sent: entries.length,
+    committedEntries: entries.map((entry) => ({
+      projectId: entry.projectId,
+      environment: entry.environment,
+      recordType: entry.recordType,
+      recordId: entry.recordId,
+      operation: entry.operation,
+      record: entry.record ? { ...entry.record } : null
+    }))
+  };
 }
 
 /**
@@ -403,6 +414,7 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
       queued: false,
       operation,
       retried: Number(retryResult.sent || 0),
+      retriedEntries: retryResult.committedEntries || [],
       retryError: retryResult.ok === false && !retryResult.skipped ? retryResult.error || null : null
     };
   } catch (error) {
