@@ -16,11 +16,11 @@ import {
 import { persistSparseFinishRecord } from './finish-table-persistence.js';
 
 const FINISH_META_FIELDS = new Set([
-  'updatedAt','updatedDevice','fieldEditedAt','roomUid','inputId'
+  'updatedAt','updatedDevice','fieldEditedAt','roomUid','inputId','finishId'
 ]);
 const MATERIAL_META_FIELDS = new Set([
   'updatedAt','updatedDevice','fieldEditedAt','color','photoCount',
-  'materialNo','inputId','baseName','suffixLetter'
+  'materialId','materialNo','inputId','baseName','suffixLetter'
 ]);
 
 function recordMap(records, idField) {
