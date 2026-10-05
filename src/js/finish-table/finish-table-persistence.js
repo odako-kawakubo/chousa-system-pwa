@@ -50,10 +50,11 @@ export function persistSparseFinishRecord(
   previousRecord = null,
   previousAllRecords = null
 ) {
-  if (!project?.projectId || project.isSample || !record?.finishId) return;
+  if (!project?.projectId || project.isSample || !record?.finishId) {
+    return Promise.resolve({ ok: true, skipped: true });
+  }
   if (shouldKeepSparseFinishRecord(record, allRecords)) {
-    persistFinishForProject(project, record, 'finish-sparse-cell');
-    return;
+    return persistFinishForProject(project, record, 'finish-sparse-cell');
   }
 
   const previousWasPersistable = Boolean(
@@ -64,8 +65,9 @@ export function persistSparseFinishRecord(
   // M-01: 「非初期 → 初期」はknown集合の状態に依存せずdeleteする。
   // オフラインsetがまだknownへ入っていない場合でも、同一recordの未送信setをdeleteへ置き換えられる。
   if (previousWasPersistable || hasKnownFinishRecord(project.projectId, record.finishId)) {
-    deleteFinishForProject(project, record, 'finish-sparse-reset');
+    return deleteFinishForProject(project, record, 'finish-sparse-reset');
   }
+  return Promise.resolve({ ok: true, skipped: true });
 }
 
 export function persistAddedStructureMarker(records = []) {
