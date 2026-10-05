@@ -22,7 +22,8 @@ import {
   newestCursorsFromChanges,
   latestCursorValue,
   readProjectMetadataForProject,
-  subscribeProjectMetadataForProject
+  subscribeProjectMetadataForProject,
+  persistProjectMetadataForProject
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
@@ -275,6 +276,32 @@ async function openFirestoreProjectSession(target) {
         // full取得でも全画面refreshへ戻さない。置換されたRecord種別の影響だけを反映する。
         refreshProjectViewsForChanges(fullImpact);
       }
+    }
+
+    // M-06: 旧案件でFirestoreにboardSettingsがまだ無い場合だけ、
+    // 現端末の従来localStorage看板設定を正本へ1回昇格する。
+    if (!project.boardSettings) {
+      const cachedBoard = boardSettingsStore.get();
+      const migratedBoard = {
+        surveyDate: String(cachedBoard.surveyDate || ''),
+        surveyor: String(cachedBoard.surveyor || ''),
+        subjectText: String(cachedBoard.subjectText || project.projectName || ''),
+        addressText: String(cachedBoard.addressText || project.address || ''),
+        subjectFontSize: Number(cachedBoard.subjectFontSize) || 18,
+        addressFontSize: Number(cachedBoard.addressFontSize) || 17
+      };
+      project = {
+        ...project,
+        surveyDate: migratedBoard.surveyDate,
+        surveyor: migratedBoard.surveyor,
+        boardSettings: migratedBoard
+      };
+      target.project = project;
+      updateProjectFields(project.projectId, project);
+      await persistProjectMetadataForProject(project);
+      syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
+        projectId: project.projectId
+      });
     }
 
     const caughtUpCursors = normalizeProjectRecordCursors(remote.cursors || cursors);
