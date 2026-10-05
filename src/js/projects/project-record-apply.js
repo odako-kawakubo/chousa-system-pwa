@@ -13,7 +13,8 @@ import {
   applyKnownFinishChange,
   restoreKnownFinishRecords
 } from '../sync/project-record-persistence.js';
-import { listUnsent } from '../sync/unsent-queue.js';
+import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
+import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from '../sync/record-field-merge.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -42,9 +43,9 @@ export function applyProjectRecordChanges(project, changes = []) {
     return { applied: 0, skipped: changes.length, persisted: false };
   }
 
-  const unsentKeys = new Set(
+  const unsentByKey = new Map(
     listUnsent({ projectId: project.projectId })
-      .map((item) => `${item.recordType}|${item.recordId}`)
+      .map((item) => [`${item.recordType}|${item.recordId}`, item])
   );
   const safeChanges = [];
   let skipped = 0;
@@ -59,24 +60,25 @@ export function applyProjectRecordChanges(project, changes = []) {
     materialIdsBefore: materialRecordStore.exportSnapshot()
       .map((record) => String(record.materialId || ''))
       .filter(Boolean),
-    unsentKeys: [...unsentKeys],
+    unsentKeys: [...unsentByKey.keys()],
     cursorBefore: getProjectRecordCursors(project.projectId)
   });
 
   changes.forEach((change) => {
     const key = `${change.recordType}|${change.id}`;
-    if (unsentKeys.has(key)) {
+    const unsent = unsentByKey.get(key);
+    if (unsent?.operation === 'delete') {
       skipped += 1;
       syncDiagnosticLog('SYNC_APPLY_CHANGE', {
         projectId: project.projectId,
         recordType: change.recordType,
         recordId: String(change.id || ''),
         result: 'skipped',
-        reason: 'unsent'
+        reason: 'unsent-delete'
       });
       return;
     }
-    safeChanges.push(change);
+    safeChanges.push({ ...change, unsent });
   });
 
   let changed = false;
@@ -103,11 +105,7 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = materialRecordStore.get(id);
-      if (
-        change.changeType !== 'removed'
-        && current
-        && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-      ) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -119,9 +117,27 @@ export function applyProjectRecordChanges(project, changes = []) {
         return;
       }
 
-      registerMaterialProjectViewImpact(viewImpact, current, change);
+      let effectiveChange = change;
+      if (change.changeType !== 'removed' && current && change.record) {
+        const merged = mergeRecordByFieldEditedAt('material', current, change.record, {
+          prefer: change.unsent ? 'local' : 'incoming'
+        });
+        effectiveChange = { ...change, record: merged.record };
+        if (change.unsent?.record && !sameMergedBusinessRecord('material', change.unsent.record, merged.record)) {
+          putUnsent({
+            projectId: change.unsent.projectId,
+            environment: change.unsent.environment,
+            recordType: 'material',
+            recordId: id,
+            operation: 'set',
+            record: merged.record
+          });
+        }
+      }
+
+      registerMaterialProjectViewImpact(viewImpact, current, effectiveChange);
       rawMaterials = rawMaterials.filter((record) => String(record.materialId) !== id);
-      if (change.changeType !== 'removed' && change.record) rawMaterials.push(change.record);
+      if (effectiveChange.changeType !== 'removed' && effectiveChange.record) rawMaterials.push(effectiveChange.record);
       materialChanged = true;
       changed = true;
       applied += 1;
@@ -161,11 +177,7 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = finishRecordStore.get(id);
-      if (
-        change.changeType !== 'removed'
-        && current
-        && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-      ) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -177,8 +189,26 @@ export function applyProjectRecordChanges(project, changes = []) {
         return;
       }
 
-      registerFinishProjectViewImpact(viewImpact, current, change);
-      applyKnownFinishChange(project.projectId, change);
+      let effectiveChange = change;
+      if (change.changeType !== 'removed' && current && change.record) {
+        const merged = mergeRecordByFieldEditedAt('finish', current, change.record, {
+          prefer: change.unsent ? 'local' : 'incoming'
+        });
+        effectiveChange = { ...change, record: merged.record };
+        if (change.unsent?.record && !sameMergedBusinessRecord('finish', change.unsent.record, merged.record)) {
+          putUnsent({
+            projectId: change.unsent.projectId,
+            environment: change.unsent.environment,
+            recordType: 'finish',
+            recordId: id,
+            operation: 'set',
+            record: merged.record
+          });
+        }
+      }
+
+      registerFinishProjectViewImpact(viewImpact, current, effectiveChange);
+      applyKnownFinishChange(project.projectId, effectiveChange);
       finishChanged = true;
       applied += 1;
 
@@ -219,11 +249,7 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = photoRecordStore.get(id);
-      if (
-        change.changeType !== 'removed'
-        && current
-        && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-      ) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -270,8 +296,26 @@ export function applyProjectRecordChanges(project, changes = []) {
         incomingCompletedItemId: Boolean(change.record?.completedItemId)
       });
 
-      registerPhotoProjectViewImpact(viewImpact, current, change);
-      const normalized = hydrateIncomingPhotoRecord(change.record);
+      let effectiveChange = change;
+      if (current && change.record) {
+        const merged = mergeRecordByFieldEditedAt('photo', current, change.record, {
+          prefer: change.unsent ? 'local' : 'incoming'
+        });
+        effectiveChange = { ...change, record: merged.record };
+        if (change.unsent?.record && !sameMergedBusinessRecord('photo', change.unsent.record, merged.record)) {
+          putUnsent({
+            projectId: change.unsent.projectId,
+            environment: change.unsent.environment,
+            recordType: 'photo',
+            recordId: id,
+            operation: 'set',
+            record: merged.record
+          });
+        }
+      }
+
+      registerPhotoProjectViewImpact(viewImpact, current, effectiveChange);
+      const normalized = hydrateIncomingPhotoRecord(effectiveChange.record);
 
       if (normalized) {
         photoRecordStore.set(normalized);
