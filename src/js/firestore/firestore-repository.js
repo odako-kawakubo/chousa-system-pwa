@@ -522,24 +522,24 @@ function normalizeBoardSettings(board = {}, project = {}) {
   };
 }
 
-function normalizeProjectMetadataData(data = {}, projectId = '') {
+function normalizeProjectMetadataData(data = {}, projectId = '', environment = 'production') {
   const id = String(data.projectId || projectId || '');
   if (!id) return null;
-  const boardSettings = normalizeBoardSettings(data.boardSettings || {}, data);
+  const hasBoardSettings = Boolean(data.boardSettings && typeof data.boardSettings === 'object');
+  const boardSettings = hasBoardSettings ? normalizeBoardSettings(data.boardSettings, data) : null;
   return {
     projectId: id,
     projectNo: String(data.projectNo || id),
     projectName: String(data.projectName || ''),
     address: String(data.address || ''),
-    surveyDate: String(data.surveyDate || boardSettings.surveyDate || ''),
-    surveyor: String(data.surveyor || boardSettings.surveyor || ''),
+    surveyDate: String(data.surveyDate || boardSettings?.surveyDate || ''),
+    surveyor: String(data.surveyor || boardSettings?.surveyor || ''),
     boardSettings,
     projectType: String(data.projectType || ''),
     isTemporary: Boolean(data.isTemporary),
     isSample: false,
-    environment: 'production',
-    createdAt: String(data.createdAt || ''),
-    updatedAt: data.updatedAt || null
+    environment: environment === 'test' ? 'test' : 'production',
+    createdAt: String(data.createdAt || '')
   };
 }
 
@@ -590,7 +590,7 @@ export async function readProjectMetadata({ projectId, environment = 'production
   if (!id || !canUseFirestore()) return null;
   const snapshot = await getDoc(projectDocRef(id, environment));
   if (!snapshot.exists()) return null;
-  return normalizeProjectMetadataData(snapshot.data(), id);
+  return normalizeProjectMetadataData(snapshot.data(), id, environment);
 }
 
 /** Firestore案件DocumentをRealtime購読する。案件情報・看板設定の端末間同期用。 */
@@ -606,7 +606,7 @@ export function subscribeProjectMetadata({ projectId, environment = 'production'
         hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites)
       });
       if (!snapshot.exists() || snapshot.metadata?.hasPendingWrites) return;
-      const project = normalizeProjectMetadataData(snapshot.data(), id);
+      const project = normalizeProjectMetadataData(snapshot.data(), id, environment);
       if (project) onProject?.(project);
     },
     (error) => onError?.(error)
