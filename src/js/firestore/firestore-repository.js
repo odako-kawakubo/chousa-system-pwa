@@ -480,6 +480,23 @@ export function saveMaterialRecord({ projectId, environment = 'production', reco
 }
 
 /**
+ * material RecordをFirestoreから物理削除する公開API。
+ * Undo/Redoで「新規登録そのものを無かったことにする」場合だけ使用する。
+ */
+export function deleteMaterialRecord({ projectId, environment = 'production', record, source = 'material-delete-unspecified' }) {
+  if (!record?.materialId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueueRepositoryWrite(() => writeWithQueue({
+    projectId,
+    environment,
+    recordType: 'material',
+    recordId: record.materialId,
+    operation: 'delete',
+    localRecord: record,
+    source
+  }));
+}
+
+/**
  * photo RecordをFirestoreへ保存する公開API。写真binaryではなくRecordメタデータを扱う。
  */
 export function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
