@@ -43,13 +43,27 @@ function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.get
   return false;
 }
 
-export function persistSparseFinishRecord(project, record, allRecords = finishRecordStore.getAll()) {
+export function persistSparseFinishRecord(
+  project,
+  record,
+  allRecords = finishRecordStore.getAll(),
+  previousRecord = null,
+  previousAllRecords = null
+) {
   if (!project?.projectId || project.isSample || !record?.finishId) return;
   if (shouldKeepSparseFinishRecord(record, allRecords)) {
     persistFinishForProject(project, record, 'finish-sparse-cell');
     return;
   }
-  if (hasKnownFinishRecord(project.projectId, record.finishId)) {
+
+  const previousWasPersistable = Boolean(
+    previousRecord?.finishId === record.finishId
+    && shouldKeepSparseFinishRecord(previousRecord, previousAllRecords || allRecords)
+  );
+
+  // M-01: 「非初期 → 初期」はknown集合の状態に依存せずdeleteする。
+  // オフラインsetがまだknownへ入っていない場合でも、同一recordの未送信setをdeleteへ置き換えられる。
+  if (previousWasPersistable || hasKnownFinishRecord(project.projectId, record.finishId)) {
     deleteFinishForProject(project, record, 'finish-sparse-reset');
   }
 }
@@ -81,10 +95,19 @@ export function persistFinishStructureChange(beforeRecords, afterRecords) {
     const previous = beforeMap.get(record.finishId);
     return !previous || !sameStructureRecord(previous, record);
   });
-  changed.forEach((record) => persistSparseFinishRecord(project, record, afterRecords));
+  changed.forEach((record) => {
+    persistSparseFinishRecord(
+      project,
+      record,
+      afterRecords,
+      beforeMap.get(record.finishId) || null,
+      beforeRecords
+    );
+  });
+
+  // beforeに存在しafterから消えたこと自体を削除根拠にする。
+  // Firestore未到達のrecordへのdeleteは無害で、未送信setがあれば同一キーのdeleteへ置き換わる。
   removed.forEach((record) => {
-    if (hasKnownFinishRecord(project.projectId, record.finishId)) {
-      deleteFinishForProject(project, record, 'finish-sparse-reset');
-    }
+    deleteFinishForProject(project, record, 'finish-sparse-reset');
   });
 }
