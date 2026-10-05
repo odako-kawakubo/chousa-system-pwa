@@ -47,7 +47,20 @@ export function commitRoomField(roomKey, field, rawValue) {
   const project = getCurrentProject();
   const currentRoomRecords = getRoomRecords(roomKey);
   const carrier = roomCarrierRecord(currentRoomRecords);
-  if (carrier) persistSparseFinishRecord(project, carrier, finishRecordStore.getAll());
+  const previousCarrier = roomCarrierRecord(records);
+  if (carrier) {
+    persistSparseFinishRecord(
+      project,
+      carrier,
+      finishRecordStore.getAll(),
+      previousCarrier,
+      finishRecordStore.getAll().map((record) => (
+        record.roomUid === roomKey && previousCarrier
+          ? records.find((before) => before.finishId === record.finishId) || record
+          : record
+      ))
+    );
+  }
 
   if (dataField === 'roomNo' || dataField === 'roomName') {
     refreshMaterialUsageDerivedFields('room-common-edit');
