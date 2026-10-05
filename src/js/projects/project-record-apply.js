@@ -11,7 +11,10 @@ import {
   hydrateIncomingMaterialRecord,
   hydrateIncomingPhotoRecord,
   applyKnownFinishChange,
-  restoreKnownFinishRecords
+  restoreKnownFinishRecords,
+  persistFinishForProject,
+  persistMaterialForProject,
+  persistPhotoForProject
 } from '../sync/project-record-persistence.js';
 import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from '../sync/record-field-merge.js';
@@ -105,7 +108,8 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = materialRecordStore.get(id);
-      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
+        && sameMergedBusinessRecord('finish', current, change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -119,7 +123,8 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       let effectiveChange = change;
       if (change.changeType !== 'removed' && current && change.record) {
-        const merged = mergeRecordByFieldEditedAt('material', current, change.record, {
+        const incomingMaterial = hydrateIncomingMaterialRecord(change.record, [])[0] || change.record;
+        const merged = mergeRecordByFieldEditedAt('material', current, incomingMaterial, {
           prefer: change.unsent ? 'local' : 'incoming'
         });
         effectiveChange = { ...change, record: merged.record };
@@ -132,6 +137,9 @@ export function applyProjectRecordChanges(project, changes = []) {
             operation: 'set',
             record: merged.record
           });
+        }
+        if (!change.unsent && merged.localWins.length) {
+          persistMaterialForProject(project, merged.record, 'conflict-merge-material');
         }
       }
 
@@ -177,7 +185,8 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = finishRecordStore.get(id);
-      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
+        && sameMergedBusinessRecord('photo', current, hydrateIncomingPhotoRecord(change.record) || change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -204,6 +213,9 @@ export function applyProjectRecordChanges(project, changes = []) {
             operation: 'set',
             record: merged.record
           });
+        }
+        if (!change.unsent && merged.localWins.length) {
+          persistFinishForProject(project, merged.record, 'conflict-merge-finish');
         }
       }
 
@@ -298,7 +310,8 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       let effectiveChange = change;
       if (current && change.record) {
-        const merged = mergeRecordByFieldEditedAt('photo', current, change.record, {
+        const incomingPhoto = hydrateIncomingPhotoRecord(change.record) || change.record;
+        const merged = mergeRecordByFieldEditedAt('photo', current, incomingPhoto, {
           prefer: change.unsent ? 'local' : 'incoming'
         });
         effectiveChange = { ...change, record: merged.record };
@@ -311,6 +324,9 @@ export function applyProjectRecordChanges(project, changes = []) {
             operation: 'set',
             record: merged.record
           });
+        }
+        if (!change.unsent && merged.localWins.length) {
+          persistPhotoForProject(project, merged.record, 'conflict-merge-photo');
         }
       }
 
