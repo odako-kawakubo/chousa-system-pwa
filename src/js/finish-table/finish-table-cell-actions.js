@@ -128,10 +128,12 @@ export function commitCellName(roomKey, partIndex, row, rawName) {
 
   const material = materialRecordStore.findByName(name);
   if (material) {
+    const currentCell = finishRecordStore.get(cellFinishId(anchor, partIndex, row));
     writeCellPatch(anchor, partIndex, row, {
       inputId: String(material.inputId),
       materialId: material.materialId,
-      materialName: ''
+      materialName: '',
+      ...partPatchForExistingMaterial(currentCell, partIndex, material)
     });
     return material;
   }
