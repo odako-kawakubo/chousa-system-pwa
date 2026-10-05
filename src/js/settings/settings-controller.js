@@ -25,7 +25,7 @@ let unsubscribeAuth = null;
 let unsubscribeDevice = null;
 let unsubscribeOneDrive = null;
 let unsubscribeSyncDiagnosticLog = null;
-let projectMetadataSaveTimer = null;
+const projectMetadataSaveTimers = new Map();
 
 function buildViewModel() {
   const board = boardSettingsStore.get();
@@ -165,14 +165,17 @@ function renderBoardPreview() {
 
 function scheduleProjectMetadataPersist(project) {
   if (!project?.projectId || project.isSample) return;
-  if (projectMetadataSaveTimer) window.clearTimeout(projectMetadataSaveTimer);
+  const projectId = String(project.projectId);
+  const previousTimer = projectMetadataSaveTimers.get(projectId);
+  if (previousTimer) window.clearTimeout(previousTimer);
   const snapshot = { ...project, boardSettings: { ...(project.boardSettings || {}) } };
-  projectMetadataSaveTimer = window.setTimeout(() => {
-    projectMetadataSaveTimer = null;
+  const timer = window.setTimeout(() => {
+    projectMetadataSaveTimers.delete(projectId);
     void persistProjectMetadataForProject(snapshot).catch((error) => {
       console.error('[M-06] 案件情報をFirestoreへ保存できませんでした。', error);
     });
   }, 350);
+  projectMetadataSaveTimers.set(projectId, timer);
 }
 
 function currentBoardSettingsPayload(values = {}) {
