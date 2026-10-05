@@ -151,9 +151,27 @@ export function restoreFinishRecordsFromSparse(rawSparseRecords = []) {
   ensureStructureFromSparse(map, sparse);
 
   // 入力枠固有の内容差分を先に上書きする。
+  // roomNo / roomName / roomNote の正本は標準末尾602だけ。
+  // 602以外の疎Recordに残っている古い部屋共通値は復元根拠にしない。
+  const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
   sparse.forEach((raw) => {
     const base = map.get(raw.finishId);
-    map.set(raw.finishId, base ? { ...base, ...raw, finishId: raw.finishId, roomUid: base.roomUid } : { ...raw, finishId: raw.finishId });
+    if (!base) {
+      map.set(raw.finishId, { ...raw, finishId: raw.finishId });
+      return;
+    }
+    const isCarrier = Number(raw.position) === standardCarrierPosition;
+    map.set(raw.finishId, {
+      ...base,
+      ...raw,
+      ...(isCarrier ? {} : {
+        roomNo: base.roomNo,
+        roomName: base.roomName,
+        roomNote: base.roomNote
+      }),
+      finishId: raw.finishId,
+      roomUid: base.roomUid
+    });
   });
 
   // roomNo / roomName / roomNote は部屋共通情報。6番目部位の標準末尾602を部屋全体へ展開する。
