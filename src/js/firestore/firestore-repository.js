@@ -283,7 +283,13 @@ async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE
       sent: result.sent,
       remaining
     });
-    return { ok: true, sent: result.sent, remaining, completed: remaining === 0 };
+    return {
+      ok: true,
+      sent: result.sent,
+      remaining,
+      completed: remaining === 0,
+      committedEntries: result.committedEntries || []
+    };
   } catch (error) {
     syncDiagnosticLog('UNSENT_BULK_BATCH_ERROR', {
       projectId: id,
