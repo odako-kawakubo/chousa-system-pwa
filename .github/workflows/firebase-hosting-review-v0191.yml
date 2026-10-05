@@ -735,6 +735,10 @@ jobs:
           grep -q "sourceRequired==='対象外'.*positive:sourcePositive" src/js/output/output-view-model.js || { echo "out-of-scope positive source mapping missing"; exit 1; }
           grep -q "positive:reportAnalysis.positive" src/js/output/output-view-model.js || { echo "report positive flag missing"; exit 1; }
           grep -q "row.positive??isPositive" src/js/output/output-pdf-renderer.js || { echo "PDF does not use report positive flag"; exit 1; }
+          grep -q "positive: isMaterialPositive(record)" src/js/materials/material-list-view-model.js || { echo "material list positive mapping missing"; exit 1; }
+          grep -q "positive-material-row" src/js/materials/material-list-renderer.js || { echo "material list positive row class missing"; exit 1; }
+          grep -q "positive-material-row" src/css/material-list.css || { echo "material list positive red style missing"; exit 1; }
+          grep -q "if(r.positive)row.font" src/js/output/output-export-controller.js || { echo "Excel material positive row color missing"; exit 1; }
           # 部屋別リストは陽性行の部屋No.・部屋名・部屋備考も含めて赤表示
           grep -q "roomRows.some.*RED:BLACK" src/js/output/output-pdf-renderer.js || { echo "room group positive color mapping missing"; exit 1; }
           grep -q "roomNo.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room number does not follow positive row color"; exit 1; }
