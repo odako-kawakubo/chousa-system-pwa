@@ -29,7 +29,8 @@ import {
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
-import { listUnsent } from './unsent-queue.js';
+import { listUnsent, putUnsent } from './unsent-queue.js';
+import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 
 let writeChain = Promise.resolve();
@@ -573,9 +574,36 @@ export async function readProjectRecordsForProject(project, {
     const id = String(record?.materialId || record?.id || '');
     if (id) materialRawMap.set(id, record);
   });
-  unsent.filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record)
-    .forEach((item) => materialRawMap.set(String(item.recordId), item.record));
-  const effectiveMaterials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
+
+  const materialMergedMap = new Map(
+    hydrateMaterialRecords(Array.from(materialRawMap.values()))
+      .map((record) => [String(record.materialId || ''), record])
+  );
+  unsent.filter((item) => item.recordType === 'material').forEach((item) => {
+    const id = String(item.recordId || '');
+    if (!id) return;
+    if (item.operation === 'delete') {
+      materialMergedMap.delete(id);
+      return;
+    }
+    if (!item.record) return;
+    const current = materialMergedMap.get(id);
+    const merged = current
+      ? mergeRecordByFieldEditedAt('material', current, item.record, { prefer: 'incoming' }).record
+      : item.record;
+    materialMergedMap.set(id, merged);
+    if (!sameMergedBusinessRecord('material', item.record, merged)) {
+      putUnsent({
+        projectId: item.projectId,
+        environment: item.environment,
+        recordType: 'material',
+        recordId: id,
+        operation: 'set',
+        record: merged
+      });
+    }
+  });
+  const effectiveMaterials = hydrateMaterialRecords(Array.from(materialMergedMap.values()));
   const materialById = new Map(effectiveMaterials.map((record) => [record.materialId, record]));
 
   let finishRecords = [];
@@ -600,8 +628,26 @@ export async function readProjectRecordsForProject(project, {
     unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
       const finishId = String(item.recordId || '');
       if (!finishId) return;
-      if (item.operation === 'delete') sparseFinishMap.delete(finishId);
-      else if (item.record) sparseFinishMap.set(finishId, item.record);
+      if (item.operation === 'delete') {
+        sparseFinishMap.delete(finishId);
+        return;
+      }
+      if (!item.record) return;
+      const current = sparseFinishMap.get(finishId);
+      const merged = current
+        ? mergeRecordByFieldEditedAt('finish', { ...current, finishId }, item.record, { prefer: 'incoming' }).record
+        : item.record;
+      sparseFinishMap.set(finishId, merged);
+      if (!sameMergedBusinessRecord('finish', item.record, merged)) {
+        putUnsent({
+          projectId: item.projectId,
+          environment: item.environment,
+          recordType: 'finish',
+          recordId: finishId,
+          operation: 'set',
+          record: merged
+        });
+      }
     });
     finishRecords = hydrateFinishRecords(
       restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values())),
@@ -614,10 +660,35 @@ export async function readProjectRecordsForProject(project, {
 
   let photoRecords = [];
   if (typeModes.photo === 'full') {
-    const photoRawMap = new Map((otherRaw.photoRecords || []).map((record) => [String(record.photoId || record.id || ''), record]));
-    unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
-      .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
-    photoRecords = hydratePhotoRecords(Array.from(photoRawMap.values()));
+    const photoMergedMap = new Map(
+      hydratePhotoRecords(otherRaw.photoRecords || [])
+        .map((record) => [String(record.photoId || ''), record])
+    );
+    unsent.filter((item) => item.recordType === 'photo').forEach((item) => {
+      const id = String(item.recordId || '');
+      if (!id) return;
+      if (item.operation === 'delete') {
+        photoMergedMap.delete(id);
+        return;
+      }
+      if (!item.record) return;
+      const current = photoMergedMap.get(id);
+      const merged = current
+        ? mergeRecordByFieldEditedAt('photo', current, item.record, { prefer: 'incoming' }).record
+        : item.record;
+      photoMergedMap.set(id, merged);
+      if (!sameMergedBusinessRecord('photo', item.record, merged)) {
+        putUnsent({
+          projectId: item.projectId,
+          environment: item.environment,
+          recordType: 'photo',
+          recordId: id,
+          operation: 'set',
+          record: merged
+        });
+      }
+    });
+    photoRecords = hydratePhotoRecords(Array.from(photoMergedMap.values()));
   }
 
   const changes = [
@@ -719,8 +790,26 @@ export function restoreKnownFinishRecords(projectId, currentMaterialRecords = []
   listUnsent({ projectId }).filter((item) => item.recordType === 'finish').forEach((item) => {
     const id = String(item.recordId || '');
     if (!id) return;
-    if (item.operation === 'delete') sparseMap.delete(id);
-    else if (item.record) sparseMap.set(id, item.record);
+    if (item.operation === 'delete') {
+      sparseMap.delete(id);
+      return;
+    }
+    if (!item.record) return;
+    const current = sparseMap.get(id);
+    const merged = current
+      ? mergeRecordByFieldEditedAt('finish', { ...current, finishId: id }, item.record, { prefer: 'incoming' }).record
+      : item.record;
+    sparseMap.set(id, merged);
+    if (!sameMergedBusinessRecord('finish', item.record, merged)) {
+      putUnsent({
+        projectId: item.projectId,
+        environment: item.environment,
+        recordType: 'finish',
+        recordId: id,
+        operation: 'set',
+        record: merged
+      });
+    }
   });
 
   return hydrateFinishRecords(restoreFinishRecordsFromSparse([...sparseMap.values()]), materialById);
