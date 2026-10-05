@@ -220,7 +220,7 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       registerFinishProjectViewImpact(viewImpact, current, effectiveChange);
-      applyKnownFinishChange(project.projectId, effectiveChange);
+      applyKnownFinishChange(project.projectId, change.unsent ? change : effectiveChange);
       finishChanged = true;
       applied += 1;
 
