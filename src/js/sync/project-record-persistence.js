@@ -9,6 +9,7 @@ import {
   saveFinishRecord,
   deleteFinishRecord,
   saveMaterialRecord,
+  deleteMaterialRecord,
   savePhotoRecord,
   saveProjectMetadata,
   readTemporaryProjectNos,
@@ -219,6 +220,24 @@ export function persistMaterialForProject(project, record, source = 'material-un
   if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
     const result = await saveMaterialRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
+}
+
+/**
+ * Undo/Redo専用のmaterial物理削除adapter。
+ * 通常の建材削除はmaterial.status='deleted'を使い、このAPIは使用しない。
+ */
+export function deleteMaterialForProject(project, record, source = 'material-history-delete') {
+  if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueue(async () => {
+    const result = await deleteMaterialRecord({
       projectId: project.projectId,
       environment: projectEnvironment(project),
       record,
