@@ -1,0 +1,5169 @@
+=== bdaa5be 2026-08-27
+v0.1.6.1 保存基盤・案件立ち上げ基盤
+
+v0.1.6.1 保存基盤・案件立ち上げ基盤
+
+Summary
+- 新規案件立ち上げ基盤を実装
+- 複数案件一覧・案件切替を実装
+- 正式初期仕上表 default-finish-data.js を追加
+- Firestore 1レコード保存基盤を追加
+- finishRecord / materialRecord / photoRecord serializer を追加
+- finishRecord の初期差分判定・初期状態復帰時削除を実装
+- fieldEditedAt を競合判定用の内部メタ情報として追加
+- updatedAt は Firestore serverTimestamp() で管理
+- 未送信キュー基盤を追加
+- projects / testProjects の保存先切替基盤を追加
+- バックアップ有無に応じた Firestore 読込基盤を追加
+- その他1 / その他2 の空欄が勝手に「その他」へ変わる不具合を修正
+
+Details
+- 新規案件は案件名・住所を入力し、yymmdd-連番の仮番号で立ち上げ
+- 新規案件の仕上表は default-finish-data.js から生成
+  - 1F / 2F / 3F 各10部屋
+  - 階段2部屋
+  - 屋上2部屋
+  - 外部4面（東面 / 西面 / 南面 / 北面）
+  - 各部屋6部位 x 2行
+- デモ案件と新規案件を同一案件一覧から切替可能
+- finishRecord は roomNo / roomName / part / materialId の4項目で初期差分判定
+- 初期テンプレートにない追加構造は空でも保存対象
+- 初期状態へ戻った finishRecord は Firestore 差分ドキュメントを削除
+- materialRecord / photoRecord は1レコード単位で保存
+- fieldEditedAt は項目ごとの編集確定時刻として保持
+- updatedAt は同期・復旧用の Firestore 最終反映時刻として分離
+- バックアップなし案件は Firestore 3レコードを一式取得
+- バックアップあり案件は finishRecord を現在差分一式、materialRecord / photoRecord を backupAt より新しい差分で取得する基盤
+- 未送信は projectId + recordType + recordId 単位で最新1件へ圧縮
+
+Verification
+- JS構文チェック: エラー0件
+- import参照切れ: 0件
+- 正式初期仕上表: 456 records
+- finishRecord ID重複: 0件
+- finishRecord 4項目差分判定: 確認済み
+- 新規構造の無条件保存判定: 確認済み
+- 初期状態復帰時の削除判定: 確認済み
+- serializer 保存対象 / 除外項目: 確認済み
+- fieldEditedAt 保持: 確認済み
+- その他1 / その他2 空欄保持: 確認済み
+
+Next
+- v0.1.6.2: 1端末で 保存 -> 閉じる -> 再度開く -> 3レコード復元 の検証
+
+=== 01899a4 2026-08-27
+v0.1.6.2A 仕上表・建材保存復元接続・その他入力改善
+
+v0.1.6.2A 仕上表・建材保存復元接続・その他入力改善
+
+- 仕上表・建材の編集確定をFirestore 1レコード保存へ接続
+- 案件再読込時に default-finish-data.js + Firestore から仕上表・建材を再構築
+- materialRecordを先に復元し、finishRecordのmaterialId紐付けを後から反映
+- finishRecordを初期状態へ戻した際のFirestore差分削除を実UIへ接続
+- fieldEditedAtを実編集時に更新し、未送信レコードを再読込時も保護
+- その他1/2は新規建材登録時、部位未入力なら「その他」を確定
+- その他1/2の部位候補から通常部位（床・巾木・壁・天井・外壁・屋根・軒裏等）を除外
+- 「その他」は部位候補として維持
+- その他1/2で建材名確定→部位、部位確定→建材名へフォーカス移動
+
+確認ポイント:
+1. 新規案件で建材登録・仕上表入力後、別案件へ切替→戻るとFirestoreから復元されること
+2. 仕上表セルを初期状態へ戻すとFirestoreの該当finishRecordが削除されること
+3. その他1/2で新規建材登録時、部位が空なら「その他」が入ること
+4. その他1/2の部位候補に通常部位が出ず、「その他」は出ること
+5. その他1/2の建材名⇄部位のフォーカス移動が意図どおり動くこと
+
+=== 8d3916b 2026-08-27
+v0.1.6.2B 写真レコード保存復元・その他入力調整
+
+v0.1.6.2B 写真レコード保存復元・その他入力調整
+
+- その他1/2の登録後フォーカス挙動を調整
+- 入力ID解除時に部位も初期状態へ戻す
+- 既存建材の入力ID確定時に建材部位を反映
+- 複数部位建材は部位欄へ移動し候補選択
+- photoRecordをFirestore保存・案件再読込へ接続
+- 写真撮影／取込／編集／代表変更／論理削除を保存対象化
+- photoRecord fieldEditedAt / updatedAt運用を接続
+- IndexedDBからの案件跨ぎRecord再投入を廃止
+
+=== 2cec405 2026-08-27
+v0.1.6.2C 仕上表構造全件保持・構造変更保存・仮採番Firestore確認
+
+v0.1.6.2C 仕上表構造全件保持・構造変更保存・仮採番Firestore確認
+
+- 新規案件の初期finishRecord 456件をFirestoreへ全件登録
+- finishRecordを空欄含む案件構造として保持し、通常編集は差分更新
+- ＋階／＋部屋／＋行／階段／屋上／外部の追加構造をFirestore保存
+- 部屋コピー／戻すのfinishRecord保存を接続
+- 案件復元時にFirestore finishRecords全件を現在形として利用
+- 建材使用箇所・部位を復元済み仕上表から再計算
+- 部屋追加時の部屋名を空欄化
+- 仮案件採番時にFirestoreの当日案件番号も確認
+- BのphotoRecord保存・復元とその他入力修正を維持
+
+=== 821c9ea 2026-08-27
+v0.1.6.2D 案件削除機能追加
+
+- 本番案件の端末内削除を追加
+- テスト案件の端末＋Firestore完全削除を追加
+- 未送信データがある案件の削除警告を追加
+- 案件削除時にローカル案件スナップショット、未送信キュー、看板設定、写真キャッシュを整理
+- 開いている案件を削除した場合はサンプル案件へ切替
+- Firestore testProjects配下の3Record collectionをbatch削除後、親Documentを削除
+
+=== 217ade1 2026-08-27
+v0.1.6.2E Firestoreリアルタイム読込基盤
+
+- 案件読込をonSnapshot初期snapshot + docChanges差分受信へ変更
+- finish/material/photoの3Record listenerを開いている案件だけに接続
+- 案件切替・削除・新規作成時に旧案件listenerを解除
+- 未送信Recordの初期復元オーバーレイを維持
+- fieldEditedAt一致時は自端末書込の再反映を抑制
+- Dまでの全finishRecord保持・差分書込・案件削除仕様を維持
+
+=== 738c93e 2026-08-28
+v0.1.6.2F 同期表示・案件切替差分読込・認証UI整理
+
+v0.1.6.2F 同期表示・案件切替差分読込・Microsoft認証UI整理
+
+- 一度開いた案件はローカルの案件情報／仕上表／建材／写真レコードから即復元
+- 案件切替後は前回同期以降のFirestore差分のみ取得
+- 案件オープン後はlistenerで差分受信を継続
+- Firestore通信ランプを実通信状態と連動
+  - 緑：正常接続
+  - 緑点滅：通信中
+  - 黄：不安定
+  - 黄点滅：再接続
+  - オレンジ：ネットワーク接続不可
+  - 赤：認証・権限・Firestore接続エラー
+  - 青：手動オフライン
+- 同期状態表示を「完了／通信中／未送信／再接続／オフライン／接続エラー」に整理
+- 端末名をヘッダー表示し、設定タブから変更可能に整理
+- Microsoft未ログイン時は公式Sign in with Microsoftボタンを表示
+- ログイン後はMicrosoftロゴ＋ユーザー名表示へ変更
+- ユーザー名タップでログアウト確認
+- 独立ログアウトボタンを削除
+- Graphトークン表示をヘッダーから設定タブへ移動
+- 設定 ＞ 同期システムUIを現行同期設計に合わせて再構成
+- ライト／ダークモードに応じてMicrosoftサインインボタンを切替
+- 旧「仕上表機能実装中」表示を削除
+- 旧同期UI・不要処理を整理
+
+=== 573df84 2026-08-28
+v0.1.6.2G 同期フロー再構築・MicrosoftログインUI整理
+
+v0.1.6.2G 同期フロー再構築・MicrosoftログインUI整理
+
+- 案件切替時の同期フローを再構築
+  - ローカル保存済み案件は案件情報＋仕上表＋建材＋写真レコードを即復元
+  - 前回同期以降の差分を1回だけ取得
+  - 差分反映後に同期位置を更新
+  - その後リアルタイム監視を開始
+- Fの「差分条件付きlistenerを長時間維持する」方式を廃止
+- 通信断・復帰時は、未取得差分を回収してからlistenerを再開
+- 仕上表／建材／写真で同期位置を分離管理
+- 既存の変更レコード単位のFirestore差分書込は維持
+- 未送信キュー／fieldEditedAt／3レコード構成は維持
+- MicrosoftログインUIをコンパクト化
+  - Microsoftロゴ＋Log in表示へ変更
+  - ログイン後はLog inボタンを非表示
+  - Microsoftロゴ＋ユーザー名のみ表示
+  - ユーザー名表示をコンパクト化
+  - ユーザー名タップでログアウト確認
+- ライト／ダークモード対応を維持
+- 旧同期処理・旧Microsoftログイン表示を整理・削除
+- JS構文、import参照、ID重複、旧listener残存を確認
+
+=== 2d2cf66 2026-08-31
+v0.1.6.2H 仕上表疎保存・変更履歴同期・復元ロジック再構築
+
+v0.1.6.2H 仕上表疎保存・変更履歴同期・復元ロジック再構築
+
+- 新規案件作成時の仕上表456件一括保存を廃止
+- 初期構造はアプリ側で生成し、Firestoreには必要最小限のfinishRecordのみ保存
+- 「＋階」
+  - 追加階の最後の部屋・最後の標準行（602相当）だけ保存
+  - 通常階・地下階とも同じ方式
+- 「＋部屋」
+  - 追加した部屋の602相当1件だけ保存
+- 「＋行」
+  - 追加した行（603 / 604 / 605 / 606等）だけ保存
+- S / R
+  - 初期2ブロックはアプリ側で生成
+  - 追加分は602相当1件だけ保存
+- 外部
+  - 初期4ブロックはアプリ側で生成
+  - 追加ブロックは602相当1件だけ保存
+- 部屋No. / 部屋名
+  - 部屋内全finishRecordへの重複保存を廃止
+  - 602相当の1件に集約して保存
+  - 復元時に同一部屋ブロックへ展開
+- 通常入力は変更されたfinishRecordだけ差分保存
+- 初期状態へ戻った内容差分は、構造復元に不要な場合Firestoreから削除
+- 追加構造の復元に必要なfinishRecordは空欄でも保持
+- Firestore保存済みfinishRecordをローカル側で把握し、削除判定時の追加readを不要化
+- 復元処理を再構築
+  - 初期構造生成
+  - 保存済みfinishRecordの位置から追加階・追加部屋・追加行を補完
+  - 内容差分を反映
+  - 未送信変更を最後に重ねて保持
+- finishRecordのset / deleteを変更履歴として記録
+- 変更履歴はserverTimestamp + changeIdを同期カーソルとして利用
+- finishRecord削除も変更履歴経由で他端末へ伝達可能に変更
+- 案件ごとの接触端末情報 / 最終反映カーソルを管理
+- 古い変更履歴は一定期間保持する前提で整理
+- 履歴不足時のみ疎finishRecord一式から再構築するフォールバック方針を導入
+- 旧456件全件化・再保存処理を削除
+- 602を部屋情報用、603以降を行構造用として役割を整理
+- JS構文 / import参照 / app.html ID重複 / バージョン表記を確認
+
+=== e488246 2026-08-31
+v0.1.6.2H.log
+
+今回は設定 → 同期システム に 「同期診断ログ（H.log）」 を追加してある。
+
+そこで、
+
+案件を開いた
+差分取得が走った
+listenerが開始／停止した
+listenerのsnapshotが何件来た
+端末接触情報を書いた
+変更履歴を読んだ／整理した
+Firestoreへの保存要求が走った
+online / offlineイベントが発火した
+
+あたりを時系列で見られる。
+
+さらに 「H.logを保存」 を押すと、そのまま H.log ファイルで出せるから、今みたいに何もしてないのにreadが増えたタイミングのログをそのままこっちに渡してもらえる。
+
+=== 3356247 2026-08-31
+v0.1.6.2H.log2
+
+
+=== 132b87f 2026-08-31
+ｖ0.1.6.2H.log
+
+もどす
+
+=== 1ab5a43 2026-08-31
+v0.1.6.2H.log3
+
+WRITE_REQUEST / WRITE_OK / WRITE_ERRORにsourceを追加した。建材登録まわりでは特に、
+
+material-register
+finish-cell-patch
+material-register-post-link
+sampling-autofill
+material-list-edit
+material-control-edit
+material-note-edit
+remote-rebuild
+existing-material-select
+
+あたりまで切り分けられる。
+
+=== 45a4fea 2026-08-31
+v0.1.6.2H.log4
+
+material-register の即時保存を廃止
+finish-cell-patch は登録中だけ material派生値の途中保存をしない
+採取自動補完をStore/Firestore非依存の共通処理へ整理
+登録 → 仕上表紐付け → 使用箇所再計算 → 採取自動補完 をローカルで完了
+最後の完成したR001だけ material-register-final で1回保存
+finish-sparse-cell は従来どおり1回保存
+グローバルな「登録中フラグ」は追加してない
+通常の建材編集・建材リスト再表示時の保存挙動はそのまま
+
+狙うログはこれだけ。
+
+WRITE_REQUEST material R001 source: material-register-final
+WRITE_REQUEST finish I-101-101 source: finish-sparse-cell
+
+material 1回 + finish 1回 = 合計2回になれば成功。
+
+=== eb1bc04 2026-08-31
+v0.1.6.2H.log5
+
+canDeltaCatchUp 削除
+hasPerTypeCursors 削除
+finish / material / photo をそれぞれ独立して full / delta 判定
+片方がカーソル0でも、他タイプの健全なカーソルは維持
+混在状態を正式対応
+例：finish: delta / material: delta / photo: full
+SYNC_TYPE_READ_PLAN を追加
+H.log2で出た hlog is not defined のような未定義参照は入ってない
+
+チェックも済ませてる。
+
+=== e24a019 2026-08-31
+v0.1.6.2I
+
+v0.1.6.2I Firestore疎保存・同期安定化・写真未整理判定修正
+
+- finishRecord初期456件の一括保存を廃止し、必要な疎レコードのみ保存
+- material新規登録時の3重保存を統合し、material 1回 + finish 1回へ整理
+- finish / material / photo のcatch-up判定をRecord種別ごとに独立化
+- mixed同期（例: finish delta / material delta / photo full）へ対応
+- 目視写真の未整理判定を areaCode + roomPosition + partSlot の物理キー基準へ統一
+- 看板編集後の写真が部位ブロックと未整理写真へ重複表示される不具合を修正
+- 同期診断ログは安定化確認用として継続搭載
+- README / Iレビュー文書を現行内容へ更新
+
+=== 69ddf94 2026-09-01
+v0.1.6.2 Firestore保存・同期基盤確定
+
+仕上表・建材・写真のFirestore保存／復元基盤を確定。仕上表の疎保存、1レコード単位の差分保存、finish・material・photoの独立同期判定、変更履歴・同期カーソル、建材登録時の重複保存解消、写真の未整理表示不具合修正、同期診断ログを反映。
+
+=== 19ce3df 2026-09-01
+v0.1.6.3A PWA manifest正式配置
+
+
+=== ef6681e 2026-09-01
+v0.1.6.3A Service Worker正式実装
+
+
+=== 69edf11 2026-09-01
+v0.1.6.3A PWA lifecycle管理を追加
+
+
+=== 5bbdb4c 2026-09-01
+v0.1.6.3A 更新処理をService Worker方式へ置換
+
+
+=== feacbeb 2026-09-01
+v0.1.6.3A 同期表示を良好・不安定・エラー・圏外へ整理
+
+
+=== 5c14d48 2026-09-01
+v0.1.6.3A 手動オフライン確認UIを同期表示へ統合
+
+
+=== 6d4ae39 2026-09-01
+v0.1.6.3A オフラインUIスタイルを追加
+
+
+=== 2607fdb 2026-09-01
+v0.1.6.3A PWA接続・ヘッダー同期グループ・オフライン確認UI
+
+
+=== f806e0e 2026-09-01
+v0.1.6.3A Service Worker登録を起動処理へ接続
+
+
+=== 2673778 2026-09-01
+v0.1.6.3A 設定タブのオフライン操作も共通確認へ統合
+
+
+=== a1741a0 2026-09-01
+v0.1.6.3A Service Workerをno-store配信
+
+
+=== a1dbc39 2026-09-01
+v0.1.6.3A レビュー版バージョン更新
+
+
+=== cae7181 2026-09-01
+v0.1.6.3A 配信バージョン更新
+
+
+=== 44a4213 2026-09-01
+v0.1.6.3A 旧Service Worker配置を削除
+
+
+=== 3816be1 2026-09-01
+v0.1.6.3A 旧manifest配置を削除
+
+
+=== 7701608 2026-09-01
+v0.1.6.3A Service Worker activate時にclients.claimを追加
+
+
+=== 90fc51c 2026-09-01
+v0.1.6.3A 初回SW制御後に1回reloadしてcold start準備
+
+
+=== 1b650f2 2026-09-01
+v0.1.6.3A 固定プレビュー公開を追加
+
+
+=== ffab459 2026-09-01
+v0.1.6.3B 通信状態表示を明確化
+
+
+=== 1a61156 2026-09-01
+v0.1.6.3B 圏外時はFirestore通信を止めてローカル利用
+
+
+=== a0194f6 2026-09-01
+v0.1.6.3B 案件情報更新経路を追加
+
+
+=== 35e27cd 2026-09-01
+v0.1.6.3B ヘッダーから案件名と端末名を変更可能に
+
+
+=== 04c97d2 2026-09-01
+v0.1.6.3B ヘッダー編集UIを初期化
+
+
+=== e1d2a41 2026-09-01
+v0.1.6.3B 簡易リストから調査備考を編集可能に
+
+
+=== 39935d6 2026-09-01
+v0.1.6.3B バージョン更新
+
+
+=== 8424f75 2026-09-01
+v0.1.6.3B version.json更新
+
+
+=== eeb3160 2026-09-01
+v0.1.6.3B Service Workerキャッシュ更新
+
+
+=== 1077e6b 2026-09-01
+v0.1.6.3B ヘッダー通信表示と編集可能ラベルを調整
+
+
+=== 8aa278f 2026-09-01
+v0.1.6.3B 固定プレビュー公開を追加
+
+
+=== f248245 2026-09-01
+v0.1.6.3B プレビュー重複デプロイを抑制
+
+
+=== 0083518 2026-09-01
+v0.1.6.3B 固定レビューURLへ統一
+
+
+=== 0309dad 2026-09-01
+v0.1.6.3B Microsoftロゴをローカル化
+
+
+=== 37dc7e0 2026-09-01
+v0.1.6.3B 通信復帰前にローカル案件を確定保存
+
+
+=== 1ca15a3 2026-09-01
+v0.1.6.3B 通信復帰前保存を初期化
+
+
+=== c944d40 2026-09-01
+v0.1.6.3B Microsoft公式表示を復元
+
+
+=== 4f52aff 2026-09-01
+v0.1.6.3B オフラインモードをボタン表示へ変更
+
+
+=== 122771b 2026-09-01
+v0.1.6.3B Microsoftロゴと復帰処理をオフライン資産へ追加
+
+
+=== c1388ba 2026-09-02
+v0.1.6.3C オフライン判定責務を分離
+
+
+=== e7836f8 2026-09-02
+v0.1.6.3C 未送信再送と大量同期を実装
+
+
+=== 6974d69 2026-09-02
+v0.1.6.3C 大量未送信のまとめて同期UIを追加
+
+
+=== e1992fa 2026-09-02
+v0.1.6.3C 通信復帰と手動オフライン解除を整理
+
+
+=== faafd39 2026-09-02
+v0.1.6.3C 暫定ネットワークガード初期化を撤去
+
+
+=== 8dc5ae7 2026-09-02
+v0.1.6.3C 暫定ネットワークガードを削除
+
+
+=== 891a4ff 2026-09-02
+v0.1.6.3C Service Workerキャッシュを整理
+
+
+=== d1fabaf 2026-09-02
+v0.1.6.3C バージョン更新
+
+
+=== 42e63a5 2026-09-02
+v0.1.6.3C version.json更新
+
+
+=== b8d5ce5 2026-09-02
+v0.1.6.3C 固定レビューURLへデプロイ対象追加
+
+
+=== 62bdc6e 2026-09-02
+v0.1.6.3C 圏外表示を実案件で優先
+
+
+=== 2388ff7 2026-09-02
+v0.1.6.3C 構文・参照整合テストを追加
+
+
+=== 59f694e 2026-09-02
+v0.1.6.3C 通常保存と大量同期の書込競合を防止
+
+
+=== 605d814 2026-09-02
+v0.1.6.3C 最終検証を実行
+
+
+=== 16d93c7 2026-09-02
+v0.1.6.3C 自動再送を少量未送信だけに限定
+
+
+=== 3425e6d 2026-09-02
+v0.1.6.3C まとめて同期中の案件切替を安全停止
+
+
+=== 2acca5d 2026-09-02
+v0.1.6.3C 最新同期仕様の最終テストを追加
+
+
+=== cb42c33 2026-09-02
+v0.1.6.3 保存・同期基盤正式化
+
+- v0.1.6.3C の確認済み内容を正式版へ反映
+- アプリ表示バージョンを 0.1.6.3 に統一
+- Service Worker キャッシュ名を正式版へ更新
+- 保存・同期基盤、未送信再送、まとめて同期、再接続処理を確定
+=== 7114a6b 2026-09-02
+v0.1.6.4A Firestore案件一覧取得を追加
+
+
+=== 75f92b7 2026-09-02
+v0.1.6.4A Firestore案件ブラウザを追加
+
+
+=== de5f878 2026-09-02
+v0.1.6.4A Firestore案件ブラウザを起動接続
+
+
+=== 986d256 2026-09-02
+v0.1.6.4A サンプル案件のレビュー表示を分離
+
+
+=== 5359b3c 2026-09-02
+v0.1.6.4A サンプル案件名を整理
+
+
+=== 5c7f2a9 2026-09-02
+v0.1.6.4A オフラインモード中の表示をグレー化
+
+
+=== ad3c7fc 2026-09-02
+v0.1.6.4A オフライン解除文言を明確化
+
+
+=== f6b732e 2026-09-02
+v0.1.6.4A バージョン更新
+
+
+=== c1bbbc5 2026-09-02
+v0.1.6.4A version.json更新
+
+
+=== 28c7a3e 2026-09-02
+v0.1.6.4A Service Worker更新
+
+
+=== 1f9ca6d 2026-09-02
+v0.1.6.4A 固定レビューURLへCI接続
+
+
+=== dc91f29 2026-09-02
+v0.1.6.4B 案件JSON共有の基盤追加
+
+
+=== 9525752 2026-09-02
+v0.1.6.4B 案件JSON共有UIを初期化
+
+
+=== 4c83dbd 2026-09-02
+v0.1.6.4B 受信建材から入力ID表示を即時再計算
+
+
+=== a9a6e8e 2026-09-02
+v0.1.6.4B バージョン更新
+
+
+=== d883905 2026-09-02
+v0.1.6.4B version.json更新
+
+
+=== f50f1a2 2026-09-02
+v0.1.6.4B オフラインキャッシュ更新
+
+
+=== 283cca7 2026-09-02
+v0.1.6.4B 固定レビューURLへCI接続
+
+
+=== e420523 2026-09-02
+v0.1.6.4B 案件切替時の共有ボタン状態を追従
+
+
+=== b7cbb90 2026-09-02
+v0.1.6.4B 最終整合チェック更新
+
+
+=== 9a13da3 2026-09-03
+v0.1.6.4C サンプル案件初期化入口を集約
+
+
+=== 9baec6d 2026-09-03
+v0.1.6.4C 起動時サンプル初期化を一本化
+
+
+=== 5f308de 2026-09-03
+v0.1.6.4C サンプル表示名ルールを一本化
+
+
+=== 4560996 2026-09-03
+v0.1.6.4C 案件Storeの責務とサンプル表示を整理
+
+
+=== 3f5cdd5 2026-09-03
+v0.1.6.4C 案件オープン経路を共通化
+
+
+=== 3cc7f10 2026-09-03
+v0.1.6.4C Firestore案件一覧を共通オープン経路へ接続
+
+
+=== 0e45169 2026-09-03
+v0.1.6.4C レビュー版番号へ更新
+
+
+=== ddc4888 2026-09-03
+v0.1.6.4C version.json更新
+
+
+=== bc105fb 2026-09-03
+v0.1.6.4C Service Worker更新
+
+
+=== e19da87 2026-09-03
+v0.1.6.4C 正式化用CIチェックを統合
+
+
+=== 5ebf693 2026-09-03
+v0.1.6.4C サンプル初期化重複整理用一時ワークフロー
+
+
+=== 4b5604e 2026-09-03
+trigger v0.1.6.4C cleanup
+
+
+=== ecc7e28 2026-09-03
+v0.1.6.4C 一時整理ワークフロー修正
+
+
+=== fb4f5a2 2026-09-03
+trigger v0.1.6.4C source cleanup
+
+
+=== 2bd5601 2026-09-03
+v0.1.6.4C サンプル初期化重複を解消
+
+
+=== 16bbd9d 2026-09-03
+v0.1.6.4C サンプル初期化重複のCI監視を追加
+
+
+=== 1b1962f 2026-09-03
+v0.1.6.4C 一時整理ワークフローを削除
+
+
+=== 1b7612a 2026-09-03
+v0.1.6.4C 一時トリガー削除
+
+
+=== fa7374a 2026-09-03
+v0.1.6.4C 一時トリガー削除
+
+
+=== 033594b 2026-09-03
+v0.1.6.4 正式版番号へ更新
+
+
+=== 62ebbf4 2026-09-03
+v0.1.6.4 正式版番号へ更新
+
+
+=== b0c64a4 2026-09-03
+v0.1.6.4 Service Worker正式化
+
+
+=== 603c95a 2026-09-03
+v0.1.6.4 正式化CIへ更新
+
+
+=== 6c5d12f 2026-09-03
+v0.1.6.5B 案件入口モーダル構造を整理
+
+
+=== ec320f4 2026-09-03
+v0.1.6.5B OneDrive共通クライアントを追加
+
+
+=== 9fb7803 2026-09-03
+v0.1.6.5B OneDrive案件ブラウザを追加
+
+
+=== 79c5774 2026-09-03
+v0.1.6.5B 起動時を案件未選択に変更
+
+
+=== 9e8d7bf 2026-09-03
+v0.1.6.5B サンプル初期化を非アクティブ化
+
+
+=== 91d2529 2026-09-03
+v0.1.6.5B Microsoft再接続入口を追加
+
+
+=== c2ab663 2026-09-03
+v0.1.6.5B しらべトップ画面スタイルを追加
+
+
+=== 0f41cc8 2026-09-03
+v0.1.6.5B しらべトップ画面を追加
+
+
+=== 81598c6 2026-09-03
+v0.1.6.5B OneDrive案件接続基盤を追加
+
+
+=== c60269c 2026-09-03
+v0.1.6.5B Firestore案件ブラウザを取得元タブ対応
+
+
+=== b5cf9c8 2026-09-03
+v0.1.6.5B ヘッダー通信表示から未送信件数を分離
+
+
+=== 0d470fc 2026-09-03
+v0.1.6.5B トップ・OneDrive・案件入口の初期化順を整理
+
+
+=== 4cfd03e 2026-09-03
+v0.1.6.5B バージョン更新
+
+
+=== 0d1a46e 2026-09-03
+v0.1.6.5B version.json更新
+
+
+=== a886be7 2026-09-03
+v0.1.6.5B オフライン起動資産を更新
+
+
+=== cacf9b3 2026-09-03
+v0.1.6.5B レビューCIを更新
+
+
+=== 863e53a 2026-09-03
+v0.1.6.5B 一時離脱時の案件復帰を追加
+
+
+=== a68df03 2026-09-03
+v0.1.6.5C OneDrive共有Drive解決を再構築
+
+
+=== a30d844 2026-09-03
+v0.1.6.5C OneDrive案件接続を共有Drive対応
+
+
+=== 7f5e16c 2026-09-03
+v0.1.6.5C OneDrive案件一覧を共有Drive対応
+
+
+=== 1fe77ea 2026-09-03
+v0.1.6.5C トップ画面を再構成
+
+
+=== c229047 2026-09-03
+v0.1.6.5C トップデザインを刷新
+
+
+=== 9ef647e 2026-09-03
+v0.1.6.5C Graph共有先権限を復元
+
+
+=== 7348dcd 2026-09-03
+v0.1.6.5C OneDrive失敗時の再接続導線を有効化
+
+
+=== 76e94ff 2026-09-03
+v0.1.6.5C バージョン更新
+
+
+=== 2aa38e0 2026-09-03
+v0.1.6.5C version.json更新
+
+
+=== c75aab6 2026-09-03
+v0.1.6.5C Service Worker更新
+
+
+=== 1aacc44 2026-09-03
+v0.1.6.5C レビューCIを更新
+
+
+=== e3867e7 2026-09-03
+v0.1.6.5D OneDrive共有ルート設定を追加
+
+
+=== 0784e68 2026-09-03
+v0.1.6.5D 04調査を共有URLから解決
+
+
+=== 5a6fcee 2026-09-03
+v0.1.6.5D OneDrive接続状態を一元化
+
+
+=== dfc1d55 2026-09-03
+v0.1.6.5D トップ画面と復帰導線を整理
+
+
+=== b396724 2026-09-03
+v0.1.6.5D OneDrive接続状態を初期化
+
+
+=== c8c5ece 2026-09-03
+v0.1.6.5D 設定OneDrive表示を実状態化
+
+
+=== 1fb4273 2026-09-03
+v0.1.6.5D 設定へOneDrive実状態を接続
+
+
+=== dc43d1b 2026-09-03
+v0.1.6.5D トップ復帰ボタンを追加
+
+
+=== cbeb816 2026-09-03
+v0.1.6.5D トップ復帰導線を初期化
+
+
+=== a62d76c 2026-09-03
+v0.1.6.5D トップデザインを再構成
+
+
+=== 953700a 2026-09-03
+v0.1.6.5D バージョン更新
+
+
+=== cc3c8d5 2026-09-03
+v0.1.6.5D version.json更新
+
+
+=== 70ba9c0 2026-09-03
+v0.1.6.5D Service Worker更新
+
+
+=== 3d09d9a 2026-09-03
+v0.1.6.5D レビューCIを更新
+
+
+=== b697529 2026-09-03
+v0.1.6.5D CI整合性チェック修正
+
+
+=== b228cfc 2026-09-03
+v0.1.6.5E Graph認証設定を旧実績構成へ分離
+
+
+=== 14eb4f2 2026-09-03
+v0.1.6.5E Graphセッション管理を分離
+
+
+=== fea26a5 2026-09-03
+v0.1.6.5E Firebase認証からGraph責任を分離
+
+
+=== 4c4f73c 2026-09-03
+v0.1.6.5E Microsoft認証UIをGraphセッション分離へ対応
+
+
+=== e870ec2 2026-09-03
+v0.1.6.5E OneDrive低レベルAPIを固定共有URL専用へ整理
+
+
+=== f0e6d87 2026-09-03
+v0.1.6.5E OneDrive業務ルートを接続基盤へ一本化
+
+
+=== 008e06e 2026-09-03
+v0.1.6.5E 案件OneDrive連携を共通ルートへ接続
+
+
+=== 4cc7dc7 2026-09-03
+v0.1.6.5E 既存案件一覧を共通OneDriveルートへ接続
+
+
+=== 0b019dc 2026-09-03
+v0.1.6.5E 案件終了責任をproject-sessionへ集約
+
+
+=== cc8a0d3 2026-09-03
+v0.1.6.5E Graphセッション通知ループを防止
+
+
+=== 1502923 2026-09-03
+v0.1.6.5E トップ復帰とMicrosoft状態を整理
+
+
+=== 781640f 2026-09-03
+v0.1.6.5E バージョン更新
+
+
+=== 2b5d565 2026-09-03
+v0.1.6.5E version.json更新
+
+
+=== 0cf4918 2026-09-03
+v0.1.6.5E Service Worker更新
+
+
+=== c0cfbcb 2026-09-03
+v0.1.6.5E レビューCIを厳格化
+
+
+=== 701fbc0 2026-09-03
+v0.1.6.5E OneDrive検索APIを低レベル層へ追加
+
+
+=== b22ae9a 2026-09-03
+v0.1.6.5E 04調査フォールバック解決を接続基盤へ統合
+
+
+=== 3d74cf7 2026-09-03
+v0.1.6.5E OneDriveフォールバック検証をCIへ反映
+
+
+=== a9034b1 2026-09-03
+v0.1.6.5E v0.14系04調査ルート解決を分離
+
+
+=== ccbac2b 2026-09-03
+v0.1.6.5E 旧14検索経路を低レベルAPIへ忠実化
+
+
+=== 6141725 2026-09-03
+v0.1.6.5E 04調査ルート責任をonedrive-rootへ分離
+
+
+=== b79670a 2026-09-03
+v0.1.6.5E onedrive-rootをアプリキャッシュへ追加
+
+
+=== 3a3fb4d 2026-09-03
+v0.1.6.5E 14系OneDrive移植構造をCIで固定
+
+
+=== 1e1288a 2026-09-04
+v0.1.6.5F add page navigation boundary
+
+
+=== b6777c1 2026-09-04
+v0.1.6.5F centralize project creation
+
+
+=== 08947ae 2026-09-04
+v0.1.6.5F add formal OneDrive project factory
+
+
+=== cd4cc3f 2026-09-04
+v0.1.6.5F make home controller page-specific
+
+
+=== 0611d8a 2026-09-04
+v0.1.6.5F make home return page navigation
+
+
+=== e1f6262 2026-09-04
+v0.1.6.5F route Firestore selection through home navigation
+
+
+=== 82e5835 2026-09-04
+v0.1.6.5F add formal Firestore creation for OneDrive-only projects
+
+
+=== 398b6fe 2026-09-04
+v0.1.6.5F add local snapshot diagnostics
+
+
+=== 0c322b2 2026-09-04
+v0.1.6.5F trace listener apply snapshot and cursors
+
+
+=== c10a458 2026-09-04
+v0.1.6.5F add standalone home initializer
+
+
+=== 6b7227b 2026-09-04
+v0.1.6.5F make index the standalone home page
+
+
+=== b771cba 2026-09-04
+v0.1.6.5F make app page require selected project
+
+
+=== e7d57c8 2026-09-04
+v0.1.6.5F bump app version
+
+
+=== e26fbd2 2026-09-04
+v0.1.6.5F bump version metadata
+
+
+=== 5379a50 2026-09-04
+v0.1.6.5F align service worker cache
+
+
+=== 2c686fb 2026-09-04
+v0.1.6.5F label session snapshot writes
+
+
+=== fec6cae 2026-09-04
+v0.1.6.5F align preview CI with page split and diagnostics
+
+
+=== 05e25d4 2026-09-04
+v0.1.6.5F scope project entry labels to app panel
+
+
+=== 6246211 2026-09-04
+v0.1.6.5F retry formal metadata creation when local snapshot exists
+
+
+=== b27b390 2026-09-04
+v0.1.6.5F keep app initializer project-work-only
+
+
+=== 02a91ce 2026-09-04
+v0.1.6.5F make app html project-work-only
+
+
+=== 14d5086 2026-09-04
+v0.1.6.5F remove legacy project-entry responsibilities from app controller
+
+
+=== 910d258 2026-09-04
+v0.1.6.5F fix diagnostic mode reason syntax
+
+
+=== c6c00c5 2026-09-04
+v0.1.6.5F restore project side panel in app view
+
+
+=== 5e1dd91 2026-09-04
+v0.1.6.5F restore project side panel responsibilities
+
+
+=== ee5d80e 2026-09-04
+v0.1.6.5F restore app-side project panel initialization
+
+
+=== 04a457f 2026-09-04
+v0.1.6.5F cache project side panel controller
+
+
+=== 1ee3b5a 2026-09-04
+v0.1.6.5F guard restored project side panel in CI
+
+
+=== 6cc1ac4 2026-09-04
+v0.1.6.5G 共通待機UI基盤を追加
+
+
+=== d0049fb 2026-09-04
+v0.1.6.5G OneDriveファイル取得とExcel範囲読取を追加
+
+
+=== 4c8940e 2026-09-04
+v0.1.6.5G 案件Excel選定・読取モジュールを追加
+
+
+=== 92bf66e 2026-09-04
+v0.1.6.5G 共通待機UIの表示スタイルを内包
+
+
+=== ff1298a 2026-09-04
+v0.1.6.5G OneDrive案件選択を案件Excel情報へ接続
+
+
+=== 04b0c82 2026-09-04
+v0.1.6.5G アップデート処理へ共通待機表示を接続
+
+
+=== c6e95af 2026-09-04
+v0.1.6.5G トップ新規作成・再接続へ待機表示を接続
+
+
+=== e63bb61 2026-09-04
+v0.1.6.5G 案件作成・切替へ共通待機表示を接続
+
+
+=== c0b5eac 2026-09-04
+v0.1.6.5G 案件画面起動時の待機表示を追加
+
+
+=== 07f6c01 2026-09-04
+v0.1.6.5G バージョン表示を更新
+
+
+=== 6ae06bf 2026-09-04
+v0.1.6.5G version.json更新
+
+
+=== 5f867fb 2026-09-04
+v0.1.6.5G Service Workerへ新規基盤を追加
+
+
+=== f5dfe41 2026-09-04
+v0.1.6.5G CIとPreview対象を更新
+
+
+=== 63a8150 2026-09-04
+v0.1.6.5G xlsm対応のOpen XMLセル読取を追加
+
+
+=== 21cad25 2026-09-04
+v0.1.6.5G アップデート待機表示を描画保証
+
+
+=== 95ea80d 2026-09-04
+v0.1.6.5G 案件Excelをxlsmダウンロード読取へ切替
+
+
+=== 9ccf01c 2026-09-04
+v0.1.6.5G Workbook API旧読取を削除
+
+
+=== 53a4b50 2026-09-04
+v0.1.6.5G Open XML読取をSWキャッシュへ追加
+
+
+=== 10b7110 2026-09-04
+v0.1.6.5G xlsm読取と更新待機表示をCIへ反映
+
+
+=== 1db1752 2026-09-04
+v0.1.6.5H Excel読取失敗時もOneDrive案件を開けるよう変更
+
+
+=== 3145bc0 2026-09-04
+v0.1.6.5H システムデータ定期保存基盤を追加
+
+
+=== a5afe6d 2026-09-04
+v0.1.6.5H システムデータ定期保存を案件起動後に開始
+
+
+=== 5100fda 2026-09-04
+v0.1.6.5H バージョン更新
+
+
+=== 03a66cd 2026-09-04
+v0.1.6.5H version.json更新
+
+
+=== f4ea236 2026-09-04
+v0.1.6.5H Service Worker更新
+
+
+=== 98acd16 2026-09-04
+v0.1.6.5H CIへシステムデータ保存ガードを追加
+
+
+=== b9cc6ef 2026-09-04
+v0.1.6.5H 設定画面の今すぐ同期を既存同期処理へ接続
+
+
+=== a100b55 2026-09-04
+v0.1.6.5H 設定の手動同期と復元入口を接続
+
+
+=== ca42169 2026-09-04
+v0.1.6.5H 同期設定UIを実処理へ更新
+
+
+=== ca11ad3 2026-09-04
+v0.1.6.5H システムデータ手動保存へ整理
+
+
+=== bc4d28c 2026-09-04
+v0.1.6.5H トップ画面に更新確認を追加
+
+
+=== b56344e 2026-09-04
+v0.1.6.5H トップ画面の更新確認を接続
+
+
+=== 63b9159 2026-09-04
+v0.1.6.5H システムデータのOneDrive状態表示を実接続へ連動
+
+
+=== efd21a9 2026-09-04
+v0.1.6.5H トップ更新UIをオフラインシェルへ追加
+
+
+=== 2d53708 2026-09-06
+v0.1.6.5I 写真Blob送信状態をvariant単位で管理
+
+
+=== bea6278 2026-09-06
+v0.1.6.5I 未整理写真のOneDrive一時命名を追加
+
+
+=== 91a572e 2026-09-06
+v0.1.6.5I 元画像は名称変更時だけ再送対象へ戻す
+
+
+=== 87441be 2026-09-06
+v0.1.6.5I 写真OneDrive順次送信基盤を追加
+
+
+=== ab9f897 2026-09-06
+v0.1.6.5I 写真OneDrive同期を案件画面へ接続
+
+
+=== 721c42e 2026-09-06
+v0.1.6.5I アプリ表示バージョンを更新
+
+
+=== 65c74e9 2026-09-06
+v0.1.6.5I version.jsonを更新
+
+
+=== 10e2abb 2026-09-06
+v0.1.6.5I 写真同期モジュールをオフラインシェルへ追加
+
+
+=== d1d5cd8 2026-09-06
+v0.1.6.5I レビューCIとPreviewデプロイを接続
+
+
+=== 930e1b8 2026-09-06
+v0.1.6.5I 写真OneDrive参照情報をphotoRecordへ追加
+
+
+=== 8c2d25c 2026-09-06
+v0.1.6.5I 写真送信の案件境界と成功確定順を修正
+
+
+=== 6afbe3e 2026-09-06
+v0.1.6.5I 写真同期修正版を新キャッシュ世代へ更新
+
+
+=== 4fb42f1 2026-09-06
+v0.1.6.5J 新規写真のOneDrive送信トリガーを修正
+
+
+=== 0b0d221 2026-09-06
+v0.1.6.5J 表示バージョン更新
+
+
+=== 859ac92 2026-09-06
+v0.1.6.5J version.json更新
+
+
+=== 66cec0c 2026-09-06
+v0.1.6.5J 写真同期修正版を新キャッシュ世代へ更新
+
+
+=== 450fdfd 2026-09-06
+v0.1.6.5J レビューCIとPreviewデプロイを接続
+
+
+=== 45a4d3f 2026-09-06
+v0.1.6.5K 写真Blob案件帰属と未送信抽出を整理
+
+
+=== 2f62d64 2026-09-06
+v0.1.6.5K 写真ローカル保存へ現在案件IDを注入
+
+
+=== 5e36d02 2026-09-06
+v0.1.6.5K 写真OneDrive同期条件と診断ログを整理
+
+
+=== 7b15fff 2026-09-06
+v0.1.6.5K レコード確認のOneDrive保存先表示を新参照へ追従
+
+
+=== 3865725 2026-09-06
+v0.1.6.5K レコード確認の状態と日時表示を日本語化
+
+
+=== cb99314 2026-09-06
+v0.1.6.5K 表示バージョン更新
+
+
+=== c0d9751 2026-09-06
+v0.1.6.5K version.json更新
+
+
+=== 928eb94 2026-09-06
+v0.1.6.5K Service Workerキャッシュ世代更新
+
+
+=== 841f694 2026-09-06
+v0.1.6.5K 撮影直後サムネ表示順を修正
+
+
+=== 2f29733 2026-09-06
+v0.1.6.5K CIとPreviewデプロイを更新
+
+
+=== 28277ee 2026-09-06
+v0.1.6.5L OneDriveサムネイル取得APIを追加
+
+
+=== 17b6b15 2026-09-06
+v0.1.6.5L 他端末完成画像のローカル保存入口を追加
+
+
+=== 788ccaa 2026-09-06
+v0.1.6.5L 他端末写真のOneDrive読取を追加
+
+
+=== 56fc25e 2026-09-06
+v0.1.6.5L 他端末サムネ即時反映と拡大時ローカル保存を実装
+
+
+=== 03a91f2 2026-09-06
+v0.1.6.5L OneDrive保存先URLの表示を整理
+
+
+=== 5f58be4 2026-09-06
+v0.1.6.5L OneDrive URL列を固定幅省略表示
+
+
+=== 67521a5 2026-09-06
+v0.1.6.5L バージョン更新
+
+
+=== 84c4d26 2026-09-06
+v0.1.6.5L version.json更新
+
+
+=== 503c0af 2026-09-06
+v0.1.6.5L Service Workerキャッシュ更新
+
+
+=== 74df22f 2026-09-06
+v0.1.6.5L CIとPreviewデプロイを更新
+
+
+=== 3c771e5 2026-09-06
+v0.1.6.5M photoRecordのOneDrive参照IDをFirestore保存
+
+
+=== 53addf5 2026-09-06
+v0.1.6.5M 更新判定用revisionを追加
+
+
+=== 0781799 2026-09-06
+v0.1.6.5M version.jsonにrevision追加
+
+
+=== de8842d 2026-09-06
+v0.1.6.5M revision基準の更新判定へ整理
+
+
+=== d0d3d2b 2026-09-06
+v0.1.6.5M Service Worker明示切替を完成
+
+
+=== add6666 2026-09-06
+v0.1.6.5M アプリ資材をnetwork-firstへ整理
+
+
+=== 5b2cd6f 2026-09-06
+v0.1.6.5M CIとPreviewデプロイを更新
+
+
+=== c72b528 2026-09-06
+v0.1.6.5 確定版のバージョン情報へ更新
+
+
+=== 3c82f39 2026-09-06
+v0.1.6.5 確定版revisionへ更新
+
+
+=== c5cfe25 2026-09-06
+v0.1.6.5 確定版キャッシュ世代へ更新
+
+
+=== c589d20 2026-09-06
+v0.1.6.5 確定版CIとPreviewデプロイを追加
+
+
+=== 88a002a 2026-09-07
+v0.1.6.6 split realtime view refresh by record impact
+
+
+=== 19e5625 2026-09-07
+v0.1.6.6 route realtime UI refresh by changed fields
+
+
+=== a8bd71d 2026-09-07
+v0.1.6.6 defer external finish redraw while editing
+
+
+=== aca5949 2026-09-07
+v0.1.6.6 guard finish redraw during active editing
+
+
+=== 5173dc6 2026-09-07
+v0.1.6.6 centralize photo refresh impact policy
+
+
+=== 3a62af7 2026-09-07
+v0.1.6.6 route photo refresh by active mode
+
+
+=== e7426bb 2026-09-07
+v0.1.6.6 publish tab change events
+
+
+=== 94f88a2 2026-09-07
+v0.1.6.6 end room copy operation on tab change
+
+
+=== 8bfde90 2026-09-07
+v0.1.6.6 keep room copy state across finish reconstruction
+
+
+=== fbec470 2026-09-07
+v0.1.6.6 preserve selected visual room across uid rebuild
+
+
+=== b9c00ab 2026-09-07
+v0.1.6.6 preserve finish table scroll across tab switches
+
+
+=== bcc02a0 2026-09-07
+v0.1.6.6 initialize finish table scroll preservation
+
+
+=== 5b83d41 2026-09-07
+v0.1.6.6 reset finish scroll on project switch
+
+
+=== f71fb00 2026-09-07
+v0.1.6.6 unify photo render ownership
+
+
+=== 729e612 2026-09-07
+v0.1.6.6 prevent duplicate finish scroll listeners
+
+
+=== abbb04c 2026-09-07
+v0.1.6.6 use shared tab change event for photo refresh
+
+
+=== baf316f 2026-09-07
+v0.1.6.6 reset photo ui state per project
+
+
+=== 352dc39 2026-09-07
+v0.1.6.6 reset photo ui state on project switch
+
+
+=== b04457e 2026-09-07
+v0.1.6.6 make full catchup refresh selective
+
+
+=== ceb1d9b 2026-09-07
+v0.1.6.6 prepare review version
+
+
+=== 19e46d1 2026-09-07
+v0.1.6.6 align review version metadata
+
+
+=== 7826127 2026-09-07
+v0.1.6.6 refresh service worker cache
+
+
+=== 96efac6 2026-09-07
+v0.1.6.6 add review preview workflow
+
+
+=== c925d3d 2026-09-07
+v0.1.6.6 unify viewer full-image resolution
+
+
+=== 42e22a6 2026-09-07
+v0.1.6.6 centralize viewer completed-photo loading
+
+
+=== 85380aa 2026-09-07
+v0.1.6.6 resolve full images inside shared viewer
+
+
+=== 6045381 2026-09-07
+v0.1.6.6 bump review revision for viewer fix
+
+
+=== ab693f0 2026-09-07
+v0.1.6.6 sync review revision
+
+
+=== 7f5475b 2026-09-07
+v0.1.6.6 cache viewer source resolver
+
+
+=== 91119f3 2026-09-07
+v0.1.6.6 update review checks for viewer resolver
+
+
+=== dc006a4 2026-09-07
+v0.1.6.6 remove legacy viewer preload path
+
+
+=== 5ffb747 2026-09-07
+v0.1.6.6 finalize stable app config
+
+
+=== 8edd9e5 2026-09-07
+v0.1.6.6 finalize stable version metadata
+
+
+=== 0507c6e 2026-09-07
+v0.1.6.6 finalize stable cache generation
+
+
+=== d3d4905 2026-09-07
+v0.1.6.6 validate stable release candidate
+
+
+=== 7c0a1fb 2026-09-07
+v0.1.6.6 remove temporary review workflow
+
+
+=== 53de909 2026-09-07
+v0.1.6.6
+
+正式版 v0.1.6.6
+
+同期安定化、仕上表入力/スクロール保護、写真UI安定化、PhotoViewer完成画像解決経路の統一。
+=== bb3089d 2026-09-08
+v0.1.6.7A 建材操作の最終差分保存と削除済み再登録を整理
+
+
+=== 90a7d3f 2026-09-08
+v0.1.6.7A システムデータをライブStoreから保存
+
+
+=== 1a8fad1 2026-09-08
+v0.1.6.7A 削除済み建材の再登録UIを接続
+
+
+=== acf5835 2026-09-08
+v0.1.6.7A 削除済み建材の再登録UIを追加
+
+
+=== 5be20a7 2026-09-08
+v0.1.6.7A 建材リスト順をFirestoreへ保持
+
+
+=== 77b5aca 2026-09-08
+v0.1.6.7A Firestore保存順から建材No.を復元
+
+
+=== a6804fe 2026-09-08
+v0.1.6.7A レビュー版番号へ更新
+
+
+=== 88fc93f 2026-09-08
+v0.1.6.7A version.json更新
+
+
+=== 7013cba 2026-09-08
+v0.1.6.7A Service Workerキャッシュ世代更新
+
+
+=== 6761fe8 2026-09-08
+v0.1.6.7A: await material operation persistence completion
+
+
+=== eeb9250 2026-09-08
+v0.1.6.7A: await material operation completion in UI
+
+
+=== 53ee2d3 2026-09-08
+v0.1.6.7A: snapshot material operations before remote persistence
+
+
+=== 19ff2aa 2026-09-08
+v0.1.6.7A: harden first system backup generation
+
+
+=== e3ed1ea 2026-09-08
+v0.1.6.7A: harden backup generation completion and cleanup
+
+
+=== f294b79 2026-09-09
+v0.1.6.7A: separate chip input target from reference selection
+
+
+=== 85e10d0 2026-09-09
+v0.1.6.7A: arm chip input target explicitly
+
+
+=== f14df04 2026-09-09
+v0.1.6.7A: use explicit chip input target for finish cells
+
+
+=== 58a57f9 2026-09-09
+v0.1.6.7A: align finish highlight with chip input target
+
+
+=== b3746c7 2026-09-09
+v0.1.6.7A: distinguish material-match outline from active input
+
+
+=== fafc1f2 2026-09-09
+v0.1.6.7A: scope manual offline mode per project
+
+
+=== 874a07f 2026-09-09
+v0.1.6.7A: bind sync scope to target project before opening
+
+
+=== d6dff55 2026-09-09
+v0.1.6.7A: align sync scope with opened project
+
+
+=== 794ea93 2026-09-09
+v0.1.6.7A: activate project sync scope before initial open
+
+
+=== d6395fc 2026-09-09
+v0.1.6.7A: switch manual offline scope with side-panel project
+
+
+=== 5a987c8 2026-09-09
+v0.1.6.7A: migrate legacy manual offline to first opened project
+
+
+=== 9e37224 2026-09-09
+v0.1.6.7A: preserve material list scroll across refreshes
+
+
+=== fa35dc8 2026-09-09
+v0.1.6.7A: preserve material list scroll on tab changes
+
+
+=== 07645e4 2026-09-09
+v0.1.6.7A: unify board size geometry across preview and saved images
+
+
+=== f0263ce 2026-09-09
+v0.1.6.7A: restore finish table CSS formatting and keep orange material match
+
+
+=== 78fd3d5 2026-09-09
+v0.1.6.7A: restore finish controller comments and keep chip target separation
+
+
+=== e32998a 2026-09-09
+v0.1.6.7A: restore finish renderer comments and keep chip highlight target
+
+
+=== ff3352c 2026-09-09
+v0.1.6.7A: expose local snapshot persistence result for critical operations
+
+
+=== d1c4508 2026-09-09
+v0.1.6.7A: require durable local snapshot before critical material persistence
+
+
+=== 7e66c5c 2026-09-09
+v0.1.6.7A: rollback material operations when local snapshot persistence fails
+
+
+=== 4ff2426 2026-09-09
+v0.1.6.7A: refresh photo tab after material operations
+
+
+=== e8a3e2b 2026-09-09
+v0.1.6.7A: pause photo OneDrive sync in project offline mode
+
+
+=== 1cb3c48 2026-09-09
+v0.1.6.7A: remove obsolete preview width from camera board save
+
+
+=== 14c4df6 2026-09-09
+v0.1.6.7A: remove obsolete preview width from photo board editor
+
+
+=== 5ba1718 2026-09-09
+v0.1.6.7A: add Firebase Hosting preview workflow
+
+
+=== b8d93ef 2026-09-09
+v0.1.6.7A: deploy review branch to fixed preview channel
+
+
+=== c49132d 2026-09-10
+v0.1.6.7B stabilize photo upload completion ordering
+
+
+=== 4dce472 2026-09-10
+v0.1.6.7B preserve material display order during hydration
+
+
+=== 5532af7 2026-09-10
+v0.1.6.7B harden project-scoped offline boundary
+
+
+=== a3483ff 2026-09-10
+v0.1.6.7B bump review revision
+
+
+=== 879d1ee 2026-09-10
+v0.1.6.7B sync review revision metadata
+
+
+=== ba96928 2026-09-10
+v0.1.6.7B rotate review cache generation
+
+
+=== 334ddda 2026-09-10
+v0.1.6.7B deploy review branch to fixed preview channel
+
+
+=== e09308a 2026-09-10
+v0.1.6.7B preserve material display order during hydration
+
+
+=== 61fe908 2026-09-10
+v0.1.6.7 finalize stable app config
+
+
+=== 32d7351 2026-09-10
+v0.1.6.7 finalize stable version metadata
+
+
+=== 53cc25f 2026-09-10
+v0.1.6.7 finalize stable cache generation
+
+
+=== 2a920a8 2026-09-10
+v0.1.6.7 remove review preview workflow
+
+
+=== dbcb327 2026-09-10
+v0.1.6.7
+
+正式版 v0.1.6.7
+
+建材統合・削除・再登録、案件別手動オフライン、OneDriveシステムデータバックアップ、写真OneDrive同期安定化、建材順序同期、カメラ看板サイズ調整、仕上表チップ入力改善、建材リストスクロール保持を正式化。
+=== 7472bc6 2026-09-10
+v0.1.6.7 publish stable release
+
+
+=== 1b67817 2026-09-11
+v0.1.7.1 persist unregistered finish material names
+
+
+=== eed0947 2026-09-11
+v0.1.7.1 add unregistered material name to finish record
+
+
+=== 78a1971 2026-09-11
+v0.1.7.1 serialize unregistered finish material name
+
+
+=== ce207b6 2026-09-11
+v0.1.7.1 restore unregistered finish names from records
+
+
+=== 5a5563c 2026-09-11
+v0.1.7.1 add material usage room-name display toggle
+
+
+=== f11453c 2026-09-11
+v0.1.7.1 render room-name usage toggle
+
+
+=== bc28eb6 2026-09-11
+v0.1.7.1 set review version
+
+
+=== 53da964 2026-09-11
+v0.1.7.1 update review version manifest
+
+
+=== eb287f7 2026-09-11
+v0.1.7.1 rotate review app cache
+
+
+=== 2f2b0a3 2026-09-11
+v0.1.7.1 point fixed preview to work branch
+
+
+=== 2194dca 2026-09-11
+v0.1.7.2 add unregistered finish materials to input candidates
+
+
+=== fa813c2 2026-09-11
+v0.1.7.2 add roomNote to finish records
+
+
+=== 070b23b 2026-09-11
+v0.1.7.2 serialize roomNote with finish records
+
+
+=== 6853abb 2026-09-11
+v0.1.7.2 restore roomNote as room common data
+
+
+=== 7fe028d 2026-09-11
+v0.1.7.2 treat roomNote as room common finish data
+
+
+=== 5e58393 2026-09-11
+v0.1.7.2 expose roomNote in finish table view model
+
+
+=== 0950209 2026-09-11
+v0.1.7.2 show unregistered material names and room notes in record view
+
+
+=== 62c2f1c 2026-09-11
+v0.1.7.2 show room note in finish record table
+
+
+=== 533db5c 2026-09-11
+v0.1.7.2 add room note field beside room name
+
+
+=== a7dcf7f 2026-09-11
+v0.1.7.2 bump app review version
+
+
+=== 16ce658 2026-09-11
+v0.1.7.2 bump version metadata
+
+
+=== 27900a0 2026-09-11
+v0.1.7.2 update service worker cache generation
+
+
+=== 197b6f8 2026-09-11
+v0.1.7.2 point fixed preview to work branch
+
+
+=== 84c831b 2026-09-11
+v0.1.7.3 add output view model
+
+
+=== 0ec2196 2026-09-11
+v0.1.7.3 add output controller
+
+
+=== 392b400 2026-09-11
+v0.1.7.3 add output tab styles
+
+
+=== 29d472a 2026-09-11
+v0.1.7.3 mount output on former sync tab
+
+
+=== 37cd75e 2026-09-11
+v0.1.7.3 initialize output tab
+
+
+=== 28c5d4d 2026-09-11
+v0.1.7.3 bump app version
+
+
+=== 04a879f 2026-09-11
+v0.1.7.3 update version manifest
+
+
+=== e734872 2026-09-11
+v0.1.7.3 point fixed preview to work branch
+
+
+=== a0212ae 2026-09-11
+v0.1.7.3 cache output modules
+
+
+=== b01d900 2026-09-11
+v0.1.7.3 make room note a compact button
+
+
+=== 53f6809 2026-09-11
+v0.1.7.3 add room note popup editor
+
+
+=== 3743605 2026-09-11
+v0.1.7.3 style room note popup
+
+
+=== 5f650e7 2026-09-11
+v0.1.7.3 initialize room note popup
+
+
+=== 9514ea3 2026-09-11
+v0.1.7.3 cache room note editor
+
+
+=== 1faf55c 2026-09-11
+v0.1.7.3 revision r2
+
+
+=== 12330e8 2026-09-11
+v0.1.7.3 revision manifest r2
+
+
+=== cd50143 2026-09-11
+v0.1.7.3 service worker revision r2
+
+
+=== d97666a 2026-09-11
+v0.1.7.3 match output preview to report sheets
+
+
+=== f9fcd19 2026-09-11
+v0.1.7.3 style output as report sheets
+
+
+=== bc7f752 2026-09-11
+v0.1.7.3 revision r3 for report layout
+
+
+=== 2e1f4fb 2026-09-11
+v0.1.7.3 version revision r3
+
+
+=== 7c5dedc 2026-09-11
+v0.1.7.3 service worker revision r3
+
+
+=== abd53d4 2026-09-11
+v0.1.7.3 paginate output preview by A4 page
+
+
+=== 94e4485 2026-09-11
+v0.1.7.3 add photo report view models
+
+
+=== 15a21ba 2026-09-11
+v0.1.7.3 render photo report sheets
+
+
+=== 39c877d 2026-09-11
+v0.1.7.3 style photo report pages
+
+
+=== 380434a 2026-09-11
+v0.1.7.3 revision r4
+
+
+=== 30918a8 2026-09-11
+v0.1.7.3 revision r4 version manifest
+
+
+=== 8a67c26 2026-09-11
+v0.1.7.3 service worker revision r4
+
+
+=== bb33f96 2026-09-15
+v0.1.7.4 add persistent output photo selections
+
+
+=== ea9617b 2026-09-15
+v0.1.7.4 wire output photo selections
+
+
+=== 51dd629 2026-09-15
+v0.1.7.4 add output photo viewer selection bridge
+
+
+=== e312b62 2026-09-15
+v0.1.7.4 add page navigation and output photo selection
+
+
+=== a090adb 2026-09-15
+v0.1.7.4 style page navigation and photo selection
+
+
+=== 92c0327 2026-09-15
+v0.1.7.4 centralize output report rendering
+
+
+=== 0be9dce 2026-09-15
+v0.1.7.4 add PDF print Excel export flow
+
+
+=== 4358835 2026-09-15
+v0.1.7.4 use shared report renderer and export controller
+
+
+=== 68943ed 2026-09-15
+v0.1.7.4 style export selection modal
+
+
+=== 3c36bc0 2026-09-15
+v0.1.7.4 centralize analysis sample name
+
+
+=== b5f0dd0 2026-09-15
+v0.1.7.4 add analysis PDF import flow
+
+
+=== 35230fe 2026-09-15
+v0.1.7.4 style analysis result import
+
+
+=== cb975dc 2026-09-15
+v0.1.7.4 initialize analysis result import
+
+
+=== 6f93e81 2026-09-15
+v0.1.7.4 refresh app shell
+
+
+=== 4c3200e 2026-09-15
+v0.1.7.4 review version
+
+
+=== a173310 2026-09-15
+v0.1.7.4 review revision r1
+
+
+=== 3636aee 2026-09-15
+v0.1.7.4 preview workflow
+
+
+=== 75558fb 2026-09-15
+v0.1.7.4 refine output analysis remarks and sampling photo date
+
+
+=== c7b6c07 2026-09-16
+v0.1.7.5 unify board raster rendering
+
+
+=== 5504e69 2026-09-16
+v0.1.7.5 add shared board photo composer
+
+
+=== dc91d61 2026-09-16
+v0.1.7.5 remove unused composer draft
+
+
+=== 2defac1 2026-09-16
+v0.1.7.5 bump review version
+
+
+=== 437a8ce 2026-09-16
+v0.1.7.5 update version metadata
+
+
+=== dea18ae 2026-09-16
+v0.1.7.5 rotate review cache
+
+
+=== 0212e9f 2026-09-16
+v0.1.7.5 deploy review branch
+
+
+=== c01c7fa 2026-09-16
+v0.1.7.5 add editable board date field
+
+
+=== 3194a6e 2026-09-16
+v0.1.7.5 persist board date with photo records
+
+
+=== 83a5801 2026-09-16
+v0.1.7.5 add editable board date
+
+
+=== 305c062 2026-09-16
+v0.1.7.5 preserve photo aspect ratio in output
+
+
+=== 72ed6e6 2026-09-16
+v0.1.7.5 bump review revision for board date and output fix
+
+
+=== 9c14fa4 2026-09-16
+v0.1.7.5 set revision r2
+
+
+=== 6155d56 2026-09-16
+v0.1.7.5 refresh app cache for r2
+
+
+=== 762720e 2026-09-16
+v0.1.7.6 support original photo download
+
+
+=== fe1c6e1 2026-09-16
+v0.1.7.6 add original photo resolver
+
+
+=== 18a087a 2026-09-16
+v0.1.7.6 resolve original photos before board editing
+
+
+=== 98d9df9 2026-09-16
+v0.1.7.6 allow remote originals in board editor
+
+
+=== 09cd759 2026-09-16
+v0.1.7.6 refine visual photo book caption
+
+
+=== a376945 2026-09-16
+v0.1.7.6 use material record values in visual photo book
+
+
+=== 752f311 2026-09-16
+v0.1.7.6 refine visual photo book typography
+
+
+=== 9d27f23 2026-09-16
+v0.1.7.6 set review version
+
+
+=== d92f60c 2026-09-16
+v0.1.7.6 update version metadata
+
+
+=== c023f80 2026-09-16
+v0.1.7.6 refresh app cache
+
+
+=== 720511f 2026-09-16
+v0.1.7.6 deploy review branch
+
+
+=== 159a278 2026-09-16
+v0.1.7.6 align visual captions to photo edges
+
+
+=== b53e532 2026-09-16
+v0.1.7.6 r2 refine report layouts
+
+
+=== 36a95d7 2026-09-16
+v0.1.7.6 r2 style report layouts
+
+
+=== afc3375 2026-09-16
+v0.1.7.6 r2 align preview photo captions
+
+
+=== 9451191 2026-09-16
+v0.1.7.6 r2 improve export quality and columns
+
+
+=== ed723f5 2026-09-16
+v0.1.7.6 r2 bump review revision
+
+
+=== c0cf7bb 2026-09-16
+v0.1.7.6 r2 update version metadata
+
+
+=== 4d10ede 2026-09-16
+v0.1.7.6 r2 refresh output cache
+
+
+=== fcb678f 2026-09-16
+v0.1.7.6 r3 refine report presentation
+
+
+=== 085bb58 2026-09-16
+v0.1.7.6 r3 add sampling memo state
+
+
+=== 17026dd 2026-09-16
+v0.1.7.6 r3 refine sampling output data
+
+
+=== 2509e71 2026-09-16
+v0.1.7.6 r3 enable sampling memo editing
+
+
+=== 003bbb9 2026-09-16
+v0.1.7.6 r3 style report headers and sampling notes
+
+
+=== b386031 2026-09-16
+v0.1.7.6 r3 raise PDF quality and align export labels
+
+
+=== 35d885b 2026-09-16
+v0.1.7.6 r3 bump review revision
+
+
+=== f3b9808 2026-09-16
+v0.1.7.6 r3 update version manifest
+
+
+=== 43934d5 2026-09-16
+v0.1.7.6 r3 refresh app cache
+
+
+=== 38a2a8b 2026-09-17
+v0.1.7.6 r4 add completed photo compression
+
+
+=== 86bcba0 2026-09-17
+v0.1.7.6 r4 normalize completed photo saves
+
+
+=== 854a8fc 2026-09-17
+v0.1.7.6 r4 add vector PDF renderer
+
+
+=== 26499d9 2026-09-17
+v0.1.7.6 r4 switch PDF export to vector renderer
+
+
+=== 223cae9 2026-09-17
+v0.1.7.6 r4 refine report headers and sample code
+
+
+=== 31da69c 2026-09-17
+v0.1.7.6 r4 compact report headers
+
+
+=== 479a6c2 2026-09-17
+v0.1.7.6 r4 normalize sampling base number
+
+
+=== 03f0827 2026-09-17
+v0.1.7.6 r4 bump review revision
+
+
+=== 913aac3 2026-09-17
+v0.1.7.6 r4 update version metadata
+
+
+=== 6dec49f 2026-09-17
+v0.1.7.6 r4 refresh app cache
+
+
+=== b62876c 2026-09-17
+v0.1.7.6 r5 share output photo source preparation
+
+
+=== e197c27 2026-09-17
+v0.1.7.6 r5 expose vector PDF blob renderer
+
+
+=== d0bdd92 2026-09-17
+v0.1.7.6 r5 share photo preparation for preview and export
+
+
+=== c5344f6 2026-09-17
+v0.1.7.6 r5 show actual vector PDF in output review
+
+
+=== ee18e5c 2026-09-17
+v0.1.7.6 r5 style actual PDF review and external editor
+
+
+=== 096b004 2026-09-17
+v0.1.7.6 r5 bump review revision
+
+
+=== f0db941 2026-09-17
+v0.1.7.6 r5 bump version metadata
+
+
+=== bcb3343 2026-09-17
+v0.1.7.6 r5 refresh app cache
+
+
+=== cf2fcf5 2026-09-17
+v0.1.7.6 r6 add variable PDF list layout
+
+
+=== 8b5dc81 2026-09-17
+v0.1.7.6 r6 fit PDF preview to page
+
+
+=== 99ae762 2026-09-17
+v0.1.7.6 r6 resize PDF preview
+
+
+=== 2c8525e 2026-09-17
+v0.1.7.6 r6 bump review revision
+
+
+=== d69ed10 2026-09-17
+v0.1.7.6 r6 update version metadata
+
+
+=== cd063e3 2026-09-17
+v0.1.7.6 r6 refresh app cache
+
+
+=== 47b4787 2026-09-17
+v0.1.7.6 r7 add output settings store
+
+
+=== 1bf60f8 2026-09-17
+v0.1.7.6 r7 refine report layout and settings
+
+
+=== 9e5caaf 2026-09-17
+v0.1.7.6 r7 add shared output settings UI
+
+
+=== 62773ba 2026-09-17
+v0.1.7.6 r7 add PDF paging zoom and live output settings
+
+
+=== 273f207 2026-09-17
+v0.1.7.6 r7 add output settings section
+
+
+=== fa2f2cc 2026-09-17
+v0.1.7.6 r7 connect output settings tab
+
+
+=== 8bc3b62 2026-09-17
+v0.1.7.6 r7 style shared output settings UI
+
+
+=== dcae4a8 2026-09-17
+v0.1.7.6 r7 initialize output settings styles
+
+
+=== 24d1632 2026-09-17
+v0.1.7.6 r7 refresh app cache
+
+
+=== 61f46a4 2026-09-17
+v0.1.7.6 r7 bump revision
+
+
+=== 0a2af3f 2026-09-17
+v0.1.7.6 r7 bump version metadata
+
+
+=== 82ef350 2026-09-17
+v0.1.7.6 r8 centralize output target definitions
+
+
+=== dcac733 2026-09-17
+v0.1.7.6 r8 centralize output text formatting
+
+
+=== 603e2d8 2026-09-17
+v0.1.7.6 r8 add app controlled PDF preview
+
+
+=== 2d01a9b 2026-09-17
+v0.1.7.6 r8 replace iframe review with app controlled PDF preview
+
+
+=== 0eac756 2026-09-17
+v0.1.7.6 r8 clean PDF layout and shared formatting
+
+
+=== a16092d 2026-09-17
+v0.1.7.6 r8 unify PDF and print output paths
+
+
+=== 3f54ce7 2026-09-17
+v0.1.7.6 r8 remove obsolete HTML report renderer
+
+
+=== 05a0cf3 2026-09-17
+v0.1.7.6 r8 remove obsolete HTML photo layout helper
+
+
+=== f66366c 2026-09-17
+v0.1.7.6 r8 align service worker with cleaned output modules
+
+
+=== b92fcba 2026-09-17
+v0.1.7.6 r8 remove obsolete HTML output styles
+
+
+=== 3fc397b 2026-09-17
+v0.1.7.6 r8 keep output settings UI markup only
+
+
+=== 9c64e9a 2026-09-17
+v0.1.7.6 r8 remove legacy H log module
+
+
+=== 28cd075 2026-09-17
+v0.1.7.6 r8 ignore Firebase generated cache
+
+
+=== 4a04c20 2026-09-17
+v0.1.7.6 r8 remove generated Firebase cache file
+
+
+=== 24a9609 2026-09-17
+v0.1.7.6 r8 add preview predeploy checks
+
+
+=== 2330eb2 2026-09-17
+v0.1.7.6 r8 add production predeploy checks
+
+
+=== 0b6a9cc 2026-09-17
+v0.1.7.6 r8 bump app revision
+
+
+=== 412a550 2026-09-17
+v0.1.7.6 r8 bump version metadata
+
+
+=== c83b2ee 2026-09-17
+v0.1.7.6 r8 strengthen module reference checks
+
+
+=== 0d4520a 2026-09-17
+v0.1.7.6 r8 strengthen production module checks
+
+
+=== c2a1205 2026-09-17
+v0.1.7.6 r8 remove obsolete review workflow
+
+
+=== 4a7c131 2026-09-17
+v0.1.7.6 r8 remove obsolete final workflow
+
+
+=== 676cf48 2026-09-17
+v0.1.7.6 r8 prevent PDF preview render races
+
+
+=== 2c7821f 2026-09-17
+v0.1.7.6 r8 make PDF print popup reliable
+
+
+=== 6dfafea 2026-09-17
+v0.1.7.6 r8 add output formatting regression checks
+
+
+=== 5ae9d8a 2026-09-17
+v0.1.7.6 r8 add production output regression checks
+
+
+=== 75fc4ed 2026-09-17
+v0.1.7.6 r8 add output location display mode
+
+
+=== c9c82f3 2026-09-17
+v0.1.7.6 r8 make 100 percent the fit-page zoom baseline
+
+
+=== aec9ef1 2026-09-17
+v0.1.7.6 r8 add output room-name switch and wheel page navigation
+
+
+=== a4e69cc 2026-09-17
+v0.1.7.6 r8 export current output location mode
+
+
+=== 6dd45cb 2026-09-18
+v0.1.7.6 prepare stable app metadata
+
+
+=== 807428a 2026-09-18
+v0.1.7.6 prepare stable version metadata
+
+
+=== 7d5f6ee 2026-09-18
+v0.1.7.6 prepare stable cache generation
+
+
+=== c3205f8 2026-09-18
+v0.1.7.6 strengthen stable candidate checks
+
+
+=== 3a5729f 2026-09-18
+v0.1.7.6 enforce stable production contracts
+
+
+=== eb056c1 2026-09-18
+v0.1.7.6 publish stable release
+
+
+=== b5d934b 2026-09-24
+v0.1.8.1 横スマホ写真タブレビュー
+
+
+=== 229b2e3 2026-09-24
+v0.1.8.1 レビュー版設定
+
+
+=== 19bd823 2026-09-24
+v0.1.8.1 version.json更新
+
+
+=== 689726c 2026-09-24
+v0.1.8.1 レビューキャッシュ更新
+
+
+=== 7fd0e4e 2026-09-24
+v0.1.8.1 Preview workflow更新
+
+
+=== d522224 2026-09-24
+v0.1.8.1 Preview URLを既存チャンネルへ戻す
+
+
+=== 8e1f764 2026-09-24
+v0.1.8.2 写真タブ表示状態をbodyへ反映
+
+
+=== 5b46921 2026-09-24
+v0.1.8.2 横スマホ写真画面の上部UI圧縮
+
+
+=== ab9be59 2026-09-24
+v0.1.8.2 写真作業領域を横スマホ向けに拡張
+
+
+=== eb3477d 2026-09-24
+v0.1.8.2 レビュー版設定
+
+
+=== 9eb36f1 2026-09-24
+v0.1.8.2 version更新
+
+
+=== 361f78a 2026-09-24
+v0.1.8.2 レビューキャッシュ更新
+
+
+=== edef9cb 2026-09-24
+v0.1.8.2 Preview整合性更新
+
+
+=== 36d7583 2026-09-24
+v0.1.8.3 横スマホの通常ヘッダー表示切替を追加
+
+
+=== 9e399d9 2026-09-24
+v0.1.8.3 ヘッダー表示切替ボタンを追加
+
+
+=== c68b971 2026-09-24
+v0.1.8.3 ヘッダー表示状態を初期化
+
+
+=== 191a313 2026-09-24
+v0.1.8.3 操作パネルスクロールと共通コンパクト表示を整理
+
+
+=== 024b9aa 2026-09-24
+v0.1.8.3 写真専用レイアウトをヘッダー畳み状態へ連動
+
+
+=== 8cd05bb 2026-09-24
+v0.1.8.3 レビュー版設定
+
+
+=== 7e60392 2026-09-24
+v0.1.8.3 version更新
+
+
+=== 15138cb 2026-09-24
+v0.1.8.3 レビューキャッシュ更新
+
+
+=== 87db164 2026-09-24
+v0.1.8.3 Preview整合性更新
+
+
+=== 0dd6a2b 2026-09-24
+v0.1.8.4 横スマホのタブ・操作パネル操作性を修正
+
+
+=== 6fb14c3 2026-09-24
+v0.1.8.4 レビュー版設定
+
+
+=== 02613e3 2026-09-24
+v0.1.8.4 version更新
+
+
+=== c555dd1 2026-09-24
+v0.1.8.4 レビューキャッシュ更新
+
+
+=== 81ed7aa 2026-09-24
+v0.1.8.4 Preview整合性更新
+
+
+=== b3b481d 2026-09-24
+v0.1.8.5 タブ上へ案件情報バーを追加
+
+
+=== 3cc14fe 2026-09-24
+v0.1.8.5 案件表示をタブ上バーへ一本化
+
+
+=== 0d7c7cc 2026-09-24
+v0.1.8.5 仕上表の重複案件表示を削除
+
+
+=== 32be813 2026-09-24
+v0.1.8.5 旧案件バナーCSSを削除
+
+
+=== 8ed437f 2026-09-24
+v0.1.8.5 案件情報バーの共通レイアウトを追加
+
+
+=== a33b7d9 2026-09-24
+v0.1.8.5 レビュー版設定
+
+
+=== ee05d88 2026-09-24
+v0.1.8.5 version更新
+
+
+=== 6b6c0bb 2026-09-24
+v0.1.8.5 レビューキャッシュ更新
+
+
+=== defc449 2026-09-24
+v0.1.8.5 Preview整合性更新
+
+
+=== 18289ac 2026-09-24
+v0.1.8.6 仕上表の旧案件バナーDOMを削除
+
+
+=== 8b106af 2026-09-24
+v0.1.8.6 仕上表Controllerの旧案件表示処理を削除
+
+
+=== 75b0034 2026-09-24
+v0.1.8.6 旧ヘッダー案件名更新を削除
+
+
+=== 3fa9d09 2026-09-24
+v0.1.8.6 レビュー版設定
+
+
+=== 2d130e8 2026-09-24
+v0.1.8.6 version更新
+
+
+=== 54145f3 2026-09-24
+v0.1.8.6 レビューキャッシュ更新
+
+
+=== 8f479cf 2026-09-24
+v0.1.8.6 Preview整合性更新
+
+
+=== 628bffd 2026-09-24
+v0.1.8.7 写真タブ高さを案件情報バー追加後の実寸へ修正
+
+
+=== 6291eeb 2026-09-24
+v0.1.8.7 案件選択パネルのスクロールと旧ヘッダーCSSを整理
+
+
+=== 17e5fb9 2026-09-24
+v0.1.8.7 旧案件名ヘッダー要素を削除
+
+
+=== 1d44371 2026-09-24
+v0.1.8.7 案件表示をprojectTitleBarへ完全一本化
+
+
+=== c231236 2026-09-24
+v0.1.8.7 カメラ設定のsampleProject依存を解消
+
+
+=== 6c78609 2026-09-24
+v0.1.8.7 レビュー版設定
+
+
+=== 17fdc5e 2026-09-24
+v0.1.8.7 version更新
+
+
+=== 75b3b6b 2026-09-24
+v0.1.8.7 レビューキャッシュ更新
+
+
+=== 188b894 2026-09-24
+v0.1.8.7 Preview整合性更新
+
+
+=== cb57026 2026-09-24
+v0.1.8.8 カメラ端末設定を分離
+
+
+=== ec5771c 2026-09-24
+v0.1.8.8 カメラ選択状態を分離
+
+
+=== 120a91e 2026-09-24
+v0.1.8.8 カメラ画像生成を分離
+
+
+=== bcec6d5 2026-09-24
+v0.1.8.8 カメラStream管理を分離
+
+
+=== 00d830c 2026-09-24
+v0.1.8.8 カメラControllerを責務分割
+
+
+=== b1b6d9e 2026-09-24
+v0.1.8.8 レビュー版設定
+
+
+=== dacfee0 2026-09-24
+v0.1.8.8 version更新
+
+
+=== 72f9c28 2026-09-24
+v0.1.8.8 カメラ分割後のキャッシュ更新
+
+
+=== 52617e6 2026-09-24
+v0.1.8.8 Preview整合性更新
+
+
+=== c27a596 2026-09-24
+v0.1.8.8 分割カメラモジュールをAPP_SHELLへ追加
+
+
+=== 35277a4 2026-09-24
+v0.1.8.8 Preview検証条件を修正
+
+
+=== abd81bc 2026-09-24
+v0.1.8.8 案件サイドパネルの旧ヘッダー更新を削除
+
+
+=== c321080 2026-09-24
+v0.1.8.9 カメラphotoId採番を分離
+
+
+=== ab77395 2026-09-24
+v0.1.8.9 カメラ分割後の参照を修復
+
+
+=== 86fadfa 2026-09-24
+v0.1.8.9 レビュー版設定
+
+
+=== 7025384 2026-09-24
+v0.1.8.9 version更新
+
+
+=== 75d08e8 2026-09-24
+v0.1.8.9 カメラ修復後のキャッシュ更新
+
+
+=== f345cce 2026-09-24
+v0.1.8.9 カメラ分割回帰チェックを追加
+
+
+=== 2c6c66a 2026-09-24
+v0.1.8.9 Preview版数チェックを修正
+
+
+=== b8b3eb1 2026-09-24
+v0.1.8.10 撮影直後にサムネイルを即時表示
+
+
+=== d9296ee 2026-09-24
+v0.1.8.10 レビュー版設定
+
+
+=== 4c377c2 2026-09-24
+v0.1.8.10 version更新
+
+
+=== 36ed4b7 2026-09-24
+v0.1.8.10 サムネ即時表示版キャッシュ更新
+
+
+=== 0e72d14 2026-09-24
+v0.1.8.10 Preview整合性更新
+
+
+=== da8b39b 2026-09-24
+v0.1.8.10 Preview版数チェックを修正
+
+
+=== ea6236b 2026-09-24
+v0.1.8.11 カメラから写真保存責務を分離
+
+
+=== ff0f827 2026-09-24
+v0.1.8.11 写真保存後UI更新経路を一本化
+
+
+=== b1d651f 2026-09-24
+v0.1.8.11 レビュー版設定
+
+
+=== 59d0843 2026-09-24
+v0.1.8.11 version更新
+
+
+=== fb23d5b 2026-09-24
+v0.1.8.11 写真保存経路整理後のキャッシュ更新
+
+
+=== a7bd69e 2026-09-24
+v0.1.8.11 写真保存責務の回帰チェックを追加
+
+
+=== 13234e4 2026-09-24
+v0.1.8.11 Preview版数チェックを修正
+
+
+=== 7b804cb 2026-09-24
+v0.1.8.12 ローカル撮影サムネを即時読込
+
+
+=== 6da947e 2026-09-24
+v0.1.8.12 レビュー版設定
+
+
+=== 8990e57 2026-09-24
+v0.1.8.12 version更新
+
+
+=== b87e381 2026-09-24
+v0.1.8.12 サムネ表示修正版キャッシュ更新
+
+
+=== 3e0ef3d 2026-09-24
+v0.1.8.12 Preview整合性更新
+
+
+=== 09457aa 2026-09-24
+v0.1.8.12 Preview版数チェックを修正
+
+
+=== fffe784 2026-09-24
+v0.1.8.13 写真ブロック局所描画APIを追加
+
+
+=== 0e7fc49 2026-09-24
+v0.1.8.13 撮影後の写真UIを対象ブロックだけ局所更新
+
+
+=== 0281009 2026-09-24
+v0.1.8.13 レビュー版設定
+
+
+=== 3ce6a2e 2026-09-24
+v0.1.8.13 version更新
+
+
+=== 06ce252 2026-09-24
+v0.1.8.13 写真局所更新版キャッシュ更新
+
+
+=== 1d10fe4 2026-09-24
+v0.1.8.13 Preview整合性更新
+
+
+=== 2e4c63c 2026-09-24
+v0.1.8.13 Preview版数チェックを修正
+
+
+=== c893c4a 2026-09-24
+v0.1.8.14 撮影対象ブロック内サムネをまとめて局所hydrate
+
+
+=== d599a3e 2026-09-24
+v0.1.8.14 レビュー版設定
+
+
+=== caf4ebd 2026-09-24
+v0.1.8.14 version更新
+
+
+=== 1f9db7b 2026-09-24
+v0.1.8.14 写真局所hydrate版キャッシュ更新
+
+
+=== 2bbbe47 2026-09-24
+v0.1.8.14 Preview整合性更新
+
+
+=== a630bf9 2026-09-24
+v0.1.8.14 Preview版数チェックを修正
+
+
+=== 4f68f3d 2026-09-25
+v0.1.8.15 写真サムネ診断ログを追加
+
+
+=== 7de9a06 2026-09-25
+v0.1.8.15 OneDrive写真参照更新ログを追加
+
+
+=== 4e3238f 2026-09-25
+v0.1.8.15 写真Firestore適用診断ログを追加
+
+
+=== 707cf1e 2026-09-25
+v0.1.8.15 レビュー版設定
+
+
+=== bc12c6b 2026-09-25
+v0.1.8.15 version更新
+
+
+=== acadcc7 2026-09-25
+v0.1.8.15 写真診断版キャッシュ更新
+
+
+=== 2247348 2026-09-25
+v0.1.8.15 Preview整合性更新
+
+
+=== 4d1b1a2 2026-09-25
+v0.1.8.15 Preview版数チェックを修正
+
+
+=== 7f46678 2026-09-25
+v0.1.8.16 写真listener removedを物理削除扱いしない
+
+
+=== 6231edb 2026-09-25
+v0.1.8.16 レビュー版設定
+
+
+=== ae19cc6 2026-09-25
+v0.1.8.16 version更新
+
+
+=== 615b61a 2026-09-25
+v0.1.8.16 写真同期修正版キャッシュ更新
+
+
+=== 0cdd3f7 2026-09-25
+v0.1.8.16 Preview整合性更新
+
+
+=== fe45360 2026-09-25
+v0.1.8.16 Preview版数チェックを修正
+
+
+=== 531bab5 2026-09-25
+v0.1.8.17 仕上表候補入力UIを分離
+
+
+=== c97a57d 2026-09-25
+v0.1.8.17 仕上表controllerから候補入力責務を分離
+
+
+=== 9670cb8 2026-09-25
+v0.1.8.17 レビュー版設定
+
+
+=== be827a0 2026-09-25
+v0.1.8.17 version更新
+
+
+=== b806e39 2026-09-25
+v0.1.8.17 仕上表候補入力モジュールをキャッシュへ追加
+
+
+=== d623272 2026-09-25
+v0.1.8.17 Preview整合性更新
+
+
+=== 5e53b1f 2026-09-25
+v0.1.8.17 Preview版数チェックを修正
+
+
+=== b3678e6 2026-09-25
+v0.1.8.18 仕上表編集セッションを分離
+
+
+=== 6a317f7 2026-09-25
+v0.1.8.18 仕上表controllerから編集セッション責務を分離
+
+
+=== 387df00 2026-09-25
+v0.1.8.18 レビュー版設定
+
+
+=== 80b47c9 2026-09-25
+v0.1.8.18 version更新
+
+
+=== 09a081c 2026-09-25
+v0.1.8.18 仕上表編集セッションモジュールをキャッシュへ追加
+
+
+=== e221f51 2026-09-25
+v0.1.8.18 Preview整合性更新
+
+
+=== 30422f3 2026-09-25
+v0.1.8.18 Preview版数チェックを修正
+
+
+=== 19d2530 2026-09-25
+v0.1.8.19 仕上表DOM操作をinteractionモジュールへ分離
+
+
+=== 484adfd 2026-09-25
+v0.1.8.19 仕上表controllerからDOMイベント責務を分離
+
+
+=== b71154b 2026-09-25
+v0.1.8.19 レビュー版設定
+
+
+=== 84bc6f9 2026-09-25
+v0.1.8.19 version更新
+
+
+=== 6ae7c4d 2026-09-25
+v0.1.8.19 仕上表interactionモジュールをキャッシュへ追加
+
+
+=== 319f629 2026-09-25
+v0.1.8.19 Preview整合性更新
+
+
+=== c74d77a 2026-09-25
+v0.1.8.19 Preview版数チェックを修正
+
+
+=== 3fda2a6 2026-09-25
+v0.1.8.19 分離後のCI責務チェックを更新
+
+
+=== bbfcd52 2026-09-28
+v0.1.8.20 建材リストへ分析結果項目を追加
+
+
+=== 5cbcd44 2026-09-28
+v0.1.8.20 分析結果・備考列と折りたたみUIを追加
+
+
+=== 9a2fe57 2026-09-28
+v0.1.8.20 分析欄表示切替と手入力保存を追加
+
+
+=== a65e034 2026-09-28
+v0.1.8.20 分析結果列の幅を追加
+
+
+=== efe59b0 2026-09-28
+v0.1.8.20 レビュー版設定
+
+
+=== a0060a7 2026-09-28
+v0.1.8.20 version更新
+
+
+=== 9f154cc 2026-09-28
+v0.1.8.20 Service Worker版数更新
+
+
+=== 893d50a 2026-09-28
+v0.1.8.20 Preview整合性更新
+
+
+=== 3ffe76c 2026-09-28
+v0.1.8.20 Preview版数チェックを修正
+
+
+=== 886d80b 2026-09-28
+v0.1.8.21 分析結果取込を無・石綿含有へ正規化
+
+
+=== 81c8ca9 2026-09-28
+v0.1.8.21 出力調査備考をnoteのみに分離
+
+
+=== c9485f0 2026-09-28
+v0.1.8.21 レビュー版設定
+
+
+=== 9097628 2026-09-28
+v0.1.8.21 version更新
+
+
+=== 4261d68 2026-09-28
+v0.1.8.21 Service Worker版数更新
+
+
+=== 3708e5f 2026-09-28
+v0.1.8.21 Preview整合性更新
+
+
+=== 82ed57c 2026-09-28
+v0.1.8.21 Preview版数チェックを修正
+
+
+=== 5e8dbdd 2026-09-28
+v0.1.8.22 部屋別リストの赤字範囲を部位以降へ限定
+
+
+=== 06f1f6b 2026-09-28
+v0.1.8.22 レビュー版設定
+
+
+=== 390b43e 2026-09-28
+v0.1.8.22 version更新
+
+
+=== fb65a4a 2026-09-28
+v0.1.8.22 Service Worker版数更新
+
+
+=== 04f19ae 2026-09-28
+v0.1.8.22 Preview整合性更新
+
+
+=== ea27dff 2026-09-28
+v0.1.8.22 Preview版数チェックを修正
+
+
+=== fe2e4f3 2026-09-28
+v0.1.8.23 報告書用の分析区分と結果を変換
+
+
+=== db9ca1b 2026-09-28
+v0.1.8.23 分析結果を1行フィット表示
+
+
+=== 029a59a 2026-09-28
+v0.1.8.23 レビュー版設定
+
+
+=== 8547850 2026-09-28
+v0.1.8.23 version更新
+
+
+=== 1518302 2026-09-28
+v0.1.8.23 Service Worker版数更新
+
+
+=== b6808a8 2026-09-28
+v0.1.8.23 Preview整合性更新
+
+
+=== 0c97aca 2026-09-28
+v0.1.8.24 出力用の陽性判定を元データから分離
+
+
+=== bfb0239 2026-09-28
+v0.1.8.24 みなし・対象外の赤字判定と部屋備考色を修正
+
+
+=== a99cb96 2026-09-28
+v0.1.8.24 レビュー版設定
+
+
+=== f08bd7b 2026-09-28
+v0.1.8.24 version更新
+
+
+=== 492812d 2026-09-28
+v0.1.8.24 Service Worker版数更新
+
+
+=== 843b264 2026-09-28
+v0.1.8.24 Preview整合性更新
+
+
+=== 112b61d 2026-09-29
+v0.1.8.25 add finish persistence module
+
+
+=== 14aa4ab 2026-09-29
+remove temporary v0.1.8.25 placeholder
+
+
+=== 4afd40b 2026-09-29
+v0.1.8.25 add finish structure actions
+
+
+=== 798a8b2 2026-09-29
+v0.1.8.25 route controller to structure actions
+
+
+=== 605e3a5 2026-09-29
+v0.1.8.25 split finish structure and persistence
+
+
+=== be2a77f 2026-09-29
+v0.1.8.25 clean finish actions after split
+
+
+=== 65181ab 2026-09-29
+v0.1.8.25 cache finish structure modules
+
+
+=== ca17e54 2026-09-29
+v0.1.8.25 review config
+
+
+=== ef8a5f9 2026-09-29
+v0.1.8.25 version
+
+
+=== 6360407 2026-09-29
+v0.1.8.25 structural split checks
+
+
+=== 3513205 2026-09-29
+v0.1.8.26 split material usage derivation
+
+
+=== b990b5f 2026-09-29
+v0.1.8.26 split finish cell actions
+
+
+=== e24ad7a 2026-09-29
+v0.1.8.26 route finish interactions to cell actions
+
+
+=== 97f8a42 2026-09-29
+v0.1.8.26 route candidate material parts to cell actions
+
+
+=== ff20554 2026-09-29
+v0.1.8.26 route output usage labels to derived module
+
+
+=== 7d4f279 2026-09-29
+v0.1.8.26 route material usage labels to derived module
+
+
+=== f33c74e 2026-09-29
+v0.1.8.26 remove cell and usage ownership from finish actions
+
+
+=== c1c7a33 2026-09-29
+v0.1.8.26 clean moved cell and usage fragments
+
+
+=== 2bd7202 2026-09-29
+v0.1.8.26 cache finish cell and usage modules
+
+
+=== 91338e1 2026-09-29
+v0.1.8.26 review config
+
+
+=== 35a2234 2026-09-29
+v0.1.8.26 version
+
+
+=== e3ced1b 2026-09-29
+v0.1.8.26 finish cell split checks
+
+
+=== e47e42e 2026-09-29
+v0.1.8.27 split finish room copy
+
+
+=== 0c4da5f 2026-09-29
+v0.1.8.27 route controller room copy module
+
+
+=== d15a30f 2026-09-29
+v0.1.8.27 route view model room copy module
+
+
+=== 0e02b02 2026-09-29
+v0.1.8.27 remove room copy ownership from finish actions
+
+
+=== 8da5334 2026-09-29
+v0.1.8.27 cache room copy module
+
+
+=== 50c17c0 2026-09-29
+v0.1.8.27 review config
+
+
+=== 700e797 2026-09-29
+v0.1.8.27 version
+
+
+=== 7bd4054 2026-09-29
+v0.1.8.27 room copy split checks
+
+
+=== bee7cb6 2026-09-29
+v0.1.8.28 split finish sample seed
+
+
+=== 40ad41a 2026-09-29
+v0.1.8.28 route sample seed module
+
+
+=== 629cead 2026-09-29
+v0.1.8.28 route project usage derivation
+
+
+=== 4af19ea 2026-09-29
+v0.1.8.28 route simple list usage derivation
+
+
+=== b9eaa37 2026-09-29
+v0.1.8.28 route material operations usage derivation
+
+
+=== a92bf48 2026-09-29
+v0.1.8.28 remove sample seed ownership from finish actions
+
+
+=== 73d0667 2026-09-29
+v0.1.8.28 remove obsolete finish actions constant
+
+
+=== 320f7a2 2026-09-29
+v0.1.8.28 cache sample seed module
+
+
+=== 9a70992 2026-09-29
+v0.1.8.28 review config
+
+
+=== 723ada0 2026-09-29
+v0.1.8.28 version
+
+
+=== 1d0c526 2026-09-29
+v0.1.8.28 sample seed and usage checks
+
+
+=== 822c58c 2026-09-29
+v0.1.8.29 split finish room actions
+
+
+=== 5f18f1e 2026-09-29
+v0.1.8.29 split finish record transaction
+
+
+=== 2e948b0 2026-09-29
+v0.1.8.29 remove finish actions facade from controller
+
+
+=== 354bcd7 2026-09-29
+v0.1.8.29 remove finish actions facade from interactions
+
+
+=== 8abbaf9 2026-09-29
+v0.1.8.29 use stores directly in candidate input
+
+
+=== ab5c8a2 2026-09-29
+v0.1.8.29 route room copy to room actions
+
+
+=== 8abc864 2026-09-29
+v0.1.8.29 use material store directly in material list
+
+
+=== a5d1965 2026-09-29
+v0.1.8.29 use material store directly in simple list
+
+
+=== 2ce6475 2026-09-29
+v0.1.8.29 remove finish actions facade from material operations
+
+
+=== fdf58d4 2026-09-29
+v0.1.8.29 route edit session transaction module
+
+
+=== 477bb9e 2026-09-29
+v0.1.8.29 remove finish actions facade from room note editor
+
+
+=== cb3a683 2026-09-29
+v0.1.8.29 clean obsolete finish actions documentation
+
+
+=== 3fce11c 2026-09-29
+v0.1.8.29 remove obsolete finish table actions facade
+
+
+=== 0c3f22d 2026-09-29
+v0.1.8.29 remove actions facade from app shell
+
+
+=== de284e7 2026-09-29
+v0.1.8.29 review config
+
+
+=== de36c2d 2026-09-29
+v0.1.8.29 version
+
+
+=== 43f32f0 2026-09-29
+v0.1.8.29 remove actions facade checks
+
+
+=== e717d50 2026-09-29
+v0.1.8.29 update sample seed documentation
+
+
+=== a3b8d42 2026-09-29
+v0.1.8.30 split photo viewer data
+
+
+=== 561a9c6 2026-09-29
+v0.1.8.30 use photo viewer data module
+
+
+=== 8229eb6 2026-09-29
+v0.1.8.30 add photo viewer data to app shell
+
+
+=== 0af56d2 2026-09-29
+v0.1.8.30 bump app config
+
+
+=== 0c4b379 2026-09-29
+v0.1.8.30 bump version metadata
+
+
+=== 35c50d8 2026-09-29
+v0.1.8.30 add photo viewer split guards
+
+
+=== b3e9e1a 2026-09-29
+v0.1.8.30 fix viewer data store lookup
+
+
+=== 2e31e9b 2026-09-29
+v0.1.8.30 strengthen photo viewer data guard
+
+
+=== 2f0ccda 2026-09-29
+v0.1.8.31 split photo preview manager
+
+
+=== ec72a94 2026-09-29
+v0.1.8.31 use photo preview manager
+
+
+=== be9d7bb 2026-09-29
+v0.1.8.31 add photo preview manager to app shell
+
+
+=== 006dba8 2026-09-29
+v0.1.8.31 bump app config
+
+
+=== de47d21 2026-09-29
+v0.1.8.31 bump version metadata
+
+
+=== e175036 2026-09-29
+v0.1.8.31 add photo preview split guards
+
+
+=== 3723d34 2026-09-29
+v0.1.8.31 align photo preview regression guards
+
+
+=== 39d67fa 2026-09-30
+v0.1.8.32 add photo record actions
+
+
+=== 66fb921 2026-09-30
+v0.1.8.32 use photo record actions
+
+
+=== aaaf903 2026-09-30
+v0.1.8.32 remove obsolete photo preview imports
+
+
+=== fabb62b 2026-09-30
+v0.1.8.32 add photo record actions to app shell
+
+
+=== ffecea9 2026-09-30
+v0.1.8.32 bump app config
+
+
+=== 86ac6c5 2026-09-30
+v0.1.8.32 bump version metadata
+
+
+=== a6e3720 2026-09-30
+v0.1.8.32 add photo record action guards
+
+
+=== ef3494b 2026-09-30
+v0.1.8.33 add photo interactions
+
+
+=== 789a7a5 2026-09-30
+v0.1.8.33 use photo interactions module
+
+
+=== 2f0cf47 2026-09-30
+v0.1.8.33 update service-worker.js
+
+
+=== 46bd7c8 2026-09-30
+v0.1.8.33 update app-config.js
+
+
+=== 0f58553 2026-09-30
+v0.1.8.33 update version.json
+
+
+=== a72e0aa 2026-09-30
+v0.1.8.33 add photo interaction guards
+
+
+=== d359358 2026-09-30
+v0.1.8.33 refine photo interaction guard
+
+
+=== 98a0c95 2026-09-30
+v0.1.8.33 fix review version guards
+
+
+=== a74ab44 2026-09-30
+v0.1.8.34 add board editor session module
+
+
+=== fee2776 2026-09-30
+v0.1.8.34 use board editor session module
+
+
+=== 5092e66 2026-09-30
+v0.1.8.34 update service-worker.js
+
+
+=== 5aab9a1 2026-09-30
+v0.1.8.34 update app-config.js
+
+
+=== 55c2134 2026-09-30
+v0.1.8.34 update version.json
+
+
+=== 516e7b5 2026-09-30
+v0.1.8.34 add board editor session guards
+
+
+=== efc43e8 2026-09-30
+v0.1.8.34 fix app config version
+
+
+=== ebd1afa 2026-09-30
+v0.1.8.34 add board editor modules to app shell
+
+
+=== f520d39 2026-09-30
+v0.1.8.34 fix review version guards
+
+
+=== 555ae8e 2026-09-30
+v0.1.8.35 add board editor interactions
+
+
+=== d104d64 2026-09-30
+v0.1.8.35 use board editor interactions
+
+
+=== cbcf3a0 2026-09-30
+v0.1.8.35 update service-worker.js
+
+
+=== 403c4d2 2026-09-30
+v0.1.8.35 update app-config.js
+
+
+=== 21bf13f 2026-09-30
+v0.1.8.35 update version.json
+
+
+=== b80cf0f 2026-09-30
+v0.1.8.35 add board editor interaction guards
+
+
+=== b3a8fb0 2026-09-30
+v0.1.8.35 fix app config version
+
+
+=== 43fd689 2026-09-30
+v0.1.8.36 add board editor persistence
+
+
+=== 6c63b2a 2026-09-30
+v0.1.8.36 use board editor persistence module
+
+
+=== 5a52a84 2026-09-30
+v0.1.8.36 update service-worker.js
+
+
+=== 98e3635 2026-09-30
+v0.1.8.36 update app-config.js
+
+
+=== f3ff735 2026-09-30
+v0.1.8.36 update version.json
+
+
+=== 97179a2 2026-09-30
+v0.1.8.36 add board editor persistence guards
+
+
+=== 760fd05 2026-09-30
+v0.1.8.36 fix app config version
+
+
+=== 006b798 2026-09-30
+v0.1.8.36 update board editor persistence documentation
+
+
+=== bce9358 2026-09-30
+v0.1.8.37 add board editor form module
+
+
+=== 02a7525 2026-09-30
+v0.1.8.37 use board editor form module
+
+
+=== c95ce03 2026-09-30
+v0.1.8.37 update service-worker.js
+
+
+=== d0b368b 2026-09-30
+v0.1.8.37 update app-config.js
+
+
+=== c8f3bc3 2026-09-30
+v0.1.8.37 update version.json
+
+
+=== 6563f61 2026-09-30
+v0.1.8.37 add board editor form guards
+
+
+=== a6a8d04 2026-09-30
+v0.1.8.37 fix app config version
+
+
+=== 2d4555a 2026-09-30
+v0.1.8.37 update material store transaction documentation
+
+
+=== 11c1f16 2026-09-30
+v0.1.8.38 add photo viewer gesture module
+
+
+=== a92a429 2026-09-30
+v0.1.8.38 use photo viewer gesture module
+
+
+=== 05885f8 2026-09-30
+v0.1.8.38 update service-worker.js
+
+
+=== b409b6a 2026-09-30
+v0.1.8.38 update app-config.js
+
+
+=== 1bd47d3 2026-09-30
+v0.1.8.38 update version.json
+
+
+=== 89e38f9 2026-09-30
+v0.1.8.38 add photo viewer gesture guards
+
+
+=== 94a87ae 2026-09-30
+v0.1.8.38 fix app config version
+
+
+=== 7de1867 2026-09-30
+v0.1.8.39 remove stale viewer transform definitions
+
+
+=== 7d7d1e2 2026-09-30
+v0.1.8.39 remove obsolete board editor constant
+
+
+=== b32a61e 2026-09-30
+v0.1.8.39 update photo controller architecture note
+
+
+=== 256f37e 2026-09-30
+v0.1.8.39 update photo viewer architecture note
+
+
+=== 9a8fc0a 2026-09-30
+v0.1.8.39 update service worker
+
+
+=== 97919c4 2026-09-30
+v0.1.8.39 update app config
+
+
+=== 47b9e09 2026-09-30
+v0.1.8.39 update version metadata
+
+
+=== 91263e2 2026-09-30
+v0.1.8.39 finalize photo cleanup guards
+
+
+=== 3ec6243 2026-09-30
+v0.1.8.40 add project view impact module
+
+
+=== 1cd1d3d 2026-09-30
+v0.1.8.40 use project view impact module
+
+
+=== b2749d5 2026-09-30
+v0.1.8.40 update service-worker.js
+
+
+=== 24b40ac 2026-09-30
+v0.1.8.40 update app-config.js
+
+
+=== 35e0a3b 2026-09-30
+v0.1.8.40 update version.json
+
+
+=== a5cf826 2026-09-30
+v0.1.8.40 add project view impact guards
+
+
+=== c1af27b 2026-09-30
+v0.1.8.40 fix app config version
+
+
+=== 50fd36d 2026-09-30
+v0.1.8.41 add project sync meta module
+
+
+=== ea4c57a 2026-09-30
+v0.1.8.41 use project sync meta module
+
+
+=== de00da0 2026-09-30
+v0.1.8.41 update service-worker.js
+
+
+=== 0b28ef4 2026-09-30
+v0.1.8.41 update app-config.js
+
+
+=== 295952d 2026-09-30
+v0.1.8.41 update version.json
+
+
+=== f6965b4 2026-09-30
+v0.1.8.41 add project sync meta guards
+
+
+=== ed5df04 2026-09-30
+v0.1.8.41 fix app config version
+
+
+=== c2aa70a 2026-09-30
+v0.1.8.42 add project record apply module
+
+
+=== 440eb4f 2026-09-30
+v0.1.8.42 use project record apply module
+
+
+=== 5ec7e03 2026-09-30
+v0.1.8.42 update service-worker.js
+
+
+=== 311cffd 2026-09-30
+v0.1.8.42 update app-config.js
+
+
+=== 5ca5110 2026-09-30
+v0.1.8.42 update version.json
+
+
+=== 29cded9 2026-09-30
+v0.1.8.42 add project record apply guards
+
+
+=== 5ee462e 2026-09-30
+v0.1.8.42 fix app config version
+
+
+=== 81a3677 2026-09-30
+v0.1.8.42 align core sync regression guards
+
+
+=== 8fe169a 2026-09-30
+v0.1.8.43 add material list persistence
+
+
+=== ac9fb2a 2026-09-30
+v0.1.8.43 use material list persistence module
+
+
+=== b8408ea 2026-09-30
+v0.1.8.43 update service-worker.js
+
+
+=== dfc5066 2026-09-30
+v0.1.8.43 update app-config.js
+
+
+=== 677cb80 2026-09-30
+v0.1.8.43 update version.json
+
+
+=== 554b69d 2026-09-30
+v0.1.8.43 add material list persistence guards
+
+
+=== 2373749 2026-09-30
+v0.1.8.43 fix app config version
+
+
+=== d834db0 2026-09-30
+v0.1.8.44 add material list interactions
+
+
+=== 7e0639b 2026-09-30
+v0.1.8.44 use material list interactions module
+
+
+=== e8c4015 2026-09-30
+v0.1.8.44 update service-worker.js
+
+
+=== 3e05977 2026-09-30
+v0.1.8.44 update app-config.js
+
+
+=== 18d60f9 2026-09-30
+v0.1.8.44 update version.json
+
+
+=== f7b9dcb 2026-09-30
+v0.1.8.44 add material list interaction guards
+
+
+=== 295463e 2026-09-30
+v0.1.8.44 fix app config version
+
+
+=== c178df9 2026-09-30
+v0.1.8.45 add material list edit actions
+
+
+=== 15813c9 2026-09-30
+v0.1.8.45 use material list edit actions
+
+
+=== 18d08b7 2026-09-30
+v0.1.8.45 update service-worker.js
+
+
+=== 456f650 2026-09-30
+v0.1.8.45 update app-config.js
+
+
+=== 682f85a 2026-09-30
+v0.1.8.45 update version.json
+
+
+=== c6f6f92 2026-09-30
+v0.1.8.45 add material list edit action guards
+
+
+=== 6706ffe 2026-09-30
+v0.1.8.45 fix app config version
+
+
+=== d05e62b 2026-09-30
+v0.1.8.45 align material list persistence guards
+
+
+=== b66e950 2026-09-30
+v0.1.8.45 align photo sync apply guards
+
+
+=== 6bd9389 2026-09-30
+v0.1.8.46 add output side panels module
+
+
+=== fa16ec1 2026-09-30
+v0.1.8.46 use output side panels module
+
+
+=== 4920969 2026-09-30
+v0.1.8.46 update service-worker.js
+
+
+=== a46c446 2026-09-30
+v0.1.8.46 update app-config.js
+
+
+=== 52f0331 2026-09-30
+v0.1.8.46 update version.json
+
+
+=== 75bed3b 2026-09-30
+v0.1.8.46 add output side panel guards
+
+
+=== 1e37951 2026-09-30
+v0.1.8.46 fix app config version
+
+
+=== 97ef9e3 2026-09-30
+v0.1.8.47 add output pdf preview controller
+
+
+=== 1cc91da 2026-09-30
+v0.1.8.47 use output pdf preview controller
+
+
+=== 1b49093 2026-09-30
+v0.1.8.47 remove obsolete output preview remnants
+
+
+=== 2c62ad4 2026-09-30
+v0.1.8.47 update service-worker.js
+
+
+=== 3a9f64e 2026-09-30
+v0.1.8.47 update app-config.js
+
+
+=== c2822f0 2026-09-30
+v0.1.8.47 update version.json
+
+
+=== c17405e 2026-09-30
+v0.1.8.47 add output pdf preview guards
+
+
+=== ba1b595 2026-09-30
+v0.1.8.47 fix app config version
+
+
+=== 6136c07 2026-09-30
+v0.1.8.47 align output preview regression guards
+
+
+=== 5fd219d 2026-09-30
+v0.1.8.47 fix async output preview guards
+
+
+=== 4dbe122 2026-09-30
+v0.1.8.48 refresh architecture comments
+
+
+=== 2b0cb49 2026-09-30
+v0.1.8.48 refresh architecture comments
+
+
+=== f1f7e08 2026-09-30
+v0.1.8.48 refresh architecture comments
+
+
+=== 9cd789b 2026-09-30
+v0.1.8.48 refresh architecture comments
+
+
+=== 1d4616e 2026-09-30
+v0.1.8.48 refresh architecture comments
+
+
+=== 65b0cb9 2026-09-30
+v0.1.8.48 complete app shell coverage
+
+
+=== 6287b09 2026-09-30
+v0.1.8.48 update app-config.js
+
+
+=== ad1925d 2026-09-30
+v0.1.8.48 update version.json
+
+
+=== 7319c85 2026-09-30
+v0.1.8.48 enforce complete app shell coverage
+
+
+=== 26540dd 2026-09-30
+v0.1.8.48 refresh finish interaction comments
+
+
+=== 9fd5d92 2026-09-30
+v0.1.8.48 refresh photo view model comments
+
+
+=== 06817ea 2026-09-30
+finalize v0.1.8 app config
+
+
+=== ccca559 2026-09-30
+finalize v0.1.8 version metadata
+
+
+=== 37e474a 2026-09-30
+finalize v0.1.8 service worker
+
+
+=== 6d638e8 2026-09-30
+finalize v0.1.8 stable workflow checks
+
+
+=== 6b2536d 2026-09-30
+finalize v0.1.8 stable version guards
+
+
+=== 9b4b2b6 2026-09-30
+v0.1.8 document Firestore repository functions
+
+
+=== 3166ad5 2026-09-30
+v0.1.8 document project persistence functions
+
+
+=== 00730d5 2026-09-30
+v0.1.8 document project controller functions
+
+
+=== 8b770f7 2026-09-30
+v0.1.8 document finish table controller functions
+
+
+=== 8b0df46 2026-09-30
+v0.1.8 document finish table interactions
+
+
+=== e0437a2 2026-09-30
+v0.1.8 document material list controller functions
+
+
+=== f357e85 2026-09-30
+v0.1.8 document photo controller functions
+
+
+=== 56f51a9 2026-09-30
+v0.1.8 document board editor functions
+
+
+=== 93d75ec 2026-09-30
+v0.1.8 document photo viewer functions
+
+
+=== 6b40a4a 2026-09-30
+v0.1.8 document output controller functions
+
+
+=== 233df18 2026-09-30
+v0.1.8 document output preview controller functions
+
+
+=== 5957c32 2026-09-30
+v0.1.8 document camera controller functions
+
+
+=== 24873d0 2026-09-30
+v0.1.8 document material operations functions
+
+
+=== 713e7b8 2026-09-30
+v0.1.8 complete board editor function docs
+
+
+=== 9d3898a 2026-09-30
+v0.1.8 complete photo viewer function docs
+
+
+=== bd68633 2026-09-30
+v0.1.8 complete camera controller function docs
+
+
+=== 0b58fd1 2026-09-30
+v0.1.8 complete finish controller docs
+
+
+=== 8323c13 2026-09-30
+v0.1.8 complete finish interactions docs
+
+
+=== 5bd162d 2026-09-30
+v0.1.8 complete material list controller docs
+
+
+=== faf397c 2026-09-30
+v0.1.8 complete material operations docs
+
+
+=== 6a78f26 2026-09-30
+v0.1.8 complete output controller docs
+
+
+=== 646482c 2026-09-30
+v0.1.8 complete output preview docs
+
+
+=== 79afa9f 2026-09-30
+v0.1.8 complete photo controller docs
+
+
+=== b3f489a 2026-09-30
+v0.1.8 publish stable release
+
+
+=== 7686e57 2026-09-30
+v0.1.8 align production checks with stable build
+
+
+=== 51cff78 2026-09-30
+v0.1.8.1 fix board editor persistence path
+
+
+=== 1dd7ec1 2026-09-30
+v0.1.8.1 stop board editor double persistence
+
+
+=== a5f998c 2026-09-30
+v0.1.8.1 set stable app version
+
+
+=== 5b3b315 2026-09-30
+v0.1.8.1 update version metadata
+
+
+=== 8679742 2026-09-30
+v0.1.8.1 bump service worker cache generation
+
+
+=== 9d5477c 2026-09-30
+v0.1.8.1 update production release guards
+
+
+=== 02067ed 2026-10-01
+v0.1.9.1 add tutorial project snapshot
+
+
+=== d38b5e6 2026-10-01
+v0.1.9.1 add basic guide step definitions
+
+
+=== 4bbf848 2026-10-01
+v0.1.9.1 add shared guide overlay
+
+
+=== 105f83a 2026-10-01
+v0.1.9.1 add guide controller
+
+
+=== 6493355 2026-10-01
+v0.1.9.1 add guide styles
+
+
+=== 5c1c5f4 2026-10-01
+v0.1.9.1 connect guide initialization
+
+
+=== 8f4e0a7 2026-10-01
+v0.1.9.1 add guide entry to operation drawer
+
+
+=== e4dfd8d 2026-10-01
+v0.1.9.1 lock background while project panel is open
+
+
+=== 0eba6a8 2026-10-01
+v0.1.9.1 prevent project panel scroll chaining
+
+
+=== 034b55e 2026-10-01
+v0.1.9.1 refit output preview when tab becomes visible
+
+
+=== a1366cf 2026-10-01
+v0.1.9.1 avoid guide overlay mutation loop
+
+
+=== 9cd91f0 2026-10-01
+v0.1.9.1 set review app version
+
+
+=== 3fdad4c 2026-10-01
+v0.1.9.1 update version metadata
+
+
+=== b89aa0b 2026-10-01
+v0.1.9.1 update offline app shell
+
+
+=== 40a1c46 2026-10-01
+v0.1.9.1 add explicit simple-list visibility control
+
+
+=== 9363e52 2026-10-01
+v0.1.9.1 start tutorial with simple list closed
+
+
+=== 23804ee 2026-10-01
+v0.1.9.1 label tutorial project separately
+
+
+=== c380ce9 2026-10-01
+v0.1.9.1 support variable room counts for structure additions
+
+
+=== d2c5621 2026-10-01
+v0.1.9.1 reorganize guide and operation panel
+
+
+=== f919121 2026-10-01
+v0.1.9.1 remove obsolete drawer insert selection coupling
+
+
+=== 0eece25 2026-10-01
+v0.1.9.1 rebuild finish drawer structure controls
+
+
+=== 14c43ff 2026-10-01
+v0.1.9.1 add tutorial auto-start handoff
+
+
+=== 8935959 2026-10-01
+v0.1.9.1 initialize tutorial project on home
+
+
+=== 7bae2c8 2026-10-01
+v0.1.9.1 connect home tutorial entry
+
+
+=== fde8976 2026-10-01
+v0.1.9.1 place tutorial beside sample on home
+
+
+=== 1ec7941 2026-10-01
+v0.1.9.1 add guide menu and requested tutorial start
+
+
+=== 11319fa 2026-10-01
+v0.1.9.1 start home-requested tutorial after project load
+
+
+=== 6a59c27 2026-10-01
+v0.1.9.1 mount analysis import at fixed drawer position
+
+
+=== df5ea9e 2026-10-01
+v0.1.9.1 style guide menu and finish operation accordions
+
+
+=== d7d7579 2026-10-01
+v0.1.9.1 place tutorial beside sample on home
+
+
+=== 77a673d 2026-10-01
+v0.1.9.1 add isolated Firebase review workflow
+
+
+=== 4ef2051 2026-10-01
+v0.1.9.1 keep existing Firebase review channel
+
+
+=== 9222ef8 2026-10-01
+v0.1.9.1 share drawer behavior between guide and operations
+
+
+=== 8e14a13 2026-10-01
+v0.1.9.1 replace guide popup with full drawer
+
+
+=== 81e39f2 2026-10-01
+v0.1.9.1 remove obsolete guide popup behavior
+
+
+=== 4f0c99d 2026-10-01
+v0.1.9.1 make guide use full-width drawer layout
+
+
+=== 711f6fe 2026-10-01
+v0.1.9.2 bump review app version
+
+
+=== 597d290 2026-10-01
+v0.1.9.2 update version metadata
+
+
+=== 34a4f3e 2026-10-01
+v0.1.9.2 bump service worker cache generation
+
+
+=== 6d1ad5a 2026-10-01
+v0.1.9.2 align review workflow version checks
+
+
+=== 5a6d9c0 2026-10-01
+v0.1.9.3 add tutorial runtime state and interaction lock
+
+
+=== 1495332 2026-10-01
+v0.1.9.3 add tutorial step completion rules
+
+
+=== 8cc5bd4 2026-10-01
+v0.1.9.3 drive tutorial from completed operations and snapshots
+
+
+=== a5bb969 2026-10-01
+v0.1.9.3 avoid guide collisions and hide next during actions
+
+
+=== bc73738 2026-10-01
+v0.1.9.3 harden tutorial input completion and touch lock
+
+
+=== c611be7 2026-10-01
+v0.1.9.3 keep camera usable during tutorial
+
+
+=== b73b2a5 2026-10-01
+v0.1.9.3 remove obsolete tutorial helpers
+
+
+=== 97e4dce 2026-10-01
+v0.1.9.3 update tutorial controller documentation
+
+
+=== 02d3f8b 2026-10-01
+v0.1.9.3 align guide collision target with candidate popup
+
+
+=== 46441d5 2026-10-01
+v0.1.9.3 bump review app version
+
+
+=== eb0edac 2026-10-01
+v0.1.9.3 update version metadata
+
+
+=== 11858dc 2026-10-01
+v0.1.9.3 bump cache generation and include tutorial runtime
+
+
+=== b1f6b9f 2026-10-01
+v0.1.9.3 align review workflow version checks
+
+
+=== d05e7b0 2026-10-01
+v0.1.9.3 tighten tutorial interaction target lock
+
+
+=== 7c3ef96 2026-10-01
+v0.1.9.3 make analysis-required tutorial step interactive
+
+
+=== 8892238 2026-10-01
+v0.1.9.4 make tutorial lock fail-safe
+
+
+=== 1a4b7e2 2026-10-01
+v0.1.9.4 align review version metadata
+
+
+=== af55b6e 2026-10-01
+v0.1.9.4 align review version metadata
+
+
+=== c3e54a6 2026-10-01
+v0.1.9.4 align review version metadata
+
+
+=== cabacdf 2026-10-01
+v0.1.9.4 align review version metadata
+
+
+=== 5f0d4a3 2026-10-01
+v0.1.9.4 finish review consistency cleanup
+
+
+=== 8b37497 2026-10-01
+v0.1.9.4 finish review consistency cleanup
+
+
+=== 38d3a28 2026-10-01
+v0.1.9.5 allow focused tutorial text input
+
+
+=== b0fa3d3 2026-10-01
+v0.1.9.5 align review version metadata
+
+
+=== 98ea533 2026-10-01
+v0.1.9.5 align review version metadata
+
+
+=== ef74c19 2026-10-01
+v0.1.9.5 align review version metadata
+
+
+=== 0657b04 2026-10-01
+v0.1.9.5 align review version metadata
+
+
+=== 87def91 2026-10-01
+v0.1.9.5 finish review consistency cleanup
+
+
+=== f0357de 2026-10-01
+v0.1.9.6 replace guide event lock with blocker overlay
+
+
+=== 9ffd22a 2026-10-01
+v0.1.9.6 remove document capture tutorial lock
+
+
+=== 7a8def8 2026-10-01
+v0.1.9.6 route tutorial lock through overlay regions
+
+
+=== 62e7b90 2026-10-01
+v0.1.9.6 add physical tutorial blocker regions
+
+
+=== 3e3cdbc 2026-10-01
+v0.1.9.6 align review version metadata
+
+
+=== 718883f 2026-10-01
+v0.1.9.6 align review version metadata
+
+
+=== 8626577 2026-10-01
+v0.1.9.6 align review version metadata
+
+
+=== db72613 2026-10-01
+v0.1.9.6 align review version metadata
+
+
+=== e2a265d 2026-10-01
+v0.1.9.6 finish review consistency cleanup
+
+
+=== 1a219fc 2026-10-01
+v0.1.9.7 add tutorial action permission state
+
+
+=== f828365 2026-10-01
+v0.1.9.7 replace tutorial blocker overlay with display-only guide
+
+
+=== 389d805 2026-10-01
+v0.1.9.7 define finish tutorial action permissions
+
+
+=== 7cc8655 2026-10-01
+v0.1.9.7 switch guide controller to action-permission state
+
+
+=== 6412a1f 2026-10-01
+v0.1.9.7 guard finish interactions at app action entry points
+
+
+=== 859337e 2026-10-01
+v0.1.9.7 guard finish structure and history actions
+
+
+=== b1dcf5c 2026-10-01
+v0.1.9.7 guard only user initiated tab changes
+
+
+=== e63405d 2026-10-01
+v0.1.9.7 remove blocker css and keep guide display only
+
+
+=== 22ae361 2026-10-01
+v0.1.9.7 clean runtime responsibilities
+
+
+=== 1e95b94 2026-10-01
+v0.1.9.7 cache tutorial permission state
+
+
+=== eb7afc0 2026-10-01
+v0.1.9.7 align review version
+
+
+=== 637c869 2026-10-01
+v0.1.9.7 align review version
+
+
+=== d1b7de2 2026-10-01
+v0.1.9.7 update review workflow
+
+
+=== e55615f 2026-10-01
+v0.1.9.7 add tutorial fail-safe cleanup
+
+
+=== 8abc5ad 2026-10-01
+v0.1.9.7 document guide permission responsibility
+
+
+=== ab5749c 2026-10-01
+v0.1.9.7 enforce tutorial architecture checks
+
+
+=== ff5b4f5 2026-10-01
+v0.1.9.8 split tutorial snapshot responsibility
+
+
+=== c6a3f76 2026-10-01
+v0.1.9.8 simplify tutorial permission state
+
+
+=== 765aaa2 2026-10-01
+v0.1.9.8 rebuild guide overlay without DOM observer
+
+
+=== 39e4734 2026-10-01
+v0.1.9.8 limit basic tutorial to finish section
+
+
+=== e5a7808 2026-10-01
+v0.1.9.8 rebuild tutorial controller on Store notifications
+
+
+=== ee43730 2026-10-01
+v0.1.9.8 remove obsolete tutorial runtime
+
+
+=== db52ae1 2026-10-01
+v0.1.9.8 replace runtime cache entry with snapshot module
+
+
+=== 51415e8 2026-10-01
+v0.1.9.8 align review version
+
+
+=== d0c9b03 2026-10-01
+v0.1.9.8 align review version
+
+
+=== 55d0255 2026-10-01
+v0.1.9.8 enforce rebuilt tutorial architecture
+
+
+=== d4b9f90 2026-10-01
+v0.1.9.8 centralize finish tutorial guard at activation entry
+
+
+=== 51e9d3a 2026-10-01
+v0.1.9.8 keep finish structure actions tutorial-agnostic
+
+
+=== 56589e4 2026-10-01
+v0.1.9.8 prevent tutorial DOM observer regression
+
+
+=== 3d3199f 2026-10-01
+v0.1.9.8 sync dynamic permissions on Store update
+
+
+=== d745eb3 2026-10-01
+v0.1.9.9 support multi-cell guide targets
+
+
+=== d526ce6 2026-10-01
+v0.1.9.9 add registration explanation steps
+
+
+=== 7d328c9 2026-10-01
+v0.1.9.9 support multi-target tutorial positioning
+
+
+=== e806b4d 2026-10-01
+v0.1.9.9 notify guide when candidate popup changes
+
+
+=== b83b9af 2026-10-01
+v0.1.9.9 align review version
+
+
+=== 2458035 2026-10-01
+v0.1.9.9 align review version
+
+
+=== 6ad70db 2026-10-01
+v0.1.9.9 align review version
+
+
+=== 1181f34 2026-10-01
+v0.1.9.9 update review checks
+
+
+=== 47d7327 2026-10-01
+v0.1.9.10 commit room fields on Enter
+
+
+=== c3e8436 2026-10-01
+v0.1.9.10 include candidate popup in tutorial spotlight
+
+
+=== 71fd502 2026-10-01
+v0.1.9.10 align review version
+
+
+=== 2d87c09 2026-10-01
+v0.1.9.10 align review version
+
+
+=== 2dd3a26 2026-10-01
+v0.1.9.10 align review version
+
+
+=== 947b146 2026-10-01
+v0.1.9.10 update review checks
+
+
+=== 7bd1a78 2026-10-01
+v0.1.9.11 show added finish-table regions after plus actions
+
+
+=== 4f00ce5 2026-10-01
+v0.1.9.11 support tutorial interrupt label
+
+
+=== 3927e8b 2026-10-01
+v0.1.9.11 return interrupted tutorial to home
+
+
+=== 062ccc9 2026-10-01
+v0.1.9.11 align review version
+
+
+=== ffa6798 2026-10-01
+v0.1.9.11 align review version
+
+
+=== 3f601cd 2026-10-01
+v0.1.9.11 align review version
+
+
+=== f4a93e2 2026-10-01
+v0.1.9.11 update review checks
+
+
+=== be43fda 2026-10-01
+v0.1.9.12 generalize tutorial controller
+
+
+=== 8a1fbc6 2026-10-01
+v0.1.9.12 remove finish-specific overlay knowledge
+
+
+=== 0d299d9 2026-10-01
+v0.1.9.12 use generic guide layout event
+
+
+=== 2879817 2026-10-01
+v0.1.9.12 split finish tutorial steps
+
+
+=== 670c8c2 2026-10-01
+v0.1.9.12 add material tutorial steps
+
+
+=== c58fe7c 2026-10-01
+v0.1.9.12 compose tutorial sections
+
+
+=== 22be3ce 2026-10-01
+v0.1.9.12 split operation guide data
+
+
+=== 0c03a77 2026-10-01
+v0.1.9.12 centralize material tutorial permission entry
+
+
+=== dcbf3c0 2026-10-01
+v0.1.9.12 guard material actions at controller entry
+
+
+=== 1058cfb 2026-10-01
+v0.1.9.12 allow sample-part menu inspection
+
+
+=== b29c682 2026-10-01
+v0.1.9.12 remove obsolete combined guide data
+
+
+=== 20ca7b2 2026-10-01
+v0.1.9.12 cache split tutorial modules
+
+
+=== dc2ebc8 2026-10-01
+v0.1.9.12 align review version
+
+
+=== 14e3cbf 2026-10-01
+v0.1.9.12 align review version
+
+
+=== 9c3ee55 2026-10-01
+v0.1.9.12 validate cleaned tutorial sections
+
+
+=== c9b6d42 2026-10-01
+v0.1.9.12 remove stale tutorial CI assumptions
+
+
+=== 85f0e6e 2026-10-01
+v0.1.9.13 refresh material list on tab activation
+
+
+=== 4baf5bf 2026-10-01
+v0.1.9.13 reorder note guidance and require two sample locations
+
+
+=== 3cf4d25 2026-10-01
+v0.1.9.13 align review version
+
+
+=== a387688 2026-10-01
+v0.1.9.13 align review version
+
+
+=== bd789e4 2026-10-01
+v0.1.9.13 align review version
+
+
+=== 8641a55 2026-10-01
+v0.1.9.13 validate material tutorial refinements
+
+
+=== 333e5a1 2026-10-01
+v0.1.9.14 add existing material ID guidance
+
+
+=== 69c6ee0 2026-10-01
+v0.1.9.14 align review version
+
+
+=== d4263bd 2026-10-01
+v0.1.9.14 align review version
+
+
+=== e4b4292 2026-10-01
+v0.1.9.14 align review version
+
+
+=== f73c1a0 2026-10-01
+v0.1.9.14 validate existing material ID guidance
+
+
+=== f1bb352 2026-10-01
+v0.1.9.15 add photo tutorial permission entry and tab refresh
+
+
+=== 645287d 2026-10-01
+v0.1.9.15 guard photo actions at interaction entry
+
+
+=== debf698 2026-10-01
+v0.1.9.15 recheck UI-only tutorial steps on layout change
+
+
+=== 62e6c0e 2026-10-01
+v0.1.9.15 bind photo tab refresh once during initialization
+
+
+=== 9dcc437 2026-10-01
+v0.1.9.15 add photo tutorial section
+
+
+=== 9c788fc 2026-10-01
+v0.1.9.15 compose photo tutorial section
+
+
+=== 2836cce 2026-10-01
+v0.1.9.15 align review version
+
+
+=== 6492e0b 2026-10-01
+v0.1.9.15 align review version
+
+
+=== 717ae28 2026-10-01
+v0.1.9.15 align review version
+
+
+=== ebac791 2026-10-01
+v0.1.9.15 validate photo tutorial section
+
+
+=== 767ee16 2026-10-01
+v0.1.9.15 move photo tutorial guard into interactions
+
+
+=== 47586f7 2026-10-01
+v0.1.9.15 keep photo controller DOM-agnostic
+
+
+=== 399d59c 2026-10-01
+v0.1.9.15 validate photo guard in interaction layer
+
+
+=== 42fb6ec 2026-10-01
+v0.1.9.16 notify guide after material rerender
+
+
+=== 1392767 2026-10-01
+v0.1.9.16 guard output view actions and refresh guide
+
+
+=== 1ef026f 2026-10-01
+v0.1.9.16 keep export actions inactive during tutorial
+
+
+=== 2e14e1b 2026-10-01
+v0.1.9.16 add analysis and output tutorial section
+
+
+=== be09399 2026-10-01
+v0.1.9.16 compose analysis and output tutorial
+
+
+=== 2e313a0 2026-10-01
+v0.1.9.16 target visible operation button for analysis import guidance
+
+
+=== eb72600 2026-10-01
+v0.1.9.16 align review version
+
+
+=== 75fb790 2026-10-01
+v0.1.9.16 align review version
+
+
+=== c75162a 2026-10-01
+v0.1.9.16 align review version
+
+
+=== f717c3f 2026-10-01
+v0.1.9.16 validate analysis and output tutorial section
+
+
+=== db33307 2026-10-02
+v0.1.9.17 add semantic tutorial action channel
+
+
+=== eb31891 2026-10-02
+v0.1.9.17 add finish UI lifecycle snapshot
+
+
+=== 7bb06f9 2026-10-02
+v0.1.9.17 add material list UI lifecycle snapshot
+
+
+=== cfff90e 2026-10-02
+v0.1.9.17 add photo UI lifecycle snapshot
+
+
+=== 8b91855 2026-10-02
+v0.1.9.17 add output UI lifecycle snapshot
+
+
+=== 4b292e1 2026-10-02
+v0.1.9.17 snapshot tutorial records and UI state together
+
+
+=== db91a18 2026-10-02
+v0.1.9.17 restore UI lifecycle and semantic action progress
+
+
+=== b7d769c 2026-10-02
+v0.1.9.17 align finish tutorial snapshot schema
+
+
+=== 1d22b62 2026-10-02
+v0.1.9.17 make sample location completion action aware
+
+
+=== 269ab11 2026-10-02
+v0.1.9.17 require real photo UI actions for progression
+
+
+=== 24634e5 2026-10-02
+v0.1.9.17 require real output UI actions for progression
+
+
+=== 4306635 2026-10-02
+v0.1.9.17 notify semantic material actions after success
+
+
+=== 6b31896 2026-10-02
+v0.1.9.17 notify photo actions and unify tab exit reset
+
+
+=== aa3771c 2026-10-02
+v0.1.9.17 notify output view actions after success
+
+
+=== 47faacb 2026-10-02
+v0.1.9.17 redraw output when restoring tutorial UI
+
+
+=== 7b49e03 2026-10-02
+v0.1.9.17 redraw output on tutorial reset
+
+
+=== be41df7 2026-10-02
+v0.1.9.17 remove obsolete material snapshot helper
+
+
+=== c6b4c82 2026-10-02
+v0.1.9.17 align tutorial lifecycle review version
+
+
+=== 2e4cd63 2026-10-02
+v0.1.9.17 align tutorial lifecycle review version
+
+
+=== c77465e 2026-10-02
+v0.1.9.17 align tutorial lifecycle review version
+
+
+=== a44eeb1 2026-10-02
+v0.1.9.17 validate tutorial state lifecycle cleanup
+
+
+=== e4630f6 2026-10-02
+v0.1.9.17 add tutorial lifecycle regression checks
+
+
+=== 927a167 2026-10-02
+v0.1.9.17 add missing material UI lifecycle API
+
+
+=== 9fb0ea0 2026-10-02
+v0.1.9.18 add camera landscape orientation helper
+
+
+=== 7ea0c41 2026-10-02
+v0.1.9.18 add shutter sound module
+
+
+=== 7cb454c 2026-10-02
+v0.1.9.18 persist camera shutter sound preferences
+
+
+=== 841aae7 2026-10-02
+v0.1.9.18 add camera torch session control
+
+
+=== 0f85556 2026-10-02
+v0.1.9.18 add landscape gate torch double tap and sound settings UI
+
+
+=== 439276a 2026-10-02
+v0.1.9.18 style landscape gate camera settings and torch toast
+
+
+=== 9c3df55 2026-10-02
+v0.1.9.18 scope camera double tap to capture frame
+
+
+=== bc28567 2026-10-02
+v0.1.9.18 keep orientation gate out of photo review
+
+
+=== abeb712 2026-10-02
+v0.1.9.18 align camera review app version
+
+
+=== f6a4d71 2026-10-02
+v0.1.9.18 align version manifest
+
+
+=== 99aef6f 2026-10-02
+v0.1.9.18 cache camera orientation and shutter sound modules
+
+
+=== c995274 2026-10-02
+v0.1.9.18 validate camera landscape torch and sound settings
+
+
+=== 50200c0 2026-10-02
+v0.1.9.18 correct shutter sound regression check
+
+
+=== 2042731 2026-10-02
+v0.1.9.19 use bundled OtoLogic shutter sounds
+
+
+=== 664f601 2026-10-02
+v0.1.9.19 remove obsolete camera flip preference
+
+
+=== e593461 2026-10-02
+v0.1.9.19 remove camera flip UI and behavior
+
+
+=== eed54c2 2026-10-02
+v0.1.9.19 remove obsolete camera flip styles
+
+
+=== 354493d 2026-10-02
+v0.1.9.19 add OtoLogic credit to survey settings
+
+
+=== de8ef7b 2026-10-02
+v0.1.9.19 style OtoLogic credit
+
+
+=== 75b410d 2026-10-02
+v0.1.9.19 align app version
+
+
+=== 493f0f5 2026-10-02
+v0.1.9.19 align version manifest
+
+
+=== 5ff0b76 2026-10-02
+v0.1.9.19 cache bundled shutter sounds
+
+
+=== 903922b 2026-10-02
+v0.1.9.19 add bundled OtoLogic shutter sound assets
+
+
+=== 8132040 2026-10-02
+v0.1.9.19 play bundled shutter sound assets
+
+
+=== 01e2239 2026-10-02
+v0.1.9.19 cache bundled shutter sound assets
+
+
+=== e6e871c 2026-10-02
+v0.1.9.19 validate bundled camera sounds and credit
+
+
+=== 534b7af 2026-10-02
+v0.1.9.19 correct remaining review version checks
+
+
+=== e1e5d4f 2026-10-02
+v0.1.9.20 use GainNode for shutter volume control
+
+
+=== af54843 2026-10-02
+v0.1.9.20 align app version
+
+
+=== b5800d8 2026-10-02
+v0.1.9.20 align version manifest
+
+
+=== 48a09f4 2026-10-02
+v0.1.9.20 update app cache version
+
+
+=== ed0dce5 2026-10-02
+v0.1.9.20 validate GainNode shutter volume control
+
+
+=== 33e8b26 2026-10-02
+v0.1.9.21 widen shutter volume steps
+
+
+=== 44997bb 2026-10-02
+v0.1.9.21 align app version
+
+
+=== ad5c9a7 2026-10-02
+v0.1.9.21 align version manifest
+
+
+=== 4ead211 2026-10-02
+v0.1.9.21 update app cache version
+
+
+=== 3024b37 2026-10-02
+v0.1.9.21 validate widened shutter volume steps
+
+
+=== 226f404 2026-10-02
+v0.1.9.1 formal candidate app config
+
+
+=== 7607139 2026-10-02
+v0.1.9.1 formal candidate version manifest
+
+
+=== 9bcadd7 2026-10-02
+v0.1.9.1 formal candidate cache version
+
+
+=== db9017b 2026-10-02
+v0.1.9.1 validate formal candidate on review channel
+
+
+=== 98d7b52 2026-10-02
+v0.1.9.1 align stable production validation and deploy
+
+
+=== 49cdc2f 2026-10-02
+v0.1.9.1 remove temporary review deployment workflow
+
+
+=== deb2f96 2026-10-02
+v0.1.9.1 正式版
+
+v0.1.9.21までのレビュー確認内容をv0.1.9.1 stableとして正式反映。
