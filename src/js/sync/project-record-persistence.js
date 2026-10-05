@@ -12,6 +12,8 @@ import {
   deleteMaterialRecord,
   savePhotoRecord,
   saveProjectMetadata,
+  readProjectMetadata,
+  subscribeProjectMetadata,
   readTemporaryProjectNos,
   readProjectRecordsOnce,
   subscribeProjectRecordChanges,
@@ -290,6 +292,27 @@ export function retryUnsentForProject(project, options = {}) {
 export function persistProjectMetadataForProject(project, options = {}) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveProjectMetadata(project, options));
+}
+
+/** 案件Documentの現在形を取得する同期adapter。 */
+export function readProjectMetadataForProject(project) {
+  if (!shouldSyncProject(project)) return Promise.resolve(null);
+  return readProjectMetadata({
+    projectId: project.projectId,
+    environment: projectEnvironment(project)
+  });
+}
+
+/** 案件DocumentのRealtime購読adapter。 */
+export function subscribeProjectMetadataForProject(project, handlers = {}) {
+  if (!shouldSyncProject(project)) return () => {};
+  return subscribeProjectMetadata({
+    projectId: project.projectId,
+    environment: projectEnvironment(project),
+    onProject: handlers.onProject,
+    onState: handlers.onState,
+    onError: handlers.onError
+  });
 }
 
 /**
