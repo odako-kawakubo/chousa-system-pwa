@@ -47,7 +47,7 @@ export function mergeRecordByFieldEditedAt(recordType,local,incoming,{prefer='in
   if(!incoming) return {record:{...local},localWins:[],incomingWins:[],conflicts:[]};
 
   const fields=RECORD_MERGE_FIELDS[recordType]||[];
-  const merged={...incoming};
+  const merged={...local,...incoming};
   const localWins=[];
   const incomingWins=[];
   const conflicts=[];
