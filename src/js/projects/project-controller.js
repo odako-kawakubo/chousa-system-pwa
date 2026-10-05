@@ -100,6 +100,7 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
  */
 async function openFirestoreProjectSession(target) {
   let project = target.project;
+  const token = ++activeProjectStreamToken;
   syncDiagnosticLog('SYNC_OPEN_START', {
     projectId: project?.projectId || '',
     projectName: project?.projectName || ''
@@ -108,6 +109,7 @@ async function openFirestoreProjectSession(target) {
   if (canUseFirestore()) {
     try {
       const remoteProject = await readProjectMetadataForProject(project);
+      if (token !== activeProjectStreamToken) return target;
       if (remoteProject) {
         project = {
           ...project,
@@ -131,7 +133,6 @@ async function openFirestoreProjectSession(target) {
     }
   }
 
-  const token = ++activeProjectStreamToken;
   const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
   const storedCursors = normalizeProjectRecordCursors(syncMeta.recordCursors || {});
   const finishChangeCursor = normalizeProjectFinishChangeCursor(syncMeta.finishChangeCursor);
