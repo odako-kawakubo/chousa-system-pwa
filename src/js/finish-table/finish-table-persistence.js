@@ -20,7 +20,10 @@ function isFinishCellAtDefault(record) {
   if (String(record.materialId || '')) return false;
   const materialName = String(record.materialName || '').trim();
   const partIndex = partIndexFromPosition(record.position);
-  if (partIndex >= 5) return !(materialName && String(record.part || '').trim());
+  if (partIndex >= 5) {
+    const actualPart = String(record.part || '').trim();
+    return !materialName && !actualPart;
+  }
   if (materialName) return false;
   return String(record.part || '') === String(defaultPartForRecord(record) || '');
 }
