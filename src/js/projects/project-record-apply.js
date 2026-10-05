@@ -109,7 +109,7 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       const current = materialRecordStore.get(id);
       if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-        && sameMergedBusinessRecord('finish', current, change.record)) {
+        && sameMergedBusinessRecord('material', current, hydrateIncomingMaterialRecord(change.record, [])[0] || change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -186,7 +186,7 @@ export function applyProjectRecordChanges(project, changes = []) {
 
       const current = finishRecordStore.get(id);
       if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
-        && sameMergedBusinessRecord('photo', current, hydrateIncomingPhotoRecord(change.record) || change.record)) {
+        && sameMergedBusinessRecord('finish', current, change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
@@ -261,7 +261,8 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
 
       const current = photoRecordStore.get(id);
-      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)) {
+      if (change.changeType !== 'removed' && current && sameProjectFieldEditedAt(current.fieldEditedAt, change.record?.fieldEditedAt)
+        && sameMergedBusinessRecord('photo', current, hydrateIncomingPhotoRecord(change.record) || change.record)) {
         skipped += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
           projectId: project.projectId,
