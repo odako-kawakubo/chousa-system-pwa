@@ -735,12 +735,12 @@ jobs:
           grep -q "sourceRequired==='対象外'.*positive:sourcePositive" src/js/output/output-view-model.js || { echo "out-of-scope positive source mapping missing"; exit 1; }
           grep -q "positive:reportAnalysis.positive" src/js/output/output-view-model.js || { echo "report positive flag missing"; exit 1; }
           grep -q "row.positive??isPositive" src/js/output/output-pdf-renderer.js || { echo "PDF does not use report positive flag"; exit 1; }
-          grep -q "roomNote.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room note must stay black"; exit 1; }
-
-          # 部屋別リストは階・部屋No.・部屋名を常に黒、部位以降のみ陽性時赤
-          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color must stay black"; exit 1; }
-          grep -q "roomNo.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room number color must stay black"; exit 1; }
-          grep -q "roomName.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room name color must stay black"; exit 1; }
+          # 部屋別リストは陽性行の部屋No.・部屋名・部屋備考も含めて赤表示
+          grep -q "roomRows.some.*RED:BLACK" src/js/output/output-pdf-renderer.js || { echo "room group positive color mapping missing"; exit 1; }
+          grep -q "roomNo.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room number does not follow positive row color"; exit 1; }
+          grep -q "roomName.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room name does not follow positive row color"; exit 1; }
+          grep -q "roomNote.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room note does not follow positive row color"; exit 1; }
+          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color rule changed"; exit 1; }
           if grep -q "remarks||record.note\|remarks||material.note" src/js/output/output-view-model.js; then
             echo "analysis remarks are still mixed into survey note output"
             exit 1
