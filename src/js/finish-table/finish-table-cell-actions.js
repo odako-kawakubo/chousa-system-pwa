@@ -74,7 +74,14 @@ function writeCellPatch(anchor, partIndex, row, patch, options = {}) {
       : { ...(existing.fieldEditedAt || {}) }
   };
   finishRecordStore.set(next);
-  if (syncFields.length) persistSparseFinishRecord(getCurrentProject(), next, finishRecordStore.getAll());
+  if (syncFields.length) {
+    persistSparseFinishRecord(
+      getCurrentProject(),
+      next,
+      finishRecordStore.getAll(),
+      existing
+    );
+  }
   refreshMaterialUsageDerivedFields('finish-cell-patch', { persist: options.persistMaterialDerived !== false });
   return next;
 }
