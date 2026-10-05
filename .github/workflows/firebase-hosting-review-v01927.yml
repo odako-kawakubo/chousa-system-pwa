@@ -1,0 +1,852 @@
+name: Deploy v0.1.9.27 Review
+
+on:
+  push:
+    branches:
+      - work/v0.1.9.27-20261005
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+
+      - name: Module and app shell reference checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const roots = ['src/js', 'src/config'];
+          const files = [];
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes:true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+            }
+          }
+          roots.forEach(walk);
+          const missing = [];
+          const re = /(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g;
+          for (const file of files) {
+            const text = fs.readFileSync(file, 'utf8');
+            let match;
+            while ((match = re.exec(text))) {
+              const resolved = path.resolve(path.dirname(file), match[1]);
+              const candidates = [resolved, `${resolved}.js`, path.join(resolved, 'index.js')];
+              if (!candidates.some((candidate) => fs.existsSync(candidate))) missing.push(`${file} -> ${match[1]}`);
+            }
+          }
+          if (missing.length) {
+            console.error('Missing relative module references:\n' + missing.join('\n'));
+            process.exit(1);
+          }
+
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          const shell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map((m) => m[1]);
+          const missingShell = shell.filter((rel) => rel && !fs.existsSync(path.join('src', rel)));
+          if (missingShell.length) {
+            console.error('Missing APP_SHELL files:\n' + missingShell.join('\n'));
+            process.exit(1);
+          }
+
+          const shellSet = new Set(shell.map((rel) => './' + rel));
+          const jsShellMissing = files
+            .filter((file) => file.startsWith('src/js/'))
+            .map((file) => './' + file.replace(/^src\//, ''))
+            .filter((rel) => !shellSet.has(rel));
+          if (jsShellMissing.length) {
+            console.error('Local JS modules missing from APP_SHELL:\n' + jsShellMissing.join('\n'));
+            process.exit(1);
+          }
+          NODE
+
+      - name: Output formatting regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { formatSamplingCode, formatPartDisplay } from './src/js/output/output-format.js';
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          assert(formatSamplingCode({ projectNo:'260701014', sampleNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatPartDisplay('壁、床').split === false, 'short two-part label should remain one line');
+          const split = formatPartDisplay('壁、天井');
+          assert(split.split === true && split.lines.join('|') === '壁|天井', 'long multi-part label should split at delimiter');
+          assert(formatPartDisplay('ハト小屋').split === false, 'single long part should stay one line');
+          NODE
+
+
+      - name: M-03 variable room restoration checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { restoreFinishRecordsFromSparse, getRequiredStructureRecordIds } from './src/js/sync/finish-sparse-structure.js';
+          import { computeCellPosition, buildFloorRoomPosition } from './src/js/records/finish-record.js';
+
+          const marker = (areaCode, floor, index) => {
+            const roomPosition = areaCode === 'I' || areaCode === 'B'
+              ? buildFloorRoomPosition(floor, index)
+              : String(index).padStart(3, '0');
+            return {
+              finishId: `${areaCode}-${roomPosition}-${computeCellPosition(6, 2)}`,
+              areaCode,
+              roomPosition,
+              floor,
+              roomNo: areaCode === 'B' ? `B${floor}-${index}` : `${floor}-${index}`,
+              roomName: '',
+              roomNote: '',
+              position: computeCellPosition(6, 2),
+              part: '',
+              materialId: '',
+              materialName: '',
+              inputId: '',
+              status: 'active',
+              fieldEditedAt: {}
+            };
+          };
+
+          const roomsInFloor = (records, areaCode, floor) =>
+            new Set(records
+              .filter((record) => record.areaCode === areaCode && Number(record.floor) === Number(floor))
+              .map((record) => record.roomPosition)).size;
+
+          let restored = restoreFinishRecordsFromSparse([marker('I', 4, 3)]);
+          if (roomsInFloor(restored, 'I', 4) !== 3) throw new Error('added 3-room floor did not restore as 3 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('B', 1, 4)]);
+          if (roomsInFloor(restored, 'B', 1) !== 4) throw new Error('4-room basement floor did not restore as 4 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('I', 1, 11)]);
+          if (roomsInFloor(restored, 'I', 1) !== 11) throw new Error('default floor extended to 11 rooms did not restore as 11 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('I', 4, 3), marker('I', 5, 7)]);
+          const required = getRequiredStructureRecordIds(restored);
+          if (!required.has(marker('I', 4, 3).finishId)) throw new Error('floor 4 tip marker is not retained');
+          if (!required.has(marker('I', 5, 7).finishId)) throw new Error('floor 5 tip marker is not retained');
+          NODE
+
+      - name: Core architecture regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Firestore差分保存・未送信・直列化
+          grep -q "const PASSIVE_RETRY_LIMIT = 3" src/js/firestore/firestore-repository.js
+          grep -q "BULK_SYNC_BATCH_SIZE = 50" src/js/firestore/firestore-repository.js
+          grep -q "repositoryWriteChain" src/js/firestore/firestore-repository.js
+          grep -q "bulk-required" src/js/firestore/firestore-repository.js
+
+          # 変更履歴 + cursor同期
+          grep -q "SYNC_APPLY_START" src/js/projects/project-record-apply.js
+          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-record-apply.js
+          grep -q "SYNC_STORE_AFTER" src/js/projects/project-record-apply.js
+          grep -q "SYNC_LISTENER_APPLY_RESULT" src/js/projects/project-controller.js
+          grep -q "SYNC_CURSOR_BEFORE" src/js/projects/project-sync-meta.js
+          grep -q "SYNC_CURSOR_AFTER" src/js/projects/project-sync-meta.js
+          grep -q "SYNC_BASELINE_CHECK" src/js/projects/project-controller.js
+          grep -q "LOCAL_SNAPSHOT_BEFORE_SAVE" src/js/projects/project-store.js
+          grep -q "LOCAL_SNAPSHOT_AFTER_SAVE" src/js/projects/project-store.js
+
+          # Firebase認証とGraph/MSALを分離
+          grep -q "PublicClientApplication" src/js/auth/graph-session.js
+          grep -q "handleRedirectPromise" src/js/auth/graph-session.js
+          grep -q "acquireTokenSilent" src/js/auth/graph-session.js
+          grep -q "cacheLocation: 'localStorage'" src/js/auth/graph-session.js
+          if grep -q "graphAccessToken" src/js/auth/microsoft-auth.js; then
+            echo "Firebase auth owns Graph token storage"
+            exit 1
+          fi
+
+          # OneDrive root責務を一元化
+          grep -q "export async function getSurveyRoot" src/js/onedrive/onedrive-root.js
+          grep -q "resolveSharedUrl" src/js/onedrive/onedrive-root.js
+          grep -q "searchDriveFolders" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'fixed-share'" src/js/onedrive/onedrive-root.js
+          grep -q "rootSource: 'legacy-search'" src/js/onedrive/onedrive-root.js
+          grep -q "getSurveyRoot" src/js/onedrive/onedrive-connection.js
+          grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
+          grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
+
+          # xlsx/xlsmはOpen XML reader経由
+          grep -q "export async function readOpenXmlCells" src/js/onedrive/openxml-workbook-reader.js
+          grep -q "DecompressionStream" src/js/onedrive/openxml-workbook-reader.js
+          grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
+          grep -q "isPhoneticTextNode" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML phonetic text filter missing"; exit 1; }
+          grep -q "current.localName === 'rPh'" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML rPh exclusion missing"; exit 1; }
+          # v0.1.9.2 部屋表示共通化・未登録対象外切替・陽性行表示
+          test -f src/js/materials/material-room-display-state.js
+          grep -q "sampleLocationOptions" src/js/materials/material-list-controller.js || { echo "material sample location display mapping missing"; exit 1; }
+          grep -q "getMaterialSampleLocationDisplay" src/js/photos/photo-view-model.js || { echo "photo sampling room display mapping missing"; exit 1; }
+          grep -q "materialLocationLabel" src/js/output/output-view-model.js || { echo "output material location header mapping missing"; exit 1; }
+          grep -q "includeUnregisteredExcluded" src/js/output/output-controller.js || { echo "unregistered excluded output toggle missing"; exit 1; }
+          if grep -q "data-output-location-mode" src/js/output/output-controller.js; then
+            echo "legacy output room display switch remains"
+            exit 1
+          fi
+          grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
+          grep -q "F2" src/js/onedrive/onedrive-project-file.js
+          grep -q "K2" src/js/onedrive/onedrive-project-file.js
+          grep -q "L2" src/js/onedrive/onedrive-project-file.js
+          grep -q "isInternalRequestFile" src/js/onedrive/onedrive-project-file.js
+
+          # 正式案件起動と3レコードバックアップ
+          grep -q "tryReadProjectExcel" src/js/projects/onedrive-project-browser.js
+          grep -q "readFirestoreProjectList" src/js/projects/onedrive-project-browser.js
+          grep -q "createFormalProjectFromOneDriveSnapshot" src/js/projects/onedrive-project-browser.js
+          grep -q "const BACKUP_INTERVAL_MS = 10 \* 60 \* 1000" src/js/onedrive/system-data-backup.js
+          grep -q "const MAX_GENERATIONS_PER_DEVICE = 15" src/js/onedrive/system-data-backup.js
+          grep -q "finishRecords" src/js/onedrive/system-data-backup.js
+          grep -q "materialRecords" src/js/onedrive/system-data-backup.js
+          grep -q "photoRecords" src/js/onedrive/system-data-backup.js
+
+          # 写真Blob → OneDrive → photoRecord参照確定
+          grep -q "configurePhotoLocalStore" src/js/photos/photo-local-store.js
+          grep -q "resolveProjectId" src/js/photos/photo-local-store.js
+          grep -q "listPendingPhotoBlobEntries(project.projectId, photoIds)" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_BINDING_MISSING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_SYNC_PENDING" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_UPLOAD_START" src/js/photos/photo-onedrive-sync.js
+          grep -q "PHOTO_VERIFY_OK" src/js/photos/photo-onedrive-sync.js
+          grep -q "oneDriveDriveId: text(record.oneDriveDriveId)" src/js/firestore/record-serializer.js
+          grep -q "originalItemId: text(record.originalItemId)" src/js/firestore/record-serializer.js
+          grep -q "completedItemId: text(record.completedItemId)" src/js/firestore/record-serializer.js
+          grep -q "fetchRemotePhotoThumbnail" src/js/photos/photo-remote-reader.js
+          grep -q "fetchRemoteCompletedPhoto" src/js/photos/photo-remote-reader.js
+          grep -q "remoteThumbnailUrls" src/js/photos/photo-preview-manager.js
+          grep -q "ensureRemoteThumbnail" src/js/photos/photo-preview-manager.js
+
+          # 明示アップデート・オフラインキャッシュ
+          grep -q "sameBuild" src/js/app-update.js
+          grep -q "cache: 'no-store'" src/js/app-update.js
+          grep -q "event.data?.type==='SKIP_WAITING'" src/service-worker.js
+          grep -q "worker.postMessage({ type: 'SKIP_WAITING' })" src/js/pwa/pwa-controller.js
+          if grep -q "then(() => self.skipWaiting())" src/service-worker.js; then
+            echo "service worker auto activates on install"
+            exit 1
+          fi
+
+          # ヘッダー通信状態と未送信件数を分離
+          grep -q "text = '良好'" src/js/sync/sync-status.js
+          if grep -q "text = unsentCount" src/js/sync/sync-status.js; then
+            echo "unsent count is mixed into communication label"
+            exit 1
+          fi
+          grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
+
+          # M-02 Undo/RedoのFirestore差分永続化
+          test -f src/js/finish-table/finish-table-history-persistence.js
+          grep -q "persistUndoRedoSnapshotDiff" src/js/finish-table/finish-table-controller.js || { echo "M-02 undo/redo persistence hook missing"; exit 1; }
+          grep -q "touchFieldEditedAt" src/js/finish-table/finish-table-history-persistence.js || { echo "M-02 history restore does not refresh fieldEditedAt"; exit 1; }
+          grep -q "deleteMaterialForProject" src/js/finish-table/finish-table-history-persistence.js || { echo "M-02 material undo delete adapter missing"; exit 1; }
+          grep -q "export function deleteMaterialRecord" src/js/firestore/firestore-repository.js || { echo "M-02 material delete repository API missing"; exit 1; }
+          grep -q "export function deleteMaterialForProject" src/js/sync/project-record-persistence.js || { echo "M-02 material delete sync adapter missing"; exit 1; }
+          grep -q "return persistFinishForProject" src/js/finish-table/finish-table-persistence.js || { echo "M-02 sparse finish persistence is not awaitable"; exit 1; }
+          grep -q "finish-table-history-persistence.js" src/service-worker.js || { echo "M-02 history persistence module missing from app shell"; exit 1; }
+
+          # M-01 仕上表の削除漏れ防止
+          grep -q "previousWasPersistable" src/js/finish-table/finish-table-persistence.js || { echo "M-01 transition-aware delete missing"; exit 1; }
+          grep -q "deleteFinishForProject(project, record, 'finish-sparse-reset')" src/js/finish-table/finish-table-persistence.js || { echo "M-01 sparse delete missing"; exit 1; }
+          grep -q "committedEntries" src/js/firestore/firestore-repository.js || { echo "M-01 retry commit result missing"; exit 1; }
+          grep -q "applyCommittedFinishEntries" src/js/sync/project-record-persistence.js || { echo "M-01 known finish retry sync missing"; exit 1; }
+          grep -q "retryUnsentForProject" src/js/ui/sync-ui.js || { echo "manual retry bypasses sync adapter"; exit 1; }
+
+      - name: v0.1.9.27 review consistency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "version: '0.1.9.27'" src/config/app-config.js
+          grep -q "revision: ''" src/config/app-config.js
+          grep -q "mode: 'review'" src/config/app-config.js
+          grep -q '"version": "0.1.9.27"' src/version.json
+          grep -q '"revision": ""' src/version.json
+          grep -q "chousa-app-v0.1.9.27" src/service-worker.js
+          grep -q "chousa-output-libs-v01927" src/service-worker.js
+          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
+            test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
+          done
+          if grep -q "sampleProject" src/js/camera/camera-*.js; then
+            echo "camera module still depends on sampleProject"
+            exit 1
+          fi
+          grep -q "import { nextPhotoId } from './camera-photo-id.js';" src/js/camera/camera-controller.js || { echo "nextPhotoId import is missing"; exit 1; }
+          grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
+          grep -q "export function isCameraLandscape" src/js/camera/camera-orientation.js || { echo "camera landscape gate missing"; exit 1; }
+          grep -q "export async function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
+          grep -q "DecompressionStream('gzip')" src/js/camera/camera-shutter-sound.js || { echo "bundled shutter sound decompression missing"; exit 1; }
+          grep -q "createGain()" src/js/camera/camera-shutter-sound.js || { echo "GainNode volume control missing"; exit 1; }
+          grep -q "gainNode.gain.value = volumeGain(volume)" src/js/camera/camera-shutter-sound.js || { echo "shutter volume gain assignment missing"; exit 1; }
+          grep -q "{ value:'small', label:'小', gain:0.10 }" src/js/camera/camera-shutter-sound.js || { echo "small shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'medium', label:'中', gain:0.40 }" src/js/camera/camera-shutter-sound.js || { echo "medium shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'large', label:'大', gain:1 }" src/js/camera/camera-shutter-sound.js || { echo "large shutter volume gain changed"; exit 1; }
+          grep -q "createBufferSource()" src/js/camera/camera-shutter-sound.js || { echo "AudioBuffer playback missing"; exit 1; }
+          if grep -q "new Audio(url)\|audio.volume" src/js/camera/camera-shutter-sound.js; then
+            echo "legacy HTMLAudio volume control remains"
+            exit 1
+          fi
+          for sound in camera1 camera2 click chime; do
+            test -s "src/assets/audio/${sound}.mp3.gz" || { echo "bundled shutter sound missing: ${sound}"; exit 1; }
+            grep -q "./assets/audio/${sound}.mp3.gz" src/service-worker.js || { echo "shutter sound not cached: ${sound}"; exit 1; }
+          done
+          grep -q "OtoLogic" src/js/settings/settings-renderer.js || { echo "OtoLogic credit missing"; exit 1; }
+          grep -q "https://otologic.jp/" src/js/settings/settings-renderer.js || { echo "OtoLogic credit link missing"; exit 1; }
+          if grep -R "landscapeFlipped\|camera-landscape-flip" -n src/js/camera src/css/camera.css; then
+            echo "obsolete camera flip implementation remains"
+            exit 1
+          fi
+          grep -q "supportsTorch" src/js/camera/camera-session.js || { echo "camera torch capability missing"; exit 1; }
+          grep -q "applyConstraints({ advanced:\[{ torch:next }\] })" src/js/camera/camera-session.js || { echo "camera torch constraint missing"; exit 1; }
+          grep -q "data-camera-settings-open" src/js/camera/camera-controller.js || { echo "camera settings gear missing"; exit 1; }
+          grep -q "data-camera-sound-preview" src/js/camera/camera-controller.js || { echo "camera sound preview missing"; exit 1; }
+          grep -q "handleCameraCapturePointerUp" src/js/camera/camera-controller.js || { echo "camera torch double tap handler missing"; exit 1; }
+          grep -q "getBoardRect(rect.width, rect.height" src/js/camera/camera-controller.js || { echo "camera torch board exclusion missing"; exit 1; }
+          grep -q "ライト ON" src/js/camera/camera-controller.js || { echo "camera torch ON toast missing"; exit 1; }
+          grep -q "ライト OFF" src/js/camera/camera-controller.js || { echo "camera torch OFF toast missing"; exit 1; }
+          grep -q "shutterSound" src/js/camera/camera-preferences.js || { echo "camera shutter sound preference missing"; exit 1; }
+          grep -q "shutterVolume" src/js/camera/camera-preferences.js || { echo "camera shutter volume preference missing"; exit 1; }
+          grep -q "camera-orientation.js" src/service-worker.js || { echo "camera orientation module not cached"; exit 1; }
+          grep -q "camera-shutter-sound.js" src/service-worker.js || { echo "camera shutter sound module not cached"; exit 1; }
+          if grep -q "rotate(90deg)\|rotate(-90deg)" src/css/camera.css; then
+            echo "obsolete portrait forced rotation remains"
+            exit 1
+          fi
+          if grep -q "currentSamplingTarget()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentSamplingTarget"
+            exit 1
+          fi
+          if grep -q "currentVisualTarget()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentVisualTarget"
+            exit 1
+          fi
+          if grep -q "currentStageInfo()" src/js/camera/camera-controller.js; then
+            echo "camera state argument missing: currentStageInfo"
+            exit 1
+          fi
+          if grep -q "saveCapturedPhoto" src/js/camera/camera-controller.js; then
+            echo "camera controller still owns captured photo persistence"
+            exit 1
+          fi
+          if grep -q "photoRecordStore.set(record)" src/js/camera/camera-controller.js; then
+            echo "camera controller still owns photo record registration"
+            exit 1
+          fi
+          grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own camera photo registration"; exit 1; }
+          grep -q "await saveCapturedPhoto({" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own captured photo persistence"; exit 1; }
+          grep -q "persistPhotoForProject(getCurrentProject(), record, 'photo-board-editor-save')" src/js/photos/photo-board-editor-persistence.js || { echo "board editor does not persist edited photo record"; exit 1; }
+          if grep -q "registerCameraPreview(item, { renderAfter: false })" src/js/photos/photo-controller.js; then
+            echo "board editor still reuses camera persistence path"
+            exit 1
+          fi
+          grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-preview-manager.js || { echo "local thumbnail eager loading is missing"; exit 1; }
+          grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-preview-manager.js || { echo "local thumbnail loading policy is missing"; exit 1; }
+          grep -q "function refreshCameraPhotoBlock(record)" src/js/photos/photo-controller.js || { echo "camera photo local block refresh is missing"; exit 1; }
+          grep -q "refreshBlock: refreshCameraPhotoBlock" src/js/photos/photo-controller.js || { echo "camera photo does not use local block refresh"; exit 1; }
+          grep -q "export function hydrateThumbnailImages(scope)" src/js/photos/photo-preview-manager.js || { echo "block scoped thumbnail hydrate is missing"; exit 1; }
+          grep -q "hydrateThumbnailImages(updated);" src/js/photos/photo-controller.js || { echo "local photo block is not hydrated after replacement"; exit 1; }
+          grep -q "PHOTO_LOCAL_PREVIEW_SET" src/js/photos/photo-preview-manager.js || { echo "photo local preview diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_READY" src/js/photos/photo-preview-manager.js || { echo "photo thumb ready diagnostic missing"; exit 1; }
+          grep -q "PHOTO_THUMB_LOADING" src/js/photos/photo-preview-manager.js || { echo "photo thumb loading diagnostic missing"; exit 1; }
+          grep -q "PHOTO_SYNC_REFERENCE_UPDATE" src/js/photos/photo-onedrive-sync.js || { echo "photo OneDrive diagnostic missing"; exit 1; }
+          grep -q "SYNC_APPLY_PHOTO" src/js/projects/project-record-apply.js || { echo "photo sync apply diagnostic missing"; exit 1; }
+          grep -q "listener-query-removed-not-record-delete" src/js/projects/project-record-apply.js || { echo "photo listener removed guard is missing"; exit 1; }
+          grep -q "export function renderVisualTargetBlock" src/js/photos/photo-renderer.js || { echo "visual local block renderer is missing"; exit 1; }
+          grep -q "export function renderSamplingPointBlock" src/js/photos/photo-renderer.js || { echo "sampling local block renderer is missing"; exit 1; }
+          if grep -R "caseHeaderTitle" -n src; then
+            echo "legacy caseHeaderTitle remains"
+            exit 1
+          fi
+          if grep -q "sampleProject" src/js/camera/camera-controller.js; then
+            echo "camera still depends on sampleProject"
+            exit 1
+          fi
+          if grep -q "finishProjectBanner" src/js/finish-table/finish-table-renderer.js src/js/finish-table/finish-table-controller.js; then
+            echo "legacy finish project banner remains"
+            exit 1
+          fi
+          if grep -q "formatProjectLabel" src/js/finish-table/finish-table-controller.js src/js/projects/project-session.js; then
+            echo "legacy project label writer remains"
+            exit 1
+          fi
+
+          # チュートリアル操作制限はアプリ側permission stateへ集約
+          test -f src/js/guide/tutorial-state.js
+          test -f src/js/guide/tutorial-snapshot.js
+          test -f src/js/guide/tutorial-action.js
+          test -f src/js/guide/tutorial-steps.js
+          test -f src/js/guide/tutorial-steps-finish.js
+          test -f src/js/guide/tutorial-steps-materials.js
+          test -f src/js/guide/tutorial-steps-photos.js
+          test -f src/js/guide/tutorial-steps-output.js
+          test -f src/js/guide/operation-guide-data.js
+          grep -q "export function isTutorialActionAllowed" src/js/guide/tutorial-state.js || { echo "tutorial permission API missing"; exit 1; }
+          grep -q "export function captureTutorialSnapshot" src/js/guide/tutorial-snapshot.js || { echo "tutorial snapshot API missing"; exit 1; }
+          if test -e src/js/guide/tutorial-runtime.js; then
+            echo "obsolete tutorial runtime still exists"
+            exit 1
+          fi
+          if test -e src/js/guide/guide-data.js; then
+            echo "obsolete combined guide-data still exists"
+            exit 1
+          fi
+          if grep -R "new MutationObserver" -n src/js/guide; then
+            echo "guide MutationObserver must not return"
+            exit 1
+          fi
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/finish-table/finish-table-candidate-input.js || { echo "generic finish guide layout notification missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/materials/material-list-interactions.js || { echo "generic material guide layout notification missing"; exit 1; }
+          grep -q "roomFieldInput.blur()" src/js/finish-table/finish-table-interactions.js || { echo "room field Enter commit missing"; exit 1; }
+          grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
+          grep -q "watchStores" src/js/guide/guide-controller.js || { echo "generic tutorial store watch missing"; exit 1; }
+          grep -q "FINISH_TUTORIAL_STEPS" src/js/guide/tutorial-steps-finish.js || { echo "finish tutorial section missing"; exit 1; }
+          grep -q "finish-existing-material-id-note" src/js/guide/tutorial-steps-finish.js || { echo "existing material ID guidance missing"; exit 1; }
+          grep -q "MATERIAL_TUTORIAL_STEPS" src/js/guide/tutorial-steps-materials.js || { echo "material tutorial section missing"; exit 1; }
+          grep -q "PHOTO_TUTORIAL_STEPS" src/js/guide/tutorial-steps-photos.js || { echo "photo tutorial section missing"; exit 1; }
+          grep -q "OUTPUT_TUTORIAL_STEPS" src/js/guide/tutorial-steps-output.js || { echo "output tutorial section missing"; exit 1; }
+          grep -q "analysis-show-columns" src/js/guide/tutorial-steps-output.js || { echo "analysis columns tutorial step missing"; exit 1; }
+          grep -q "output-rooms" src/js/guide/tutorial-steps-output.js || { echo "output rooms tutorial step missing"; exit 1; }
+          grep -q "output-visual-photos" src/js/guide/tutorial-steps-output.js || { echo "output visual photos tutorial step missing"; exit 1; }
+          grep -q "output-sampling-photos" src/js/guide/tutorial-steps-output.js || { echo "output sampling photos tutorial step missing"; exit 1; }
+          grep -q "output-export-info" src/js/guide/tutorial-steps-output.js || { echo "output export guidance missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
+
+          # v0.1.9.217 Tutorial State Lifecycle
+          grep -q "captureFinishUiState" src/js/finish-table/finish-table-state.js || { echo "finish tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureMaterialListUiState" src/js/materials/material-list-controller.js || { echo "material tutorial UI snapshot missing"; exit 1; }
+          grep -q "capturePhotoUiState" src/js/photos/photo-controller.js || { echo "photo tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureOutputUiState" src/js/output/output-controller.js || { echo "output tutorial UI snapshot missing"; exit 1; }
+          grep -q "subscribeTutorialActions" src/js/guide/guide-controller.js || { echo "tutorial semantic action subscription missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/photos/photo-interactions.js || { echo "photo semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/materials/material-list-controller.js || { echo "material semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/output/output-controller.js || { echo "output semantic action notification missing"; exit 1; }
+          if grep -q "tutorialMode && step?.interactive && typeof step.completeWhen" src/js/guide/guide-controller.js; then
+            echo "guide-layout-change still owns completion checks"
+            exit 1
+          fi
+          if grep -q "document.querySelectorAll('.tabs .tab\[data-tab\]')" src/js/photos/photo-interactions.js; then
+            echo "photo tab exit still uses direct tab click listeners"
+            exit 1
+          fi
+          grep -q "photos-switch-sampling" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling switch step missing"; exit 1; }
+          grep -q "photos-sampling-reflection" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling reflection step missing"; exit 1; }
+          grep -q "photos-before-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo before-stage step missing"; exit 1; }
+          grep -q "photos-section-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo section-stage step missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/photos/photo-interactions.js || { echo "photo tutorial guard missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/photos/photo-controller.js || { echo "photo guide layout notification missing"; exit 1; }
+          grep -q "materials-analysis-required" src/js/guide/tutorial-steps-materials.js || { echo "material analysis tutorial step missing"; exit 1; }
+          grep -q "materials-sample-done" src/js/guide/tutorial-steps-materials.js || { echo "material sample-done tutorial step missing"; exit 1; }
+          grep -q "materials-note-info" src/js/guide/tutorial-steps-materials.js || { echo "material note guidance step missing"; exit 1; }
+          if grep -q "id: 'materials-note'" src/js/guide/tutorial-steps-materials.js; then
+            echo "obsolete interactive material note step remains"
+            exit 1
+          fi
+          grep -q "sampleLocation1" src/js/guide/tutorial-steps-materials.js || { echo "sample location1 tutorial target missing"; exit 1; }
+          grep -q "sampleLocation2" src/js/guide/tutorial-steps-materials.js || { echo "sample location2 tutorial target missing"; exit 1; }
+          grep -q "refreshMaterialList();" src/js/materials/material-list-controller.js || { echo "material list tab refresh missing"; exit 1; }
+          grep -q "materialInteractionAllowed" src/js/materials/material-list-controller.js || { echo "material tutorial guard missing"; exit 1; }
+
+          if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
+            echo "obsolete tutorial event/blocker lock remains"
+            exit 1
+          fi
+
+          # 仕上表候補入力UIをcontrollerから分離
+          test -f src/js/finish-table/finish-table-candidate-input.js
+          grep -q "getActiveCandidateSelection" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate module API missing"; exit 1; }
+          grep -q "from './finish-table-candidate-input.js'" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use candidate module"; exit 1; }
+          if grep -q "let activeCandidateInput" src/js/finish-table/finish-table-controller.js; then
+            echo "finish controller still owns candidate popup state"
+            exit 1
+          fi
+
+          # 仕上表編集セッションをcontrollerから分離
+          test -f src/js/finish-table/finish-table-edit-session.js
+          grep -q "configureFinishTableEditSession" src/js/finish-table/finish-table-controller.js || { echo "finish edit session is not configured"; exit 1; }
+          grep -q "beginFinishEdit" src/js/finish-table/finish-table-interactions.js || { echo "finish edit session begin hook missing"; exit 1; }
+          grep -q "resetFinishTableEditSession" src/js/finish-table/finish-table-controller.js || { echo "finish edit session reset hook missing"; exit 1; }
+          if grep -q "pendingEditSnapshot\|pendingEditBeforeValue\|explicitlyCommittedInputKey\|explicitCommitReleaseTimer" src/js/finish-table/finish-table-controller.js; then
+            echo "finish controller still owns edit session state"
+            exit 1
+          fi
+
+          # 仕上表の構造操作と疎保存をactionsから分離
+          test -f src/js/finish-table/finish-table-structure-actions.js
+          test -f src/js/finish-table/finish-table-persistence.js
+          grep -q "from './finish-table-structure-actions.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use structure module"; exit 1; }
+          grep -q "export function addNormalFloor" src/js/finish-table/finish-table-structure-actions.js || { echo "normal floor structure action missing"; exit 1; }
+          grep -q "export function addRoomAfter" src/js/finish-table/finish-table-structure-actions.js || { echo "room insertion structure action missing"; exit 1; }
+          grep -q "export function persistSparseFinishRecord" src/js/finish-table/finish-table-persistence.js || { echo "sparse persistence API missing"; exit 1; }
+
+          # 仕上表セル編集・建材登録・使用箇所派生をactionsから分離
+          test -f src/js/finish-table/finish-table-cell-actions.js
+          test -f src/js/finish-table/material-usage-derived.js
+          grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use cell actions"; exit 1; }
+          grep -q "from './finish-table-cell-actions.js'" src/js/finish-table/finish-table-candidate-input.js || { echo "finish candidate input does not use cell actions"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/output/output-view-model.js || { echo "output does not use usage derived module"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/materials/material-list-controller.js || { echo "material list does not use usage derived module"; exit 1; }
+          grep -q "export function registerMaterialForCell" src/js/finish-table/finish-table-cell-actions.js || { echo "material registration cell action missing"; exit 1; }
+          grep -q "export function refreshMaterialUsageDerivedFields" src/js/finish-table/material-usage-derived.js || { echo "material usage derivation API missing"; exit 1; }
+
+          # 部屋コピー責務をactionsから分離
+          test -f src/js/finish-table/finish-table-room-copy.js
+          grep -q "from './finish-table-room-copy.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use room copy module"; exit 1; }
+          grep -q "from './finish-table-room-copy.js'" src/js/finish-table/finish-table-view-model.js || { echo "finish view model does not use room copy module"; exit 1; }
+          grep -q "export function executeRoomCopy" src/js/finish-table/finish-table-room-copy.js || { echo "room copy execution API missing"; exit 1; }
+          grep -q "export function restoreRoomCopy" src/js/finish-table/finish-table-room-copy.js || { echo "room copy restore API missing"; exit 1; }
+
+          # サンプル初期データ生成と派生値参照をactionsから分離
+          test -f src/js/finish-table/finish-table-sample-seed.js
+          grep -q "finish-table-sample-seed.js" src/js/demo/sample-session.js || { echo "sample session does not use sample seed module"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/projects/project-controller.js || { echo "project controller still uses old usage import"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/materials/simple-list.js || { echo "simple list still uses old usage import"; exit 1; }
+          grep -q "material-usage-derived.js" src/js/materials/material-operations.js || { echo "material operations still uses old usage import"; exit 1; }
+          grep -q "export function seedInitialMaterials" src/js/finish-table/finish-table-sample-seed.js || { echo "sample material seed API missing"; exit 1; }
+          grep -q "export function seedInitialFinishRecords" src/js/finish-table/finish-table-sample-seed.js || { echo "sample finish seed API missing"; exit 1; }
+          if grep -R "refreshMaterialUsageDerivedFields.*finish-table-actions\|getMaterialUsageRoomLabels.*finish-table-actions\|getMaterialUsageRoomNos.*finish-table-actions" -n src/js; then
+            echo "legacy material usage imports remain"
+            exit 1
+          fi
+
+          # 旧finish-table-actions facadeは完全撤去
+          test ! -e src/js/finish-table/finish-table-actions.js || { echo "obsolete finish-table-actions facade remains"; exit 1; }
+          test -f src/js/finish-table/finish-table-room-actions.js
+          test -f src/js/finish-table/finish-table-record-transaction.js
+          grep -q "finish-table-room-actions.js" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions do not use room actions"; exit 1; }
+          grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use record transaction"; exit 1; }
+          grep -q "finish-table-record-transaction.js" src/js/finish-table/finish-table-edit-session.js || { echo "finish edit session does not use record transaction"; exit 1; }
+          if grep -R "finish-table-actions.js" -n src/js; then
+            echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # 最終整理: 現役moduleのAPP_SHELL収録
+          grep -q "./js/materials/material-list-renderer.js" src/service-worker.js
+          grep -q "./js/materials/material-list-view-model.js" src/service-worker.js
+          grep -q "./js/materials/material-operations-renderer.js" src/service-worker.js
+          grep -q "./js/materials/material-operations.js" src/service-worker.js
+          grep -q "./js/materials/material-sampling-autofill.js" src/service-worker.js
+          grep -q "./js/photos/photo-renderer.js" src/service-worker.js
+
+          # Output PDF Preview状態/生成をcontrollerから分離
+          test -f src/js/output/output-pdf-preview-controller.js
+          grep -q "from './output-pdf-preview-controller.js'" src/js/output/output-controller.js || { echo "output controller does not use pdf preview controller"; exit 1; }
+          grep -q "export function getOutputPdfPreviewState" src/js/output/output-pdf-preview-controller.js || { echo "output preview state API missing"; exit 1; }
+          grep -q "export async function renderOutputPdfPreview" src/js/output/output-pdf-preview-controller.js || { echo "output preview render API missing"; exit 1; }
+          grep -q "export async function setOutputPdfPreviewPage" src/js/output/output-pdf-preview-controller.js || { echo "output preview page API missing"; exit 1; }
+          grep -q "export async function setOutputPdfPreviewZoom" src/js/output/output-pdf-preview-controller.js || { echo "output preview zoom API missing"; exit 1; }
+          if grep -q "let previewPage\|let previewPageCount\|let previewZoom\|let previewRenderer\|let renderSerial\|function renderPdfPreview\|function applyPreviewPage\|function applyPreviewZoom" src/js/output/output-controller.js; then
+            echo "output controller still owns pdf preview state"
+            exit 1
+          fi
+
+          # Outputサイドパネル描画をcontrollerから分離
+          test -f src/js/output/output-side-panels.js
+          grep -q "from './output-side-panels.js'" src/js/output/output-controller.js || { echo "output controller does not use side panels module"; exit 1; }
+          grep -q "export function renderOutputSidePanels" src/js/output/output-side-panels.js || { echo "output side panels render API missing"; exit 1; }
+          grep -q "export function hasOutputSidePanel" src/js/output/output-side-panels.js || { echo "output side panels state API missing"; exit 1; }
+          if grep -q "function renderVisualEditor\|function renderSamplingEditor\|function renderEditorPanel\|function renderSettingsPanel\|function renderSidePanels" src/js/output/output-controller.js; then
+            echo "output controller still owns side panel rendering"
+            exit 1
+          fi
+
+          # Material Listの編集ルールをcontrollerから分離
+          test -f src/js/materials/material-list-edit-actions.js
+          grep -q "from './material-list-edit-actions.js'" src/js/materials/material-list-controller.js || { echo "material list controller does not use edit actions module"; exit 1; }
+          grep -q "export function updateMaterialControlValue" src/js/materials/material-list-edit-actions.js || { echo "material control edit API missing"; exit 1; }
+          grep -q "export function updateMaterialNameValue" src/js/materials/material-list-edit-actions.js || { echo "material name edit API missing"; exit 1; }
+          grep -q "export function applyMaterialSamplingAutofill" src/js/materials/material-list-edit-actions.js || { echo "material autofill edit API missing"; exit 1; }
+          if grep -q "normalizeMaterialName\|splitBaseNameAndSuffix\|setAndPersistMaterialRecord\|applySingleRecordSamplingAutofill" src/js/materials/material-list-controller.js; then
+            echo "material list controller still owns edit rules"
+            exit 1
+          fi
+
+          # Material ListのDOMイベント/Pencil操作をcontrollerから分離
+          test -f src/js/materials/material-list-interactions.js
+          grep -q "from './material-list-interactions.js'" src/js/materials/material-list-controller.js || { echo "material list controller does not use interactions module"; exit 1; }
+          grep -q "export function bindMaterialListInteractions" src/js/materials/material-list-interactions.js || { echo "material list interactions API missing"; exit 1; }
+          grep -q "pointerdown" src/js/materials/material-list-interactions.js || { echo "material list pencil pointerdown missing"; exit 1; }
+          grep -q "pointerup" src/js/materials/material-list-interactions.js || { echo "material list pencil pointerup missing"; exit 1; }
+          if grep -q "function bindMaterialListEvents\|function handlePenPointerDown\|function handlePenPointerMove\|function handlePenPointerUp\|function handlePenPointerCancel" src/js/materials/material-list-controller.js; then
+            echo "material list controller still owns DOM/Pencil interactions"
+            exit 1
+          fi
+
+          # Material Listの保存責務をedit-actions経由で分離
+          test -f src/js/materials/material-list-persistence.js
+          grep -q "from './material-list-persistence.js'" src/js/materials/material-list-edit-actions.js || { echo "material list edit actions do not use persistence module"; exit 1; }
+          grep -q "export function setAndPersistMaterialRecord" src/js/materials/material-list-persistence.js || { echo "material list persistence API missing"; exit 1; }
+          grep -q "export function changedMaterialBusinessFields" src/js/materials/material-list-persistence.js || { echo "material business field diff API missing"; exit 1; }
+          if grep -q "touchFieldEditedAt\|persistMaterialForProject" src/js/materials/material-list-controller.js src/js/materials/material-list-edit-actions.js; then
+            echo "material list controller/edit actions still own persistence primitives"
+            exit 1
+          fi
+
+          # Project Realtime差分適用をcontrollerから分離
+          test -f src/js/projects/project-record-apply.js
+          grep -q "from './project-record-apply.js'" src/js/projects/project-controller.js || { echo "project controller does not use record apply module"; exit 1; }
+          grep -q "export function applyProjectRecordChanges" src/js/projects/project-record-apply.js || { echo "project record apply API missing"; exit 1; }
+          grep -q "listener-query-removed-not-record-delete" src/js/projects/project-record-apply.js || { echo "photo listener removed guard moved incorrectly"; exit 1; }
+          grep -q "SYNC_APPLY_CHANGE" src/js/projects/project-record-apply.js || { echo "project record apply diagnostics missing"; exit 1; }
+          if grep -q "function applyProjectRecordChanges\|listUnsent\|hydrateIncomingMaterialRecord\|applyKnownFinishChange\|restoreKnownFinishRecords" src/js/projects/project-controller.js; then
+            echo "project controller still owns realtime record apply logic"
+            exit 1
+          fi
+
+          # Project同期meta/cursor管理をcontrollerから分離
+          test -f src/js/projects/project-sync-meta.js
+          grep -q "from './project-sync-meta.js'" src/js/projects/project-controller.js || { echo "project controller does not use sync meta module"; exit 1; }
+          grep -q "export function getProjectRecordCursors" src/js/projects/project-sync-meta.js || { echo "project cursor API missing"; exit 1; }
+          grep -q "export function updateProjectRecordCursors" src/js/projects/project-sync-meta.js || { echo "project cursor update API missing"; exit 1; }
+          grep -q "export function normalizeProjectFinishChangeCursor" src/js/projects/project-sync-meta.js || { echo "finish cursor normalize API missing"; exit 1; }
+          grep -q "export async function recordProjectSyncDeviceContact" src/js/projects/project-sync-meta.js || { echo "project device contact API missing"; exit 1; }
+          if grep -q "function normalizeRecordCursors\|function normalizeFinishChangeCursor\|function updateProjectSyncCursors\|function recordProjectDeviceContact\|function cleanupFinishChangeLogIfDue" src/js/projects/project-controller.js; then
+            echo "project controller still owns sync meta logic"
+            exit 1
+          fi
+
+          # Project同期差分の画面影響判定をcontrollerから分離
+          test -f src/js/projects/project-view-impact.js
+          grep -q "from './project-view-impact.js'" src/js/projects/project-controller.js || { echo "project controller does not use view impact module"; exit 1; }
+          grep -q "export function createEmptyProjectViewImpact" src/js/projects/project-view-impact.js || { echo "project view impact API missing"; exit 1; }
+          grep -q "export function registerFinishProjectViewImpact" src/js/projects/project-view-impact.js || { echo "finish impact API missing"; exit 1; }
+          grep -q "export function registerMaterialProjectViewImpact" src/js/projects/project-view-impact.js || { echo "material impact API missing"; exit 1; }
+          grep -q "export function registerPhotoProjectViewImpact" src/js/projects/project-view-impact.js || { echo "photo impact API missing"; exit 1; }
+          if grep -q "function equalRecordValue\|function changedFields\|FINISH_IMPACT_FIELDS\|MATERIAL_IMPACT_FIELDS" src/js/projects/project-controller.js; then
+            echo "project controller still owns view impact logic"
+            exit 1
+          fi
+
+          # Photo構造整理の最終掃除
+          if grep -q "function createPhotoViewerTransformState\|function resetPhotoViewerTransform" src/js/photos/photo-viewer.js; then
+            echo "photo viewer still contains stale local transform definitions"
+            exit 1
+          fi
+          if grep -q "const STAGES =" src/js/photos/photo-board-editor.js; then
+            echo "photo board editor still contains obsolete stage constant"
+            exit 1
+          fi
+          if grep -R "finish-table-actions.js" -n src/js; then
+            echo "obsolete finish-table-actions reference remains"
+            exit 1
+          fi
+
+          # Photo ViewerのGesture処理を分離
+          test -f src/js/photos/photo-viewer-gesture.js
+          grep -q "from './photo-viewer-gesture.js'" src/js/photos/photo-viewer.js || { echo "photo viewer does not use gesture module"; exit 1; }
+          grep -q "export function bindPhotoViewerGestureStage" src/js/photos/photo-viewer-gesture.js || { echo "photo viewer gesture bind API missing"; exit 1; }
+          grep -q "export function createPhotoViewerTransformState" src/js/photos/photo-viewer-gesture.js || { echo "photo viewer transform state API missing"; exit 1; }
+          grep -q "export function resetPhotoViewerTransform" src/js/photos/photo-viewer-gesture.js || { echo "photo viewer reset transform API missing"; exit 1; }
+          grep -q "export function applyPhotoViewerTransform" src/js/photos/photo-viewer-gesture.js || { echo "photo viewer apply transform API missing"; exit 1; }
+          if grep -q "function createTransformState\|function bindGestureStage\|function clamp(value, min, max)\|function pointDistance" src/js/photos/photo-viewer.js; then
+            echo "photo viewer still owns gesture primitives"
+            exit 1
+          fi
+
+          # Photo Board Editorのフォーム/draft編集を分離
+          test -f src/js/photos/photo-board-editor-form.js
+          grep -q "from './photo-board-editor-form.js'" src/js/photos/photo-board-editor.js || { echo "board editor does not use form module"; exit 1; }
+          grep -q "export function renderBoardEditorForm" src/js/photos/photo-board-editor-form.js || { echo "board editor form render API missing"; exit 1; }
+          grep -q "export function updateBoardEditorDraftFromEvent" src/js/photos/photo-board-editor-form.js || { echo "board editor draft update API missing"; exit 1; }
+          grep -q "export function boardEditorSamplingMaterials" src/js/photos/photo-board-editor-form.js || { echo "board editor sampling form API missing"; exit 1; }
+          if grep -q "function visualFields\|function samplingFields\|function syncSamplingPlace" src/js/photos/photo-board-editor.js; then
+            echo "board editor still owns form/draft logic"
+            exit 1
+          fi
+
+          # Photo Board Editorの完成画像生成/保存を分離
+          test -f src/js/photos/photo-board-editor-persistence.js
+          grep -q "from './photo-board-editor-persistence.js'" src/js/photos/photo-board-editor.js || { echo "board editor does not use persistence module"; exit 1; }
+          grep -q "export async function persistBoardEditorEntry" src/js/photos/photo-board-editor-persistence.js || { echo "board editor persistence API missing"; exit 1; }
+          grep -q "savePhotoBlob" src/js/photos/photo-board-editor-persistence.js || { echo "board editor persistence does not save blobs"; exit 1; }
+          grep -q "updateCameraPhotoRecord" src/js/photos/photo-board-editor-persistence.js || { echo "board editor persistence does not update local record"; exit 1; }
+          grep -q "getAvailablePhotoFileName" src/js/photos/photo-board-editor-persistence.js || { echo "board editor persistence does not own filename resolution"; exit 1; }
+          if grep -q "composeCompletedBlob_\|persistEntry_\|savePhotoBlob\|updateCameraPhotoRecord\|getAvailablePhotoFileName\|touchFieldEditedAt\|getDeviceCode" src/js/photos/photo-board-editor.js; then
+            echo "board editor still owns persistence"
+            exit 1
+          fi
+
+          # Photo Board EditorのDOMイベント/スワイプを分離
+          test -f src/js/photos/photo-board-editor-interactions.js
+          grep -q "from './photo-board-editor-interactions.js'" src/js/photos/photo-board-editor.js || { echo "board editor does not use interactions module"; exit 1; }
+          grep -q "export function bindPhotoBoardEditorInteractions" src/js/photos/photo-board-editor-interactions.js || { echo "board editor interactions API missing"; exit 1; }
+          grep -q "pointerdown" src/js/photos/photo-board-editor-interactions.js || { echo "board editor swipe start missing"; exit 1; }
+          grep -q "pointerup" src/js/photos/photo-board-editor-interactions.js || { echo "board editor swipe end missing"; exit 1; }
+          if grep -q "function bindEvents\|handleEditorSwipeStart\|handleEditorSwipeEnd\|let swipeStart" src/js/photos/photo-board-editor.js; then
+            echo "board editor still owns DOM interactions"
+            exit 1
+          fi
+
+          # Photo Board Editorのセッション/履歴を分離
+          test -f src/js/photos/photo-board-editor-session.js
+          grep -q "from './photo-board-editor-session.js'" src/js/photos/photo-board-editor.js || { echo "board editor does not use session module"; exit 1; }
+          grep -q "export function createEmptyBoardEditorSession" src/js/photos/photo-board-editor-session.js || { echo "board editor session API missing"; exit 1; }
+          grep -q "export function pushBoardEditorHistory" src/js/photos/photo-board-editor-session.js || { echo "board editor history API missing"; exit 1; }
+          grep -q "export function applyBoardEditorHistory" src/js/photos/photo-board-editor-session.js || { echo "board editor history restore API missing"; exit 1; }
+          grep -q "export function settleBoardEditorEntry" src/js/photos/photo-board-editor-session.js || { echo "board editor settle API missing"; exit 1; }
+          if grep -q "function createEmptySession_\|function sameDraft_\|function clone(value)" src/js/photos/photo-board-editor.js; then
+            echo "board editor still owns session primitives"
+            exit 1
+          fi
+
+          # 写真DOMイベントをcontrollerから分離
+          test -f src/js/photos/photo-interactions.js
+          grep -q "from './photo-interactions.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use interactions module"; exit 1; }
+          grep -q "export function bindPhotoInteractions" src/js/photos/photo-interactions.js || { echo "photo interactions API missing"; exit 1; }
+          grep -q "openPhotoViewer" src/js/photos/photo-interactions.js || { echo "photo viewer interaction missing"; exit 1; }
+          grep -q "openCamera" src/js/photos/photo-interactions.js || { echo "photo camera interaction missing"; exit 1; }
+          if grep -q "function bindEvents\|function bindPhotoTabExitReset\|data-photo-camera-visual\|data-photo-picker" src/js/photos/photo-controller.js; then
+            echo "photo controller still owns DOM interactions"
+            exit 1
+          fi
+
+          # 写真Record操作をcontrollerから分離
+          test -f src/js/photos/photo-record-actions.js
+          grep -q "from './photo-record-actions.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use record actions"; exit 1; }
+          grep -q "export async function importPickedPhotoFiles" src/js/photos/photo-record-actions.js || { echo "photo import action missing"; exit 1; }
+          grep -q "export async function registerCapturedPhoto" src/js/photos/photo-record-actions.js || { echo "photo capture action missing"; exit 1; }
+          grep -q "export async function deletePhotos" src/js/photos/photo-record-actions.js || { echo "photo delete action missing"; exit 1; }
+          grep -q "export async function setRepresentativePhoto" src/js/photos/photo-record-actions.js || { echo "photo representative action missing"; exit 1; }
+          if grep -q "function nextPhotoId\|PHOTO_COMMON_CREATE_EDIT_FIELDS\|saveCapturedPhoto\|updateCameraPhotoRecord\|touchFieldEditedAt\|persistPhotoForProject\|openPhotoBoardEditorSequence" src/js/photos/photo-controller.js; then
+            echo "photo controller still owns record actions"
+            exit 1
+          fi
+
+          # 写真サムネイル/プレビュー管理をcontrollerから分離
+          test -f src/js/photos/photo-preview-manager.js
+          grep -q "from './photo-preview-manager.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use preview manager"; exit 1; }
+          grep -q "export function setLocalPhotoPreview" src/js/photos/photo-preview-manager.js || { echo "photo preview local API missing"; exit 1; }
+          grep -q "export function hydrateThumbnailImages" src/js/photos/photo-preview-manager.js || { echo "photo preview hydrate API missing"; exit 1; }
+          grep -q "export async function hydrateCurrentPhotoPreviews" src/js/photos/photo-preview-manager.js || { echo "photo preview restore API missing"; exit 1; }
+          grep -q "export function resetPhotoPreviewManager" src/js/photos/photo-preview-manager.js || { echo "photo preview reset API missing"; exit 1; }
+          if grep -q "localPreviewUrls\|remoteThumbnailUrls\|remoteThumbnailFetches\|previewSessionId\|function demoPreviewSource\|function previewSourceForPhoto\|function revokePreviewUrl\|function hydrateThumbnailImages" src/js/photos/photo-controller.js; then
+            echo "photo controller still owns preview management"
+            exit 1
+          fi
+
+          # PhotoViewer用データ組立をcontrollerから分離
+          test -f src/js/photos/photo-viewer-data.js
+          grep -q "from './photo-viewer-data.js'" src/js/photos/photo-controller.js || { echo "photo controller does not use viewer data module"; exit 1; }
+          grep -q "export function photosForViewer" src/js/photos/photo-viewer-data.js || { echo "photo viewer photo-set API missing"; exit 1; }
+          grep -q "export function compareTargetsForViewer" src/js/photos/photo-viewer-data.js || { echo "photo viewer compare-target API missing"; exit 1; }
+          grep -q "photoRecordStore.get(photoId)" src/js/photos/photo-viewer-data.js || { echo "photo viewer data does not resolve photo from store"; exit 1; }
+          if grep -q "photoById(" src/js/photos/photo-viewer-data.js; then
+            echo "photo viewer data still depends on controller-local lookup"
+            exit 1
+          fi
+          if grep -q "function photosForViewer\|function compareTargetsForViewer" src/js/photos/photo-controller.js; then
+            echo "photo controller still owns viewer data assembly"
+            exit 1
+          fi
+
+          # 仕上表DOMイベントをcontrollerから分離
+          test -f src/js/finish-table/finish-table-interactions.js
+          grep -q "bindFinishTableInteractions" src/js/finish-table/finish-table-controller.js || { echo "finish interactions are not bound"; exit 1; }
+          grep -q "export function bindFinishTableInteractions" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions API missing"; exit 1; }
+          if grep -q "function bindEvents\|PEN_DRAG_THRESHOLD_PX" src/js/finish-table/finish-table-controller.js; then
+            echo "finish controller still owns DOM interaction wiring"
+            exit 1
+          fi
+
+          # 建材リスト分析結果／備考
+          grep -q "analysisResult: String(record.analysisResult || '')" src/js/materials/material-list-view-model.js || { echo "material list analysisResult mapping missing"; exit 1; }
+          grep -q "remarks: String(record.remarks || '')" src/js/materials/material-list-view-model.js || { echo "material list remarks mapping missing"; exit 1; }
+          grep -q "toggle-material-analysis-columns" src/js/materials/material-list-controller.js || { echo "material analysis column toggle missing"; exit 1; }
+          grep -q "data-editor-kind=.*analysisResult\|renderTextDisplay(row, 'analysisResult'" src/js/materials/material-list-renderer.js || { echo "material analysis result editor missing"; exit 1; }
+          grep -q "renderTextDisplay(row, 'remarks'" src/js/materials/material-list-renderer.js || { echo "material analysis remarks editor missing"; exit 1; }
+
+          # 分析結果取込は「無 / 石綿含有」のみを結果へ保持し、その他は分析備考へ送る
+          grep -q "function normalizeAnalysisResult" src/js/analysis/analysis-import-controller.js || { echo "analysis result normalization missing"; exit 1; }
+          grep -q "analysisResult = '石綿含有'" src/js/analysis/analysis-import-controller.js || { echo "asbestos-containing result mapping missing"; exit 1; }
+          grep -q "analysisResult = '無'" src/js/analysis/analysis-import-controller.js || { echo "none result mapping missing"; exit 1; }
+
+          # 出力帳票の調査備考は material.note のみ
+          grep -q "note:text(record.note)" src/js/output/output-view-model.js || { echo "material output note source is not survey note"; exit 1; }
+          grep -q "note:material?text(material.note):''" src/js/output/output-view-model.js || { echo "room output note source is not survey note"; exit 1; }
+
+          # 報告書用の分析区分・結果を現場区分から変換
+          grep -q "function reportAnalysisFields" src/js/output/output-view-model.js || { echo "report analysis mapping missing"; exit 1; }
+          grep -q "sourceRequired==='みなし'.*analysisRequired:'目視'.*analysisResult:'石綿含有みなし'" src/js/output/output-view-model.js || { echo "assumed asbestos mapping missing"; exit 1; }
+          grep -q "sourceRequired==='対象外'.*analysisRequired:'目視'.*analysisResult:'調査対象外'" src/js/output/output-view-model.js || { echo "out-of-scope mapping missing"; exit 1; }
+          grep -q "sourceRequired==='目視'.*analysisResult:sourceResult||'-'" src/js/output/output-view-model.js || { echo "visual report fallback missing"; exit 1; }
+          grep -q "analysisRequired:'採取・分析'.*analysisResult:sourceResult||'-'" src/js/output/output-view-model.js || { echo "sampling report fallback missing"; exit 1; }
+          grep -q "cell.col===8.*drawSingleLineFit" src/js/output/output-pdf-renderer.js || { echo "room analysis result single-line fit missing"; exit 1; }
+
+          # 表示文字とは別に元の分析結果から陽性色を保持
+          grep -q "function sourceResultIsPositive" src/js/output/output-view-model.js || { echo "source positive mapping missing"; exit 1; }
+          grep -q "sourceRequired==='みなし'.*positive:true" src/js/output/output-view-model.js || { echo "assumed asbestos must be positive"; exit 1; }
+          grep -q "sourceRequired==='対象外'.*positive:sourcePositive" src/js/output/output-view-model.js || { echo "out-of-scope positive source mapping missing"; exit 1; }
+          grep -q "positive:reportAnalysis.positive" src/js/output/output-view-model.js || { echo "report positive flag missing"; exit 1; }
+          grep -q "row.positive??isPositive" src/js/output/output-pdf-renderer.js || { echo "PDF does not use report positive flag"; exit 1; }
+          if sed -n '/function wrapRoomNoLines/,/^}/p' src/js/output/output-pdf-renderer.js | grep -q "setFont(pdf"; then
+            echo "wrapRoomNoLines must not reset text color"
+            exit 1
+          fi
+          grep -q "positive: isMaterialPositive(record)" src/js/materials/material-list-view-model.js || { echo "material list positive mapping missing"; exit 1; }
+          grep -q "positive-material-row" src/js/materials/material-list-renderer.js || { echo "material list positive row class missing"; exit 1; }
+          grep -q "positive-material-row" src/css/material-list.css || { echo "material list positive red style missing"; exit 1; }
+          grep -q "if(r.positive)row.font" src/js/output/output-export-controller.js || { echo "Excel material positive row color missing"; exit 1; }
+          # 部屋別リストは陽性行の部屋No.・部屋名・部屋備考も含めて赤表示
+          grep -q "roomRows.some.*RED:BLACK" src/js/output/output-pdf-renderer.js || { echo "room group positive color mapping missing"; exit 1; }
+          grep -q "roomNo.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room number does not follow positive row color"; exit 1; }
+          grep -q "roomName.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room name does not follow positive row color"; exit 1; }
+          grep -q "roomNote.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room note does not follow positive row color"; exit 1; }
+          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color rule changed"; exit 1; }
+          if grep -q "remarks||record.note\|remarks||material.note" src/js/output/output-view-model.js; then
+            echo "analysis remarks are still mixed into survey note output"
+            exit 1
+          fi
+
+          test -f src/js/output/output-pdf-preview.js
+          test -f src/js/output/output-format.js
+          test -f src/js/output/output-targets.js
+          grep -q "OutputPdfPreview" src/js/output/output-pdf-preview-controller.js
+          grep -q "formatSamplingCode" src/js/output/output-pdf-renderer.js
+          grep -q "formatSamplingCode" src/js/output/output-export-controller.js
+          grep -q "MATERIAL_WIDTHS.*6,33,12,42,6,19,19,53" src/js/output/output-pdf-renderer.js
+          grep -q "ROOM_WIDTHS.*10,12,22,12,6,38,35,6,19,30" src/js/output/output-pdf-renderer.js
+
+          if grep -R "output-report-renderer\|output-photo-layout" -n src; then
+            echo "obsolete HTML output path remains"
+            exit 1
+          fi
+          if test -e src/js/debug/h-log.js; then
+            echo "legacy h-log.js remains"
+            exit 1
+          fi
+          if test -e .firebase/hosting..cache; then
+            echo "generated Firebase cache is tracked"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+          projectId: odako-chousa-system-pwa
+          channelId: v0163a
