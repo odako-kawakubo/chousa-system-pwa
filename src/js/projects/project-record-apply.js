@@ -22,6 +22,7 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import {
   sameProjectFieldEditedAt,
   getProjectRecordCursors
@@ -334,7 +335,14 @@ export function applyProjectRecordChanges(project, changes = []) {
       const normalized = hydrateIncomingPhotoRecord(effectiveChange.record);
 
       if (normalized) {
-        photoRecordStore.set(normalized);
+        const resolved = resolveVisualPhotoMetadata(
+          normalized,
+          finishRecordStore.exportSnapshot()
+        );
+        const stored = photoRecordStore.set(resolved.record);
+        if (resolved.changedFields.length) {
+          void persistPhotoForProject(project, stored, 'visual-photo-metadata-backfill-realtime');
+        }
         changed = true;
         applied += 1;
         syncDiagnosticLog('SYNC_APPLY_CHANGE', {
