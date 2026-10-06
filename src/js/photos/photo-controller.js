@@ -13,6 +13,7 @@
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
+import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, closePhotoViewer } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
@@ -261,15 +262,31 @@ function buildCameraOptions() {
   });
 
   const sampling = buildSamplingPhotoView('');
-  const samplingTargets = sampling.materials.flatMap((material) => material.points.map((point) => ({
-    materialId: material.materialId,
-    materialNo: material.materialNo,
-    sampleBaseNo: String(material.sampleNo || ''),
-    sampleNo: point.sampleNo,
-    samplingPlace: point.samplingPlace,
-    branch: point.branch,
-    part: point.part
-  })));
+  const samplingTargets = sampling.materials.flatMap((material) => {
+    const placeOptions = getMaterialUsageRoomOptions(material.inputId, { preferRoomName:false });
+    const partOptions = [];
+    [material.part, material.samplePart].forEach((value) => {
+      String(value || '')
+        .split(/[、,，]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => {
+          if (!partOptions.includes(item)) partOptions.push(item);
+        });
+    });
+
+    return material.points.map((point) => ({
+      materialId: material.materialId,
+      materialNo: material.materialNo,
+      sampleBaseNo: String(material.sampleNo || ''),
+      sampleNo: point.sampleNo,
+      samplingPlace: String(material[`sampleLocation${point.branch}`] || point.samplingPlace || ''),
+      branch: point.branch,
+      part: point.part,
+      placeOptions,
+      partOptions
+    }));
+  });
 
   return { visualRooms, samplingTargets };
 }
