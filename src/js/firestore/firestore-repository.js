@@ -47,6 +47,10 @@ import {
   markError
 } from '../sync/sync-status.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import {
+  buildChangeLogRetentionState,
+  canDeleteChangeLogCursor
+} from '../sync/change-log-retention.js';
 
 const db = getFirestore(firebaseApp);
 const RECORD_COLLECTIONS = Object.freeze({
@@ -772,34 +776,6 @@ export async function touchProjectSyncDevice({
   }
 }
 
-function firestoreTimestampToMillis(value) {
-  if (!value) return 0;
-  if (typeof value.toMillis === 'function') return Number(value.toMillis()) || 0;
-  if (typeof value.seconds === 'number') {
-    return (Number(value.seconds) * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1e6);
-  }
-  return 0;
-}
-
-function normalizeStoredFinishCursor(value) {
-  if (!value || typeof value.seconds !== 'number' || !value.changeId) return null;
-  return {
-    seconds: Number(value.seconds),
-    nanoseconds: Number(value.nanoseconds || 0),
-    changeId: String(value.changeId)
-  };
-}
-
-function compareFinishCursors(a, b) {
-  if (Number(a?.seconds || 0) !== Number(b?.seconds || 0)) {
-    return Number(a?.seconds || 0) - Number(b?.seconds || 0);
-  }
-  if (Number(a?.nanoseconds || 0) !== Number(b?.nanoseconds || 0)) {
-    return Number(a?.nanoseconds || 0) - Number(b?.nanoseconds || 0);
-  }
-  return String(a?.changeId || '').localeCompare(String(b?.changeId || ''));
-}
-
 /**
  * 全端末cursorを考慮し、既に不要になった古いfinish change logを削除する。現在の端末がまだ必要な履歴は消さない。
  */
@@ -819,24 +795,16 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
     };
   });
 
-  const serverNowMs = devices.reduce(
-    (max, device) => Math.max(max, firestoreTimestampToMillis(device.lastSeenAt)),
-    0
-  );
+  const {
+    serverNowMs,
+    retentionCutoffMs,
+    activeDevices,
+    oldestActiveCursor
+  } = buildChangeLogRetentionState(devices, CHANGE_LOG_RETENTION_MS);
   if (!serverNowMs) {
     syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_NO_SERVER_TIME', { projectId });
     return { ok: true, skipped: true, deleted: 0, reason: 'server-time-unavailable' };
   }
-
-  const retentionCutoffMs = serverNowMs - CHANGE_LOG_RETENTION_MS;
-  const activeDevices = devices.filter(
-    (device) => firestoreTimestampToMillis(device.lastSeenAt) >= retentionCutoffMs
-  );
-  const activeCursors = activeDevices
-    .map((device) => normalizeStoredFinishCursor(device.finishChangeCursor))
-    .filter(Boolean)
-    .sort(compareFinishCursors);
-  const oldestActiveCursor = activeCursors[0] || null;
 
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
@@ -849,8 +817,7 @@ export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 
 
   const deletable = snapshot.docs.filter((item) => {
     if (!oldestActiveCursor) return true;
-    const cursor = serializeChangeCursor(item);
-    return cursor && compareFinishCursors(cursor, oldestActiveCursor) < 0;
+    return canDeleteChangeLogCursor(serializeChangeCursor(item), oldestActiveCursor);
   });
 
   syncDiagnosticLog('CHANGELOG_CLEANUP_READ', {
