@@ -27,7 +27,8 @@ import {
   persistProjectMetadataForProject,
   getRemoteTemporaryProjectEntries,
   syncQueuedProjectMetadataOnRecovery,
-  syncQueuedRecordsOnRecovery
+  syncQueuedRecordsOnRecovery,
+  persistPhotoForProject
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import { nextTemporaryProjectNo } from './project-factory.js';
@@ -52,6 +53,7 @@ import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
+import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import {
   createFullTypeProjectViewImpact
 } from './project-view-impact.js';
@@ -99,6 +101,39 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
       ? `delta:local-baseline+cursor-${Number(storedCursors.photo || 0)}`
       : `full:cursor-${Number(storedCursors.photo || 0)}-snapshot-${target.photoRecords?.length || 0}`
   };
+}
+
+async function migrateLegacyVisualPhotoMetadata(project) {
+  if (!project?.projectId || project.isSample) return { migrated: 0 };
+
+  const finishRecords = finishRecordStore.exportSnapshot();
+  let migrated = 0;
+
+  for (const photo of photoRecordStore.exportSnapshot()) {
+    if (photo.deleted || photo.photoType !== 'visual') continue;
+    const result = resolveVisualPhotoMetadata(photo, finishRecords);
+    if (!result.changedFields.length) continue;
+
+    const stored = photoRecordStore.set(result.record);
+    await persistPhotoForProject(project, stored, 'visual-photo-metadata-backfill');
+    migrated += 1;
+  }
+
+  if (migrated) {
+    saveProjectSnapshot({
+      project,
+      finishRecords: finishRecordStore.exportSnapshot(),
+      materialRecords: materialRecordStore.exportSnapshot(),
+      photoRecords: photoRecordStore.exportSnapshot(),
+      source: 'visual-photo-metadata-backfill'
+    });
+  }
+
+  syncDiagnosticLog('VISUAL_PHOTO_METADATA_MIGRATION', {
+    projectId: project.projectId,
+    migrated
+  });
+  return { migrated };
 }
 
 async function resolveTemporaryProjectNoCollision(project) {
@@ -350,6 +385,9 @@ async function openFirestoreProjectSession(target) {
         refreshProjectViewsForChanges(fullImpact);
       }
     }
+
+    if (token !== activeProjectStreamToken) return target;
+    await migrateLegacyVisualPhotoMetadata(project);
 
     // M-06: 旧案件でFirestoreにboardSettingsがまだ無い場合だけ、
     // 現端末の従来localStorage看板設定を正本へ1回昇格する。
