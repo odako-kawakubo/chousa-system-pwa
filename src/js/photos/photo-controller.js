@@ -15,7 +15,7 @@ import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
 import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
-import { initializePhotoViewer, closePhotoViewer } from './photo-viewer.js';
+import { initializePhotoViewer, closePhotoViewer, openDirectPhotoCompare } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
   previewSourceForPhoto,
@@ -91,15 +91,19 @@ function applySelectionUi() {
   panel?.classList.toggle('photo-selection-mode', Boolean(mode));
   panel?.classList.toggle('photo-selection-edit', mode === 'edit');
   panel?.classList.toggle('photo-selection-delete', mode === 'delete');
+  panel?.classList.toggle('photo-selection-compare', mode === 'compare');
 
   root.querySelectorAll('[data-photo-selection-mode]').forEach((button) => {
     const buttonMode = button.dataset.photoSelectionMode;
     const active = mode === buttonMode;
     const count = state.selectedPhotoIds.size;
     button.classList.toggle('active', active);
-    button.textContent = active && count
-      ? `${buttonMode === 'delete' ? '削除する' : '編集する'}（${count}）`
-      : (buttonMode === 'delete' ? '削除' : '編集');
+    const defaultLabel = buttonMode === 'delete' ? '削除' : (buttonMode === 'compare' ? '比較' : '編集');
+    const activeLabel = buttonMode === 'delete' ? '削除する' : (buttonMode === 'compare' ? '比較する' : '編集する');
+    button.textContent = active && count ? `${activeLabel}（${count}）` : defaultLabel;
+    if (buttonMode === 'compare') {
+      button.toggleAttribute('disabled', active && count > 0 && count < 2);
+    }
   });
 
   root.querySelectorAll('.photo-thumb-card[data-photo-id]').forEach((card) => {
@@ -405,9 +409,29 @@ async function deleteSelectedPhotos(photoIds) {
  */
 function togglePhotoSelection(photoId) {
   if (!photoId || !state.selectionMode) return;
-  if (state.selectedPhotoIds.has(photoId)) state.selectedPhotoIds.delete(photoId);
-  else state.selectedPhotoIds.add(photoId);
+  if (state.selectedPhotoIds.has(photoId)) {
+    state.selectedPhotoIds.delete(photoId);
+  } else {
+    if (state.selectionMode === 'compare' && state.selectedPhotoIds.size >= 4) {
+      window.alert('比較できる写真は最大4枚です。');
+      return;
+    }
+    state.selectedPhotoIds.add(photoId);
+  }
   applySelectionUi();
+}
+
+function compareSelectedPhotos(photoIds) {
+  const photos = [...photoIds]
+    .map((photoId) => photoById(photoId))
+    .filter((photo) => photo && !photo.deleted)
+    .slice(0, 4);
+  if (photos.length < 2) {
+    window.alert('比較する写真を2枚以上選択してください。');
+    return false;
+  }
+  clearSelectionMode();
+  return openDirectPhotoCompare(photos);
 }
 
 export function capturePhotoUiState() {
@@ -531,6 +555,7 @@ export function initializePhotoTab() {
     togglePhotoSelection,
     deleteSelectedPhotos,
     startEditSequence,
+    compareSelectedPhotos,
     visualContextFromKey,
     samplingContextFromKey,
     samplingDefaultContextFromKey,
