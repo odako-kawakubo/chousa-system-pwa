@@ -21,7 +21,7 @@ const PHOTO_COMMON_CREATE_EDIT_FIELDS = Object.freeze([
 
 function photoCreateEditFields(record) {
   return record?.photoType === PHOTO_TYPES.VISUAL
-    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'areaCode', 'roomPosition', 'partSlot']
+    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
     : [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'];
 }
 

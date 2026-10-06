@@ -16,11 +16,17 @@ import {
 import { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from '../finish-table/finish-table-constants.js';
 
 const PART_COUNT = 6;
-const ROOMS_PER_ADDED_FLOOR = 10;
 const DEFAULT_NORMAL_MAX_FLOOR = Math.max(...DEFAULT_FINISH_STRUCTURE.floors.filter((item) => item.areaCode === 'I').map((item) => Number(item.floor)), 0);
 const DEFAULT_STAIRS_COUNT = Number(DEFAULT_FINISH_STRUCTURE.stairsCount || 0);
 const DEFAULT_ROOF_COUNT = Number(DEFAULT_FINISH_STRUCTURE.roofCount || 0);
 const DEFAULT_EXTERNAL_COUNT = DEFAULT_FINISH_STRUCTURE.externalRoomNos.length;
+
+function defaultFloorRoomCount(areaCode, floor) {
+  const found = DEFAULT_FINISH_STRUCTURE.floors.find(
+    (item) => item.areaCode === areaCode && Number(item.floor) === Number(floor)
+  );
+  return Number(found?.roomCount || 0);
+}
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
 
@@ -104,15 +110,19 @@ function ensureStructureFromSparse(map, sparseRecords) {
   const maxIFloor = Math.max(DEFAULT_NORMAL_MAX_FLOOR, ...[...roomNeeds.values()].filter((item) => item.areaCode === 'I').map((item) => Number(item.floor) || 0));
   for (let floor = 1; floor <= maxIFloor; floor += 1) {
     const inFloor = [...roomNeeds.values()].filter((item) => item.areaCode === 'I' && Number(item.floor) === floor);
-    const maxRoom = Math.max(ROOMS_PER_ADDED_FLOOR, ...inFloor.map((item) => item.index));
-    for (let index = 1; index <= maxRoom; index += 1) addRoomToMap(map, { areaCode: 'I', floor, index });
+    const defaultCount = defaultFloorRoomCount('I', floor);
+    const sparseMaxRoom = Math.max(0, ...inFloor.map((item) => item.index));
+    const roomCount = Math.max(defaultCount, sparseMaxRoom);
+    for (let index = 1; index <= roomCount; index += 1) addRoomToMap(map, { areaCode: 'I', floor, index });
   }
 
   const maxBFloor = Math.max(0, ...[...roomNeeds.values()].filter((item) => item.areaCode === 'B').map((item) => Number(item.floor) || 0));
   for (let floor = 1; floor <= maxBFloor; floor += 1) {
     const inFloor = [...roomNeeds.values()].filter((item) => item.areaCode === 'B' && Number(item.floor) === floor);
-    const maxRoom = Math.max(ROOMS_PER_ADDED_FLOOR, ...inFloor.map((item) => item.index));
-    for (let index = 1; index <= maxRoom; index += 1) addRoomToMap(map, { areaCode: 'B', floor, index });
+    const defaultCount = defaultFloorRoomCount('B', floor);
+    const sparseMaxRoom = Math.max(0, ...inFloor.map((item) => item.index));
+    const roomCount = Math.max(defaultCount, sparseMaxRoom);
+    for (let index = 1; index <= roomCount; index += 1) addRoomToMap(map, { areaCode: 'B', floor, index });
   }
 
   for (const [areaCode, defaultCount] of [['S', DEFAULT_STAIRS_COUNT], ['R', DEFAULT_ROOF_COUNT], ['E', DEFAULT_EXTERNAL_COUNT]]) {
@@ -141,9 +151,27 @@ export function restoreFinishRecordsFromSparse(rawSparseRecords = []) {
   ensureStructureFromSparse(map, sparse);
 
   // 入力枠固有の内容差分を先に上書きする。
+  // roomNo / roomName / roomNote の正本は標準末尾602だけ。
+  // 602以外の疎Recordに残っている古い部屋共通値は復元根拠にしない。
+  const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
   sparse.forEach((raw) => {
     const base = map.get(raw.finishId);
-    map.set(raw.finishId, base ? { ...base, ...raw, finishId: raw.finishId, roomUid: base.roomUid } : { ...raw, finishId: raw.finishId });
+    if (!base) {
+      map.set(raw.finishId, { ...raw, finishId: raw.finishId });
+      return;
+    }
+    const isCarrier = Number(raw.position) === standardCarrierPosition;
+    map.set(raw.finishId, {
+      ...base,
+      ...raw,
+      ...(isCarrier ? {} : {
+        roomNo: base.roomNo,
+        roomName: base.roomName,
+        roomNote: base.roomNote
+      }),
+      finishId: raw.finishId,
+      roomUid: base.roomUid
+    });
   });
 
   // roomNo / roomName / roomNote は部屋共通情報。6番目部位の標準末尾602を部屋全体へ展開する。
@@ -182,9 +210,6 @@ export function getRequiredStructureRecordIds(records = []) {
   });
 
   const maxFloor = (areaCode) => Math.max(0, ...active.filter((record) => record.areaCode === areaCode).map((record) => Number(record.floor) || 0));
-  const maxI = maxFloor('I');
-  const maxB = maxFloor('B');
-
   function roomMarker(roomRecords) {
     const standardCarrierPosition = computeCellPosition(PART_COUNT, INITIAL_ROW_COUNT);
     return roomRecords.find((record) => Number(record.position) === standardCarrierPosition) || null;
@@ -202,9 +227,9 @@ export function getRequiredStructureRecordIds(records = []) {
     if (info.areaCode === 'I' || info.areaCode === 'B') {
       const floorRooms = active.filter((record) => record.areaCode === info.areaCode && Number(record.floor) === Number(info.floor));
       const maxRoom = Math.max(...floorRooms.map((record) => roomIndexFromRoomPosition(record.roomPosition)), 0);
-      const defaultFloor = info.areaCode === 'I' && Number(info.floor) <= DEFAULT_NORMAL_MAX_FLOOR;
-      const isAddedFloorTip = !defaultFloor && Number(info.floor) === (info.areaCode === 'I' ? maxI : maxB) && info.index === maxRoom;
-      const isAddedRoomTip = maxRoom > ROOMS_PER_ADDED_FLOOR && info.index === maxRoom;
+      const defaultCount = defaultFloorRoomCount(info.areaCode, info.floor);
+      const isAddedFloorTip = defaultCount === 0 && info.index === maxRoom;
+      const isAddedRoomTip = defaultCount > 0 && maxRoom > defaultCount && info.index === maxRoom;
       if (isAddedFloorTip || isAddedRoomTip) {
         const marker = roomMarker(roomRecords);
         if (marker) ids.add(marker.finishId);

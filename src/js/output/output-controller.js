@@ -211,8 +211,8 @@ export function initializeOutputTab(){
   window.addEventListener('chousa:tab-change',(event)=>{
     if(event.detail?.currentTab!=='sync')return;
     // hidden状態で初期描画したPDFはhost寸法を正しく取れないため、
-    // 出力タブが実際に表示された次のframeで表示倍率だけを再計算する。
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{rerenderOutputPdfPreview();}));
+    // 出力タブが実際に表示された次のframeでViewModelとPDFを丸ごと再生成する。
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{renderOutputTab();}));
   });
   window.addEventListener('chousa:output-settings-change',()=>{if(!settingsOpen)renderOutputTab();});
   window.addEventListener('chousa:material-room-display-change',()=>renderOutputTab());

@@ -21,6 +21,11 @@ function normalizeProject(item) {
     projectNo: String(data.projectNo || projectId),
     projectName: String(data.projectName || ''),
     address: String(data.address || ''),
+    surveyDate: String(data.surveyDate || data.boardSettings?.surveyDate || ''),
+    surveyor: String(data.surveyor || data.boardSettings?.surveyor || ''),
+    boardSettings: data.boardSettings && typeof data.boardSettings === 'object'
+      ? { ...data.boardSettings }
+      : {},
     projectType: String(data.projectType || 'temporary'),
     isTemporary: data.isTemporary !== false,
     isSample: false,

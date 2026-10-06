@@ -12,16 +12,26 @@ import {
 import {
   getCurrentProject,
   getProject,
+  getProjectList,
   saveProjectSnapshot,
-  getProjectSyncMeta
+  getProjectSyncMeta,
+  updateProjectFields
 } from './project-store.js';
 import {
   readProjectRecordsForProject,
   subscribeRealtimeProjectRecordsForProject,
   newestCursorsFromChanges,
   latestCursorValue,
+  readProjectMetadataForProject,
+  subscribeProjectMetadataForProject,
+  persistProjectMetadataForProject,
+  getRemoteTemporaryProjectEntries,
+  syncQueuedProjectMetadataOnRecovery,
+  syncQueuedRecordsOnRecovery,
+  persistPhotoForProject
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
+import { nextTemporaryProjectNo } from './project-factory.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import {
   isManualOffline,
@@ -41,6 +51,9 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
+import * as boardSettingsStore from '../settings/board-settings-store.js';
+import { refreshSettingsTab } from '../settings/settings-controller.js';
+import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import {
   createFullTypeProjectViewImpact
 } from './project-view-impact.js';
@@ -90,16 +103,148 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
   };
 }
 
+async function migrateLegacyVisualPhotoMetadata(project) {
+  if (!project?.projectId || project.isSample) return { migrated: 0 };
+
+  const finishRecords = finishRecordStore.exportSnapshot();
+  let migrated = 0;
+
+  for (const photo of photoRecordStore.exportSnapshot()) {
+    if (photo.deleted || photo.photoType !== 'visual') continue;
+    const result = resolveVisualPhotoMetadata(photo, finishRecords);
+    if (!result.changedFields.length) continue;
+
+    const stored = photoRecordStore.set(result.record);
+    await persistPhotoForProject(project, stored, 'visual-photo-metadata-backfill');
+    migrated += 1;
+  }
+
+  if (migrated) {
+    saveProjectSnapshot({
+      project,
+      finishRecords: finishRecordStore.exportSnapshot(),
+      materialRecords: materialRecordStore.exportSnapshot(),
+      photoRecords: photoRecordStore.exportSnapshot(),
+      source: 'visual-photo-metadata-backfill'
+    });
+  }
+
+  syncDiagnosticLog('VISUAL_PHOTO_METADATA_MIGRATION', {
+    projectId: project.projectId,
+    migrated
+  });
+  return { migrated };
+}
+
+async function resolveTemporaryProjectNoCollision(project) {
+  if (!project?.isTemporary || !canUseFirestore()) return project;
+  const match = /^(\d{6})-\d+$/.exec(String(project.projectNo || ''));
+  if (!match) return project;
+
+  const dateCode = match[1];
+  try {
+    const remoteEntries = await getRemoteTemporaryProjectEntries(
+      dateCode,
+      project.environment === 'test' ? 'test' : 'production'
+    );
+    const conflict = remoteEntries.some((item) =>
+      String(item.projectNo || '') === String(project.projectNo || '')
+      && String(item.projectId || '') !== String(project.projectId || '')
+    );
+    if (!conflict) return project;
+
+    const localProjects = getProjectList()
+      .filter((item) => String(item.projectId || '') !== String(project.projectId || ''));
+    const nextProjectNo = nextTemporaryProjectNo(
+      dateCode,
+      localProjects,
+      remoteEntries.map((item) => item.projectNo)
+    );
+    const nextProject = updateProjectFields(project.projectId, { projectNo: nextProjectNo }) || {
+      ...project,
+      projectNo: nextProjectNo
+    };
+    boardSettingsStore.applyProjectMetadata(nextProject);
+    syncDiagnosticLog('TEMP_PROJECT_NO_REASSIGNED', {
+      projectId: project.projectId,
+      before: project.projectNo,
+      after: nextProjectNo
+    });
+    return nextProject;
+  } catch (error) {
+    syncDiagnosticLog('TEMP_PROJECT_NO_COLLISION_CHECK_ERROR', {
+      projectId: project.projectId,
+      projectNo: project.projectNo,
+      message: error?.message || String(error)
+    });
+    return project;
+  }
+}
+
 /**
  * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
  */
 async function openFirestoreProjectSession(target) {
-  const project = target.project;
+  let project = target.project;
+  // M-07: 案件metadata未確定時はRecord未送信の自動再送を止める。
+  // 後段でも参照するため、Firestore可否ブロックの外でsession全体の状態として保持する。
+  let projectQueueReady = true;
+  const token = ++activeProjectStreamToken;
   syncDiagnosticLog('SYNC_OPEN_START', {
     projectId: project?.projectId || '',
     projectName: project?.projectName || ''
   });
-  const token = ++activeProjectStreamToken;
+
+  if (canUseFirestore()) {
+    project = await resolveTemporaryProjectNoCollision(project);
+    if (token !== activeProjectStreamToken) return target;
+    target.project = project;
+
+    const projectQueueResult = await syncQueuedProjectMetadataOnRecovery(project);
+    if (token !== activeProjectStreamToken) return target;
+    projectQueueReady = projectQueueResult?.ok !== false;
+    syncDiagnosticLog('PROJECT_UNSENT_RECOVERY_RESULT', {
+      projectId: project.projectId,
+      ...projectQueueResult
+    });
+
+    try {
+      const remoteProject = await readProjectMetadataForProject(project);
+      if (token !== activeProjectStreamToken) return target;
+      if (!remoteProject) {
+        const createResult = await persistProjectMetadataForProject(project, { initializeChangeLog: true });
+        projectQueueReady = createResult?.ok !== false;
+        syncDiagnosticLog('PROJECT_METADATA_MISSING_RECREATED', {
+          projectId: project.projectId,
+          ok: Boolean(createResult?.ok),
+          queued: Boolean(createResult?.queued),
+          reason: createResult?.reason || ''
+        });
+        if (token !== activeProjectStreamToken) return target;
+      }
+      if (remoteProject) {
+        project = {
+          ...project,
+          ...remoteProject,
+          projectId: project.projectId,
+          environment: project.environment || remoteProject.environment || 'production'
+        };
+        target.project = project;
+        updateProjectFields(project.projectId, project);
+        syncDiagnosticLog('PROJECT_METADATA_INITIAL_APPLY', {
+          projectId: project.projectId,
+          projectNo: project.projectNo,
+          projectName: project.projectName
+        });
+      }
+    } catch (error) {
+      syncDiagnosticLog('PROJECT_METADATA_INITIAL_READ_ERROR', {
+        projectId: project?.projectId || '',
+        message: error?.message || String(error)
+      });
+    }
+  }
+
   const syncMeta = target.syncMeta || getProjectSyncMeta(project.projectId) || {};
   const storedCursors = normalizeProjectRecordCursors(syncMeta.recordCursors || {});
   const finishChangeCursor = normalizeProjectFinishChangeCursor(syncMeta.finishChangeCursor);
@@ -244,6 +389,62 @@ async function openFirestoreProjectSession(target) {
       }
     }
 
+    if (token !== activeProjectStreamToken) return target;
+    await migrateLegacyVisualPhotoMetadata(project);
+
+    // M-06: 旧案件でFirestoreにboardSettingsがまだ無い場合だけ、
+    // 現端末の従来localStorage看板設定を正本へ1回昇格する。
+    if (!project.boardSettings) {
+      const cachedBoard = boardSettingsStore.get();
+      const migratedBoard = {
+        surveyDate: String(cachedBoard.surveyDate || ''),
+        surveyor: String(cachedBoard.surveyor || ''),
+        subjectText: String(cachedBoard.subjectText || project.projectName || ''),
+        addressText: String(cachedBoard.addressText || project.address || ''),
+        subjectFontSize: Number(cachedBoard.subjectFontSize) || 18,
+        addressFontSize: Number(cachedBoard.addressFontSize) || 17
+      };
+      project = {
+        ...project,
+        surveyDate: migratedBoard.surveyDate,
+        surveyor: migratedBoard.surveyor,
+        boardSettings: migratedBoard
+      };
+      target.project = project;
+      updateProjectFields(project.projectId, project);
+      try {
+        const migrateResult = await persistProjectMetadataForProject(project);
+        if (migrateResult?.ok) {
+          syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
+            projectId: project.projectId
+          });
+        } else {
+          syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATE_QUEUED', {
+            projectId: project.projectId,
+            reason: migrateResult?.reason || 'write-failed'
+          });
+        }
+      } catch (error) {
+        syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATE_ERROR', {
+          projectId: project.projectId,
+          message: error?.message || String(error)
+        });
+      }
+    }
+
+    if (token !== activeProjectStreamToken) return target;
+    const recordQueueResult = projectQueueReady
+      ? await syncQueuedRecordsOnRecovery(project)
+      : {
+          ok: false,
+          skipped: true,
+          reason: 'project-metadata-not-confirmed'
+        };
+    syncDiagnosticLog('RECORD_UNSENT_RECOVERY_RESULT', {
+      projectId: project.projectId,
+      ...recordQueueResult
+    });
+
     const caughtUpCursors = normalizeProjectRecordCursors(remote.cursors || cursors);
     updateProjectRecordCursors(project.projectId, caughtUpCursors, {
       completed: true,
@@ -253,8 +454,17 @@ async function openFirestoreProjectSession(target) {
       updateProjectFinishChangeCursor(project.projectId, remote.finishChangeCursor);
     }
 
-    void recordProjectSyncDeviceContact(project, remote.finishChangeCursor || finishChangeCursor);
-    void cleanupProjectFinishChangeLogIfDue(project);
+    const deviceContactResult = await recordProjectSyncDeviceContact(
+      project,
+      remote.finishChangeCursor || finishChangeCursor
+    );
+    if (deviceContactResult?.ok !== false) {
+      await cleanupProjectFinishChangeLogIfDue(project);
+    } else {
+      syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_DEVICE_TOUCH_FAILED', {
+        projectId: project.projectId
+      });
+    }
 
     const serverReadyTypes = new Set();
     syncDiagnosticLog('SYNC_LISTENER_START', {
@@ -322,8 +532,42 @@ async function openFirestoreProjectSession(target) {
       }
     });
 
+    const stopMetadata = subscribeProjectMetadataForProject(project, {
+      onProject: (remoteProject) => {
+        if (token !== activeProjectStreamToken) return;
+        const current = getCurrentProject();
+        if (!current?.projectId || current.projectId !== project.projectId) return;
+        const nextProject = updateProjectFields(project.projectId, {
+          ...remoteProject,
+          projectId: project.projectId,
+          environment: project.environment
+        });
+        if (!nextProject) return;
+        boardSettingsStore.applyProjectMetadata(nextProject);
+        refreshSettingsTab();
+        syncDiagnosticLog('PROJECT_METADATA_REALTIME_APPLY', {
+          projectId: project.projectId,
+          projectNo: nextProject.projectNo,
+          projectName: nextProject.projectName
+        });
+      },
+      onState: ({ fromCache }) => {
+        syncDiagnosticLog('PROJECT_METADATA_LISTENER_STATE', {
+          projectId: project.projectId,
+          fromCache
+        });
+      },
+      onError: (error) => {
+        syncDiagnosticLog('PROJECT_METADATA_LISTENER_ERROR', {
+          projectId: project.projectId,
+          message: error?.message || String(error)
+        });
+      }
+    });
+
     stopActiveProjectRecords = () => {
       syncDiagnosticLog('SYNC_LISTENER_STOP', { projectId: project.projectId });
+      stopMetadata();
       stop();
     };
     syncDiagnosticLog('SYNC_OPEN_READY', { projectId: project.projectId });

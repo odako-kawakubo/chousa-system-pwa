@@ -61,6 +61,12 @@ export function boardEditorSamplingMaterials(optionsProvider) {
   return [...map.values()];
 }
 
+function visualRoomLabel(room = {}) {
+  const no = String(room.roomNo || room.roomPosition || '').trim();
+  const name = String(room.roomName || '').trim();
+  return name && name !== no ? `${no}　${name}` : no;
+}
+
 function visualFields(entry, optionsProvider) {
   const rooms = boardEditorVisualRooms(optionsProvider);
   const room = findBoardEditorVisualRoom(optionsProvider, entry.draft);
@@ -73,14 +79,23 @@ function visualFields(entry, optionsProvider) {
       ${hasActiveRoom ? '' : '<option value="" selected>選択してください</option>'}
       ${rooms.map((roomItem) => {
         const key = getVisualPhotoRoomKey(roomItem);
-        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(roomItem.roomNo || roomItem.roomPosition)}</option>`;
+        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(visualRoomLabel(roomItem))}</option>`;
       }).join('')}
     </select></label>
     <label>部位<select data-editor-part>
-      <option value="" ${Number(entry.draft.partSlot || 0) === 0 ? 'selected' : ''}>選択してください</option>
+      <option value="" ${Number(entry.draft.partSlot || 0) === 0 ? 'selected' : ''}>未整理</option>
       ${parts.map((part) => `<option value="${Number(part.partSlot || 0)}" ${Number(part.partSlot || 0) === Number(entry.draft.partSlot || 0) ? 'selected' : ''}>${esc(part.part)}</option>`).join('')}
     </select></label>
   </div>`;
+}
+
+function uniqueEditorOptions(values = []) {
+  const out = [];
+  values.forEach((value) => {
+    const text = String(value || '').trim();
+    if (text && !out.includes(text)) out.push(text);
+  });
+  return out;
 }
 
 function samplingFields(entry, optionsProvider) {
@@ -89,6 +104,26 @@ function samplingFields(entry, optionsProvider) {
   const targets = boardEditorSamplingMaterialTargets(optionsProvider, selectedMaterialId);
   const branches = [...new Set(targets.map((target) => Number(target.branch)).filter(Boolean))];
   const hasMaterial = materials.some((item) => item.materialId === selectedMaterialId);
+  const activeTarget = targets.find((target) => Number(target.branch) === Number(entry.draft.samplingBranch || 0)) || null;
+  const placeCandidates = uniqueEditorOptions([
+    ...(activeTarget?.placeOptions || []).map((item) => item?.value || item),
+    ...targets.flatMap((target) => (target.placeOptions || []).map((item) => item?.value || item)),
+    entry.draft.samplingPlace
+  ]);
+  const partCandidates = uniqueEditorOptions([
+    ...(activeTarget?.partOptions || []),
+    ...targets.flatMap((target) => target.partOptions || []),
+    activeTarget?.part,
+    entry.draft.part
+  ]);
+  const plannedPlace = String(activeTarget?.samplingPlace || '').trim();
+  const draftPlace = String(entry.draft.samplingPlace || '').trim();
+  const canReflectPlace = Boolean(
+    selectedMaterialId
+    && Number(entry.draft.samplingBranch || 0)
+    && draftPlace
+    && draftPlace !== plannedPlace
+  );
 
   return `<div class="photo-board-editor-fields">
     <label>検体No.<select data-editor-sample>
@@ -96,14 +131,23 @@ function samplingFields(entry, optionsProvider) {
       ${materials.map((material) => `<option value="${esc(material.materialId)}" ${material.materialId === selectedMaterialId ? 'selected' : ''}>${esc(material.sampleBaseNo)}</option>`).join('')}
     </select></label>
     <label>箇所<select data-editor-branch>
-      <option value="" ${Number(entry.draft.samplingBranch || 0) === 0 ? 'selected' : ''}>選択してください</option>
+      <option value="" ${Number(entry.draft.samplingBranch || 0) === 0 ? 'selected' : ''}>未整理</option>
       ${branches.map((branch) => `<option value="${branch}" ${branch === Number(entry.draft.samplingBranch) ? 'selected' : ''}>${MARKS[branch] || branch}</option>`).join('')}
     </select></label>
+    <label>部屋No.<select data-editor-sampling-place>
+      <option value="" ${!entry.draft.samplingPlace ? 'selected' : ''}>未整理</option>
+      ${placeCandidates.map((place) => `<option value="${esc(place)}" ${place === String(entry.draft.samplingPlace || '') ? 'selected' : ''}>${esc(place)}</option>`).join('')}
+    </select></label>
+    <label>採取部位<select data-editor-sampling-part>
+      <option value="" ${!entry.draft.part ? 'selected' : ''}>未整理</option>
+      ${partCandidates.map((part) => `<option value="${esc(part)}" ${part === String(entry.draft.part || '') ? 'selected' : ''}>${esc(part)}</option>`).join('')}
+    </select></label>
     <label>撮影区分<select data-editor-stage>
-      <option value="" ${!entry.draft.shootingType ? 'selected' : ''}>選択してください</option>
+      <option value="" ${!entry.draft.shootingType ? 'selected' : ''}>未整理</option>
       ${STAGES.map((stage) => `<option value="${stage}" ${stage === entry.draft.shootingType ? 'selected' : ''}>${({ before:'施工前', during:'施工中', after:'施工後' })[stage]}</option>`).join('')}
       <option value="section" ${entry.draft.shootingType === SHOOTING_TYPES.SECTION ? 'selected' : ''}>断面</option>
     </select></label>
+    ${canReflectPlace ? `<button class="btn small photo-board-editor-reflect-place" type="button" data-editor-reflect-sampling-place>この場所を採取場所にも反映</button>` : ''}
   </div>`;
 }
 
@@ -171,6 +215,11 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
       entry.draft.samplingPlace = '';
       entry.draft.part = '';
     }
+    rerenderControls = true;
+  } else if (target.matches('[data-editor-sampling-place]')) {
+    entry.draft.samplingPlace = String(target.value || '');
+  } else if (target.matches('[data-editor-sampling-part]')) {
+    entry.draft.part = String(target.value || '');
   } else if (target.matches('[data-editor-stage]')) {
     entry.draft.shootingType = target.value;
   } else if (target.matches('[data-editor-date]')) {

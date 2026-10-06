@@ -9,9 +9,13 @@ import {
   saveFinishRecord,
   deleteFinishRecord,
   saveMaterialRecord,
+  deleteMaterialRecord,
   savePhotoRecord,
   saveProjectMetadata,
+  readProjectMetadata,
+  subscribeProjectMetadata,
   readTemporaryProjectNos,
+  readTemporaryProjectEntries,
   readProjectRecordsOnce,
   subscribeProjectRecordChanges,
   readFinishChangeLog,
@@ -28,12 +32,12 @@ import {
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
-import { listUnsent } from './unsent-queue.js';
+import { listUnsent, putUnsent } from './unsent-queue.js';
+import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 
 let writeChain = Promise.resolve();
 const knownFinishRecordsByProject = new Map();
-const FINISH_CHANGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const FINISH_SPARSE_CACHE_KEY = 'chousa-finish-sparse-cache-v0162h';
 
 /**
@@ -230,6 +234,24 @@ export function persistMaterialForProject(project, record, source = 'material-un
 }
 
 /**
+ * Undo/Redo専用のmaterial物理削除adapter。
+ * 通常の建材削除はmaterial.status='deleted'を使い、このAPIは使用しない。
+ */
+export function deleteMaterialForProject(project, record, source = 'material-history-delete') {
+  if (!shouldSyncProject(project) || !record?.materialId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueue(async () => {
+    const result = await deleteMaterialRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
+}
+
+/**
  * photo RecordメタデータをFirestoreへ保存する同期adapter。
  */
 export function persistPhotoForProject(project, record, source = 'photo-unspecified') {
@@ -255,7 +277,9 @@ export function retryUnsentForProject(project, options = {}) {
   return enqueue(async () => {
     const result = await retryUnsentBatch({
       projectId: project.projectId,
-      batchSize: options.batchSize || BULK_SYNC_BATCH_SIZE
+      batchSize: options.batchSize || BULK_SYNC_BATCH_SIZE,
+      recordTypes: options.recordTypes || null,
+      excludeRecordTypes: options.excludeRecordTypes || null
     });
     if (result?.ok) {
       applyCommittedFinishEntries(project.projectId, result.committedEntries || []);
@@ -265,11 +289,113 @@ export function retryUnsentForProject(project, options = {}) {
 }
 
 /**
+ * 通信復帰時の未送信自動収束。
+ * 案件Documentを最初に確定し、その後Record未送信を50件ずつ送り切る。
+ * 1batchでも失敗したら停止し、残りはUNSENTへ保持する。
+ */
+export async function syncQueuedProjectMetadataOnRecovery(project) {
+  if (!shouldSyncProject(project)) {
+    return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
+  }
+  const projectId = String(project.projectId);
+  const hasQueuedProject = listUnsent({ projectId })
+    .some((item) => item.recordType === 'project');
+  if (!hasQueuedProject) {
+    return { ok: true, skipped: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true };
+  }
+
+  const result = await persistProjectMetadataForProject(project);
+  return {
+    ...result,
+    sent: result?.ok ? 1 + Number(result.retried || 0) : 0,
+    remaining: listUnsent({ projectId }).length,
+    completed: Boolean(result?.ok)
+  };
+}
+
+/**
+ * M-04のremote merge完了後に、Record未送信だけを50件ずつ自動送信する。
+ * 1batch失敗時は停止し、残りをUNSENTへ保持する。
+ */
+export async function syncQueuedRecordsOnRecovery(project) {
+  if (!shouldSyncProject(project)) {
+    return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
+  }
+
+  const projectId = String(project.projectId);
+  let sent = 0;
+  while (true) {
+    const remainingRecords = listUnsent({ projectId })
+      .filter((item) => item.recordType !== 'project');
+    if (!remainingRecords.length) {
+      return {
+        ok: true,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: true
+      };
+    }
+
+    const result = await retryUnsentForProject(project, {
+      batchSize: BULK_SYNC_BATCH_SIZE,
+      excludeRecordTypes: ['project']
+    });
+    sent += Number(result?.sent || 0);
+    if (!result?.ok) {
+      return {
+        ...result,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: false
+      };
+    }
+    if (result.completed) {
+      return {
+        ok: true,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: true
+      };
+    }
+    if (!result.sent && result.remaining > 0) {
+      return {
+        ok: false,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: false,
+        reason: 'retry-stalled'
+      };
+    }
+  }
+}
+
+/**
  * 案件メタデータをFirestoreへ保存する同期adapter。
  */
 export function persistProjectMetadataForProject(project, options = {}) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveProjectMetadata(project, options));
+}
+
+/** 案件Documentの現在形を取得する同期adapter。 */
+export function readProjectMetadataForProject(project) {
+  if (!shouldSyncProject(project)) return Promise.resolve(null);
+  return readProjectMetadata({
+    projectId: project.projectId,
+    environment: projectEnvironment(project)
+  });
+}
+
+/** 案件DocumentのRealtime購読adapter。 */
+export function subscribeProjectMetadataForProject(project, handlers = {}) {
+  if (!shouldSyncProject(project)) return () => {};
+  return subscribeProjectMetadata({
+    projectId: project.projectId,
+    environment: projectEnvironment(project),
+    onProject: handlers.onProject,
+    onState: handlers.onState,
+    onError: handlers.onError
+  });
 }
 
 /**
@@ -312,6 +438,11 @@ export function deleteTestProjectFromFirestore(project) {
  */
 export async function getRemoteTemporaryProjectNos(dateCode, environment = 'production') {
   return readTemporaryProjectNos(dateCode, environment);
+}
+
+/** 仮案件番号と所有projectIdを取得する。復帰時の番号衝突判定用。 */
+export async function getRemoteTemporaryProjectEntries(dateCode, environment = 'production') {
+  return readTemporaryProjectEntries(dateCode, environment);
 }
 
 /** 現在までにこの端末で積まれた書込要求が終わるまで待つ。 */
@@ -463,9 +594,11 @@ function maxCursor(cursors = {}) {
  * listenerはここでは張らない。
  */
 export function isFinishChangeCursorFresh(cursor) {
-  if (!cursor || typeof cursor.seconds !== 'number') return false;
-  const millis = (Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6);
-  return millis >= (Date.now() - FINISH_CHANGE_RETENTION_MS);
+  return Boolean(
+    cursor
+    && typeof cursor.seconds === 'number'
+    && cursor.changeId
+  );
 }
 
 /**
@@ -554,9 +687,36 @@ export async function readProjectRecordsForProject(project, {
     const id = String(record?.materialId || record?.id || '');
     if (id) materialRawMap.set(id, record);
   });
-  unsent.filter((item) => item.recordType === 'material' && item.operation === 'set' && item.record)
-    .forEach((item) => materialRawMap.set(String(item.recordId), item.record));
-  const effectiveMaterials = hydrateMaterialRecords(Array.from(materialRawMap.values()));
+
+  const materialMergedMap = new Map(
+    hydrateMaterialRecords(Array.from(materialRawMap.values()))
+      .map((record) => [String(record.materialId || ''), record])
+  );
+  unsent.filter((item) => item.recordType === 'material').forEach((item) => {
+    const id = String(item.recordId || '');
+    if (!id) return;
+    if (item.operation === 'delete') {
+      materialMergedMap.delete(id);
+      return;
+    }
+    if (!item.record) return;
+    const current = materialMergedMap.get(id);
+    const merged = current
+      ? mergeRecordByFieldEditedAt('material', current, item.record, { prefer: 'incoming' }).record
+      : item.record;
+    materialMergedMap.set(id, merged);
+    if (!sameMergedBusinessRecord('material', item.record, merged)) {
+      putUnsent({
+        projectId: item.projectId,
+        environment: item.environment,
+        recordType: 'material',
+        recordId: id,
+        operation: 'set',
+        record: merged
+      });
+    }
+  });
+  const effectiveMaterials = hydrateMaterialRecords(Array.from(materialMergedMap.values()));
   const materialById = new Map(effectiveMaterials.map((record) => [record.materialId, record]));
 
   let finishRecords = [];
@@ -581,8 +741,26 @@ export async function readProjectRecordsForProject(project, {
     unsent.filter((item) => item.recordType === 'finish').forEach((item) => {
       const finishId = String(item.recordId || '');
       if (!finishId) return;
-      if (item.operation === 'delete') sparseFinishMap.delete(finishId);
-      else if (item.record) sparseFinishMap.set(finishId, item.record);
+      if (item.operation === 'delete') {
+        sparseFinishMap.delete(finishId);
+        return;
+      }
+      if (!item.record) return;
+      const current = sparseFinishMap.get(finishId);
+      const merged = current
+        ? mergeRecordByFieldEditedAt('finish', { ...current, finishId }, item.record, { prefer: 'incoming' }).record
+        : item.record;
+      sparseFinishMap.set(finishId, merged);
+      if (!sameMergedBusinessRecord('finish', item.record, merged)) {
+        putUnsent({
+          projectId: item.projectId,
+          environment: item.environment,
+          recordType: 'finish',
+          recordId: finishId,
+          operation: 'set',
+          record: merged
+        });
+      }
     });
     finishRecords = hydrateFinishRecords(
       restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values())),
@@ -595,10 +773,35 @@ export async function readProjectRecordsForProject(project, {
 
   let photoRecords = [];
   if (typeModes.photo === 'full') {
-    const photoRawMap = new Map((otherRaw.photoRecords || []).map((record) => [String(record.photoId || record.id || ''), record]));
-    unsent.filter((item) => item.recordType === 'photo' && item.operation === 'set' && item.record)
-      .forEach((item) => photoRawMap.set(String(item.recordId), item.record));
-    photoRecords = hydratePhotoRecords(Array.from(photoRawMap.values()));
+    const photoMergedMap = new Map(
+      hydratePhotoRecords(otherRaw.photoRecords || [])
+        .map((record) => [String(record.photoId || ''), record])
+    );
+    unsent.filter((item) => item.recordType === 'photo').forEach((item) => {
+      const id = String(item.recordId || '');
+      if (!id) return;
+      if (item.operation === 'delete') {
+        photoMergedMap.delete(id);
+        return;
+      }
+      if (!item.record) return;
+      const current = photoMergedMap.get(id);
+      const merged = current
+        ? mergeRecordByFieldEditedAt('photo', current, item.record, { prefer: 'incoming' }).record
+        : item.record;
+      photoMergedMap.set(id, merged);
+      if (!sameMergedBusinessRecord('photo', item.record, merged)) {
+        putUnsent({
+          projectId: item.projectId,
+          environment: item.environment,
+          recordType: 'photo',
+          recordId: id,
+          operation: 'set',
+          record: merged
+        });
+      }
+    });
+    photoRecords = hydratePhotoRecords(Array.from(photoMergedMap.values()));
   }
 
   const changes = [
@@ -700,8 +903,26 @@ export function restoreKnownFinishRecords(projectId, currentMaterialRecords = []
   listUnsent({ projectId }).filter((item) => item.recordType === 'finish').forEach((item) => {
     const id = String(item.recordId || '');
     if (!id) return;
-    if (item.operation === 'delete') sparseMap.delete(id);
-    else if (item.record) sparseMap.set(id, item.record);
+    if (item.operation === 'delete') {
+      sparseMap.delete(id);
+      return;
+    }
+    if (!item.record) return;
+    const current = sparseMap.get(id);
+    const merged = current
+      ? mergeRecordByFieldEditedAt('finish', { ...current, finishId: id }, item.record, { prefer: 'incoming' }).record
+      : item.record;
+    sparseMap.set(id, merged);
+    if (!sameMergedBusinessRecord('finish', item.record, merged)) {
+      putUnsent({
+        projectId: item.projectId,
+        environment: item.environment,
+        recordType: 'finish',
+        recordId: id,
+        operation: 'set',
+        record: merged
+      });
+    }
   });
 
   return hydrateFinishRecords(restoreFinishRecordsFromSparse([...sparseMap.values()]), materialById);

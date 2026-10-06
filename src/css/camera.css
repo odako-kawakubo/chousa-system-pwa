@@ -254,6 +254,90 @@ body.camera-open {
   font-size: 10px;
 }
 
+/* 単体カメラと同じ展開仕様。
+ * 1項目を開いたら他のメイン項目を隠し、操作幅を58pxへ統一する。
+ */
+.camera-board-control-panel.panel-open .camera-panel-slot:not(.active) {
+  display: none;
+}
+
+.camera-board-control-panel.panel-open .camera-panel-expanded {
+  width: 72px;
+  gap: 8px;
+}
+
+.camera-board-control-panel.panel-open .camera-panel-vertical,
+.camera-board-control-panel.panel-open .camera-panel-single {
+  width: 58px;
+  grid-template-rows: 36px 40px 36px;
+  gap: 3px;
+}
+
+.camera-board-control-panel.panel-open .camera-panel-pair {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.camera-board-control-panel.panel-open .camera-panel-mini-button {
+  width: 58px;
+  height: 36px;
+  font-size: 18px;
+}
+
+.camera-board-control-panel.panel-open .camera-panel-center-button {
+  width: 58px;
+  height: 40px;
+  font-size: 13px;
+}
+
+.camera-location-control {
+  display: grid;
+  grid-template-rows: 36px auto 36px;
+  width: 58px;
+  gap: 4px;
+  justify-items: center;
+  align-items: center;
+}
+
+.camera-location-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 58px;
+  max-height: calc(var(--app-vh) - 220px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.camera-location-targets::-webkit-scrollbar {
+  display: none;
+}
+
+.camera-location-target-button {
+  width: 58px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.1;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.camera-location-target-button.active {
+  border-color: rgba(242, 201, 76, 0.95);
+  color: #f8d96a;
+  background: rgba(242, 201, 76, 0.16);
+  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.18) inset;
+}
+
 .camera-settings-button {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));
@@ -514,6 +598,11 @@ body.camera-open {
 
 .camera-mode-button {
   background: #27ae60;
+  color: #fff;
+}
+
+.camera-part-button {
+  background: #2f80ed;
   color: #fff;
 }
 

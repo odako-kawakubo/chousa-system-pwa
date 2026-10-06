@@ -177,7 +177,10 @@ async function openFolder(folderId) {
     setStatus('Firestoreの調査データを確認しています…');
 
     const firestoreProjects = await readFirestoreProjectList();
-    let project = firestoreProjects.find((item) => String(item.projectNo || item.projectId) === projectInfo.projectNo) || null;
+    let project = firestoreProjects.find((item) =>
+      String(item.projectId || '') === projectInfo.projectNo
+      || String(item.projectNo || '') === projectInfo.projectNo
+    ) || null;
 
     if (!project) {
       const confirmed = window.confirm(

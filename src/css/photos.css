@@ -213,11 +213,14 @@
 .photo-compare-shell{width:100%;height:100%;min-height:0;background:#0f172a;color:#e2e8f0;padding:4px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
 .photo-compare-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:3px;font-size:12px;color:#cbd5e1;flex:0 0 auto}
 .photo-compare-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 4px;min-height:0;flex:1 1 auto}
+.photo-compare-grid.count-1{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 .photo-compare-grid.count-2{grid-template-rows:minmax(0,1fr)}
 .photo-compare-grid.count-3,.photo-compare-grid.count-4{grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
 .photo-compare-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:#111827;overflow:hidden;border-radius:5px}
-.photo-compare-controls{display:flex;align-items:center;gap:4px;padding:3px;background:#1e293b}
-.photo-compare-controls select{min-width:0;flex:1;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
+.photo-compare-controls{display:flex;flex-direction:column;gap:3px;padding:3px;background:#1e293b}
+.photo-compare-filter-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.7fr);gap:3px;min-width:0}
+.photo-compare-controls select{min-width:0;width:100%;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
+.photo-compare-direct-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e2e8f0;font-size:11px;font-weight:800}
 .photo-compare-photo-nav{display:flex;align-items:center;justify-content:flex-end;gap:3px;flex:0 0 auto;font-size:11px;white-space:nowrap}
 .photo-compare-photo-nav .btn{min-width:26px;padding:2px 6px}
 .photo-compare-remove{margin-left:1px}
@@ -229,7 +232,8 @@
   .photo-compare-shell{padding:2px}
   .photo-compare-grid{gap:2px}
   .photo-compare-controls{gap:2px;padding:2px}
-  .photo-compare-controls select{min-height:28px;font-size:11px}
+  .photo-compare-filter-row{grid-template-columns:minmax(0,.75fr) minmax(0,.95fr) minmax(0,1.6fr);gap:2px}
+  .photo-compare-controls select{min-height:28px;font-size:11px;padding-left:3px;padding-right:3px}
   .photo-compare-photo-nav .btn{min-width:24px;padding:2px 5px}
 }
 
@@ -249,8 +253,10 @@
  */
 .photo-panel.photo-selection-mode .photo-thumb-card[data-photo-id]{border:3px dashed var(--main);box-sizing:border-box;cursor:pointer}
 .photo-panel.photo-selection-delete .photo-thumb-card[data-photo-id]{border-color:var(--red)}
+.photo-panel.photo-selection-compare .photo-thumb-card[data-photo-id]{border-color:var(--main)}
 .photo-panel.photo-selection-mode .photo-thumb-card.photo-selected::after{position:absolute;left:6px;bottom:6px;z-index:8;padding:2px 6px;border-radius:999px;background:var(--main-badge);color:var(--text-on-accent);font-size:10px;font-weight:800;pointer-events:none}
 .photo-panel.photo-selection-edit .photo-thumb-card.photo-selected::after{content:'編集対象'}
+.photo-panel.photo-selection-compare .photo-thumb-card.photo-selected::after{content:'比較対象'}
 .photo-panel.photo-selection-delete .photo-thumb-card.photo-selected::after{content:'削除対象';background:var(--danger-badge)}
 .photo-panel.photo-selection-mode .photo-thumb-card.photo-selected{border-style:solid;border-width:3px;box-shadow:none}
 .photo-panel.photo-selection-delete .photo-thumb-card.photo-selected{border-color:var(--red)}
@@ -413,3 +419,30 @@ body.photo-board-edit-open{overflow:hidden!important}
   }
   body.header-collapsed.photo-tab-active #photos .sample-point-block{overflow:visible}
 }
+
+
+/* 採取場所変更: 既存写真の扱いを選ぶ共通判断UI */
+.sampling-location-decision{position:fixed;inset:0;z-index:33000;display:grid;place-items:center;padding:16px}
+.sampling-location-decision[hidden]{display:none!important}
+.sampling-location-decision-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.72)}
+.sampling-location-decision-card{position:relative;z-index:1;width:min(520px,calc(100vw - 32px));border-radius:14px;background:var(--panel);color:var(--text-heading);box-shadow:0 18px 55px rgba(0,0,0,.35);overflow:hidden}
+.sampling-location-decision-head{padding:14px 16px;border-bottom:1px solid var(--line);font-size:15px}
+.sampling-location-decision-body{padding:14px 16px;display:grid;gap:8px;font-size:13px;line-height:1.55}
+.sampling-location-decision-body p{margin:0;color:var(--text-secondary)}
+.sampling-location-decision-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 16px 16px}
+.sampling-location-decision-actions [data-sampling-location-cancel]{grid-column:1/-1}
+@media(max-width:650px){
+  .sampling-location-decision-actions{grid-template-columns:1fr}
+  .sampling-location-decision-actions [data-sampling-location-cancel]{grid-column:auto}
+}
+
+
+/* 写真タブ採取場所変更: 通常表示と編集表示を同じ情報行内で切り替え、縦方向を増やさない。 */
+.sample-location-view,.sample-location-edit{display:inline-flex;align-items:center;gap:4px;min-width:0}
+.sample-location-view .btn,.sample-location-edit .btn{min-height:24px;padding:2px 6px;font-size:10.5px}
+.sample-location-edit select{min-width:88px;max-width:150px;height:26px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--text-heading);font-size:11px;padding:1px 4px}
+
+
+/* 看板編集: 写真側で直した採取場所をmaterial計画へ反映する任意操作。 */
+.photo-board-editor-reflect-place{width:100%;min-height:34px;border-color:#60a5fa;background:#172554;color:#dbeafe;font-weight:800}
+.photo-board-editor-reflect-place:hover{background:#1e3a8a}

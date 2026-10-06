@@ -129,6 +129,14 @@ export function cycleVisualRoom(state, delta) {
   state.visualPartIndex = 0;
 }
 
+export function selectVisualRoom(state, index) {
+  const length = state?.visualRooms?.length || 0;
+  if (!length) return;
+  const nextIndex = Math.max(0, Math.min(length - 1, Number(index) || 0));
+  state.visualRoomIndex = nextIndex;
+  state.visualPartIndex = 0;
+}
+
 export function cycleVisualPart(state, delta) {
   const { room } = currentVisualTarget(state);
   state.visualPartIndex = cycleIndex(state.visualPartIndex, room.targets?.length || 0, delta);
@@ -154,6 +162,12 @@ export function cycleSamplingBranch(state, delta) {
   const localIndex = Math.max(0, sameSample.findIndex(({ index }) => index === state.samplingIndex));
   const next = sameSample[cycleIndex(localIndex, sameSample.length, delta)];
   if (next) state.samplingIndex = next.index;
+}
+
+export function selectSamplingTarget(state, index) {
+  const length = state?.samplingTargets?.length || 0;
+  if (!length) return;
+  state.samplingIndex = Math.max(0, Math.min(length - 1, Number(index) || 0));
 }
 
 export function cycleStage(state) {

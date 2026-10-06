@@ -97,6 +97,9 @@ export function bindPhotoInteractions({
   togglePhotoSelection,
   deleteSelectedPhotos,
   startEditSequence,
+  compareSelectedPhotos,
+  startSamplingLocationEdit,
+  confirmSamplingLocationEdit,
   visualContextFromKey,
   samplingContextFromKey,
   samplingDefaultContextFromKey,
@@ -116,9 +119,25 @@ export function bindPhotoInteractions({
       return;
     }
 
+    const samplingLocationEdit = event.target.closest('[data-photo-sampling-location-edit]');
+    if (samplingLocationEdit) {
+      startSamplingLocationEdit(samplingLocationEdit.dataset.photoSamplingLocationEdit || '');
+      return;
+    }
+
+    const samplingLocationConfirm = event.target.closest('[data-photo-sampling-location-confirm]');
+    if (samplingLocationConfirm) {
+      const key = samplingLocationConfirm.dataset.photoSamplingLocationConfirm || '';
+      const point = samplingLocationConfirm.closest('[data-photo-sampling-point-key]');
+      const select = point?.querySelector('[data-photo-sampling-location-select]');
+      void confirmSamplingLocationEdit(key, select?.value || '');
+      return;
+    }
+
     const selectionButton = event.target.closest('[data-photo-selection-mode]');
     if (selectionButton) {
-      const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
+      const rawMode = String(selectionButton.dataset.photoSelectionMode || '');
+      const requestedMode = rawMode === 'delete' ? 'delete' : (rawMode === 'compare' ? 'compare' : 'edit');
       if (state.selectionMode === requestedMode) {
         if (!state.selectedPhotoIds.size) {
           clearSelectionMode();
@@ -127,6 +146,8 @@ export function bindPhotoInteractions({
             console.error(error);
             window.alert(`写真の削除に失敗しました。\n${error.message || error}`);
           });
+        } else if (requestedMode === 'compare') {
+          compareSelectedPhotos(state.selectedPhotoIds);
         } else {
           void startEditSequence(state.selectedPhotoIds);
         }
@@ -154,6 +175,7 @@ export function bindPhotoInteractions({
 
     const mode = event.target.closest('[data-photo-mode]');
     if (mode) {
+      state.samplingLocationEditKey = '';
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
       state.reviewScrollTop[state.mode] = 0;
       render();
@@ -182,6 +204,7 @@ export function bindPhotoInteractions({
 
     const material = event.target.closest('[data-photo-material]');
     if (material) {
+      state.samplingLocationEditKey = '';
       state.selectedMaterialId = material.dataset.photoMaterial || '';
       state.reviewScrollTop.sampling = 0;
       render();

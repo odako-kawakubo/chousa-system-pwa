@@ -13,6 +13,7 @@ export function bindPhotoBoardEditorInteractions({
   isSwitching,
   getSessionIndex,
   updateDraftFromEvent,
+  reflectSamplingPlace,
   requestClose,
   applyHistory,
   saveSession,
@@ -62,6 +63,14 @@ export function bindPhotoBoardEditorInteractions({
     if (event.target.closest('[data-editor-undo]')) return applyHistory(-1);
     if (event.target.closest('[data-editor-redo]')) return applyHistory(1);
     if (event.target.closest('[data-editor-reset]')) return applyHistory('reset');
+
+    if (event.target.closest('[data-editor-reflect-sampling-place]')) {
+      reflectSamplingPlace().catch((error) => {
+        console.error(error);
+        window.alert(`採取場所への反映に失敗しました。\n${error.message || error}`);
+      });
+      return;
+    }
 
     if (event.target.closest('[data-editor-save]')) {
       saveSession().catch((error) => {

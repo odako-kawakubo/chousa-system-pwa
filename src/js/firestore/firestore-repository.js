@@ -47,6 +47,10 @@ import {
   markError
 } from '../sync/sync-status.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
+import {
+  buildChangeLogRetentionState,
+  canDeleteChangeLogCursor
+} from '../sync/change-log-retention.js';
 
 const db = getFirestore(firebaseApp);
 const RECORD_COLLECTIONS = Object.freeze({
@@ -127,6 +131,23 @@ function plainFinishPayload(record) {
   };
 }
 
+function projectMetadataPayload(project = {}, { initializeChangeLog = false } = {}) {
+  return {
+    projectId: String(project.projectId || ''),
+    projectNo: String(project.projectNo || project.projectId || ''),
+    projectName: String(project.projectName || ''),
+    address: String(project.address || ''),
+    surveyDate: String(project.surveyDate || project.boardSettings?.surveyDate || ''),
+    surveyor: String(project.surveyor || project.boardSettings?.surveyor || ''),
+    boardSettings: normalizeBoardSettings(project.boardSettings || {}, project),
+    projectType: String(project.projectType || ''),
+    isTemporary: Boolean(project.isTemporary),
+    createdAt: String(project.createdAt || ''),
+    ...(initializeChangeLog ? { finishChangeLogStartedAt: serverTimestamp() } : {}),
+    updatedAt: serverTimestamp()
+  };
+}
+
 /**
  * finish Recordの変更内容をwriteBatchへ追加し、同じbatchにchange logも追加する。Record本体と変更履歴を同一commitにするための重要処理。
  */
@@ -137,8 +158,7 @@ function appendFinishChangeToBatch(batch, { projectId, environment, recordId, op
     recordId: String(recordId || ''),
     operation,
     record: operation === 'set' && record ? plainFinishPayload(record) : null,
-    committedAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + CHANGE_LOG_RETENTION_MS)
+    committedAt: serverTimestamp()
   });
 }
 
@@ -155,6 +175,19 @@ function appendRecordOperationToBatch(batch, entry) {
 
   if (!projectId || !recordType || !recordId) {
     throw new Error('未送信レコードのキー情報が不足しています。');
+  }
+
+  if (recordType === 'project') {
+    if (operation === 'delete') throw new Error('案件Documentのdeleteは未送信キュー対象外です。');
+    if (!record) throw new Error(`案件情報本体がありません: ${recordId}`);
+    batch.set(
+      projectDocRef(projectId, environment),
+      projectMetadataPayload(record, {
+        initializeChangeLog: Boolean(entry.meta?.initializeChangeLog)
+      }),
+      { merge: true }
+    );
+    return;
   }
 
   if (recordType === 'finish') {
@@ -213,7 +246,8 @@ async function commitRecordEntries(entries = []) {
       recordType: entry.recordType,
       recordId: entry.recordId,
       operation: entry.operation,
-      record: entry.record ? { ...entry.record } : null
+      record: entry.record ? { ...entry.record } : null,
+      meta: { ...(entry.meta || {}) }
     }))
   };
 }
@@ -260,11 +294,32 @@ async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
 /**
  * 指定した未送信項目群を即時再送する。手動同期など明示操作から使う。
  */
-async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
+async function retryUnsentBatchNow({
+  projectId,
+  batchSize = BULK_SYNC_BATCH_SIZE,
+  recordTypes = null,
+  excludeRecordTypes = null
+}) {
   const id = String(projectId || '');
   if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
-  const remainingBefore = listUnsent({ projectId: id }).length;
-  if (!remainingBefore) return { ok: true, sent: 0, remaining: 0, completed: true };
+  const allBefore = listUnsent({ projectId: id });
+  const include = Array.isArray(recordTypes) && recordTypes.length ? new Set(recordTypes.map(String)) : null;
+  const exclude = Array.isArray(excludeRecordTypes) && excludeRecordTypes.length ? new Set(excludeRecordTypes.map(String)) : null;
+  const selectEntries = (items) => items.filter((item) =>
+    (!include || include.has(String(item.recordType)))
+    && (!exclude || !exclude.has(String(item.recordType)))
+  );
+  const selectedBefore = selectEntries(allBefore);
+  const remainingBefore = selectedBefore.length;
+  if (!remainingBefore) {
+    return {
+      ok: true,
+      sent: 0,
+      remaining: 0,
+      completed: true,
+      totalRemaining: allBefore.length
+    };
+  }
   if (isManualOffline()) {
     return { ok: false, sent: 0, remaining: remainingBefore, reason: 'manual-offline' };
   }
@@ -273,21 +328,24 @@ async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE
   }
 
   const size = Math.max(1, Math.min(100, Number(batchSize) || BULK_SYNC_BATCH_SIZE));
-  const entries = listUnsent({ projectId: id, limit: size });
+  const entries = selectedBefore.slice(0, size);
   beginFirestoreActivity();
   try {
     const result = await commitRecordEntries(entries);
-    const remaining = listUnsent({ projectId: id }).length;
+    const allAfter = listUnsent({ projectId: id });
+    const remaining = selectEntries(allAfter).length;
     syncDiagnosticLog('UNSENT_BULK_BATCH_OK', {
       projectId: id,
       sent: result.sent,
-      remaining
+      remaining,
+      totalRemaining: allAfter.length
     });
     return {
       ok: true,
       sent: result.sent,
       remaining,
       completed: remaining === 0,
+      totalRemaining: allAfter.length,
       committedEntries: result.committedEntries || []
     };
   } catch (error) {
@@ -298,7 +356,14 @@ async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE
       message: error?.message || String(error)
     });
     markError(error);
-    return { ok: false, sent: 0, remaining: remainingBefore, error, reason: 'write-failed' };
+    return {
+      ok: false,
+      sent: 0,
+      remaining: remainingBefore,
+      totalRemaining: listUnsent({ projectId: id }).length,
+      error,
+      reason: 'write-failed'
+    };
   } finally {
     endFirestoreActivity();
   }
@@ -377,14 +442,24 @@ function toTimestamp(value) {
 /**
  * 単一Firestore書き込みを実行し、失敗時は未送信キューへ残す。成功時は該当キュー項目を除去し、同期状態を更新する。
  */
-async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified' }) {
+async function writeWithQueue({
+  projectId,
+  environment,
+  recordType,
+  recordId,
+  operation,
+  localRecord,
+  source = 'unspecified',
+  meta = {}
+}) {
   const entry = {
     projectId,
     environment,
     recordType,
     recordId,
     operation,
-    record: localRecord
+    record: localRecord,
+    meta
   };
   syncDiagnosticLog('WRITE_REQUEST', {
     projectId,
@@ -414,7 +489,9 @@ async function writeWithQueue({ projectId, environment, recordType, recordId, op
     await commitRecordEntries([entry]);
     syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
 
-    const retryResult = await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
+    const retryResult = recordType === 'project'
+      ? { ok: true, sent: 0, skipped: true, reason: 'project-write-does-not-passive-retry-records' }
+      : await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
     return {
       ok: true,
       queued: false,
@@ -480,6 +557,23 @@ export function saveMaterialRecord({ projectId, environment = 'production', reco
 }
 
 /**
+ * material RecordをFirestoreから物理削除する公開API。
+ * Undo/Redoで「新規登録そのものを無かったことにする」場合だけ使用する。
+ */
+export function deleteMaterialRecord({ projectId, environment = 'production', record, source = 'material-delete-unspecified' }) {
+  if (!record?.materialId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueueRepositoryWrite(() => writeWithQueue({
+    projectId,
+    environment,
+    recordType: 'material',
+    recordId: record.materialId,
+    operation: 'delete',
+    localRecord: record,
+    source
+  }));
+}
+
+/**
  * photo RecordをFirestoreへ保存する公開API。写真binaryではなくRecordメタデータを扱う。
  */
 export function savePhotoRecord({ projectId, environment = 'production', record, source = 'photo-unspecified' }) {
@@ -494,42 +588,89 @@ export function savePhotoRecord({ projectId, environment = 'production', record,
   }));
 }
 
+function normalizeBoardSettings(board = {}, project = {}) {
+  return {
+    surveyDate: String(board.surveyDate ?? project.surveyDate ?? ''),
+    surveyor: String(board.surveyor ?? project.surveyor ?? ''),
+    subjectText: String(board.subjectText ?? project.projectName ?? ''),
+    addressText: String(board.addressText ?? project.address ?? ''),
+    subjectFontSize: Number(board.subjectFontSize) || 18,
+    addressFontSize: Number(board.addressFontSize) || 17
+  };
+}
+
+function normalizeProjectMetadataData(data = {}, projectId = '', environment = 'production') {
+  const id = String(data.projectId || projectId || '');
+  if (!id) return null;
+  const hasBoardSettings = Boolean(data.boardSettings && typeof data.boardSettings === 'object');
+  const boardSettings = hasBoardSettings ? normalizeBoardSettings(data.boardSettings, data) : null;
+  return {
+    projectId: id,
+    projectNo: String(data.projectNo || id),
+    projectName: String(data.projectName || ''),
+    address: String(data.address || ''),
+    surveyDate: String(data.surveyDate || boardSettings?.surveyDate || ''),
+    surveyor: String(data.surveyor || boardSettings?.surveyor || ''),
+    boardSettings,
+    projectType: String(data.projectType || ''),
+    isTemporary: Boolean(data.isTemporary),
+    isSample: false,
+    environment: environment === 'test' ? 'test' : 'production',
+    createdAt: String(data.createdAt || '')
+  };
+}
+
 /**
  * 案件メタデータをFirestore案件Documentへ保存する。3Record Storeとは別の案件情報用。
  */
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
-  if (!canUseFirestore()) {
-    return {
-      ok: false,
-      queued: true,
-      offline: true,
-      reason: isManualOffline() ? 'manual-offline' : 'network-offline'
-    };
-  }
   const environment = project.environment === 'test' ? 'test' : 'production';
-  beginFirestoreActivity();
-  try {
-    await setDoc(projectDocRef(project.projectId, environment), {
-      projectId: String(project.projectId),
-      projectNo: String(project.projectNo || project.projectId),
-      projectName: String(project.projectName || ''),
-      address: String(project.address || ''),
-      projectType: String(project.projectType || ''),
-      isTemporary: Boolean(project.isTemporary),
-      createdAt: String(project.createdAt || ''),
-      ...(initializeChangeLog ? { finishChangeLogStartedAt: serverTimestamp() } : {}),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    syncDiagnosticLog('PROJECT_METADATA_WRITE_OK', { projectId: project.projectId, initializeChangeLog });
-    return { ok: true };
-  } catch (error) {
-    markError(error);
-    throw error;
-  } finally {
-    endFirestoreActivity();
-  }
+  const result = await writeWithQueue({
+    projectId: project.projectId,
+    environment,
+    recordType: 'project',
+    recordId: project.projectId,
+    operation: 'set',
+    localRecord: project,
+    source: initializeChangeLog ? 'project-create' : 'project-metadata',
+    meta: { initializeChangeLog: Boolean(initializeChangeLog) }
+  });
+  syncDiagnosticLog(
+    result?.ok ? 'PROJECT_METADATA_WRITE_OK' : 'PROJECT_METADATA_WRITE_QUEUED',
+    { projectId: project.projectId, initializeChangeLog, reason: result?.reason || '' }
+  );
+  return result;
+}
+
+/** Firestore案件Documentの現在形を1回取得する。 */
+export async function readProjectMetadata({ projectId, environment = 'production' }) {
+  const id = String(projectId || '');
+  if (!id || !canUseFirestore()) return null;
+  const snapshot = await getDoc(projectDocRef(id, environment));
+  if (!snapshot.exists()) return null;
+  return normalizeProjectMetadataData(snapshot.data(), id, environment);
+}
+
+/** Firestore案件DocumentをRealtime購読する。案件情報・看板設定の端末間同期用。 */
+export function subscribeProjectMetadata({ projectId, environment = 'production', onProject, onState, onError }) {
+  const id = String(projectId || '');
+  if (!id || !canUseFirestore()) return () => {};
+  return onSnapshot(
+    projectDocRef(id, environment),
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      onState?.({
+        fromCache: Boolean(snapshot.metadata?.fromCache),
+        hasPendingWrites: Boolean(snapshot.metadata?.hasPendingWrites)
+      });
+      if (!snapshot.exists() || snapshot.metadata?.hasPendingWrites) return;
+      const project = normalizeProjectMetadataData(snapshot.data(), id, environment);
+      if (project) onProject?.(project);
+    },
+    (error) => onError?.(error)
+  );
 }
 
 /**
@@ -572,6 +713,12 @@ export async function deleteTestProjectCompletely(projectId) {
  * Firestore上の仮案件番号を取得する。新規仮案件の連番重複回避に使う。
  */
 export async function readTemporaryProjectNos(dateCode, environment = 'production') {
+  const entries = await readTemporaryProjectEntries(dateCode, environment);
+  return entries.map((item) => item.projectNo);
+}
+
+/** 仮案件番号の所有projectIdも含めて取得する。オフライン復帰時の番号衝突判定用。 */
+export async function readTemporaryProjectEntries(dateCode, environment = 'production') {
   const prefix = `${String(dateCode)}-`;
   const ref = collection(db, projectRoot(environment));
   const snapshot = await getDocs(query(
@@ -580,8 +727,11 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
     where('projectNo', '<', `${prefix}\uf8ff`)
   ));
   return snapshot.docs
-    .map((item) => String(item.data()?.projectNo || item.id || ''))
-    .filter((value) => value.startsWith(prefix));
+    .map((item) => ({
+      projectId: String(item.data()?.projectId || item.id || ''),
+      projectNo: String(item.data()?.projectNo || item.id || '')
+    }))
+    .filter((item) => item.projectNo.startsWith(prefix));
 }
 
 /**
@@ -590,8 +740,6 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
 export async function isFinishChangeCursorAvailable({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CURSOR_CHECK_START', { projectId, cursor });
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
-  const ageMs = Date.now() - ((Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6));
-  if (ageMs > CHANGE_LOG_RETENTION_MS) return false;
   if (!canUseFirestore()) return true;
   const snapshot = await getDoc(doc(finishChangeLogCollectionRef(projectId, environment), String(cursor.changeId)));
   syncDiagnosticLog('CURSOR_CHECK_READ', { projectId, changeId: String(cursor.changeId), exists: snapshot.exists() });
@@ -634,20 +782,75 @@ export async function touchProjectSyncDevice({
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
   if (!projectId || !canUseFirestore()) return { ok: true, skipped: true, deleted: 0 };
+
+  const deviceSnapshot = await getDocs(
+    collection(db, projectRoot(environment), String(projectId), SYNC_DEVICE_COLLECTION)
+  );
+  const devices = deviceSnapshot.docs.map((item) => {
+    const data = item.data() || {};
+    return {
+      deviceCode: String(data.deviceCode || item.id || ''),
+      lastSeenAt: data.lastSeenAt || null,
+      finishChangeCursor: data.finishChangeCursor || null
+    };
+  });
+
+  const {
+    serverNowMs,
+    retentionCutoffMs,
+    activeDevices,
+    oldestActiveCursor
+  } = buildChangeLogRetentionState(devices, CHANGE_LOG_RETENTION_MS);
+  if (!serverNowMs) {
+    syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_NO_SERVER_TIME', { projectId });
+    return { ok: true, skipped: true, deleted: 0, reason: 'server-time-unavailable' };
+  }
+
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
     ref,
-    where('expiresAt', '<=', Timestamp.now()),
-    orderBy('expiresAt'),
+    where('committedAt', '<=', Timestamp.fromMillis(retentionCutoffMs)),
+    orderBy('committedAt'),
+    orderBy(documentId()),
     limit(CHANGE_LOG_CLEANUP_LIMIT)
   ));
-  syncDiagnosticLog('CHANGELOG_CLEANUP_READ', { projectId, expiredCount: snapshot.docs.length });
-  if (!snapshot.docs.length) return { ok: true, deleted: 0 };
+
+  const deletable = snapshot.docs.filter((item) => {
+    if (!oldestActiveCursor) return true;
+    return canDeleteChangeLogCursor(serializeChangeCursor(item), oldestActiveCursor);
+  });
+
+  syncDiagnosticLog('CHANGELOG_CLEANUP_READ', {
+    projectId,
+    candidateCount: snapshot.docs.length,
+    deletableCount: deletable.length,
+    activeDeviceCount: activeDevices.length,
+    oldestActiveCursor
+  });
+
+  if (!deletable.length) {
+    return {
+      ok: true,
+      deleted: 0,
+      activeDeviceCount: activeDevices.length,
+      oldestActiveCursor
+    };
+  }
+
   const batch = writeBatch(db);
-  snapshot.docs.forEach((item) => batch.delete(item.ref));
+  deletable.forEach((item) => batch.delete(item.ref));
   await batch.commit();
-  syncDiagnosticLog('CHANGELOG_CLEANUP_DELETE_OK', { projectId, deleted: snapshot.docs.length });
-  return { ok: true, deleted: snapshot.docs.length };
+  syncDiagnosticLog('CHANGELOG_CLEANUP_DELETE_OK', {
+    projectId,
+    deleted: deletable.length,
+    oldestActiveCursor
+  });
+  return {
+    ok: true,
+    deleted: deletable.length,
+    activeDeviceCount: activeDevices.length,
+    oldestActiveCursor
+  };
 }
 
 /**
@@ -663,8 +866,7 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
     recordId: '',
     operation: 'checkpoint',
     record: null,
-    committedAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + CHANGE_LOG_RETENTION_MS)
+    committedAt: serverTimestamp()
   });
   batch.set(projectDocRef(projectId, environment), {
     finishChangeLogEpochStartedAt: serverTimestamp(),

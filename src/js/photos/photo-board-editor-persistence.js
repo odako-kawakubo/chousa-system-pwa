@@ -3,16 +3,15 @@
  * DOMイベント・編集セッション遷移・画面描画は持たない。
  */
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { PHOTO_TYPES, SHOOTING_TYPES, getShootingTypeLabel } from '../records/photo-record.js';
+import { PHOTO_TYPES, getShootingTypeLabel } from '../records/photo-record.js';
 import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import { getAvailablePhotoFileName } from './photo-filename.js';
 import {
   BOARD_POSITION_LABELS,
-  BOARD_SIZE_LABELS,
-  drawBoard,
-  getBoardRect
+  BOARD_SIZE_LABELS
 } from '../camera/camera-board.js';
+import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
 import { getDeviceCode } from '../device-code.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -24,7 +23,7 @@ const MARKS = { 1: '①', 2: '②', 3: '③' };
 const PHOTO_SYNC_EDIT_FIELDS = new Set([
   'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
   'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'boardDate', 'originalPath', 'completedPath',
-  'areaCode', 'roomPosition', 'partSlot',
+  'areaCode', 'roomPosition', 'partSlot', 'roomNo',
   'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
 ]);
 
@@ -80,6 +79,13 @@ function buildBoardEditMemo(entry) {
     const branchChanged = Number(before.samplingBranch || 0) !== Number(after.samplingBranch || 0);
     if (branchChanged) lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue(after.samplingBranch) : '未整理'}`);
 
+    if (before.samplingPlace !== after.samplingPlace) {
+      lines.push(`部屋No.：${before.samplingPlace ? memoValue(before.samplingPlace) : '未整理'} → ${after.samplingPlace ? memoValue(after.samplingPlace) : '未整理'}`);
+    }
+    if (before.part !== after.part) {
+      lines.push(`採取部位：${before.part ? memoValue(before.part) : '未整理'} → ${after.part ? memoValue(after.part) : '未整理'}`);
+    }
+
     if (before.shootingType !== after.shootingType) {
       lines.push(`撮影区分：${before.shootingType ? memoValue(getShootingTypeLabel(before.shootingType)) : '未整理'} → ${after.shootingType ? memoValue(getShootingTypeLabel(after.shootingType)) : '未整理'}`);
     }
@@ -98,41 +104,17 @@ function buildBoardEditMemo(entry) {
   return lines.length ? ['看板編集', ...lines].join('\n') : '';
 }
 
-async function loadImageForComposition(blob) {
-  const url = URL.createObjectURL(blob);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    return image;
-  } finally {
-    // decode後は画像データが保持されるためURLは解放する。
-    URL.revokeObjectURL(url);
-  }
-}
-
 async function composeCompletedBlob(entry, getBoardData) {
   const originalBlob = await resolveEditorOriginalPhoto(entry.record);
   if (!originalBlob) throw new Error(`元写真を取得できませんでした。 (${entry.record.photoId})`);
 
-  const image = await loadImageForComposition(originalBlob);
-  const out = document.createElement('canvas');
-  out.width = image.width;
-  out.height = image.height;
-  const ctx = out.getContext('2d');
-  ctx.drawImage(image, 0, 0);
-
-  if (!(entry.record.photoType === PHOTO_TYPES.SAMPLING && entry.draft.shootingType === SHOOTING_TYPES.SECTION)) {
-    const rect = getBoardRect(out.width, out.height, entry.draft.boardPosition, entry.draft.boardSize);
-    drawBoard(ctx, rect, getBoardData(entry));
-  }
-
-  const completedBlob = await new Promise((resolve, reject) => {
-    out.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error('完成画像を生成できませんでした。')),
-      'image/jpeg',
-      0.82
-    );
+  const completedBlob = await composeCompletedPhotoBlob({
+    originalBlob,
+    photoType: entry.record.photoType,
+    shootingType: entry.draft.shootingType,
+    boardPosition: entry.draft.boardPosition,
+    boardSize: entry.draft.boardSize,
+    boardData: getBoardData(entry)
   });
 
   return { originalBlob, completedBlob };

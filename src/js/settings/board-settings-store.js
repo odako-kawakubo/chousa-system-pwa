@@ -1,9 +1,9 @@
 /**
  * src/js/settings/board-settings-store.js
  *
- * 案件単位のローカル案件情報 + 看板設定。
- * v0.1.6.1Aから、固定サンプル案件キーではなく「現在開いている案件ID」ごとに
- * localStorageを分離する。Firestore正本化前のローカル暫定保存として使用する。
+ * 案件単位の看板設定キャッシュ。
+ * M-06以降の正本はFirestore案件Documentのproject fields + boardSettings。
+ * localStorageは旧案件移行・オフライン表示用の端末キャッシュとしてのみ保持する。
  */
 
 import { getCurrentProject } from '../projects/project-store.js';
@@ -75,12 +75,38 @@ function persist() {
   notify();
 }
 
-/** 案件切替時に、その案件専用の設定へ切り替える。 */
+function applyProjectSource(project, currentState) {
+  const remoteBoard = project?.boardSettings && typeof project.boardSettings === 'object'
+    ? project.boardSettings
+    : null;
+  const base = buildDefaults(project);
+  const source = currentState || base;
+  return normalize({
+    ...source,
+    projectNo: project?.projectNo ?? source.projectNo,
+    projectName: project?.projectName ?? source.projectName,
+    address: project?.address ?? source.address,
+    ...(remoteBoard || {})
+  }, base);
+}
+
+/** 案件切替時に、その案件専用の設定へ切り替える。Firestore値があれば旧ローカルcacheより優先する。 */
 export function activateProject(project) {
   activeProject = project ? { ...project } : null;
   defaults = buildDefaults(activeProject);
-  state = loadForProject(activeProject);
-  notify();
+  const cached = loadForProject(activeProject);
+  state = applyProjectSource(activeProject, cached);
+  persist();
+  return get();
+}
+
+/** Firestore案件DocumentのRealtime受信値を現在の看板cacheへ反映する。 */
+export function applyProjectMetadata(project) {
+  if (!project?.projectId || String(project.projectId) !== String(activeProject?.projectId || '')) return get();
+  activeProject = { ...activeProject, ...project };
+  defaults = buildDefaults(activeProject);
+  state = applyProjectSource(activeProject, state);
+  persist();
   return get();
 }
 

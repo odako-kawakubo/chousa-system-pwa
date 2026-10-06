@@ -3,8 +3,8 @@
  * DOM操作・Viewer状態・Record更新は持たない。
  */
 import * as photoRecordStore from '../store/photo-record-store.js';
-import * as finishRecordStore from '../store/finish-record-store.js';
-import { getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { isSamplingPhotoUnorganized, isVisualPhotoUnorganized, PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { visualCompareTargets } from './photo-compare-data.js';
 
 const SAMPLE_STAGE_ORDER = [
   SHOOTING_TYPES.BEFORE,
@@ -47,47 +47,30 @@ export function photosForViewer(photoId) {
 
 
 export function compareTargetsForViewer(context = {}) {
-  const preferredMaterialId = String(context.preferredMaterialId || '').trim();
-  const roomInfo = new Map();
-  finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
-    const roomKey = getVisualPhotoRoomKey(record);
-    if (!roomInfo.has(roomKey)) {
-      roomInfo.set(roomKey, { areaCode: record.areaCode, roomPosition: record.roomPosition, roomNo: record.roomNo, roomName: record.roomName });
-    }
-  });
-
-  const groups = new Map();
-  photoRecordStore.getActive().filter((photo) => photo.photoType === PHOTO_TYPES.VISUAL).forEach((photo) => {
-    const key = getVisualPhotoTargetKey(photo);
-    if (!key) return;
-    if (!groups.has(key)) groups.set(key, { key, areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot, part: photo.part, photos: [] });
-    groups.get(key).photos.push(photo);
-  });
-
-  const usedByPreferred = new Set();
-  if (preferredMaterialId) {
-    finishRecordStore.getAll().forEach((record) => {
-      if (record.status !== 'active' || String(record.materialId || '') !== preferredMaterialId) return;
-      const partSlot = Math.floor(Number(record.position || 0) / 100);
-      if (record.areaCode && record.roomPosition && partSlot) usedByPreferred.add(getVisualPhotoTargetKey({ areaCode: record.areaCode, roomPosition: record.roomPosition, partSlot }));
-    });
-  }
-
-  return [...groups.values()].map((group) => {
-    const room = roomInfo.get(getVisualPhotoRoomKey(group)) || {};
-    const no = String(room.roomNo || group.roomPosition || '-').trim();
-    const name = String(room.roomName || '').trim();
-    const roomLabel = name && name !== no ? `${no} ${name}` : no;
-    return {
-      ...group,
-      label: `${roomLabel} / ${group.part}`,
-      preferred: usedByPreferred.has(group.key),
-      photos: group.photos.sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')))
-    };
-  }).sort((a, b) => {
-    if (a.preferred !== b.preferred) return a.preferred ? -1 : 1;
-    return a.label.localeCompare(b.label, 'ja', { numeric: true });
-  });
+  return visualCompareTargets(context);
 }
 
+
+/**
+ * 採取場所変更の「確認する」で表示する代表写真集合。
+ * 同一 materialId + samplingBranch から、施工前/施工中/施工後/断面を最大1枚ずつ返す。
+ * 各区分は代表写真優先、代表が無ければ撮影日時の早い写真を使う。
+ */
+export function samplingLocationReviewPhotos({ materialId = '', samplingBranch = 0 } = {}) {
+  const id = String(materialId || '').trim();
+  const branch = Number(samplingBranch || 0);
+  if (!id || !branch) return [];
+
+  return SAMPLE_STAGE_ORDER.map((shootingType) => {
+    const photos = photoRecordStore.findSampling({
+      materialId:id,
+      samplingBranch:branch,
+      shootingType
+    }).slice().sort((a, b) => {
+      if (Boolean(a.isRepresentative) !== Boolean(b.isRepresentative)) return a.isRepresentative ? -1 : 1;
+      return String(a.capturedAt || '').localeCompare(String(b.capturedAt || ''))
+        || String(a.photoId || '').localeCompare(String(b.photoId || ''));
+    });
+    return photos[0] || null;
+  }).filter(Boolean);
+}

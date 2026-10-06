@@ -28,7 +28,7 @@ import { canUseFirestore } from '../sync/sync-status.js';
 
 const TRANSFER_FORMAT = 'chousa-system-project-json';
 const TRANSFER_VERSION = 1;
-const VALID_RECORD_TYPES = new Set(['finish', 'material', 'photo']);
+const VALID_RECORD_TYPES = new Set(['project', 'finish', 'material', 'photo']);
 
 function transferAvailable() {
   return !canUseFirestore();
@@ -60,6 +60,7 @@ function clonePending(item) {
     recordId: String(item?.recordId || ''),
     operation: item?.operation === 'delete' ? 'delete' : 'set',
     record: item?.record ?? null,
+    meta: { ...(item?.meta || {}) },
     queuedAt: Number(item?.queuedAt || Date.now())
   };
 }
@@ -242,7 +243,8 @@ async function importProjectFile(file) {
         recordType: item.recordType,
         recordId: item.recordId,
         operation: item.operation,
-        record: item.record
+        record: item.record,
+        meta: item.meta || {}
       });
     });
 

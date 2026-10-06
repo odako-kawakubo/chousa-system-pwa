@@ -13,8 +13,9 @@
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
+import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
-import { initializePhotoViewer, closePhotoViewer } from './photo-viewer.js';
+import { initializePhotoViewer, closePhotoViewer, openDirectPhotoCompare } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
   previewSourceForPhoto,
@@ -34,6 +35,7 @@ import {
   deletePhotos
 } from './photo-record-actions.js';
 import { bindPhotoInteractions } from './photo-interactions.js';
+import { requestSamplingLocationChange } from './sampling-location-change.js';
 
 const state = {
   mode: 'visual',
@@ -46,7 +48,8 @@ const state = {
   listScrollTop: { visual: 0, sampling: 0 },
   reviewScrollTop: { visual: 0, sampling: 0 },
   selectionMode: null,
-  selectedPhotoIds: new Set()
+  selectedPhotoIds: new Set(),
+  samplingLocationEditKey: ''
 };
 
 let root = null;
@@ -90,15 +93,19 @@ function applySelectionUi() {
   panel?.classList.toggle('photo-selection-mode', Boolean(mode));
   panel?.classList.toggle('photo-selection-edit', mode === 'edit');
   panel?.classList.toggle('photo-selection-delete', mode === 'delete');
+  panel?.classList.toggle('photo-selection-compare', mode === 'compare');
 
   root.querySelectorAll('[data-photo-selection-mode]').forEach((button) => {
     const buttonMode = button.dataset.photoSelectionMode;
     const active = mode === buttonMode;
     const count = state.selectedPhotoIds.size;
     button.classList.toggle('active', active);
-    button.textContent = active && count
-      ? `${buttonMode === 'delete' ? '削除する' : '編集する'}（${count}）`
-      : (buttonMode === 'delete' ? '削除' : '編集');
+    const defaultLabel = buttonMode === 'delete' ? '削除' : (buttonMode === 'compare' ? '比較' : '編集');
+    const activeLabel = buttonMode === 'delete' ? '削除する' : (buttonMode === 'compare' ? '比較する' : '編集する');
+    button.textContent = active && count ? `${activeLabel}（${count}）` : defaultLabel;
+    if (buttonMode === 'compare') {
+      button.toggleAttribute('disabled', active && count > 0 && count < 2);
+    }
   });
 
   root.querySelectorAll('.photo-thumb-card[data-photo-id]').forEach((card) => {
@@ -261,15 +268,31 @@ function buildCameraOptions() {
   });
 
   const sampling = buildSamplingPhotoView('');
-  const samplingTargets = sampling.materials.flatMap((material) => material.points.map((point) => ({
-    materialId: material.materialId,
-    materialNo: material.materialNo,
-    sampleBaseNo: String(material.sampleNo || ''),
-    sampleNo: point.sampleNo,
-    samplingPlace: point.samplingPlace,
-    branch: point.branch,
-    part: point.part
-  })));
+  const samplingTargets = sampling.materials.flatMap((material) => {
+    const placeOptions = getMaterialUsageRoomOptions(material.inputId, { preferRoomName:false });
+    const partOptions = [];
+    [material.part, material.samplePart].forEach((value) => {
+      String(value || '')
+        .split(/[、,，]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => {
+          if (!partOptions.includes(item)) partOptions.push(item);
+        });
+    });
+
+    return material.points.map((point) => ({
+      materialId: material.materialId,
+      materialNo: material.materialNo,
+      sampleBaseNo: String(material.sampleNo || ''),
+      sampleNo: point.sampleNo,
+      samplingPlace: String(material[`sampleLocation${point.branch}`] || point.samplingPlace || ''),
+      branch: point.branch,
+      part: point.part,
+      placeOptions,
+      partOptions
+    }));
+  });
 
   return { visualRooms, samplingTargets };
 }
@@ -346,13 +369,49 @@ function refreshCameraPhotoBlock(record) {
     if (!point) return false;
     const current = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
     if (!current) return false;
-    current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys);
+    current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys, state.samplingLocationEditKey);
     const updated = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
     hydrateThumbnailImages(updated);
     return Boolean(updated);
   }
 
   return false;
+}
+
+/** 写真タブの採取場所表示を同じ行のselectへ切り替える。 */
+function startSamplingLocationEdit(key) {
+  const value = String(key || '');
+  if (!value) return;
+  state.samplingLocationEditKey = value;
+  render();
+}
+
+/** 写真タブで選択した新しい採取場所をHの共通変更処理へ渡す。 */
+async function confirmSamplingLocationEdit(key, nextLocation) {
+  const view = buildSamplingPhotoView(state.selectedMaterialId);
+  const material = view.activeMaterial;
+  const point = material?.points.find((item) => item.key === String(key || ''));
+  if (!material || !point) {
+    state.samplingLocationEditKey = '';
+    render();
+    return;
+  }
+
+  try {
+    const result = await requestSamplingLocationChange({
+      materialId:material.materialId,
+      samplingBranch:point.branch,
+      nextLocation:String(nextLocation || '')
+    });
+    if (result?.changed || result?.decision === 'unchanged' || result?.decision === 'no-photo') {
+      state.samplingLocationEditKey = '';
+    }
+    render();
+  } catch (error) {
+    console.error('採取場所の変更に失敗しました', error);
+    window.alert(`採取場所の変更に失敗しました。\n${error.message || error}`);
+    render();
+  }
 }
 
 /**
@@ -388,9 +447,29 @@ async function deleteSelectedPhotos(photoIds) {
  */
 function togglePhotoSelection(photoId) {
   if (!photoId || !state.selectionMode) return;
-  if (state.selectedPhotoIds.has(photoId)) state.selectedPhotoIds.delete(photoId);
-  else state.selectedPhotoIds.add(photoId);
+  if (state.selectedPhotoIds.has(photoId)) {
+    state.selectedPhotoIds.delete(photoId);
+  } else {
+    if (state.selectionMode === 'compare' && state.selectedPhotoIds.size >= 4) {
+      window.alert('比較できる写真は最大4枚です。');
+      return;
+    }
+    state.selectedPhotoIds.add(photoId);
+  }
   applySelectionUi();
+}
+
+function compareSelectedPhotos(photoIds) {
+  const photos = [...photoIds]
+    .map((photoId) => photoById(photoId))
+    .filter((photo) => photo && !photo.deleted)
+    .slice(0, 4);
+  if (photos.length < 2) {
+    window.alert('比較する写真を2枚以上選択してください。');
+    return false;
+  }
+  clearSelectionMode();
+  return openDirectPhotoCompare(photos);
 }
 
 export function capturePhotoUiState() {
@@ -405,7 +484,8 @@ export function capturePhotoUiState() {
     listScrollTop: { ...state.listScrollTop },
     reviewScrollTop: { ...state.reviewScrollTop },
     selectionMode: state.selectionMode,
-    selectedPhotoIds: [...state.selectedPhotoIds]
+    selectedPhotoIds: [...state.selectedPhotoIds],
+    samplingLocationEditKey: state.samplingLocationEditKey
   };
 }
 
@@ -427,6 +507,7 @@ export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
   };
   state.selectionMode = snapshot.selectionMode || null;
   state.selectedPhotoIds = new Set(snapshot.selectedPhotoIds || []);
+  state.samplingLocationEditKey = String(snapshot.samplingLocationEditKey || '');
   state.pendingImportContext = null;
   renderedMode = state.mode;
   if (renderNow) render();
@@ -444,6 +525,7 @@ export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
   state.reviewScrollTop = { visual:0, sampling:0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
+  state.samplingLocationEditKey = '';
   renderedMode = 'visual';
   if (renderNow) render();
 }
@@ -463,6 +545,7 @@ export function resetPhotoUiStateForProject() {
   state.reviewScrollTop = { visual: 0, sampling: 0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
+  state.samplingLocationEditKey = '';
   renderedMode = 'visual';
 
   const visual = buildVisualPhotoView('');
@@ -514,6 +597,9 @@ export function initializePhotoTab() {
     togglePhotoSelection,
     deleteSelectedPhotos,
     startEditSequence,
+    compareSelectedPhotos,
+    startSamplingLocationEdit,
+    confirmSamplingLocationEdit,
     visualContextFromKey,
     samplingContextFromKey,
     samplingDefaultContextFromKey,
