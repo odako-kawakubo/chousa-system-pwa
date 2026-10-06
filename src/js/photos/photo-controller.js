@@ -35,6 +35,7 @@ import {
   deletePhotos
 } from './photo-record-actions.js';
 import { bindPhotoInteractions } from './photo-interactions.js';
+import { requestSamplingLocationChange } from './sampling-location-change.js';
 
 const state = {
   mode: 'visual',
@@ -47,7 +48,8 @@ const state = {
   listScrollTop: { visual: 0, sampling: 0 },
   reviewScrollTop: { visual: 0, sampling: 0 },
   selectionMode: null,
-  selectedPhotoIds: new Set()
+  selectedPhotoIds: new Set(),
+  samplingLocationEditKey: ''
 };
 
 let root = null;
@@ -367,13 +369,49 @@ function refreshCameraPhotoBlock(record) {
     if (!point) return false;
     const current = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
     if (!current) return false;
-    current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys);
+    current.outerHTML = renderSamplingPointBlock(point, state.openSamplingKeys, state.samplingLocationEditKey);
     const updated = findElementByDataValue('[data-photo-sampling-point-key]', 'photoSamplingPointKey', point.key);
     hydrateThumbnailImages(updated);
     return Boolean(updated);
   }
 
   return false;
+}
+
+/** 写真タブの採取場所表示を同じ行のselectへ切り替える。 */
+function startSamplingLocationEdit(key) {
+  const value = String(key || '');
+  if (!value) return;
+  state.samplingLocationEditKey = value;
+  render();
+}
+
+/** 写真タブで選択した新しい採取場所をHの共通変更処理へ渡す。 */
+async function confirmSamplingLocationEdit(key, nextLocation) {
+  const view = buildSamplingPhotoView(state.selectedMaterialId);
+  const material = view.activeMaterial;
+  const point = material?.points.find((item) => item.key === String(key || ''));
+  if (!material || !point) {
+    state.samplingLocationEditKey = '';
+    render();
+    return;
+  }
+
+  try {
+    const result = await requestSamplingLocationChange({
+      materialId:material.materialId,
+      samplingBranch:point.branch,
+      nextLocation:String(nextLocation || '')
+    });
+    if (result?.changed || result?.decision === 'unchanged' || result?.decision === 'no-photo') {
+      state.samplingLocationEditKey = '';
+    }
+    render();
+  } catch (error) {
+    console.error('採取場所の変更に失敗しました', error);
+    window.alert(`採取場所の変更に失敗しました。\n${error.message || error}`);
+    render();
+  }
 }
 
 /**
@@ -446,7 +484,8 @@ export function capturePhotoUiState() {
     listScrollTop: { ...state.listScrollTop },
     reviewScrollTop: { ...state.reviewScrollTop },
     selectionMode: state.selectionMode,
-    selectedPhotoIds: [...state.selectedPhotoIds]
+    selectedPhotoIds: [...state.selectedPhotoIds],
+    samplingLocationEditKey: state.samplingLocationEditKey
   };
 }
 
@@ -468,6 +507,7 @@ export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
   };
   state.selectionMode = snapshot.selectionMode || null;
   state.selectedPhotoIds = new Set(snapshot.selectedPhotoIds || []);
+  state.samplingLocationEditKey = String(snapshot.samplingLocationEditKey || '');
   state.pendingImportContext = null;
   renderedMode = state.mode;
   if (renderNow) render();
@@ -485,6 +525,7 @@ export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
   state.reviewScrollTop = { visual:0, sampling:0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
+  state.samplingLocationEditKey = '';
   renderedMode = 'visual';
   if (renderNow) render();
 }
@@ -504,6 +545,7 @@ export function resetPhotoUiStateForProject() {
   state.reviewScrollTop = { visual: 0, sampling: 0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
+  state.samplingLocationEditKey = '';
   renderedMode = 'visual';
 
   const visual = buildVisualPhotoView('');
@@ -556,6 +598,8 @@ export function initializePhotoTab() {
     deleteSelectedPhotos,
     startEditSequence,
     compareSelectedPhotos,
+    startSamplingLocationEdit,
+    confirmSamplingLocationEdit,
     visualContextFromKey,
     samplingContextFromKey,
     samplingDefaultContextFromKey,
