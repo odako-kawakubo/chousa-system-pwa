@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.38 Stable
+name: Deploy v0.1.9.3 Stable
 
 on:
   push:
@@ -772,7 +772,7 @@ jobs:
           grep -q "applyCommittedFinishEntries" src/js/sync/project-record-persistence.js || { echo "M-01 known finish retry sync missing"; exit 1; }
           grep -q "retryUnsentForProject" src/js/ui/sync-ui.js || { echo "manual retry bypasses sync adapter"; exit 1; }
 
-      - name: v0.1.9.38 photo workflow regression checks
+      - name: v0.1.9.3 photo workflow regression checks
         shell: bash
         run: |
           set -euo pipefail
@@ -836,7 +836,7 @@ jobs:
           assert "const recordQueueResult = projectQueueReady" in block
           PY
 
-      - name: v0.1.9.38 camera and compare regression checks
+      - name: v0.1.9.3 camera and compare regression checks
         shell: bash
         run: |
           set -euo pipefail
@@ -854,17 +854,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.9.38 stable consistency checks
+      - name: v0.1.9.3 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.38'" src/config/app-config.js
+          grep -q "version: '0.1.9.3'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.38"' src/version.json
+          grep -q '"version": "0.1.9.3"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.38" src/service-worker.js
-          grep -q "chousa-output-libs-v01938" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.3" src/service-worker.js
+          grep -q "chousa-output-libs-v0193" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
