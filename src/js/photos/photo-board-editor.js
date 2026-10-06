@@ -40,6 +40,7 @@ import {
   persistBoardEditorEntry,
   formatBoardSampleNo
 } from './photo-board-editor-persistence.js';
+import { requestSamplingLocationChange } from './sampling-location-change.js';
 import {
   normalizeBoardEditorDateInput,
   boardEditorVisualRooms,
@@ -297,6 +298,7 @@ function ensureRoot() {
     isSwitching: () => switching,
     getSessionIndex: () => session.index,
     updateDraftFromEvent,
+    reflectSamplingPlace: reflectSamplingPlace_,
     requestClose: requestClose_,
     applyHistory: (direction) => {
       if (!active) return;
@@ -383,6 +385,76 @@ function updateDraftFromEvent(target) {
   if (result.rerenderControls) renderControls();
   pushHistory();
   renderPreview();
+}
+
+
+/**
+ * Hの共通処理で更新されたphotoRecordをEditor sessionへ再反映する。
+ * 外部更新されたsamplingPlaceだけは、ユーザーがそのentryで未編集ならdraftも追従させる。
+ * その他の未保存draftは保持する。
+ */
+function rebaseEntryAfterSamplingPlaceChange_(entry) {
+  if (!entry?.record?.photoId) return;
+  const latest = photoRecordStore.get(entry.record.photoId);
+  if (!latest || latest.deleted) return;
+
+  const previousInitial = cloneEditorValue(entry.initialDraft || {});
+  const currentDraft = cloneEditorValue(entry.draft || {});
+  const userEditedSamplingPlace = String(currentDraft.samplingPlace || '') !== String(previousInitial.samplingPlace || '');
+
+  entry.record = { ...latest };
+  entry.initialDraft = cloneEditorValue(snapshotFromRecord(latest));
+  if (!userEditedSamplingPlace) {
+    currentDraft.samplingPlace = entry.initialDraft.samplingPlace;
+  }
+  entry.draft = currentDraft;
+  entry.history = [cloneEditorValue(entry.initialDraft)];
+  entry.historyIndex = 0;
+  if (!pushBoardEditorHistory(entry)) refreshDirty_(entry);
+}
+
+/**
+ * 採取写真で編集した部屋No.をmaterialRecordの採取場所にも反映する。
+ * 保存先更新・既存写真判断はHのsampling-location-change.jsへ一本化する。
+ */
+async function reflectSamplingPlace_() {
+  if (!active || saving || switching || active.record.photoType !== PHOTO_TYPES.SAMPLING) return false;
+
+  const materialId = String(active.draft.materialId || active.record.materialId || '');
+  const samplingBranch = Number(active.draft.samplingBranch || 0);
+  const nextLocation = String(active.draft.samplingPlace || '').trim();
+  if (!materialId || !samplingBranch || !nextLocation) return false;
+
+  const result = await requestSamplingLocationChange({
+    materialId,
+    samplingBranch,
+    nextLocation
+  });
+
+  if (result?.decision === 'retake') {
+    // 撮り直す判断では対象枝番の写真が未整理へ移るため、
+    // 古い編集sessionを残さず閉じる。
+    closeEditorInternal_('sampling-location-retake');
+    await onSaved?.({ items:[], reason:'sampling-location-retake' });
+    return true;
+  }
+
+  if (result?.changed || result?.decision === 'unchanged' || result?.decision === 'no-photo') {
+    session.ids.forEach((photoId) => {
+      const entry = session.entries.get(photoId);
+      if (entry) rebaseEntryAfterSamplingPlaceChange_(entry);
+    });
+    active = session.entries.get(session.ids[session.index]) || active;
+    renderControls();
+    updateHistoryButtons();
+    renderPreview();
+    await onSaved?.({ items:[], reason:'sampling-location-reflect' });
+    return true;
+  }
+
+  // キャンセル時はEditor draftをそのまま維持する。
+  renderControls();
+  return false;
 }
 
 /**
