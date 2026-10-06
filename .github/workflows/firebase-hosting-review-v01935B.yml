@@ -823,7 +823,7 @@ jobs:
       - name: v0.1.9.35B review consistency checks
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           grep -q "version: '0.1.9.34'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
