@@ -62,15 +62,17 @@ export async function recordProjectSyncDeviceContact(project, finishChangeCursor
     finishChangeCursor
   });
 
-  await touchProjectSyncDeviceForProject(project, {
+  const result = await touchProjectSyncDeviceForProject(project, {
     deviceCode: getDeviceCode(),
     deviceName: getDeviceDisplayName(),
     finishChangeCursor: normalizeProjectFinishChangeCursor(finishChangeCursor)
   });
 
   syncDiagnosticLog('DEVICE_CONTACT_END', {
-    projectId: project.projectId
+    projectId: project.projectId,
+    ok: result?.ok !== false
   });
+  return result;
 }
 
 export async function cleanupProjectFinishChangeLogIfDue(project) {
