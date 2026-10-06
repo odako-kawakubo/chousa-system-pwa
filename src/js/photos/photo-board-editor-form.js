@@ -61,6 +61,12 @@ export function boardEditorSamplingMaterials(optionsProvider) {
   return [...map.values()];
 }
 
+function visualRoomLabel(room = {}) {
+  const no = String(room.roomNo || room.roomPosition || '').trim();
+  const name = String(room.roomName || '').trim();
+  return name && name !== no ? `${no}　${name}` : no;
+}
+
 function visualFields(entry, optionsProvider) {
   const rooms = boardEditorVisualRooms(optionsProvider);
   const room = findBoardEditorVisualRoom(optionsProvider, entry.draft);
@@ -73,11 +79,11 @@ function visualFields(entry, optionsProvider) {
       ${hasActiveRoom ? '' : '<option value="" selected>選択してください</option>'}
       ${rooms.map((roomItem) => {
         const key = getVisualPhotoRoomKey(roomItem);
-        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(roomItem.roomNo || roomItem.roomPosition)}</option>`;
+        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(visualRoomLabel(roomItem))}</option>`;
       }).join('')}
     </select></label>
     <label>部位<select data-editor-part>
-      <option value="" ${Number(entry.draft.partSlot || 0) === 0 ? 'selected' : ''}>選択してください</option>
+      <option value="" ${Number(entry.draft.partSlot || 0) === 0 ? 'selected' : ''}>未整理</option>
       ${parts.map((part) => `<option value="${Number(part.partSlot || 0)}" ${Number(part.partSlot || 0) === Number(entry.draft.partSlot || 0) ? 'selected' : ''}>${esc(part.part)}</option>`).join('')}
     </select></label>
   </div>`;
