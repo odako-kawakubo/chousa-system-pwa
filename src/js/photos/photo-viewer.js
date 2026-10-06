@@ -218,6 +218,7 @@ function createComparePane(key = '') {
     key,
     part: target?.partFilter || target?.part || '',
     baseName: target?.baseNames?.[0] || '',
+    allLocations: false,
     index: 0,
     transform: createPhotoViewerTransformState()
   };
@@ -238,22 +239,42 @@ function comparePane(paneIndex) {
 }
 
 /**
- * paneのtarget + photo indexから現在比較中のPhoto Recordを解決する。
+ * paneの現在条件に該当する写真一覧を返す。
+ * 場所「すべて」では、選択中の部位 + ベース名に一致する全場所の写真を横断する。
  */
-function comparePhoto(paneIndex) {
+function comparePanePhotos(paneIndex) {
   const pane = comparePane(paneIndex);
-  return pane ? compareTarget(pane.key)?.photos?.[pane.index] || null : null;
+  if (!pane) return [];
+  if (!pane.allLocations) return compareTarget(pane.key)?.photos || [];
+
+  const part = String(pane.part || '');
+  const baseName = String(pane.baseName || '');
+  return viewerState.compare.targets
+    .filter((target) => !part || String(target.partFilter || target.part || '') === part)
+    .filter((target) => !baseName || (target.baseNames || []).includes(baseName))
+    .flatMap((target) => target.photos || [])
+    .slice()
+    .sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || ''))
+      || String(a.photoId || '').localeCompare(String(b.photoId || ''), 'ja', { numeric:true, sensitivity:'base' }));
 }
 
 /**
- * 比較pane内で同一targetの前後写真へ切り替える。
+ * paneの現在条件 + photo indexから現在比較中のPhoto Recordを解決する。
+ */
+function comparePhoto(paneIndex) {
+  const pane = comparePane(paneIndex);
+  return pane ? comparePanePhotos(paneIndex)[pane.index] || null : null;
+}
+
+/**
+ * 比較pane内で現在条件に該当する前後写真へ切り替える。
  */
 function moveComparePhoto(paneIndex, delta) {
   const pane = comparePane(paneIndex);
   if (!pane) return;
-  const target = compareTarget(pane.key);
-  if (!target?.photos?.length) return;
-  pane.index = (pane.index + delta + target.photos.length) % target.photos.length;
+  const photos = comparePanePhotos(paneIndex);
+  if (!photos.length) return;
+  pane.index = (pane.index + delta + photos.length) % photos.length;
   resetPhotoViewerTransform(pane.transform);
   renderCompare();
 }
@@ -329,13 +350,15 @@ function compareBaseOptions(paneIndex) {
 
 function compareLocationOptions(paneIndex) {
   const pane = comparePane(paneIndex);
-  return paneLocationTargets(paneIndex)
+  const allOption = `<option value="__all__" ${pane?.allLocations ? 'selected' : ''}>すべて</option>`;
+  const locations = paneLocationTargets(paneIndex)
     .map((target) => {
       const materialLabel = matchingMaterialLabel(target, pane?.baseName || '');
       const label = [target.roomLabel || target.label, target.part, materialLabel].filter(Boolean).join(' / ');
-      return `<option value="${esc(target.key)}" ${target.key === pane?.key ? 'selected' : ''}>${esc(label)}</option>`;
+      return `<option value="${esc(target.key)}" ${!pane?.allLocations && target.key === pane?.key ? 'selected' : ''}>${esc(label)}</option>`;
     })
     .join('');
+  return allOption + locations;
 }
 
 function firstMatchingTargetForPane(paneIndex, pane, { keepCurrent = true } = {}) {
@@ -356,7 +379,7 @@ function renderCompareControls(paneIndex) {
   const pane = comparePane(paneIndex);
   if (!pane) return '';
   const target = compareTarget(pane.key);
-  const count = target?.photos?.length || 0;
+  const count = comparePanePhotos(paneIndex).length;
   const canRemove = !viewerState.compare.review && paneIndex >= 2;
   const directLabel = viewerState.compare.direct
     ? `<div class="photo-compare-direct-label">${esc(target?.label || target?.photos?.[0]?.fileName || '')}</div>`
@@ -592,22 +615,28 @@ function bindChrome() {
       pane.part = partSelect.value;
       const bases = paneBaseOptions(pane);
       pane.baseName = bases.includes(pane.baseName) ? pane.baseName : (bases[0] || '');
-      pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
+      if (!pane.allLocations) pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
     } else if (baseSelect) {
       pane.baseName = baseSelect.value;
-      pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
+      if (!pane.allLocations) pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
     } else if (targetSelect) {
-      const blocked = selectedCompareKeys(paneIndex);
-      if (blocked.has(targetSelect.value)) {
-        renderCompare();
-        return;
-      }
-      pane.key = targetSelect.value;
-      const selectedTarget = compareTarget(pane.key);
-      if (selectedTarget) {
-        pane.part = selectedTarget.partFilter || selectedTarget.part || pane.part;
-        if (pane.baseName && !(selectedTarget.baseNames || []).includes(pane.baseName)) {
-          pane.baseName = selectedTarget.baseNames?.[0] || '';
+      if (targetSelect.value === '__all__') {
+        pane.allLocations = true;
+        pane.key = '';
+      } else {
+        const blocked = selectedCompareKeys(paneIndex);
+        if (blocked.has(targetSelect.value)) {
+          renderCompare();
+          return;
+        }
+        pane.allLocations = false;
+        pane.key = targetSelect.value;
+        const selectedTarget = compareTarget(pane.key);
+        if (selectedTarget) {
+          pane.part = selectedTarget.partFilter || selectedTarget.part || pane.part;
+          if (pane.baseName && !(selectedTarget.baseNames || []).includes(pane.baseName)) {
+            pane.baseName = selectedTarget.baseNames?.[0] || '';
+          }
         }
       }
     }
