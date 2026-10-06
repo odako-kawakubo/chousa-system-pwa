@@ -98,6 +98,8 @@ export function bindPhotoInteractions({
   deleteSelectedPhotos,
   startEditSequence,
   compareSelectedPhotos,
+  startSamplingLocationEdit,
+  confirmSamplingLocationEdit,
   visualContextFromKey,
   samplingContextFromKey,
   samplingDefaultContextFromKey,
@@ -114,6 +116,21 @@ export function bindPhotoInteractions({
   root.addEventListener('click', (event) => {
     if (!tutorialAllows(event.target)) {
       event.preventDefault();
+      return;
+    }
+
+    const samplingLocationEdit = event.target.closest('[data-photo-sampling-location-edit]');
+    if (samplingLocationEdit) {
+      startSamplingLocationEdit(samplingLocationEdit.dataset.photoSamplingLocationEdit || '');
+      return;
+    }
+
+    const samplingLocationConfirm = event.target.closest('[data-photo-sampling-location-confirm]');
+    if (samplingLocationConfirm) {
+      const key = samplingLocationConfirm.dataset.photoSamplingLocationConfirm || '';
+      const point = samplingLocationConfirm.closest('[data-photo-sampling-point-key]');
+      const select = point?.querySelector('[data-photo-sampling-location-select]');
+      void confirmSamplingLocationEdit(key, select?.value || '');
       return;
     }
 
