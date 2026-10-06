@@ -97,6 +97,7 @@ export function bindPhotoInteractions({
   togglePhotoSelection,
   deleteSelectedPhotos,
   startEditSequence,
+  compareSelectedPhotos,
   visualContextFromKey,
   samplingContextFromKey,
   samplingDefaultContextFromKey,
@@ -118,7 +119,8 @@ export function bindPhotoInteractions({
 
     const selectionButton = event.target.closest('[data-photo-selection-mode]');
     if (selectionButton) {
-      const requestedMode = selectionButton.dataset.photoSelectionMode === 'delete' ? 'delete' : 'edit';
+      const rawMode = String(selectionButton.dataset.photoSelectionMode || '');
+      const requestedMode = rawMode === 'delete' ? 'delete' : (rawMode === 'compare' ? 'compare' : 'edit');
       if (state.selectionMode === requestedMode) {
         if (!state.selectedPhotoIds.size) {
           clearSelectionMode();
@@ -127,6 +129,8 @@ export function bindPhotoInteractions({
             console.error(error);
             window.alert(`写真の削除に失敗しました。\n${error.message || error}`);
           });
+        } else if (requestedMode === 'compare') {
+          compareSelectedPhotos(state.selectedPhotoIds);
         } else {
           void startEditSequence(state.selectedPhotoIds);
         }
