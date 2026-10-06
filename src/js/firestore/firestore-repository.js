@@ -291,11 +291,32 @@ async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
 /**
  * 指定した未送信項目群を即時再送する。手動同期など明示操作から使う。
  */
-async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE }) {
+async function retryUnsentBatchNow({
+  projectId,
+  batchSize = BULK_SYNC_BATCH_SIZE,
+  recordTypes = null,
+  excludeRecordTypes = null
+}) {
   const id = String(projectId || '');
   if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
-  const remainingBefore = listUnsent({ projectId: id }).length;
-  if (!remainingBefore) return { ok: true, sent: 0, remaining: 0, completed: true };
+  const allBefore = listUnsent({ projectId: id });
+  const include = Array.isArray(recordTypes) && recordTypes.length ? new Set(recordTypes.map(String)) : null;
+  const exclude = Array.isArray(excludeRecordTypes) && excludeRecordTypes.length ? new Set(excludeRecordTypes.map(String)) : null;
+  const selectEntries = (items) => items.filter((item) =>
+    (!include || include.has(String(item.recordType)))
+    && (!exclude || !exclude.has(String(item.recordType)))
+  );
+  const selectedBefore = selectEntries(allBefore);
+  const remainingBefore = selectedBefore.length;
+  if (!remainingBefore) {
+    return {
+      ok: true,
+      sent: 0,
+      remaining: 0,
+      completed: true,
+      totalRemaining: allBefore.length
+    };
+  }
   if (isManualOffline()) {
     return { ok: false, sent: 0, remaining: remainingBefore, reason: 'manual-offline' };
   }
@@ -304,21 +325,24 @@ async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE
   }
 
   const size = Math.max(1, Math.min(100, Number(batchSize) || BULK_SYNC_BATCH_SIZE));
-  const entries = listUnsent({ projectId: id, limit: size });
+  const entries = selectedBefore.slice(0, size);
   beginFirestoreActivity();
   try {
     const result = await commitRecordEntries(entries);
-    const remaining = listUnsent({ projectId: id }).length;
+    const allAfter = listUnsent({ projectId: id });
+    const remaining = selectEntries(allAfter).length;
     syncDiagnosticLog('UNSENT_BULK_BATCH_OK', {
       projectId: id,
       sent: result.sent,
-      remaining
+      remaining,
+      totalRemaining: allAfter.length
     });
     return {
       ok: true,
       sent: result.sent,
       remaining,
       completed: remaining === 0,
+      totalRemaining: allAfter.length,
       committedEntries: result.committedEntries || []
     };
   } catch (error) {
@@ -329,7 +353,14 @@ async function retryUnsentBatchNow({ projectId, batchSize = BULK_SYNC_BATCH_SIZE
       message: error?.message || String(error)
     });
     markError(error);
-    return { ok: false, sent: 0, remaining: remainingBefore, error, reason: 'write-failed' };
+    return {
+      ok: false,
+      sent: 0,
+      remaining: remainingBefore,
+      totalRemaining: listUnsent({ projectId: id }).length,
+      error,
+      reason: 'write-failed'
+    };
   } finally {
     endFirestoreActivity();
   }
