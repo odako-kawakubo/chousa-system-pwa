@@ -2,11 +2,11 @@
  * アプリ全体で共有する基本設定。
  * version は利用者へ表示する版、revision は同一version内の更新判定に使う。
  * HTMLへ番号を直書きしない。
- * v0.1.9.38 確定版。写真比較・採取写真整理・採取場所変更連携・カメラ操作UI更新を反映。
+ * v0.1.9.3 確定版。review版 v0.1.9.38 までの確認内容を正式反映。
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.9.38',
+  version: '0.1.9.3',
   revision: '',
   mode: 'stable'
 };
