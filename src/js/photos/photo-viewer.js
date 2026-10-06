@@ -35,7 +35,8 @@ const viewerState = {
   normalTransform: createPhotoViewerTransformState(),
   compare: {
     targets: [],
-    panes: []
+    panes: [],
+    direct: false
   }
 };
 
@@ -356,11 +357,11 @@ function renderCompareControls(paneIndex) {
   const count = target?.photos?.length || 0;
   const canRemove = paneIndex >= 2;
   return `<div class="photo-compare-controls" data-compare-controls="${paneIndex}">
-    <div class="photo-compare-filter-row">
+    ${viewerState.compare.direct ? '' : `<div class="photo-compare-filter-row">
       <select data-compare-part="${paneIndex}" aria-label="部位">${comparePartOptions(paneIndex)}</select>
       <select data-compare-base="${paneIndex}" aria-label="ベース名">${compareBaseOptions(paneIndex)}</select>
       <select data-compare-target="${paneIndex}" aria-label="場所">${compareLocationOptions(paneIndex)}</select>
-    </div>
+    </div>`}
     <div class="photo-compare-photo-nav">
       <button type="button" class="btn small" data-compare-prev="${paneIndex}" ${count > 1 ? '' : 'disabled'}>‹</button>
       <span>${count ? pane.index + 1 : 0} / ${count}</span>
@@ -398,7 +399,7 @@ function availableCompareTarget() {
  * 未使用target候補から比較paneを追加する。最大4枚・同一target重複なしの制約を守る。
  */
 function addComparePane() {
-  if (viewerState.compare.panes.length >= 4) return;
+  if (viewerState.compare.direct || viewerState.compare.panes.length >= 4) return;
   const target = availableCompareTarget();
   if (!target) return;
   viewerState.compare.panes.push(createComparePane(target.key));
@@ -422,7 +423,7 @@ function renderCompare() {
   viewerState.compareMode = true;
   title.textContent = '写真比較';
   const count = viewerState.compare.panes.length;
-  const canAdd = count < 4 && Boolean(availableCompareTarget());
+  const canAdd = !viewerState.compare.direct && count < 4 && Boolean(availableCompareTarget());
   body.innerHTML = `<div class="photo-compare-shell">
     <div class="photo-compare-toolbar">
       <button type="button" class="btn small" data-photo-compare-back>通常表示へ戻る</button>
@@ -445,6 +446,7 @@ function openCompare() {
   const targets = getCompareTargets(viewerState.context) || [];
   if (targets.length < 2) return;
   viewerState.compare.targets = targets;
+  viewerState.compare.direct = false;
   const current = currentPhoto();
   const currentKey = current?.photoType === 'visual' ? getVisualPhotoTargetKey(current) : '';
   const firstTarget = targets.find((item) => item.key === currentKey) || targets[0];
@@ -459,6 +461,40 @@ function openCompare() {
   viewerState.compare.panes = [firstPane, secondPane];
   renderCompare();
 }
+
+/**
+ * 写真タブで直接選択した2〜4枚を比較Viewerへ開く。
+ * target絞り込みは行わず、選択photoIdをそのまま1pane=1写真として固定表示する。
+ */
+export function openDirectPhotoCompare(photos = []) {
+  if (!modal || !body) return false;
+  const selected = [...photos].filter((photo) => photo && !photo.deleted).slice(0, 4);
+  if (selected.length < 2) return false;
+
+  viewerSessionId += 1;
+  revokeResolvedViewerUrls();
+
+  viewerState.photos = selected;
+  viewerState.index = 0;
+  viewerState.context = {};
+  viewerState.compareMode = true;
+  viewerState.compare.direct = true;
+  viewerState.compare.targets = selected.map((photo) => ({
+    key: `direct:${photo.photoId}`,
+    label: photo.fileName || photo.photoId,
+    photos: [photo],
+    part: photo.part || '',
+    partFilter: photo.part || '',
+    baseNames: [],
+    materials: []
+  }));
+  viewerState.compare.panes = viewerState.compare.targets.map((target) => createComparePane(target.key));
+
+  renderCompare();
+  modal.classList.add('open');
+  return true;
+}
+
 
 /**
  * Viewer上部/下部の閉じる・前後・比較切替等のUIイベントを接続する。gesture本体はphoto-viewer-gestureへ分離している。
@@ -581,5 +617,6 @@ export function closePhotoViewer() {
   viewerState.compare.panes.forEach((pane) => resetPhotoViewerTransform(pane.transform));
   viewerState.compare.panes = [];
   viewerState.compare.targets = [];
+  viewerState.compare.direct = false;
   if (body) body.innerHTML = '';
 }
