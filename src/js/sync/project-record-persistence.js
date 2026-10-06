@@ -15,6 +15,7 @@ import {
   readProjectMetadata,
   subscribeProjectMetadata,
   readTemporaryProjectNos,
+  readTemporaryProjectEntries,
   readProjectRecordsOnce,
   subscribeProjectRecordChanges,
   readFinishChangeLog,
@@ -277,13 +278,91 @@ export function retryUnsentForProject(project, options = {}) {
   return enqueue(async () => {
     const result = await retryUnsentBatch({
       projectId: project.projectId,
-      batchSize: options.batchSize || BULK_SYNC_BATCH_SIZE
+      batchSize: options.batchSize || BULK_SYNC_BATCH_SIZE,
+      recordTypes: options.recordTypes || null,
+      excludeRecordTypes: options.excludeRecordTypes || null
     });
     if (result?.ok) {
       applyCommittedFinishEntries(project.projectId, result.committedEntries || []);
     }
     return result;
   });
+}
+
+/**
+ * 通信復帰時の未送信自動収束。
+ * 案件Documentを最初に確定し、その後Record未送信を50件ずつ送り切る。
+ * 1batchでも失敗したら停止し、残りはUNSENTへ保持する。
+ */
+export async function syncProjectUnsentOnRecovery(project) {
+  if (!shouldSyncProject(project)) {
+    return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
+  }
+
+  const projectId = String(project.projectId);
+  let sent = 0;
+  const hasQueuedProject = listUnsent({ projectId })
+    .some((item) => item.recordType === 'project');
+
+  if (hasQueuedProject) {
+    const projectResult = await persistProjectMetadataForProject(project);
+    if (!projectResult?.ok) {
+      return {
+        ok: false,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: false,
+        reason: projectResult?.reason || 'project-write-failed',
+        error: projectResult?.error || null
+      };
+    }
+    sent += 1 + Number(projectResult.retried || 0);
+  }
+
+  while (true) {
+    const remainingRecords = listUnsent({ projectId })
+      .filter((item) => item.recordType !== 'project');
+    if (!remainingRecords.length) {
+      return {
+        ok: true,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: listUnsent({ projectId }).length === 0
+      };
+    }
+
+    const result = await retryUnsentForProject(project, {
+      batchSize: BULK_SYNC_BATCH_SIZE,
+      excludeRecordTypes: ['project']
+    });
+    sent += Number(result?.sent || 0);
+
+    if (!result?.ok) {
+      return {
+        ...result,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: false
+      };
+    }
+    if (result.completed) {
+      return {
+        ok: true,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: listUnsent({ projectId }).length === 0
+      };
+    }
+    if (!result.sent && result.remaining > 0) {
+      return {
+        ok: false,
+        sent,
+        remaining: listUnsent({ projectId }).length,
+        completed: false,
+        reason: 'retry-stalled'
+      };
+    }
+  }
 }
 
 /**
@@ -355,6 +434,11 @@ export function deleteTestProjectFromFirestore(project) {
  */
 export async function getRemoteTemporaryProjectNos(dateCode, environment = 'production') {
   return readTemporaryProjectNos(dateCode, environment);
+}
+
+/** 仮案件番号と所有projectIdを取得する。復帰時の番号衝突判定用。 */
+export async function getRemoteTemporaryProjectEntries(dateCode, environment = 'production') {
+  return readTemporaryProjectEntries(dateCode, environment);
 }
 
 /** 現在までにこの端末で積まれた書込要求が終わるまで待つ。 */
