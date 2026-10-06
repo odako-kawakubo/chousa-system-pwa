@@ -79,6 +79,13 @@ function buildBoardEditMemo(entry) {
     const branchChanged = Number(before.samplingBranch || 0) !== Number(after.samplingBranch || 0);
     if (branchChanged) lines.push(`箇所：${Number(before.samplingBranch || 0) ? memoValue(before.samplingBranch) : '未整理'} → ${Number(after.samplingBranch || 0) ? memoValue(after.samplingBranch) : '未整理'}`);
 
+    if (before.samplingPlace !== after.samplingPlace) {
+      lines.push(`部屋No.：${before.samplingPlace ? memoValue(before.samplingPlace) : '未整理'} → ${after.samplingPlace ? memoValue(after.samplingPlace) : '未整理'}`);
+    }
+    if (before.part !== after.part) {
+      lines.push(`採取部位：${before.part ? memoValue(before.part) : '未整理'} → ${after.part ? memoValue(after.part) : '未整理'}`);
+    }
+
     if (before.shootingType !== after.shootingType) {
       lines.push(`撮影区分：${before.shootingType ? memoValue(getShootingTypeLabel(before.shootingType)) : '未整理'} → ${after.shootingType ? memoValue(getShootingTypeLabel(after.shootingType)) : '未整理'}`);
     }
