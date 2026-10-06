@@ -161,6 +161,7 @@ export function renderPhotoShell(container, mode) {
         </div>
         <div class="right photo-top-actions">
           <button class="btn small" type="button" data-photo-selection-mode="edit">編集</button>
+          <button class="btn small" type="button" data-photo-selection-mode="compare">比較</button>
           <button class="btn small danger" type="button" data-photo-selection-mode="delete">削除</button>
           <button class="btn small" type="button" data-photo-picker>写真選択</button>
           <button class="btn small primary" type="button" data-photo-camera-global>カメラ起動</button>
