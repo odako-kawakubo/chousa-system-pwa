@@ -30,10 +30,19 @@ function makeKey(projectId, recordType, recordId) {
   return [projectId, recordType, recordId].map((value) => String(value || '')).join('|');
 }
 
-export function putUnsent({ projectId, environment = 'production', recordType, recordId, operation = 'set', record = null }) {
+export function putUnsent({
+  projectId,
+  environment = 'production',
+  recordType,
+  recordId,
+  operation = 'set',
+  record = null,
+  meta = {}
+}) {
   if (!projectId || !recordType || !recordId) throw new Error('未送信キー情報が不足しています。');
   const map = loadMap();
   const key = makeKey(projectId, recordType, recordId);
+  const previous = map.get(key);
   map.set(key, {
     key,
     projectId: String(projectId),
@@ -42,6 +51,7 @@ export function putUnsent({ projectId, environment = 'production', recordType, r
     recordId: String(recordId),
     operation,
     record,
+    meta: { ...(previous?.meta || {}), ...(meta || {}) },
     queuedAt: Date.now()
   });
   persist(map);
