@@ -210,8 +210,11 @@ function renderNormal() {
  * 比較Viewer用pane stateを生成する。target key・photo index等の初期値を持つ。
  */
 function createComparePane(key = '') {
+  const target = compareTarget(key);
   return {
     key,
+    part: target?.partFilter || target?.part || '',
+    baseName: target?.baseNames?.[0] || '',
     index: 0,
     transform: createPhotoViewerTransformState()
   };
@@ -264,16 +267,83 @@ function selectedCompareKeys(exceptIndex = -1) {
 }
 
 /**
- * 1つのpane用target select option一覧を生成する。既に他paneで使うtargetは除外する。
+ * compare target群から重複なし文字列optionを自然順で返す。
  */
-function compareSelectOptions(paneIndex) {
+function uniqueCompareOptions(values = []) {
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ja', { numeric:true, sensitivity:'base' }));
+}
+
+function panePartOptions() {
+  return uniqueCompareOptions(viewerState.compare.targets.map((target) => target.partFilter || target.part));
+}
+
+function paneBaseOptions(pane) {
+  const part = String(pane?.part || '');
+  return uniqueCompareOptions(
+    viewerState.compare.targets
+      .filter((target) => !part || String(target.partFilter || target.part || '') === part)
+      .flatMap((target) => target.baseNames || [])
+  );
+}
+
+function paneLocationTargets(paneIndex) {
   const pane = comparePane(paneIndex);
-  if (!pane) return '';
+  if (!pane) return [];
+  const part = String(pane.part || '');
+  const baseName = String(pane.baseName || '');
   const blocked = selectedCompareKeys(paneIndex);
-  return viewerState.compare.targets
-    .filter((item) => item.key === pane.key || !blocked.has(item.key))
-    .map((item) => `<option value="${esc(item.key)}" ${item.key === pane.key ? 'selected' : ''}>${esc(item.label)}</option>`)
+
+  return viewerState.compare.targets.filter((target) => {
+    if (part && String(target.partFilter || target.part || '') !== part) return false;
+    if (baseName && !(target.baseNames || []).includes(baseName)) return false;
+    return target.key === pane.key || !blocked.has(target.key);
+  });
+}
+
+function matchingMaterialLabel(target, baseName) {
+  const names = (target?.materials || [])
+    .filter((material) => !baseName || material.baseName === baseName)
+    .map((material) => String(material.name || '').trim())
+    .filter(Boolean);
+  return [...new Set(names)].join('、');
+}
+
+function comparePartOptions(paneIndex) {
+  const pane = comparePane(paneIndex);
+  return panePartOptions()
+    .map((part) => `<option value="${esc(part)}" ${part === pane?.part ? 'selected' : ''}>${esc(part)}</option>`)
     .join('');
+}
+
+function compareBaseOptions(paneIndex) {
+  const pane = comparePane(paneIndex);
+  const options = paneBaseOptions(pane);
+  return options
+    .map((baseName) => `<option value="${esc(baseName)}" ${baseName === pane?.baseName ? 'selected' : ''}>${esc(baseName)}</option>`)
+    .join('');
+}
+
+function compareLocationOptions(paneIndex) {
+  const pane = comparePane(paneIndex);
+  return paneLocationTargets(paneIndex)
+    .map((target) => {
+      const materialLabel = matchingMaterialLabel(target, pane?.baseName || '');
+      const label = [target.roomLabel || target.label, target.part, materialLabel].filter(Boolean).join(' / ');
+      return `<option value="${esc(target.key)}" ${target.key === pane?.key ? 'selected' : ''}>${esc(label)}</option>`;
+    })
+    .join('');
+}
+
+function firstMatchingTargetForPane(paneIndex, pane, { keepCurrent = true } = {}) {
+  const current = keepCurrent ? compareTarget(pane?.key) : null;
+  if (current
+    && (!pane.part || String(current.partFilter || current.part || '') === String(pane.part))
+    && (!pane.baseName || (current.baseNames || []).includes(pane.baseName))
+    && !selectedCompareKeys(paneIndex).has(current.key)) {
+    return current;
+  }
+  return paneLocationTargets(paneIndex)[0] || null;
 }
 
 /**
@@ -286,7 +356,11 @@ function renderCompareControls(paneIndex) {
   const count = target?.photos?.length || 0;
   const canRemove = paneIndex >= 2;
   return `<div class="photo-compare-controls" data-compare-controls="${paneIndex}">
-    <select data-compare-target="${paneIndex}" aria-label="比較対象${paneIndex + 1}">${compareSelectOptions(paneIndex)}</select>
+    <div class="photo-compare-filter-row">
+      <select data-compare-part="${paneIndex}" aria-label="部位">${comparePartOptions(paneIndex)}</select>
+      <select data-compare-base="${paneIndex}" aria-label="ベース名">${compareBaseOptions(paneIndex)}</select>
+      <select data-compare-target="${paneIndex}" aria-label="場所">${compareLocationOptions(paneIndex)}</select>
+    </div>
     <div class="photo-compare-photo-nav">
       <button type="button" class="btn small" data-compare-prev="${paneIndex}" ${count > 1 ? '' : 'disabled'}>‹</button>
       <span>${count ? pane.index + 1 : 0} / ${count}</span>
@@ -373,10 +447,16 @@ function openCompare() {
   viewerState.compare.targets = targets;
   const current = currentPhoto();
   const currentKey = current?.photoType === 'visual' ? getVisualPhotoTargetKey(current) : '';
-  const firstKey = targets.find((item) => item.key === currentKey)?.key || targets[0].key;
-  const secondKey = targets.find((item) => item.key !== firstKey)?.key || '';
-  if (!secondKey) return;
-  viewerState.compare.panes = [createComparePane(firstKey), createComparePane(secondKey)];
+  const firstTarget = targets.find((item) => item.key === currentKey) || targets[0];
+  const firstPane = createComparePane(firstTarget.key);
+  const secondTarget = targets.find((item) => (
+    item.key !== firstTarget.key
+    && String(item.partFilter || item.part || '') === String(firstPane.part || '')
+    && (!firstPane.baseName || (item.baseNames || []).includes(firstPane.baseName))
+  )) || targets.find((item) => item.key !== firstTarget.key);
+  if (!secondTarget) return;
+  const secondPane = createComparePane(secondTarget.key);
+  viewerState.compare.panes = [firstPane, secondPane];
   renderCompare();
 }
 
@@ -404,21 +484,43 @@ function bindChrome() {
   });
 
   body.addEventListener('change', (event) => {
-    const select = event.target.closest('[data-compare-target]');
-    if (!select) return;
-    const paneIndex = Number(select.dataset.compareTarget);
+    const partSelect = event.target.closest('[data-compare-part]');
+    const baseSelect = event.target.closest('[data-compare-base]');
+    const targetSelect = event.target.closest('[data-compare-target]');
+    if (!partSelect && !baseSelect && !targetSelect) return;
+
+    const paneIndex = Number(
+      partSelect?.dataset.comparePart
+      ?? baseSelect?.dataset.compareBase
+      ?? targetSelect?.dataset.compareTarget
+    );
     const pane = comparePane(paneIndex);
     if (!pane) return;
 
-    // 他枠で選択済みの対象は選択肢自体から除外しているが、DOM改変等でも
-    // 重複しないよう最終防御する。
-    const blocked = selectedCompareKeys(paneIndex);
-    if (blocked.has(select.value)) {
-      renderCompare();
-      return;
+    if (partSelect) {
+      pane.part = partSelect.value;
+      const bases = paneBaseOptions(pane);
+      pane.baseName = bases.includes(pane.baseName) ? pane.baseName : (bases[0] || '');
+      pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
+    } else if (baseSelect) {
+      pane.baseName = baseSelect.value;
+      pane.key = firstMatchingTargetForPane(paneIndex, pane, { keepCurrent:false })?.key || '';
+    } else if (targetSelect) {
+      const blocked = selectedCompareKeys(paneIndex);
+      if (blocked.has(targetSelect.value)) {
+        renderCompare();
+        return;
+      }
+      pane.key = targetSelect.value;
+      const selectedTarget = compareTarget(pane.key);
+      if (selectedTarget) {
+        pane.part = selectedTarget.partFilter || selectedTarget.part || pane.part;
+        if (pane.baseName && !(selectedTarget.baseNames || []).includes(pane.baseName)) {
+          pane.baseName = selectedTarget.baseNames?.[0] || '';
+        }
+      }
     }
 
-    pane.key = select.value;
     pane.index = 0;
     resetPhotoViewerTransform(pane.transform);
     renderCompare();
