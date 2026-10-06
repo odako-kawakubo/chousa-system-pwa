@@ -27,9 +27,11 @@ import {
   createCaptureSnapshot,
   locateInitialCameraState,
   cycleVisualRoom as moveVisualRoom,
+  selectVisualRoom as setVisualRoom,
   cycleVisualPart as moveVisualPart,
   cycleSamplingSample as moveSamplingSample,
   cycleSamplingBranch as moveSamplingBranch,
+  selectSamplingTarget as setSamplingTarget,
   cycleStage as moveStage,
   toggleSectionMode as changeSectionMode
 } from './camera-state.js';
@@ -113,12 +115,12 @@ function ensureCameraScreen() {
           <div class="camera-photo-count" data-camera-photo-count>撮影済み\n0枚</div>
           <div class="camera-board-control-panel">
             <div class="camera-panel-slot" data-camera-panel-slot="room">
-              <button type="button" class="camera-panel-main-button" data-open-camera-panel="room">部屋</button>
+              <button type="button" class="camera-panel-main-button" data-open-camera-panel="room">場所</button>
               <div class="camera-panel-expanded" data-camera-panel="room">
-                <button type="button" class="camera-panel-active-title" data-open-camera-panel="room">部屋</button>
-                <div class="camera-panel-single" data-camera-room-single>
+                <button type="button" class="camera-panel-active-title" data-open-camera-panel="room">場所</button>
+                <div class="camera-location-control" aria-label="場所操作">
                   <button type="button" class="camera-panel-mini-button" data-room-prev>▲</button>
-                  <button type="button" class="camera-panel-center-button" data-room-value>部屋</button>
+                  <div class="camera-location-targets" data-camera-location-targets></div>
                   <button type="button" class="camera-panel-mini-button" data-room-next>▼</button>
                 </div>
               </div>
@@ -171,6 +173,7 @@ function ensureCameraScreen() {
           <button type="button" class="camera-control-button camera-shoot-button" data-camera-shutter disabled>撮影</button>
           <button type="button" class="camera-control-button camera-section-button" data-camera-section>断面</button>
           <button type="button" class="camera-control-button camera-mode-button" data-camera-stage>目視</button>
+          <button type="button" class="camera-control-button camera-part-button" data-camera-part hidden>部位</button>
         </aside>
       </div>
     </div>
@@ -218,6 +221,7 @@ function openSidePanel(name) {
     button.classList.toggle('active', button.dataset.openCameraPanel === activePanel);
   });
 
+  root.querySelector('.camera-board-control-panel')?.classList.toggle('panel-open', Boolean(activePanel));
   updateCameraUi();
 }
 
@@ -229,6 +233,7 @@ function closeSidePanel() {
   root.querySelectorAll('[data-camera-panel-slot]').forEach((slot) => slot.classList.remove('active'));
   root.querySelectorAll('[data-camera-panel]').forEach((panel) => panel.classList.remove('show'));
   root.querySelectorAll('[data-open-camera-panel]').forEach((button) => button.classList.remove('active'));
+  root.querySelector('.camera-board-control-panel')?.classList.remove('panel-open');
 }
 
 /**
@@ -265,6 +270,17 @@ function handleCameraClick(event) {
     state.photoType === PHOTO_TYPES.SAMPLING ? cycleSamplingBranch(1) : cycleVisualRoom(1);
     return;
   }
+  const locationTarget = event.target.closest('[data-camera-location-index]');
+  if (locationTarget) {
+    const index = Number(locationTarget.dataset.cameraLocationIndex);
+    if (state.photoType === PHOTO_TYPES.SAMPLING) {
+      setSamplingTarget(state, index);
+    } else {
+      setVisualRoom(state, index);
+    }
+    updateCameraUi();
+    return;
+  }
   if (event.target.closest('[data-sample-prev]')) {
     state.photoType === PHOTO_TYPES.SAMPLING ? cycleSamplingSample(-1) : cycleVisualPart(-1);
     return;
@@ -299,6 +315,10 @@ function handleCameraClick(event) {
   }
   if (event.target.closest('[data-camera-stage]')) {
     if (state.photoType === PHOTO_TYPES.SAMPLING) cycleStage();
+    return;
+  }
+  if (event.target.closest('[data-camera-part]')) {
+    if (state.photoType === PHOTO_TYPES.VISUAL) cycleVisualPart(1);
     return;
   }
   if (event.target.closest('[data-camera-shutter]')) {
@@ -445,6 +465,42 @@ function updatePhotoCount() {
   if (target) target.textContent = `撮影済み\n${count}枚`;
 }
 
+function visualLocationLabel(room = {}) {
+  const roomNo = String(room.roomNo || room.roomPosition || '').trim();
+  const roomName = String(room.roomName || '').trim();
+  if (roomNo && roomName && roomName !== roomNo) return `${roomNo} ${roomName}`;
+  return roomNo || roomName || '場所';
+}
+
+function samplingLocationEntries() {
+  const current = currentSamplingTarget(state);
+  const sampleNo = String(current.sampleBaseNo || current.sampleNo || '');
+  return (state.samplingTargets || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => String(item.sampleBaseNo || item.sampleNo || '') === sampleNo);
+}
+
+function renderLocationTargets() {
+  const host = root?.querySelector('[data-camera-location-targets]');
+  if (!host || !state) return;
+
+  const entries = state.photoType === PHOTO_TYPES.SAMPLING
+    ? samplingLocationEntries().map(({ item, index }) => ({
+        index,
+        label: String(item.samplingPlace || item.part || '未設定').trim() || '未設定',
+        active: index === state.samplingIndex
+      }))
+    : (state.visualRooms || []).map((room, index) => ({
+        index,
+        label: visualLocationLabel(room),
+        active: index === state.visualRoomIndex
+      }));
+
+  host.innerHTML = entries.map((entry) =>
+    `<button type="button" class="camera-location-target-button ${entry.active ? 'active' : ''}" data-camera-location-index="${entry.index}" title="${String(entry.label).replace(/"/g, '&quot;')}">${entry.label}</button>`
+  ).join('');
+}
+
 /**
  * Camera state全体からbutton活性・ラベル・電子看板・撮影済み件数などを一括更新する。
  */
@@ -452,24 +508,26 @@ function updateCameraUi() {
   if (!root || !state) return;
 
   const roomButtons = root.querySelectorAll('[data-open-camera-panel="room"]');
+  const sampleSlot = root.querySelector('[data-camera-panel-slot="sample"]');
   const sampleButtons = root.querySelectorAll('[data-open-camera-panel="sample"]');
-  const roomValue = root.querySelector('[data-room-value]');
   const sampleValue = root.querySelector('[data-sample-value]');
   const pointValue = root.querySelector('[data-point-value]');
   const pointColumn = root.querySelector('[data-camera-point-column]');
   const sectionButton = root.querySelector('[data-camera-section]');
   const stageButton = root.querySelector('[data-camera-stage]');
+  const partButton = root.querySelector('[data-camera-part]');
   const boardPosition = root.querySelector('[data-board-position]');
 
   updatePhotoCount();
   syncCameraSettingsUi();
   syncCameraOrientation();
 
+  roomButtons.forEach((button) => { button.textContent = '場所'; });
+  renderLocationTargets();
+
   if (state.photoType === PHOTO_TYPES.SAMPLING) {
-    const target = currentSamplingTarget(state);
-    roomButtons.forEach((button) => { button.textContent = '部屋'; });
+    if (sampleSlot) sampleSlot.hidden = false;
     sampleButtons.forEach((button) => { button.textContent = '検体'; });
-    if (roomValue) roomValue.textContent = '箇所';
     if (sampleValue) sampleValue.textContent = '検体';
     if (pointValue) pointValue.textContent = '箇所';
     if (pointColumn) pointColumn.hidden = false;
@@ -478,20 +536,24 @@ function updateCameraUi() {
       sectionButton.classList.toggle('active', Boolean(state.sectionMode));
     }
     if (stageButton) {
+      stageButton.hidden = false;
       stageButton.disabled = false;
       stageButton.textContent = currentStageInfo(state).label;
     }
+    if (partButton) partButton.hidden = true;
   } else {
-    const { room, target } = currentVisualTarget(state);
-    roomButtons.forEach((button) => { button.textContent = '部屋'; });
-    sampleButtons.forEach((button) => { button.textContent = '部位'; });
-    if (roomValue) roomValue.textContent = '部屋';
-    if (sampleValue) sampleValue.textContent = '部位';
-    if (pointColumn) pointColumn.hidden = true;
+    const { target } = currentVisualTarget(state);
+    if (sampleSlot) sampleSlot.hidden = true;
+    if (activePanel === 'sample') closeSidePanel();
     if (sectionButton) sectionButton.hidden = true;
     if (stageButton) {
-      stageButton.disabled = true;
+      stageButton.hidden = false;
+      stageButton.disabled = false;
       stageButton.textContent = '目視';
+    }
+    if (partButton) {
+      partButton.hidden = false;
+      partButton.textContent = String(target?.part || '部位');
     }
   }
 
@@ -712,6 +774,7 @@ export async function openCamera(initialContext = {}) {
   }
 
   closeSidePanel();
+  if (state.photoType === PHOTO_TYPES.VISUAL) openSidePanel('room');
   setCameraSettingsOpen(false);
   lastTorchTapAt = 0;
   lastTorchTapPoint = null;
