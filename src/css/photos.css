@@ -419,3 +419,19 @@ body.photo-board-edit-open{overflow:hidden!important}
   }
   body.header-collapsed.photo-tab-active #photos .sample-point-block{overflow:visible}
 }
+
+
+/* 採取場所変更: 既存写真の扱いを選ぶ共通判断UI */
+.sampling-location-decision{position:fixed;inset:0;z-index:33000;display:grid;place-items:center;padding:16px}
+.sampling-location-decision[hidden]{display:none!important}
+.sampling-location-decision-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.72)}
+.sampling-location-decision-card{position:relative;z-index:1;width:min(520px,calc(100vw - 32px));border-radius:14px;background:var(--panel);color:var(--text-heading);box-shadow:0 18px 55px rgba(0,0,0,.35);overflow:hidden}
+.sampling-location-decision-head{padding:14px 16px;border-bottom:1px solid var(--line);font-size:15px}
+.sampling-location-decision-body{padding:14px 16px;display:grid;gap:8px;font-size:13px;line-height:1.55}
+.sampling-location-decision-body p{margin:0;color:var(--text-secondary)}
+.sampling-location-decision-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 16px 16px}
+.sampling-location-decision-actions [data-sampling-location-cancel]{grid-column:1/-1}
+@media(max-width:650px){
+  .sampling-location-decision-actions{grid-template-columns:1fr}
+  .sampling-location-decision-actions [data-sampling-location-cancel]{grid-column:auto}
+}
