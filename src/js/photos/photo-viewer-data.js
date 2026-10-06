@@ -49,3 +49,28 @@ export function photosForViewer(photoId) {
 export function compareTargetsForViewer(context = {}) {
   return visualCompareTargets(context);
 }
+
+
+/**
+ * 採取場所変更の「確認する」で表示する代表写真集合。
+ * 同一 materialId + samplingBranch から、施工前/施工中/施工後/断面を最大1枚ずつ返す。
+ * 各区分は代表写真優先、代表が無ければ撮影日時の早い写真を使う。
+ */
+export function samplingLocationReviewPhotos({ materialId = '', samplingBranch = 0 } = {}) {
+  const id = String(materialId || '').trim();
+  const branch = Number(samplingBranch || 0);
+  if (!id || !branch) return [];
+
+  return SAMPLE_STAGE_ORDER.map((shootingType) => {
+    const photos = photoRecordStore.findSampling({
+      materialId:id,
+      samplingBranch:branch,
+      shootingType
+    }).slice().sort((a, b) => {
+      if (Boolean(a.isRepresentative) !== Boolean(b.isRepresentative)) return a.isRepresentative ? -1 : 1;
+      return String(a.capturedAt || '').localeCompare(String(b.capturedAt || ''))
+        || String(a.photoId || '').localeCompare(String(b.photoId || ''));
+    });
+    return photos[0] || null;
+  }).filter(Boolean);
+}
