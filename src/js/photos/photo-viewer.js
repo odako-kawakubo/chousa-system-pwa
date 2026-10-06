@@ -36,7 +36,9 @@ const viewerState = {
   compare: {
     targets: [],
     panes: [],
-    direct: false
+    direct: false,
+    review: false,
+    reviewOnClosed: null
   }
 };
 
@@ -355,8 +357,12 @@ function renderCompareControls(paneIndex) {
   if (!pane) return '';
   const target = compareTarget(pane.key);
   const count = target?.photos?.length || 0;
-  const canRemove = paneIndex >= 2;
+  const canRemove = !viewerState.compare.review && paneIndex >= 2;
+  const directLabel = viewerState.compare.direct
+    ? `<div class="photo-compare-direct-label">${esc(target?.label || target?.photos?.[0]?.fileName || '')}</div>`
+    : '';
   return `<div class="photo-compare-controls" data-compare-controls="${paneIndex}">
+    ${directLabel}
     ${viewerState.compare.direct ? '' : `<div class="photo-compare-filter-row">
       <select data-compare-part="${paneIndex}" aria-label="部位">${comparePartOptions(paneIndex)}</select>
       <select data-compare-base="${paneIndex}" aria-label="ベース名">${compareBaseOptions(paneIndex)}</select>
@@ -421,12 +427,12 @@ function removeComparePane(paneIndex) {
 function renderCompare() {
   if (!body || !title) return;
   viewerState.compareMode = true;
-  title.textContent = '写真比較';
+  title.textContent = viewerState.compare.review ? '写真確認' : '写真比較';
   const count = viewerState.compare.panes.length;
   const canAdd = !viewerState.compare.direct && count < 4 && Boolean(availableCompareTarget());
   body.innerHTML = `<div class="photo-compare-shell">
     <div class="photo-compare-toolbar">
-      <button type="button" class="btn small" data-photo-compare-back>通常表示へ戻る</button>
+      <button type="button" class="btn small" data-photo-compare-back>${viewerState.compare.review ? '確認を閉じる' : '通常表示へ戻る'}</button>
       ${canAdd ? '<button type="button" class="btn small" data-compare-add>＋比較追加</button>' : ''}
     </div>
     <div class="photo-compare-grid count-${count}">${viewerState.compare.panes.map((_, index) => renderComparePane(index)).join('')}</div>
@@ -447,6 +453,8 @@ function openCompare() {
   if (targets.length < 2) return;
   viewerState.compare.targets = targets;
   viewerState.compare.direct = false;
+  viewerState.compare.review = false;
+  viewerState.compare.reviewOnClosed = null;
   const current = currentPhoto();
   const currentKey = current?.photoType === 'visual' ? getVisualPhotoTargetKey(current) : '';
   const firstTarget = targets.find((item) => item.key === currentKey) || targets[0];
@@ -479,6 +487,8 @@ export function openDirectPhotoCompare(photos = []) {
   viewerState.context = {};
   viewerState.compareMode = true;
   viewerState.compare.direct = true;
+  viewerState.compare.review = false;
+  viewerState.compare.reviewOnClosed = null;
   viewerState.compare.targets = selected.map((photo) => ({
     key: `direct:${photo.photoId}`,
     label: photo.fileName || photo.photoId,
@@ -487,6 +497,48 @@ export function openDirectPhotoCompare(photos = []) {
     partFilter: photo.part || '',
     baseNames: [],
     materials: []
+  }));
+  viewerState.compare.panes = viewerState.compare.targets.map((target) => createComparePane(target.key));
+
+  renderCompare();
+  modal.classList.add('open');
+  return true;
+}
+
+
+/**
+ * 採取場所変更判断用の確認Viewer。
+ * 1〜4枚を固定paneとして表示し、候補変更・pane追加・pane削除は行わない。
+ * 閉じた後の判断UI再表示は呼び出し側callbackへ返す。
+ */
+export function openSamplingLocationReview(photos = [], { onClosed = null } = {}) {
+  if (!modal || !body) return false;
+  const selected = [...photos].filter((photo) => photo && !photo.deleted).slice(0, 4);
+  if (!selected.length) return false;
+
+  viewerSessionId += 1;
+  revokeResolvedViewerUrls();
+
+  viewerState.photos = selected;
+  viewerState.index = 0;
+  viewerState.context = {};
+  viewerState.compareMode = true;
+  viewerState.compare.direct = true;
+  viewerState.compare.review = true;
+  viewerState.compare.reviewOnClosed = typeof onClosed === 'function' ? onClosed : null;
+  viewerState.compare.targets = selected.map((photo) => ({
+    key: `review:${photo.photoId}`,
+    label: ({
+      before:'施工前',
+      during:'施工中',
+      after:'施工後',
+      section:'断面'
+    })[photo.shootingType] || photo.fileName || photo.photoId,
+    photos:[photo],
+    part:photo.part || '',
+    partFilter:photo.part || '',
+    baseNames:[],
+    materials:[]
   }));
   viewerState.compare.panes = viewerState.compare.targets.map((target) => createComparePane(target.key));
 
@@ -507,7 +559,10 @@ function bindChrome() {
     if (event.target.closest('[data-photo-viewer-prev]')) return moveNormal(-1);
     if (event.target.closest('[data-photo-viewer-next]')) return moveNormal(1);
     if (event.target.closest('[data-photo-compare-open]')) return openCompare();
-    if (event.target.closest('[data-photo-compare-back]')) return renderNormal();
+    if (event.target.closest('[data-photo-compare-back]')) {
+      if (viewerState.compare.review) return closePhotoViewer();
+      return renderNormal();
+    }
     if (event.target.closest('[data-compare-add]')) return addComparePane();
 
     const remove = event.target.closest('[data-compare-remove]');
@@ -606,6 +661,7 @@ export function openPhotoViewer(photoId, context = {}) {
  */
 export function closePhotoViewer() {
   if (!modal) return;
+  const reviewOnClosed = viewerState.compare.review ? viewerState.compare.reviewOnClosed : null;
   viewerSessionId += 1;
   revokeResolvedViewerUrls();
   modal.classList.remove('open');
@@ -618,5 +674,8 @@ export function closePhotoViewer() {
   viewerState.compare.panes = [];
   viewerState.compare.targets = [];
   viewerState.compare.direct = false;
+  viewerState.compare.review = false;
+  viewerState.compare.reviewOnClosed = null;
   if (body) body.innerHTML = '';
+  reviewOnClosed?.();
 }
