@@ -186,7 +186,9 @@ export function buildVisualCompareTargets() {
 export function visualCompareTargets(context = {}) {
   const preferredMaterialId = text(context.preferredMaterialId);
   const targets = buildVisualCompareTargets();
-  if (!preferredMaterialId) return targets;
+  if (!preferredMaterialId) {
+    return targets.slice().sort((a, b) => naturalCompare(a.label, b.label));
+  }
 
   return targets.slice().sort((a, b) => {
     const ap = a.materials.some((material) => material.materialId === preferredMaterialId);
