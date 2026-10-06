@@ -12,6 +12,7 @@ import {
 import {
   getCurrentProject,
   getProject,
+  getProjectList,
   saveProjectSnapshot,
   getProjectSyncMeta,
   updateProjectFields
@@ -23,9 +24,13 @@ import {
   latestCursorValue,
   readProjectMetadataForProject,
   subscribeProjectMetadataForProject,
-  persistProjectMetadataForProject
+  persistProjectMetadataForProject,
+  getRemoteTemporaryProjectEntries,
+  syncQueuedProjectMetadataOnRecovery,
+  syncQueuedRecordsOnRecovery
 } from '../sync/project-record-persistence.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
+import { nextTemporaryProjectNo } from './project-factory.js';
 import { refreshMaterialList } from '../materials/material-list-controller.js';
 import {
   isManualOffline,
@@ -96,6 +101,51 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
   };
 }
 
+async function resolveTemporaryProjectNoCollision(project) {
+  if (!project?.isTemporary || !canUseFirestore()) return project;
+  const match = /^(\d{6})-\d+$/.exec(String(project.projectNo || ''));
+  if (!match) return project;
+
+  const dateCode = match[1];
+  try {
+    const remoteEntries = await getRemoteTemporaryProjectEntries(
+      dateCode,
+      project.environment === 'test' ? 'test' : 'production'
+    );
+    const conflict = remoteEntries.some((item) =>
+      String(item.projectNo || '') === String(project.projectNo || '')
+      && String(item.projectId || '') !== String(project.projectId || '')
+    );
+    if (!conflict) return project;
+
+    const localProjects = getProjectList()
+      .filter((item) => String(item.projectId || '') !== String(project.projectId || ''));
+    const nextProjectNo = nextTemporaryProjectNo(
+      dateCode,
+      localProjects,
+      remoteEntries.map((item) => item.projectNo)
+    );
+    const nextProject = updateProjectFields(project.projectId, { projectNo: nextProjectNo }) || {
+      ...project,
+      projectNo: nextProjectNo
+    };
+    boardSettingsStore.applyProjectMetadata(nextProject);
+    syncDiagnosticLog('TEMP_PROJECT_NO_REASSIGNED', {
+      projectId: project.projectId,
+      before: project.projectNo,
+      after: nextProjectNo
+    });
+    return nextProject;
+  } catch (error) {
+    syncDiagnosticLog('TEMP_PROJECT_NO_COLLISION_CHECK_ERROR', {
+      projectId: project.projectId,
+      projectNo: project.projectNo,
+      message: error?.message || String(error)
+    });
+    return project;
+  }
+}
+
 /**
  * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
  */
@@ -108,6 +158,15 @@ async function openFirestoreProjectSession(target) {
   });
 
   if (canUseFirestore()) {
+    project = await resolveTemporaryProjectNoCollision(project);
+    target.project = project;
+
+    const projectQueueResult = await syncQueuedProjectMetadataOnRecovery(project);
+    syncDiagnosticLog('PROJECT_UNSENT_RECOVERY_RESULT', {
+      projectId: project.projectId,
+      ...projectQueueResult
+    });
+
     try {
       const remoteProject = await readProjectMetadataForProject(project);
       if (token !== activeProjectStreamToken) return target;
@@ -310,6 +369,12 @@ async function openFirestoreProjectSession(target) {
         });
       }
     }
+
+    const recordQueueResult = await syncQueuedRecordsOnRecovery(project);
+    syncDiagnosticLog('RECORD_UNSENT_RECOVERY_RESULT', {
+      projectId: project.projectId,
+      ...recordQueueResult
+    });
 
     const caughtUpCursors = normalizeProjectRecordCursors(remote.cursors || cursors);
     updateProjectRecordCursors(project.projectId, caughtUpCursors, {
