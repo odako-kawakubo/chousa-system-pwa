@@ -372,10 +372,17 @@ async function openFirestoreProjectSession(target) {
       target.project = project;
       updateProjectFields(project.projectId, project);
       try {
-        await persistProjectMetadataForProject(project);
-        syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
-          projectId: project.projectId
-        });
+        const migrateResult = await persistProjectMetadataForProject(project);
+        if (migrateResult?.ok) {
+          syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
+            projectId: project.projectId
+          });
+        } else {
+          syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATE_QUEUED', {
+            projectId: project.projectId,
+            reason: migrateResult?.reason || 'write-failed'
+          });
+        }
       } catch (error) {
         syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATE_ERROR', {
           projectId: project.projectId,
