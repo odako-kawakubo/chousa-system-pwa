@@ -6,6 +6,7 @@ import { createTemporaryProject, createFormalProjectFromOneDrive, temporaryDateC
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { getProject, getProjectList, saveProjectSnapshot } from './project-store.js';
 import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
+import { getDeviceCode } from '../device-code.js';
 
 export async function createTemporaryProjectSnapshot({ projectName, address }) {
   const dateCode = temporaryDateCode();
@@ -20,7 +21,8 @@ export async function createTemporaryProjectSnapshot({ projectName, address }) {
     projectName,
     address,
     existingProjects: getProjectList(),
-    existingProjectNos: remoteProjectNos
+    existingProjectNos: remoteProjectNos,
+    deviceCode: getDeviceCode()
   });
   const finishRecords = createDefaultFinishRecords();
   const snapshot = saveProjectSnapshot({
