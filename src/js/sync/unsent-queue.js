@@ -43,6 +43,10 @@ export function putUnsent({
   const map = loadMap();
   const key = makeKey(projectId, recordType, recordId);
   const previous = map.get(key);
+  const mergedMeta = { ...(previous?.meta || {}), ...(meta || {}) };
+  if (previous?.meta?.initializeChangeLog || meta?.initializeChangeLog) {
+    mergedMeta.initializeChangeLog = true;
+  }
   map.set(key, {
     key,
     projectId: String(projectId),
@@ -51,7 +55,7 @@ export function putUnsent({
     recordId: String(recordId),
     operation,
     record,
-    meta: { ...(previous?.meta || {}), ...(meta || {}) },
+    meta: mergedMeta,
     queuedAt: Date.now()
   });
   persist(map);
