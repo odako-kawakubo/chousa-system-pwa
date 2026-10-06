@@ -1,10 +1,10 @@
 /*
- * v0.1.9.31 Service Worker
+ * v0.1.9.32 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.31';
+const APP_CACHE = 'chousa-app-v0.1.9.32';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01931';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01932';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -24,7 +24,7 @@ const APP_SHELL = [
   './js/auth/microsoft-auth.js','./js/auth/graph-session.js',
   './js/ui/auth-ui.js','./js/ui/header-edit-ui.js','./js/ui/header-visibility.js','./js/ui/sync-ui.js','./js/ui/loading-ui.js','./js/ui/modal.js','./js/ui/tabs.js','./js/ui/drawer.js','./js/ui/project-panel.js','./js/ui/theme.js','./js/ui/device-ui.js',
   './js/firestore/firestore-repository.js','./js/firestore/firestore-project-list.js','./js/firestore/record-serializer.js',
-  './js/sync/sync-status.js','./js/sync/field-edit-meta.js','./js/sync/record-field-merge.js','./js/sync/project-record-persistence.js','./js/sync/unsent-queue.js','./js/sync/finish-sparse-structure.js',
+  './js/sync/sync-status.js','./js/sync/field-edit-meta.js','./js/sync/record-field-merge.js','./js/sync/change-log-retention.js','./js/sync/project-record-persistence.js','./js/sync/unsent-queue.js','./js/sync/finish-sparse-structure.js',
   './js/projects/project-controller.js','./js/projects/project-store.js','./js/projects/project-session.js','./js/projects/project-sync-meta.js','./js/projects/project-creation.js','./js/projects/project-factory.js','./js/projects/project-navigation.js','./js/projects/project-record-apply.js','./js/projects/project-side-panel-controller.js','./js/projects/project-entry-ui.js','./js/projects/firestore-project-browser.js','./js/projects/onedrive-project-browser.js','./js/projects/project-transfer.js','./js/projects/project-view-impact.js',
   './js/records/finish-record.js','./js/records/material-record.js','./js/records/photo-record.js',
   './js/store/finish-record-store.js','./js/store/material-record-store.js','./js/store/photo-record-store.js','./js/store/survey-candidate-store.js',
