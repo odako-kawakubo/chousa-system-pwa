@@ -245,15 +245,19 @@ function renderStageColumn(point, stage, isOpen) {
   </div>`;
 }
 
-export function renderSamplingPointBlock(point, openKeys) {
+export function renderSamplingPointBlock(point, openKeys, editKey = '') {
   const isOpen = openKeys.has(point.key);
+  const isEditingLocation = editKey === point.key;
   const extraCount = point.stages.reduce((sum, stage) => sum + Math.max(0, stage.count - (stage.representative ? 1 : 0)), 0);
+  const locationControl = isEditingLocation
+    ? `<span class="sample-location-edit"><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span><select data-photo-sampling-location-select="${esc(point.key)}">${(point.samplingPlaceOptions || []).map((option) => `<option value="${esc(option.value)}" ${String(option.value) === String(point.rawSamplingPlace || '') ? 'selected' : ''}>${esc(option.display || option.value)}</option>`).join('')}${point.rawSamplingPlace && !(point.samplingPlaceOptions || []).some((option) => String(option.value) === String(point.rawSamplingPlace)) ? `<option value="${esc(point.rawSamplingPlace)}" selected>${esc(point.samplingPlace)}</option>` : ''}</select><button class="btn small" type="button" data-photo-sampling-location-confirm="${esc(point.key)}">確定</button></span>`
+    : `<span class="sample-location-view"><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span>${esc(point.samplingPlace || '-')} <button class="btn small" type="button" data-photo-sampling-location-edit="${esc(point.key)}">変更</button></span>`;
 
   return `<article class="sample-point-block sample-compact" data-photo-sampling-point-key="${esc(point.key)}">
     <div class="sample-compact-head">
       <div class="sample-compact-info">
         <span><span class="label">試料No.：</span><b>${esc(point.sampleNo || '-')}</b></span>
-        <span><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span>${esc(point.samplingPlace || '-')}</span>
+        ${locationControl}
         <span><span class="label">採取部位：</span>${esc(point.part || '-')}</span>
       </div>
       <span class="sample-next">次：${esc(point.nextStage)}</span>
@@ -300,7 +304,7 @@ export function renderSamplingView(container, view, state) {
         <h4>建材No.${esc(active.materialNo)}　${esc(active.name || '-')}</h4>
         <span class="hint">採取数 ${esc(active.sampleCount)}</span>
       </div>
-      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplingPointBlock(point, state.openSamplingKeys)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
+      <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplingPointBlock(point, state.openSamplingKeys, state.samplingLocationEditKey)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
     </section>
   </div>`;
 }
