@@ -31,7 +31,13 @@ function nextSequence(dateCode, existingProjects = [], existingProjectNos = []) 
   return max + 1;
 }
 
-export function createTemporaryProject({ projectName, address, existingProjects = [], existingProjectNos = [] }) {
+export function createTemporaryProject({
+  projectName,
+  address,
+  existingProjects = [],
+  existingProjectNos = [],
+  deviceCode = ''
+}) {
   const name = String(projectName || '').trim();
   const normalizedAddress = String(address || '').trim();
   if (!name) throw new Error('案件名を入力してください。');
@@ -40,9 +46,12 @@ export function createTemporaryProject({ projectName, address, existingProjects 
   const dateCode = temporaryDateCode();
   const sequence = nextSequence(dateCode, existingProjects, existingProjectNos);
   const projectNo = `${dateCode}-${two(sequence)}`;
+  const code = String(deviceCode || '').trim().toUpperCase()
+    || Math.random().toString(36).slice(2, 6).toUpperCase();
+  const projectId = `tmp-${dateCode}-${code}-${two(sequence)}`;
 
   return {
-    projectId: projectNo,
+    projectId,
     projectNo,
     projectName: name,
     address: normalizedAddress,
