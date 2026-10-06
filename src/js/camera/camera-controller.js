@@ -675,7 +675,7 @@ async function takePhoto() {
       fieldEditedAt: touchFieldEditedAt({}, [
         'photoType', 'fileName', 'capturedDevice', 'capturedAt', 'boardPosition', 'boardSize',
         ...(snapshot.photoType === PHOTO_TYPES.VISUAL
-          ? ['areaCode', 'roomPosition', 'partSlot']
+          ? ['areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
           : ['materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'])
       ])
     });
