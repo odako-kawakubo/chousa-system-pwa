@@ -36,9 +36,13 @@ export function updateMaterialControlValue(control) {
       next.sampleCount = Math.max(1, Math.min(3, Number(control.value) || 1));
       applySingleRecordSamplingAutofill(next);
       break;
+    // 採取場所1〜3は既存写真との整合判断が必要なため、
+    // material-list-controllerからsampling-location-change.jsの共通処理へ送る。
+    // この低レベル編集関数では直接保存しない。
     case 'sampleLocation1':
     case 'sampleLocation2':
     case 'sampleLocation3':
+      return { changed: false, materialId, routed: 'sampling-location-change' };
     case 'sampleDate':
       next[field] = String(control.value || '');
       break;
