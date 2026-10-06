@@ -708,6 +708,12 @@ export async function deleteTestProjectCompletely(projectId) {
  * Firestore上の仮案件番号を取得する。新規仮案件の連番重複回避に使う。
  */
 export async function readTemporaryProjectNos(dateCode, environment = 'production') {
+  const entries = await readTemporaryProjectEntries(dateCode, environment);
+  return entries.map((item) => item.projectNo);
+}
+
+/** 仮案件番号の所有projectIdも含めて取得する。オフライン復帰時の番号衝突判定用。 */
+export async function readTemporaryProjectEntries(dateCode, environment = 'production') {
   const prefix = `${String(dateCode)}-`;
   const ref = collection(db, projectRoot(environment));
   const snapshot = await getDocs(query(
@@ -716,8 +722,11 @@ export async function readTemporaryProjectNos(dateCode, environment = 'productio
     where('projectNo', '<', `${prefix}\uf8ff`)
   ));
   return snapshot.docs
-    .map((item) => String(item.data()?.projectNo || item.id || ''))
-    .filter((value) => value.startsWith(prefix));
+    .map((item) => ({
+      projectId: String(item.data()?.projectId || item.id || ''),
+      projectNo: String(item.data()?.projectNo || item.id || '')
+    }))
+    .filter((item) => item.projectNo.startsWith(prefix));
 }
 
 /**
