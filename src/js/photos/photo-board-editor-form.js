@@ -116,6 +116,14 @@ function samplingFields(entry, optionsProvider) {
     activeTarget?.part,
     entry.draft.part
   ]);
+  const plannedPlace = String(activeTarget?.samplingPlace || '').trim();
+  const draftPlace = String(entry.draft.samplingPlace || '').trim();
+  const canReflectPlace = Boolean(
+    selectedMaterialId
+    && Number(entry.draft.samplingBranch || 0)
+    && draftPlace
+    && draftPlace !== plannedPlace
+  );
 
   return `<div class="photo-board-editor-fields">
     <label>検体No.<select data-editor-sample>
@@ -139,6 +147,7 @@ function samplingFields(entry, optionsProvider) {
       ${STAGES.map((stage) => `<option value="${stage}" ${stage === entry.draft.shootingType ? 'selected' : ''}>${({ before:'施工前', during:'施工中', after:'施工後' })[stage]}</option>`).join('')}
       <option value="section" ${entry.draft.shootingType === SHOOTING_TYPES.SECTION ? 'selected' : ''}>断面</option>
     </select></label>
+    ${canReflectPlace ? `<button class="btn small photo-board-editor-reflect-place" type="button" data-editor-reflect-sampling-place>この場所を採取場所にも反映</button>` : ''}
   </div>`;
 }
 
