@@ -486,7 +486,9 @@ async function writeWithQueue({
     await commitRecordEntries([entry]);
     syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
 
-    const retryResult = await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
+    const retryResult = recordType === 'project'
+      ? { ok: true, sent: 0, skipped: true, reason: 'project-write-does-not-passive-retry-records' }
+      : await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
     return {
       ok: true,
       queued: false,
