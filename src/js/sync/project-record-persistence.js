@@ -294,31 +294,37 @@ export function retryUnsentForProject(project, options = {}) {
  * 案件Documentを最初に確定し、その後Record未送信を50件ずつ送り切る。
  * 1batchでも失敗したら停止し、残りはUNSENTへ保持する。
  */
-export async function syncProjectUnsentOnRecovery(project) {
+export async function syncQueuedProjectMetadataOnRecovery(project) {
+  if (!shouldSyncProject(project)) {
+    return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
+  }
+  const projectId = String(project.projectId);
+  const hasQueuedProject = listUnsent({ projectId })
+    .some((item) => item.recordType === 'project');
+  if (!hasQueuedProject) {
+    return { ok: true, skipped: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true };
+  }
+
+  const result = await persistProjectMetadataForProject(project);
+  return {
+    ...result,
+    sent: result?.ok ? 1 + Number(result.retried || 0) : 0,
+    remaining: listUnsent({ projectId }).length,
+    completed: Boolean(result?.ok)
+  };
+}
+
+/**
+ * M-04のremote merge完了後に、Record未送信だけを50件ずつ自動送信する。
+ * 1batch失敗時は停止し、残りをUNSENTへ保持する。
+ */
+export async function syncQueuedRecordsOnRecovery(project) {
   if (!shouldSyncProject(project)) {
     return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
   }
 
   const projectId = String(project.projectId);
   let sent = 0;
-  const hasQueuedProject = listUnsent({ projectId })
-    .some((item) => item.recordType === 'project');
-
-  if (hasQueuedProject) {
-    const projectResult = await persistProjectMetadataForProject(project);
-    if (!projectResult?.ok) {
-      return {
-        ok: false,
-        sent,
-        remaining: listUnsent({ projectId }).length,
-        completed: false,
-        reason: projectResult?.reason || 'project-write-failed',
-        error: projectResult?.error || null
-      };
-    }
-    sent += 1 + Number(projectResult.retried || 0);
-  }
-
   while (true) {
     const remainingRecords = listUnsent({ projectId })
       .filter((item) => item.recordType !== 'project');
@@ -327,7 +333,7 @@ export async function syncProjectUnsentOnRecovery(project) {
         ok: true,
         sent,
         remaining: listUnsent({ projectId }).length,
-        completed: listUnsent({ projectId }).length === 0
+        completed: true
       };
     }
 
@@ -336,7 +342,6 @@ export async function syncProjectUnsentOnRecovery(project) {
       excludeRecordTypes: ['project']
     });
     sent += Number(result?.sent || 0);
-
     if (!result?.ok) {
       return {
         ...result,
@@ -350,7 +355,7 @@ export async function syncProjectUnsentOnRecovery(project) {
         ok: true,
         sent,
         remaining: listUnsent({ projectId }).length,
-        completed: listUnsent({ projectId }).length === 0
+        completed: true
       };
     }
     if (!result.sent && result.remaining > 0) {
