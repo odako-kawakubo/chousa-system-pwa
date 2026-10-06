@@ -595,9 +595,11 @@ function maxCursor(cursors = {}) {
  * listenerはここでは張らない。
  */
 export function isFinishChangeCursorFresh(cursor) {
-  if (!cursor || typeof cursor.seconds !== 'number') return false;
-  const millis = (Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6);
-  return millis >= (Date.now() - FINISH_CHANGE_RETENTION_MS);
+  return Boolean(
+    cursor
+    && typeof cursor.seconds === 'number'
+    && cursor.changeId
+  );
 }
 
 /**
