@@ -450,6 +450,14 @@ jobs:
             throw new Error('cursor changeId tiebreak ordering changed');
           }
 
+          const persistence = fs.readFileSync('./src/js/sync/project-record-persistence.js','utf8');
+          const freshFnStart = persistence.indexOf('export function isFinishChangeCursorFresh');
+          const freshFnEnd = persistence.indexOf('/**', freshFnStart + 10);
+          const freshFn = persistence.slice(freshFnStart, freshFnEnd);
+          if (freshFn.includes('Date.now()')) {
+            throw new Error('adapter cursor freshness still depends on client Date.now');
+          }
+
           const repository = fs.readFileSync('./src/js/firestore/firestore-repository.js','utf8');
           if (/expiresAt\s*:/.test(repository)) {
             throw new Error('client-derived expiresAt write remains in Firestore repository');
@@ -595,6 +603,10 @@ jobs:
           fi
           grep -q "await recordProjectSyncDeviceContact" src/js/projects/project-controller.js || { echo "M-08 awaited device touch missing"; exit 1; }
           grep -q "await cleanupProjectFinishChangeLogIfDue" src/js/projects/project-controller.js || { echo "M-08 awaited cleanup missing"; exit 1; }
+          if sed -n '/export function isFinishChangeCursorFresh/,/^}/p' src/js/sync/project-record-persistence.js | grep -q "Date.now()"; then
+            echo "M-08 adapter cursor age still uses client clock"
+            exit 1
+          fi
 
           # M-07 オフライン新規案件・復帰時未送信
           grep -q "recordType === 'project'" src/js/firestore/firestore-repository.js || { echo "M-07 project queue handling missing"; exit 1; }
