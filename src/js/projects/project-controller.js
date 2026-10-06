@@ -162,6 +162,7 @@ async function openFirestoreProjectSession(target) {
     target.project = project;
 
     const projectQueueResult = await syncQueuedProjectMetadataOnRecovery(project);
+    const projectQueueReady = projectQueueResult?.ok !== false;
     syncDiagnosticLog('PROJECT_UNSENT_RECOVERY_RESULT', {
       projectId: project.projectId,
       ...projectQueueResult
@@ -370,7 +371,13 @@ async function openFirestoreProjectSession(target) {
       }
     }
 
-    const recordQueueResult = await syncQueuedRecordsOnRecovery(project);
+    const recordQueueResult = projectQueueReady
+      ? await syncQueuedRecordsOnRecovery(project)
+      : {
+          ok: false,
+          skipped: true,
+          reason: 'project-metadata-not-confirmed'
+        };
     syncDiagnosticLog('RECORD_UNSENT_RECOVERY_RESULT', {
       projectId: project.projectId,
       ...recordQueueResult
