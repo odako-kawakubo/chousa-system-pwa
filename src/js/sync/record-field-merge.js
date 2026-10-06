@@ -17,7 +17,7 @@ export const RECORD_MERGE_FIELDS = Object.freeze({
     'photoType','fileName','isRepresentative','capturedDevice','capturedAt','boardDate',
     'isEdited','lastEditedDevice','lastEditedAt','deleted','systemMemo','boardPosition',
     'boardSize','oneDriveDriveId','originalItemId','completedItemId','originalPath',
-    'completedPath','areaCode','roomPosition','partSlot','materialId','samplingPlace',
+    'completedPath','areaCode','roomPosition','partSlot','roomNo','materialId','samplingPlace',
     'samplingBranch','sampleNo','part','shootingType'
   ])
 });
