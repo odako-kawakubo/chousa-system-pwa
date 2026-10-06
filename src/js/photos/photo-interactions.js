@@ -175,6 +175,7 @@ export function bindPhotoInteractions({
 
     const mode = event.target.closest('[data-photo-mode]');
     if (mode) {
+      state.samplingLocationEditKey = '';
       state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
       state.reviewScrollTop[state.mode] = 0;
       render();
@@ -203,6 +204,7 @@ export function bindPhotoInteractions({
 
     const material = event.target.closest('[data-photo-material]');
     if (material) {
+      state.samplingLocationEditKey = '';
       state.selectedMaterialId = material.dataset.photoMaterial || '';
       state.reviewScrollTop.sampling = 0;
       render();
