@@ -93,7 +93,9 @@ export function serializePhotoRecord(record, { updatedAt }) {
       ...common,
       areaCode: text(record.areaCode),
       roomPosition: text(record.roomPosition),
-      partSlot: Number(record.partSlot) || 0
+      partSlot: Number(record.partSlot) || 0,
+      roomNo: text(record.roomNo),
+      part: text(record.part)
     };
   }
 
