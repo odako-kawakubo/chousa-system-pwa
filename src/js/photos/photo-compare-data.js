@@ -7,6 +7,7 @@
  * 目視比較は「部位 -> 建材ベース名 -> 場所」で絞り込めるよう、
  * 各比較targetへ part / baseNames / room情報を付与する。
  * targetの物理identityは従来どおり areaCode + roomPosition + partSlot を維持する。
+ * 比較上の部位分類はpartSlotではなく実際のpart名を使うため、その他1/2でも同じ部位名なら同一候補として扱う。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -221,13 +222,20 @@ export function visualCompareLocationOptions(
   return targets
     .filter((target) => !partValue || target.partFilter === partValue)
     .filter((target) => !baseValue || target.baseNames.includes(baseValue))
-    .map((target) => ({
-      key: target.key,
-      roomLabel: target.roomLabel,
-      part: target.part,
-      materials: target.materials,
-      label: target.roomLabel
-    }));
+    .map((target) => {
+      const matchingMaterials = baseValue
+        ? target.materials.filter((material) => material.baseName === baseValue)
+        : target.materials;
+      const materialLabel = matchingMaterials.map((material) => material.name).filter(Boolean).join('、');
+      return {
+        key: target.key,
+        roomLabel: target.roomLabel,
+        part: target.part,
+        partSlot: target.partSlot,
+        materials: target.materials,
+        label: [target.roomLabel, target.part, materialLabel].filter(Boolean).join(' / ')
+      };
+    });
 }
 
 export function findVisualCompareTarget(
