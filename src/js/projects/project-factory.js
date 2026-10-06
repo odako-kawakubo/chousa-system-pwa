@@ -31,6 +31,11 @@ function nextSequence(dateCode, existingProjects = [], existingProjectNos = []) 
   return max + 1;
 }
 
+export function nextTemporaryProjectNo(dateCode, existingProjects = [], existingProjectNos = []) {
+  const sequence = nextSequence(String(dateCode || ''), existingProjects, existingProjectNos);
+  return `${String(dateCode || '')}-${two(sequence)}`;
+}
+
 export function createTemporaryProject({
   projectName,
   address,
@@ -44,8 +49,8 @@ export function createTemporaryProject({
   if (!normalizedAddress) throw new Error('住所を入力してください。');
 
   const dateCode = temporaryDateCode();
-  const sequence = nextSequence(dateCode, existingProjects, existingProjectNos);
-  const projectNo = `${dateCode}-${two(sequence)}`;
+  const projectNo = nextTemporaryProjectNo(dateCode, existingProjects, existingProjectNos);
+  const sequence = Number(projectNo.slice(projectNo.lastIndexOf('-') + 1)) || 1;
   const code = String(deviceCode || '').trim().toUpperCase()
     || Math.random().toString(36).slice(2, 6).toUpperCase();
   const projectId = `tmp-${dateCode}-${code}-${two(sequence)}`;
