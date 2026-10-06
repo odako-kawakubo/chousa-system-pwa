@@ -38,7 +38,6 @@ import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 
 let writeChain = Promise.resolve();
 const knownFinishRecordsByProject = new Map();
-const FINISH_CHANGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const FINISH_SPARSE_CACHE_KEY = 'chousa-finish-sparse-cache-v0162h';
 
 /**
