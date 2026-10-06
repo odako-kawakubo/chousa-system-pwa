@@ -30,6 +30,8 @@ import {
 import { bindMaterialListInteractions } from './material-list-interactions.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 import { notifyTutorialAction } from '../guide/tutorial-action.js';
+import { requestSamplingLocationChange } from '../photos/sampling-location-change.js';
+import { refreshPhotoTab } from '../photos/photo-controller.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -361,19 +363,46 @@ function activateNativeControl(control) {
 /**
  * level・分析要否・採取数・採取場所・採取日等のcontrol値をedit-actionsへ渡し、必要な画面を再描画する。
  */
-function updateMaterialControl(control) {
+async function updateMaterialControl(control) {
   if (!materialInteractionAllowed('change', control)) {
     refreshMaterialList();
     return;
   }
+
+  const materialId = String(control.dataset.materialId || '');
+  const field = String(control.dataset.field || '');
+  const locationMatch = /^sampleLocation([1-3])$/.exec(field);
+
+  if (locationMatch) {
+    try {
+      const result = await requestSamplingLocationChange({
+        materialId,
+        samplingBranch:Number(locationMatch[1]),
+        nextLocation:String(control.value || '')
+      });
+
+      // H側で確定した場合もキャンセルした場合も、一覧を正本から描き直して
+      // selectの一時表示値を残さない。
+      refreshMaterialList();
+      refreshRecordView();
+      refreshPhotoTab();
+
+      if (result?.changed) {
+        notifyTutorialAction('material.control.change', { materialId, field });
+      }
+    } catch (error) {
+      console.error('建材リストの採取場所変更に失敗しました', error);
+      window.alert(`採取場所の変更に失敗しました。\n${error.message || error}`);
+      refreshMaterialList();
+    }
+    return;
+  }
+
   const result = updateMaterialControlValue(control);
   if (!result.changed) return;
   refreshMaterialList();
   refreshRecordView();
-  notifyTutorialAction('material.control.change', {
-    materialId:String(control.dataset.materialId || ''),
-    field:String(control.dataset.field || '')
-  });
+  notifyTutorialAction('material.control.change', { materialId, field });
 }
 
 /**
