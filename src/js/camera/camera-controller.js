@@ -465,6 +465,15 @@ function updatePhotoCount() {
   if (target) target.textContent = `撮影済み\n${count}枚`;
 }
 
+function escapeCameraHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function visualLocationLabel(room = {}) {
   const roomNo = String(room.roomNo || room.roomPosition || '').trim();
   const roomName = String(room.roomName || '').trim();
@@ -496,9 +505,10 @@ function renderLocationTargets() {
         active: index === state.visualRoomIndex
       }));
 
-  host.innerHTML = entries.map((entry) =>
-    `<button type="button" class="camera-location-target-button ${entry.active ? 'active' : ''}" data-camera-location-index="${entry.index}" title="${String(entry.label).replace(/"/g, '&quot;')}">${entry.label}</button>`
-  ).join('');
+  host.innerHTML = entries.map((entry) => {
+    const label = escapeCameraHtml(entry.label);
+    return `<button type="button" class="camera-location-target-button ${entry.active ? 'active' : ''}" data-camera-location-index="${entry.index}" title="${label}">${label}</button>`;
+  }).join('');
 }
 
 /**
