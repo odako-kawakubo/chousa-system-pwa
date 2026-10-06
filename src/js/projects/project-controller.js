@@ -413,8 +413,17 @@ async function openFirestoreProjectSession(target) {
       updateProjectFinishChangeCursor(project.projectId, remote.finishChangeCursor);
     }
 
-    void recordProjectSyncDeviceContact(project, remote.finishChangeCursor || finishChangeCursor);
-    void cleanupProjectFinishChangeLogIfDue(project);
+    const deviceContactResult = await recordProjectSyncDeviceContact(
+      project,
+      remote.finishChangeCursor || finishChangeCursor
+    );
+    if (deviceContactResult?.ok !== false) {
+      await cleanupProjectFinishChangeLogIfDue(project);
+    } else {
+      syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_DEVICE_TOUCH_FAILED', {
+        projectId: project.projectId
+      });
+    }
 
     const serverReadyTypes = new Set();
     syncDiagnosticLog('SYNC_LISTENER_START', {
