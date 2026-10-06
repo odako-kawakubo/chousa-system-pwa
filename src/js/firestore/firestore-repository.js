@@ -154,8 +154,7 @@ function appendFinishChangeToBatch(batch, { projectId, environment, recordId, op
     recordId: String(recordId || ''),
     operation,
     record: operation === 'set' && record ? plainFinishPayload(record) : null,
-    committedAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + CHANGE_LOG_RETENTION_MS)
+    committedAt: serverTimestamp()
   });
 }
 
@@ -737,8 +736,6 @@ export async function readTemporaryProjectEntries(dateCode, environment = 'produ
 export async function isFinishChangeCursorAvailable({ projectId, environment = 'production', cursor = null }) {
   syncDiagnosticLog('CURSOR_CHECK_START', { projectId, cursor });
   if (!cursor?.changeId || typeof cursor.seconds !== 'number') return false;
-  const ageMs = Date.now() - ((Number(cursor.seconds) * 1000) + Math.floor(Number(cursor.nanoseconds || 0) / 1e6));
-  if (ageMs > CHANGE_LOG_RETENTION_MS) return false;
   if (!canUseFirestore()) return true;
   const snapshot = await getDoc(doc(finishChangeLogCollectionRef(projectId, environment), String(cursor.changeId)));
   syncDiagnosticLog('CURSOR_CHECK_READ', { projectId, changeId: String(cursor.changeId), exists: snapshot.exists() });
@@ -775,26 +772,118 @@ export async function touchProjectSyncDevice({
   }
 }
 
+function firestoreTimestampToMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return Number(value.toMillis()) || 0;
+  if (typeof value.seconds === 'number') {
+    return (Number(value.seconds) * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1e6);
+  }
+  return 0;
+}
+
+function normalizeStoredFinishCursor(value) {
+  if (!value || typeof value.seconds !== 'number' || !value.changeId) return null;
+  return {
+    seconds: Number(value.seconds),
+    nanoseconds: Number(value.nanoseconds || 0),
+    changeId: String(value.changeId)
+  };
+}
+
+function compareFinishCursors(a, b) {
+  if (Number(a?.seconds || 0) !== Number(b?.seconds || 0)) {
+    return Number(a?.seconds || 0) - Number(b?.seconds || 0);
+  }
+  if (Number(a?.nanoseconds || 0) !== Number(b?.nanoseconds || 0)) {
+    return Number(a?.nanoseconds || 0) - Number(b?.nanoseconds || 0);
+  }
+  return String(a?.changeId || '').localeCompare(String(b?.changeId || ''));
+}
+
 /**
  * 全端末cursorを考慮し、既に不要になった古いfinish change logを削除する。現在の端末がまだ必要な履歴は消さない。
  */
 export async function cleanupExpiredFinishChangeLogs({ projectId, environment = 'production' }) {
   syncDiagnosticLog('CHANGELOG_CLEANUP_START', { projectId });
   if (!projectId || !canUseFirestore()) return { ok: true, skipped: true, deleted: 0 };
+
+  const deviceSnapshot = await getDocs(
+    collection(db, projectRoot(environment), String(projectId), SYNC_DEVICE_COLLECTION)
+  );
+  const devices = deviceSnapshot.docs.map((item) => {
+    const data = item.data() || {};
+    return {
+      deviceCode: String(data.deviceCode || item.id || ''),
+      lastSeenAt: data.lastSeenAt || null,
+      finishChangeCursor: data.finishChangeCursor || null
+    };
+  });
+
+  const serverNowMs = devices.reduce(
+    (max, device) => Math.max(max, firestoreTimestampToMillis(device.lastSeenAt)),
+    0
+  );
+  if (!serverNowMs) {
+    syncDiagnosticLog('CHANGELOG_CLEANUP_SKIP_NO_SERVER_TIME', { projectId });
+    return { ok: true, skipped: true, deleted: 0, reason: 'server-time-unavailable' };
+  }
+
+  const retentionCutoffMs = serverNowMs - CHANGE_LOG_RETENTION_MS;
+  const activeDevices = devices.filter(
+    (device) => firestoreTimestampToMillis(device.lastSeenAt) >= retentionCutoffMs
+  );
+  const activeCursors = activeDevices
+    .map((device) => normalizeStoredFinishCursor(device.finishChangeCursor))
+    .filter(Boolean)
+    .sort(compareFinishCursors);
+  const oldestActiveCursor = activeCursors[0] || null;
+
   const ref = finishChangeLogCollectionRef(projectId, environment);
   const snapshot = await getDocs(query(
     ref,
-    where('expiresAt', '<=', Timestamp.now()),
-    orderBy('expiresAt'),
+    where('committedAt', '<=', Timestamp.fromMillis(retentionCutoffMs)),
+    orderBy('committedAt'),
+    orderBy(documentId()),
     limit(CHANGE_LOG_CLEANUP_LIMIT)
   ));
-  syncDiagnosticLog('CHANGELOG_CLEANUP_READ', { projectId, expiredCount: snapshot.docs.length });
-  if (!snapshot.docs.length) return { ok: true, deleted: 0 };
+
+  const deletable = snapshot.docs.filter((item) => {
+    if (!oldestActiveCursor) return true;
+    const cursor = serializeChangeCursor(item);
+    return cursor && compareFinishCursors(cursor, oldestActiveCursor) < 0;
+  });
+
+  syncDiagnosticLog('CHANGELOG_CLEANUP_READ', {
+    projectId,
+    candidateCount: snapshot.docs.length,
+    deletableCount: deletable.length,
+    activeDeviceCount: activeDevices.length,
+    oldestActiveCursor
+  });
+
+  if (!deletable.length) {
+    return {
+      ok: true,
+      deleted: 0,
+      activeDeviceCount: activeDevices.length,
+      oldestActiveCursor
+    };
+  }
+
   const batch = writeBatch(db);
-  snapshot.docs.forEach((item) => batch.delete(item.ref));
+  deletable.forEach((item) => batch.delete(item.ref));
   await batch.commit();
-  syncDiagnosticLog('CHANGELOG_CLEANUP_DELETE_OK', { projectId, deleted: snapshot.docs.length });
-  return { ok: true, deleted: snapshot.docs.length };
+  syncDiagnosticLog('CHANGELOG_CLEANUP_DELETE_OK', {
+    projectId,
+    deleted: deletable.length,
+    oldestActiveCursor
+  });
+  return {
+    ok: true,
+    deleted: deletable.length,
+    activeDeviceCount: activeDevices.length,
+    oldestActiveCursor
+  };
 }
 
 /**
@@ -810,8 +899,7 @@ export async function createFinishChangeLogCheckpoint({ projectId, environment =
     recordId: '',
     operation: 'checkpoint',
     record: null,
-    committedAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + CHANGE_LOG_RETENTION_MS)
+    committedAt: serverTimestamp()
   });
   batch.set(projectDocRef(projectId, environment), {
     finishChangeLogEpochStartedAt: serverTimestamp(),
