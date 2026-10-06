@@ -159,10 +159,12 @@ async function openFirestoreProjectSession(target) {
 
   if (canUseFirestore()) {
     project = await resolveTemporaryProjectNoCollision(project);
+    if (token !== activeProjectStreamToken) return target;
     target.project = project;
 
     const projectQueueResult = await syncQueuedProjectMetadataOnRecovery(project);
-    const projectQueueReady = projectQueueResult?.ok !== false;
+    if (token !== activeProjectStreamToken) return target;
+    let projectQueueReady = projectQueueResult?.ok !== false;
     syncDiagnosticLog('PROJECT_UNSENT_RECOVERY_RESULT', {
       projectId: project.projectId,
       ...projectQueueResult
@@ -171,6 +173,17 @@ async function openFirestoreProjectSession(target) {
     try {
       const remoteProject = await readProjectMetadataForProject(project);
       if (token !== activeProjectStreamToken) return target;
+      if (!remoteProject) {
+        const createResult = await persistProjectMetadataForProject(project, { initializeChangeLog: true });
+        projectQueueReady = createResult?.ok !== false;
+        syncDiagnosticLog('PROJECT_METADATA_MISSING_RECREATED', {
+          projectId: project.projectId,
+          ok: Boolean(createResult?.ok),
+          queued: Boolean(createResult?.queued),
+          reason: createResult?.reason || ''
+        });
+        if (token !== activeProjectStreamToken) return target;
+      }
       if (remoteProject) {
         project = {
           ...project,
@@ -371,6 +384,7 @@ async function openFirestoreProjectSession(target) {
       }
     }
 
+    if (token !== activeProjectStreamToken) return target;
     const recordQueueResult = projectQueueReady
       ? await syncQueuedRecordsOnRecovery(project)
       : {
