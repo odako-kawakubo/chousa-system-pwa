@@ -216,8 +216,9 @@
 .photo-compare-grid.count-2{grid-template-rows:minmax(0,1fr)}
 .photo-compare-grid.count-3,.photo-compare-grid.count-4{grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
 .photo-compare-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:#111827;overflow:hidden;border-radius:5px}
-.photo-compare-controls{display:flex;align-items:center;gap:4px;padding:3px;background:#1e293b}
-.photo-compare-controls select{min-width:0;flex:1;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
+.photo-compare-controls{display:flex;flex-direction:column;gap:3px;padding:3px;background:#1e293b}
+.photo-compare-filter-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.7fr);gap:3px;min-width:0}
+.photo-compare-controls select{min-width:0;width:100%;min-height:30px;border:1px solid #64748b;border-radius:5px;background:#fff;color:#0f172a;padding:2px 5px;font-size:12px}
 .photo-compare-photo-nav{display:flex;align-items:center;justify-content:flex-end;gap:3px;flex:0 0 auto;font-size:11px;white-space:nowrap}
 .photo-compare-photo-nav .btn{min-width:26px;padding:2px 6px}
 .photo-compare-remove{margin-left:1px}
@@ -229,7 +230,8 @@
   .photo-compare-shell{padding:2px}
   .photo-compare-grid{gap:2px}
   .photo-compare-controls{gap:2px;padding:2px}
-  .photo-compare-controls select{min-height:28px;font-size:11px}
+  .photo-compare-filter-row{grid-template-columns:minmax(0,.75fr) minmax(0,.95fr) minmax(0,1.6fr);gap:2px}
+  .photo-compare-controls select{min-height:28px;font-size:11px;padding-left:3px;padding-right:3px}
   .photo-compare-photo-nav .btn{min-width:24px;padding:2px 5px}
 }
 
