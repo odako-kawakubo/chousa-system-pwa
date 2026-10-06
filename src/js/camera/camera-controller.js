@@ -784,7 +784,6 @@ export async function openCamera(initialContext = {}) {
   }
 
   closeSidePanel();
-  if (state.photoType === PHOTO_TYPES.VISUAL) openSidePanel('room');
   setCameraSettingsOpen(false);
   lastTorchTapAt = 0;
   lastTorchTapPoint = null;
@@ -795,6 +794,7 @@ export async function openCamera(initialContext = {}) {
 
   try {
     await cameraSession.start();
+    if (state.photoType === PHOTO_TYPES.VISUAL) openSidePanel('room');
   } catch (error) {
     console.error('Camera start failed:', error);
     const count = await getVideoInputCount();
