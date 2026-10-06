@@ -127,6 +127,23 @@ function plainFinishPayload(record) {
   };
 }
 
+function projectMetadataPayload(project = {}, { initializeChangeLog = false } = {}) {
+  return {
+    projectId: String(project.projectId || ''),
+    projectNo: String(project.projectNo || project.projectId || ''),
+    projectName: String(project.projectName || ''),
+    address: String(project.address || ''),
+    surveyDate: String(project.surveyDate || project.boardSettings?.surveyDate || ''),
+    surveyor: String(project.surveyor || project.boardSettings?.surveyor || ''),
+    boardSettings: normalizeBoardSettings(project.boardSettings || {}, project),
+    projectType: String(project.projectType || ''),
+    isTemporary: Boolean(project.isTemporary),
+    createdAt: String(project.createdAt || ''),
+    ...(initializeChangeLog ? { finishChangeLogStartedAt: serverTimestamp() } : {}),
+    updatedAt: serverTimestamp()
+  };
+}
+
 /**
  * finish Recordの変更内容をwriteBatchへ追加し、同じbatchにchange logも追加する。Record本体と変更履歴を同一commitにするための重要処理。
  */
@@ -155,6 +172,19 @@ function appendRecordOperationToBatch(batch, entry) {
 
   if (!projectId || !recordType || !recordId) {
     throw new Error('未送信レコードのキー情報が不足しています。');
+  }
+
+  if (recordType === 'project') {
+    if (operation === 'delete') throw new Error('案件Documentのdeleteは未送信キュー対象外です。');
+    if (!record) throw new Error(`案件情報本体がありません: ${recordId}`);
+    batch.set(
+      projectDocRef(projectId, environment),
+      projectMetadataPayload(record, {
+        initializeChangeLog: Boolean(entry.meta?.initializeChangeLog)
+      }),
+      { merge: true }
+    );
+    return;
   }
 
   if (recordType === 'finish') {
@@ -213,7 +243,8 @@ async function commitRecordEntries(entries = []) {
       recordType: entry.recordType,
       recordId: entry.recordId,
       operation: entry.operation,
-      record: entry.record ? { ...entry.record } : null
+      record: entry.record ? { ...entry.record } : null,
+      meta: { ...(entry.meta || {}) }
     }))
   };
 }
@@ -377,14 +408,24 @@ function toTimestamp(value) {
 /**
  * 単一Firestore書き込みを実行し、失敗時は未送信キューへ残す。成功時は該当キュー項目を除去し、同期状態を更新する。
  */
-async function writeWithQueue({ projectId, environment, recordType, recordId, operation, localRecord, source = 'unspecified' }) {
+async function writeWithQueue({
+  projectId,
+  environment,
+  recordType,
+  recordId,
+  operation,
+  localRecord,
+  source = 'unspecified',
+  meta = {}
+}) {
   const entry = {
     projectId,
     environment,
     recordType,
     recordId,
     operation,
-    record: localRecord
+    record: localRecord,
+    meta
   };
   syncDiagnosticLog('WRITE_REQUEST', {
     projectId,
@@ -549,39 +590,22 @@ function normalizeProjectMetadataData(data = {}, projectId = '', environment = '
 export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
-  if (!canUseFirestore()) {
-    return {
-      ok: false,
-      queued: true,
-      offline: true,
-      reason: isManualOffline() ? 'manual-offline' : 'network-offline'
-    };
-  }
   const environment = project.environment === 'test' ? 'test' : 'production';
-  beginFirestoreActivity();
-  try {
-    await setDoc(projectDocRef(project.projectId, environment), {
-      projectId: String(project.projectId),
-      projectNo: String(project.projectNo || project.projectId),
-      projectName: String(project.projectName || ''),
-      address: String(project.address || ''),
-      surveyDate: String(project.surveyDate || project.boardSettings?.surveyDate || ''),
-      surveyor: String(project.surveyor || project.boardSettings?.surveyor || ''),
-      boardSettings: normalizeBoardSettings(project.boardSettings || {}, project),
-      projectType: String(project.projectType || ''),
-      isTemporary: Boolean(project.isTemporary),
-      createdAt: String(project.createdAt || ''),
-      ...(initializeChangeLog ? { finishChangeLogStartedAt: serverTimestamp() } : {}),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    syncDiagnosticLog('PROJECT_METADATA_WRITE_OK', { projectId: project.projectId, initializeChangeLog });
-    return { ok: true };
-  } catch (error) {
-    markError(error);
-    throw error;
-  } finally {
-    endFirestoreActivity();
-  }
+  const result = await writeWithQueue({
+    projectId: project.projectId,
+    environment,
+    recordType: 'project',
+    recordId: project.projectId,
+    operation: 'set',
+    localRecord: project,
+    source: initializeChangeLog ? 'project-create' : 'project-metadata',
+    meta: { initializeChangeLog: Boolean(initializeChangeLog) }
+  });
+  syncDiagnosticLog(
+    result?.ok ? 'PROJECT_METADATA_WRITE_OK' : 'PROJECT_METADATA_WRITE_QUEUED',
+    { projectId: project.projectId, initializeChangeLog, reason: result?.reason || '' }
+  );
+  return result;
 }
 
 /** Firestore案件Documentの現在形を1回取得する。 */
