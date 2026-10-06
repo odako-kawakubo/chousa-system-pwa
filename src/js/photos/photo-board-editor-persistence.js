@@ -24,7 +24,7 @@ const MARKS = { 1: '①', 2: '②', 3: '③' };
 const PHOTO_SYNC_EDIT_FIELDS = new Set([
   'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
   'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'boardDate', 'originalPath', 'completedPath',
-  'areaCode', 'roomPosition', 'partSlot',
+  'areaCode', 'roomPosition', 'partSlot', 'roomNo',
   'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
 ]);
 
