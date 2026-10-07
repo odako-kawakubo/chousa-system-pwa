@@ -142,7 +142,12 @@ export function buildSamplingPhotoOutput(){
         materialName:text(material.name),part:samplePartsToText(material.samplePart)||text(material.part),
         ...(() => {
           const place=getMaterialSampleLocationDisplay(material.inputId,material[`sampleLocation${branch}`],{preferRoomName:getMaterialRoomNameMode()});
-          return {samplingPlace:place.value,samplingPlaceLabel:place.label};
+          return {
+            samplingPlace:place.value,
+            samplingPlaceLabel:place.label,
+            samplingPlaceRoomNo:place.roomNo,
+            samplingPlaceRoomName:place.roomName
+          };
         })(),
         capturedDate:formatCapturedDate(firstPhoto),stages
       });
