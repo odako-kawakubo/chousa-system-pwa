@@ -175,3 +175,71 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   .survey-map-tools-panel{left:5px}
   .survey-map-edit-panel{right:5px}
 }
+
+
+/* v0.1.10.6 基本作図操作 */
+.survey-map-sheet{
+  touch-action:pan-x pan-y;
+  transform-origin:top left;
+}
+.survey-map-object-layer{
+  position:absolute;
+  inset:0;
+  z-index:10;
+}
+.survey-map-object{
+  position:absolute;
+  box-sizing:border-box;
+  transform-origin:center center;
+  touch-action:none;
+  user-select:none;
+  cursor:move;
+}
+.survey-map-object-visual{
+  position:absolute;
+  inset:0;
+  box-sizing:border-box;
+  border:2px solid #334155;
+  background:transparent;
+  pointer-events:none;
+}
+.survey-map-object.selected .survey-map-object-visual{
+  outline:2px solid #2563eb;
+  outline-offset:2px;
+}
+.survey-map-object-handle{
+  position:absolute;
+  z-index:4;
+  width:20px;
+  height:20px;
+  padding:0;
+  border:2px solid #2563eb;
+  border-radius:50%;
+  background:#fff;
+  touch-action:none;
+}
+.survey-map-object-resize-handle{
+  right:-11px;
+  bottom:-11px;
+  cursor:nwse-resize;
+}
+.survey-map-object-rotate-handle{
+  left:50%;
+  top:-34px;
+  transform:translateX(-50%);
+  cursor:grab;
+}
+.survey-map-object-rotate-handle::after{
+  content:'';
+  position:absolute;
+  left:50%;
+  top:18px;
+  width:1px;
+  height:14px;
+  background:#2563eb;
+}
+.survey-map-object-shape{min-width:4px;min-height:4px}
+.survey-map-object-layer + .survey-map-empty{z-index:2}
+.survey-map-fixed-title,
+.survey-map-fixed-name,
+.survey-map-fixed-legend{z-index:30}
