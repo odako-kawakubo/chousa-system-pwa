@@ -165,3 +165,75 @@ body.survey-map-focus-mode:not(.survey-map-right-collapsed) .survey-map-right{di
   body.survey-map-focus-mode .survey-map-root{grid-template-columns:76px minmax(0,1fr)}
   body.survey-map-focus-mode.survey-map-left-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
 }
+
+
+/* v0.1.10.4: iPad向け左右パネル開閉。
+ * 開閉は全画面モード専用にせず、通常表示でも同じ挙動にする。
+ */
+.survey-map-root{
+  position:relative;
+  grid-template-columns:84px minmax(0,1fr) 200px;
+}
+.survey-map-side-toggle{
+  position:absolute;
+  top:52px;
+  z-index:140;
+  width:28px;
+  height:42px;
+  padding:0;
+  border:1px solid #cbd5e1;
+  background:#fff;
+  color:#334155;
+  border-radius:8px;
+  box-shadow:0 2px 8px #0f172a1f;
+  font-size:16px;
+  font-weight:900;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  touch-action:manipulation;
+}
+.survey-map-side-toggle-left{left:70px}
+.survey-map-side-toggle-right{right:186px}
+
+body.survey-map-left-collapsed .survey-map-left{display:none}
+body.survey-map-right-collapsed .survey-map-right{display:none}
+body.survey-map-left-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr) 200px}
+body.survey-map-right-collapsed .survey-map-root{grid-template-columns:84px minmax(0,1fr)}
+body.survey-map-left-collapsed.survey-map-right-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
+body.survey-map-left-collapsed .survey-map-side-toggle-left{left:4px}
+body.survey-map-right-collapsed .survey-map-side-toggle-right{right:4px}
+
+body.survey-map-focus-mode .survey-map-root{
+  grid-template-columns:80px minmax(0,1fr) 190px;
+}
+body.survey-map-focus-mode.survey-map-left-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr) 190px}
+body.survey-map-focus-mode.survey-map-right-collapsed .survey-map-root{grid-template-columns:80px minmax(0,1fr)}
+body.survey-map-focus-mode.survey-map-left-collapsed.survey-map-right-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
+body.survey-map-focus-mode .survey-map-side-toggle-left{left:66px}
+body.survey-map-focus-mode .survey-map-side-toggle-right{right:176px}
+body.survey-map-focus-mode.survey-map-left-collapsed .survey-map-side-toggle-left{left:4px}
+body.survey-map-focus-mode.survey-map-right-collapsed .survey-map-side-toggle-right{right:4px}
+
+@media(max-width:1180px){
+  .survey-map-root{grid-template-columns:80px minmax(0,1fr) 190px}
+  .survey-map-right{display:block}
+  body.survey-map-left-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr) 190px}
+  body.survey-map-right-collapsed .survey-map-root{grid-template-columns:80px minmax(0,1fr)}
+  body.survey-map-left-collapsed.survey-map-right-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
+  .survey-map-side-toggle-left{left:66px}
+  .survey-map-side-toggle-right{right:176px}
+  body.survey-map-left-collapsed .survey-map-side-toggle-left{left:4px}
+  body.survey-map-right-collapsed .survey-map-side-toggle-right{right:4px}
+}
+@media(max-width:900px){
+  .survey-map-root{grid-template-columns:72px minmax(0,1fr) 180px}
+  body.survey-map-left-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr) 180px}
+  body.survey-map-right-collapsed .survey-map-root{grid-template-columns:72px minmax(0,1fr)}
+  body.survey-map-left-collapsed.survey-map-right-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
+  .survey-map-side-toggle-left{left:58px}
+  .survey-map-side-toggle-right{right:166px}
+  body.survey-map-left-collapsed .survey-map-side-toggle-left{left:4px}
+  body.survey-map-right-collapsed .survey-map-side-toggle-right{right:4px}
+}
