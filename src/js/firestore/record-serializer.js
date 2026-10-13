@@ -109,3 +109,50 @@ export function serializePhotoRecord(record, { updatedAt }) {
     shootingType: text(record.shootingType)
   };
 }
+
+function plainValue(value) {
+  if (Array.isArray(value)) return value.map(plainValue).filter((item) => item !== undefined);
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const normalized = plainValue(item);
+      if (normalized !== undefined) out[key] = normalized;
+    });
+    return out;
+  }
+  return value === undefined ? undefined : value;
+}
+
+export function serializeDrawingRecord(record, { updatedAt }) {
+  if (!record?.drawingId) throw new Error('drawingRecord.drawingIdは必須です。');
+  return {
+    drawingId: text(record.drawingId),
+    projectId: text(record.projectId),
+    name: text(record.name) || '調査図',
+    pageWidth: Number(record.pageWidth) || 29700,
+    pageHeight: Number(record.pageHeight) || 21000,
+    order: Number(record.order) || 0,
+    deleted: Boolean(record.deleted),
+    titleSettings: plainValue(record.titleSettings || {}),
+    nameSettings: plainValue(record.nameSettings || {}),
+    legendSettings: plainValue(record.legendSettings || {}),
+    createdAt: text(record.createdAt),
+    fieldEditedAt: normalizeFieldEditedAt(record.fieldEditedAt),
+    updatedAt
+  };
+}
+
+export function serializeDrawingObject(record, { updatedAt }) {
+  if (!record?.objectId) throw new Error('drawingObject.objectIdは必須です。');
+  const payload = plainValue({ ...record });
+  delete payload.id;
+  delete payload.updatedAt;
+  return {
+    ...payload,
+    objectId: text(record.objectId),
+    drawingId: text(record.drawingId),
+    type: text(record.type),
+    fieldEditedAt: normalizeFieldEditedAt(record.fieldEditedAt),
+    updatedAt
+  };
+}
