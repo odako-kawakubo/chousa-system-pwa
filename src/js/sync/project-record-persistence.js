@@ -11,6 +11,8 @@ import {
   saveMaterialRecord,
   deleteMaterialRecord,
   savePhotoRecord,
+  saveDrawingRecord,
+  saveDrawingObjectRecord,
   saveProjectMetadata,
   readProjectMetadata,
   subscribeProjectMetadata,
@@ -32,6 +34,8 @@ import {
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
+import { createDrawingRecord } from '../records/drawing-record.js';
+import { createDrawingObject } from '../records/drawing-object.js';
 import { listUnsent, putUnsent } from './unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
@@ -258,6 +262,34 @@ export function persistPhotoForProject(project, record, source = 'photo-unspecif
   if (!shouldSyncProject(project) || !record?.photoId) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(async () => {
     const result = await savePhotoRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
+}
+
+export function persistDrawingForProject(project, record, source = 'drawing-unspecified') {
+  if (!shouldSyncProject(project) || !record?.drawingId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueue(async () => {
+    const result = await saveDrawingRecord({
+      projectId: project.projectId,
+      environment: projectEnvironment(project),
+      record,
+      source
+    });
+    if (result?.ok) applyRetryResultToKnownFinish(project.projectId, result);
+    return result;
+  });
+}
+
+export function persistDrawingObjectForProject(project, record, source = 'drawing-object-unspecified') {
+  if (!shouldSyncProject(project) || !record?.objectId) return Promise.resolve({ ok: true, skipped: true });
+  return enqueue(async () => {
+    const result = await saveDrawingObjectRecord({
       projectId: project.projectId,
       environment: projectEnvironment(project),
       record,
@@ -528,6 +560,50 @@ function hydratePhotoRecords(rawRecords = []) {
     }));
 }
 
+function hydrateDrawingRecords(rawRecords = []) {
+  return rawRecords
+    .slice()
+    .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0))
+    .map((raw)=>createDrawingRecord({
+      ...raw,
+      drawingId:String(raw.drawingId||raw.id||''),
+      updatedAt:raw.updatedAt||'',
+      fieldEditedAt:raw.fieldEditedAt||{}
+    }));
+}
+
+function hydrateDrawingObjects(rawRecords = []) {
+  return rawRecords
+    .slice()
+    .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0))
+    .map((raw)=>createDrawingObject({
+      ...raw,
+      objectId:String(raw.objectId||raw.id||''),
+      updatedAt:raw.updatedAt||'',
+      fieldEditedAt:raw.fieldEditedAt||{}
+    }));
+}
+
+export function hydrateIncomingDrawingRecord(rawRecord) {
+  if (!rawRecord) return null;
+  return createDrawingRecord({
+    ...rawRecord,
+    drawingId:String(rawRecord.drawingId||rawRecord.id||''),
+    updatedAt:rawRecord.updatedAt||'',
+    fieldEditedAt:rawRecord.fieldEditedAt||{}
+  });
+}
+
+export function hydrateIncomingDrawingObject(rawRecord) {
+  if (!rawRecord) return null;
+  return createDrawingObject({
+    ...rawRecord,
+    objectId:String(rawRecord.objectId||rawRecord.id||''),
+    updatedAt:rawRecord.updatedAt||'',
+    fieldEditedAt:rawRecord.fieldEditedAt||{}
+  });
+}
+
 /** Firestore Timestamp / Date / ISO文字列を比較用ミリ秒へ揃える。 */
 export function firestoreTimeToMillis(value) {
   if (!value) return 0;
@@ -554,7 +630,9 @@ function newestSnapshotUpdatedAt(raw = {}) {
   return Math.max(
     newestRecordUpdatedAt(raw.finishRecords || []),
     newestRecordUpdatedAt(raw.materialRecords || []),
-    newestRecordUpdatedAt(raw.photoRecords || [])
+    newestRecordUpdatedAt(raw.photoRecords || []),
+    newestRecordUpdatedAt(raw.drawingRecords || []),
+    newestRecordUpdatedAt(raw.drawingObjects || [])
   );
 }
 
@@ -565,7 +643,9 @@ function rawSnapshotToChanges(raw = {}) {
   return [
     ...(raw.materialRecords || []).map((record) => ({ recordType: 'material', changeType: 'modified', id: String(record.materialId || record.id || ''), record })),
     ...(raw.finishRecords || []).map((record) => ({ recordType: 'finish', changeType: 'modified', id: String(record.finishId || record.id || ''), record })),
-    ...(raw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
+    ...(raw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record })),
+    ...(raw.drawingRecords || []).map((record) => ({ recordType: 'drawing', changeType: 'modified', id: String(record.drawingId || record.id || ''), record })),
+    ...(raw.drawingObjects || []).map((record) => ({ recordType: 'drawingObject', changeType: 'modified', id: String(record.objectId || record.id || ''), record }))
   ];
 }
 
@@ -576,7 +656,9 @@ function newestByType(raw = {}, fallback = {}) {
   return {
     finish: Math.max(Number(fallback.finish || 0), newestRecordUpdatedAt(raw.finishRecords || [])),
     material: Math.max(Number(fallback.material || 0), newestRecordUpdatedAt(raw.materialRecords || [])),
-    photo: Math.max(Number(fallback.photo || 0), newestRecordUpdatedAt(raw.photoRecords || []))
+    photo: Math.max(Number(fallback.photo || 0), newestRecordUpdatedAt(raw.photoRecords || [])),
+    drawing: Math.max(Number(fallback.drawing || 0), newestRecordUpdatedAt(raw.drawingRecords || [])),
+    drawingObject: Math.max(Number(fallback.drawingObject || 0), newestRecordUpdatedAt(raw.drawingObjects || []))
   };
 }
 
@@ -584,7 +666,7 @@ function newestByType(raw = {}, fallback = {}) {
  * 複数cursor候補から大きい値を返す小helper。
  */
 function maxCursor(cursors = {}) {
-  return Math.max(Number(cursors.finish || 0), Number(cursors.material || 0), Number(cursors.photo || 0));
+  return Math.max(Number(cursors.finish || 0), Number(cursors.material || 0), Number(cursors.photo || 0), Number(cursors.drawing || 0), Number(cursors.drawingObject || 0));
 }
 
 /**
