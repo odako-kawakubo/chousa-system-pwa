@@ -1,5 +1,5 @@
 /**
- * v0.1.10.5 調査図タブUI。
+ * v0.1.10.6 調査図基本作図操作。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -8,9 +8,12 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { createDrawingRecord } from '../records/drawing-record.js';
+import { createDrawingObject, DRAWING_LAYERS } from '../records/drawing-object.js';
 import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
-import { persistDrawingForProject } from '../sync/project-record-persistence.js';
+import { persistDrawingForProject, persistDrawingObjectForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { clientToPagePoint, clampObjectRect, objectPercentStyle, rotationFromPointer } from './survey-map-geometry.js';
+import { drawingObjectsHtml } from './survey-map-object-view.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -19,6 +22,10 @@ let focusMode=false;
 let toolPanelOpen=false;
 let editPanelOpen=false;
 let pagesOpen=false;
+let selectedObjectId='';
+let activeTool='select';
+let zoomLevel=1;
+let pointerInteraction=null;
 
 function root(){ return document.getElementById('survey-map'); }
 function activeDrawings(){ return drawingRecordStore.getActive(); }
@@ -31,6 +38,22 @@ function selectedDrawing(){
   return selected;
 }
 
+function drawingObjectsForSelected(){
+  const drawing=selectedDrawing();
+  if(!drawing) return [];
+  return drawingObjectStore.getByDrawingId(drawing.drawingId);
+}
+
+function selectedObject(){
+  if(!selectedObjectId) return null;
+  const object=drawingObjectStore.get(selectedObjectId);
+  if(!object || object.deleted || object.drawingId!==selectedDrawingId){
+    selectedObjectId='';
+    return null;
+  }
+  return object;
+}
+
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,(m)=>({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
@@ -40,6 +63,11 @@ function escapeHtml(value){
 function newDrawingId(){
   if(globalThis.crypto?.randomUUID) return `D-${crypto.randomUUID()}`;
   return `D-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+}
+
+function newObjectId(){
+  if(globalThis.crypto?.randomUUID) return `O-${crypto.randomUUID()}`;
+  return `O-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 }
 
 function persistSnapshot(source='survey-map'){
@@ -63,6 +91,74 @@ async function commitDrawing(record,source){
   if(project?.projectId && !project.isSample){
     await persistDrawingForProject(project,record,source);
   }
+}
+
+async function commitDrawingObject(record,source){
+  const project=getCurrentProject();
+  drawingObjectStore.set(record);
+  persistSnapshot(source);
+  if(project?.projectId && !project.isSample){
+    await persistDrawingObjectForProject(project,record,source);
+  }
+}
+
+async function createRectangleAt(clientX,clientY){
+  const drawing=selectedDrawing();
+  const sheet=root()?.querySelector('.survey-map-sheet');
+  if(!drawing || !sheet) return;
+  const point=clientToPagePoint(clientX,clientY,sheet.getBoundingClientRect(),drawing);
+  const width=3600;
+  const height=2400;
+  const rect=clampObjectRect({
+    x:point.x-width/2,
+    y:point.y-height/2,
+    width,
+    height
+  },drawing);
+  const now=Date.now();
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const record=createDrawingObject({
+    objectId:newObjectId(),
+    drawingId:drawing.drawingId,
+    type:'shape',
+    layer:DRAWING_LAYERS.SHAPE,
+    order:objects.length?Math.max(...objects.map((item)=>Number(item.order)||0))+1:1,
+    ...rect,
+    rotation:0,
+    visible:true,
+    locked:false,
+    deleted:false,
+    shapeType:'rect',
+    fillEnabled:false,
+    fillColor:'#ffffff',
+    fillOpacity:0,
+    lineEnabled:true,
+    strokeColor:'#334155',
+    strokeWidth:80,
+    createdAt:new Date(now).toISOString(),
+    fieldEditedAt:touchFieldEditedAt({},[
+      'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
+      'shapeType','fillEnabled','fillColor','fillOpacity','lineEnabled','strokeColor','strokeWidth'
+    ],now)
+  });
+  selectedObjectId=record.objectId;
+  activeTool='select';
+  await commitDrawingObject(record,'survey-map-object-create');
+  renderSurveyMap();
+}
+
+async function deleteSelectedObject(){
+  const current=selectedObject();
+  if(!current) return;
+  const now=Date.now();
+  const next={
+    ...current,
+    deleted:true,
+    fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,'deleted',now)
+  };
+  selectedObjectId='';
+  await commitDrawingObject(next,'survey-map-object-delete');
+  renderSurveyMap();
 }
 
 function nextPageName(){
@@ -203,8 +299,14 @@ function pageListHtml(){
   `).join('');
 }
 
-function toolIconCell(icon,label,disabled=true){
-  return `<div class="survey-map-tool-cell">${iconButton({icon,label,disabled})}</div>`;
+function toolIconCell(icon,label,toolName,disabled=true){
+  return `<div class="survey-map-tool-cell">${iconButton({
+    icon,
+    label,
+    disabled,
+    active:activeTool===toolName,
+    attr:disabled?'':`data-survey-draw-tool="${escapeHtml(toolName)}"`
+  })}</div>`;
 }
 
 function toolsHtml(){
@@ -233,10 +335,10 @@ function toolsHtml(){
   return `
     <div class="survey-map-tool-section">
       <div class="survey-map-tool-grid">${primary.map(([icon,label],index)=>
-        toolIconCell(icon,label,index!==0)
+        toolIconCell(icon,label,icon,index!==0)
       ).join('')}</div>
       <div class="survey-map-divider"></div>
-      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,true)).join('')}</div>
+      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
     </div>
   `;
 }
@@ -247,9 +349,11 @@ function sheetHtml(drawing){
   }
   const title=escapeHtml(drawing.titleSettings?.text||'調査図');
   const name=escapeHtml(drawing.nameSettings?.text||drawing.name||'');
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   return `
     <div class="survey-map-fixed-title">${title}</div>
-    <div class="survey-map-empty">A4横 29700 × 21000<br>作図オブジェクトは次段階で追加</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectId)}</div>
+    ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
   `;
@@ -258,6 +362,20 @@ function sheetHtml(drawing){
 function editorHtml(drawing){
   if(!drawing){
     return '<div class="survey-map-hint">ページを選択すると編集項目が表示されます。</div>';
+  }
+  const object=selectedObject();
+  if(object){
+    return `
+      <div class="survey-map-hint">
+        <b>選択オブジェクト</b><br>
+        種類：${escapeHtml(object.type)} / ${escapeHtml(object.shapeType||'')}<br>
+        X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
+        W：${Math.round(Number(object.width)||0)}　H：${Math.round(Number(object.height)||0)}<br>
+        回転：${Math.round(Number(object.rotation)||0)}°
+      </div>
+      <div class="survey-map-divider"></div>
+      <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
+    `;
   }
   return `
     <div class="survey-map-editor-row">
@@ -268,7 +386,7 @@ function editorHtml(drawing){
       <label>紙面左下の名称</label>
       <input data-survey-display-name value="${escapeHtml(drawing.nameSettings?.text||'')}">
     </div>
-    <div class="survey-map-hint">固定表示：左上=タイトル、左下=名称、右下=凡例。</div>
+    <div class="survey-map-hint">図形を選択すると、位置・サイズ・回転の情報を表示します。</div>
     <div class="survey-map-divider"></div>
     <button type="button" class="btn danger" data-survey-delete-current style="width:100%">この調査図を削除</button>
   `;
@@ -301,6 +419,10 @@ export function renderSurveyMap(){
           <button type="button" class="btn small survey-map-text-btn" disabled>進む</button>
           <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
           <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-out>−</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-in>＋</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-fit>Fit</button>
           <button type="button" class="btn small survey-map-text-btn ${toolPanelOpen?'active':''}" data-survey-tool-toggle>ツール</button>
           <button type="button" class="btn small survey-map-text-btn ${editPanelOpen?'active':''}" data-survey-edit-toggle>編集</button>
           <span class="spacer"></span>
@@ -309,7 +431,7 @@ export function renderSurveyMap(){
 
         <div class="survey-map-stage">
           ${pagesPopoverHtml()}
-          <div class="survey-map-sheet ${gridVisible?'grid-on':''}">${sheetHtml(drawing)}</div>
+          <div class="survey-map-sheet ${gridVisible?'grid-on':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px)">${sheetHtml(drawing)}</div>
         </div>
       </main>
 
@@ -352,6 +474,7 @@ function bindEvents(){
     const pageButton=event.target.closest('[data-survey-page]');
     if(pageButton){
       selectedDrawingId=String(pageButton.dataset.surveyPage||'');
+      selectedObjectId='';
       pagesOpen=false;
       renderSurveyMap();
       return;
@@ -406,15 +529,151 @@ function bindEvents(){
       return;
     }
 
+    const drawTool=event.target.closest('[data-survey-draw-tool]');
+    if(drawTool){
+      activeTool=String(drawTool.dataset.surveyDrawTool||'select');
+      toolPanelOpen=false;
+      renderSurveyMap();
+      return;
+    }
+
+    if(event.target.closest('[data-survey-object-delete]')){
+      void deleteSelectedObject();
+      return;
+    }
+
+    if(event.target.closest('[data-survey-zoom-out]')){
+      zoomLevel=Math.max(.5,Math.round((zoomLevel-.25)*100)/100);
+      renderSurveyMap();
+      return;
+    }
+    if(event.target.closest('[data-survey-zoom-in]')){
+      zoomLevel=Math.min(3,Math.round((zoomLevel+.25)*100)/100);
+      renderSurveyMap();
+      return;
+    }
+    if(event.target.closest('[data-survey-zoom-reset]') || event.target.closest('[data-survey-zoom-fit]')){
+      zoomLevel=1;
+      renderSurveyMap();
+      return;
+    }
+
     if(event.target.closest('[data-survey-grid]')){
       gridVisible=!gridVisible;
       renderSurveyMap();
     }
   });
 
+  mount.addEventListener('pointerdown',(event)=>{
+    const drawing=selectedDrawing();
+    const sheet=event.target.closest('.survey-map-sheet');
+    if(!drawing || !sheet) return;
+
+    const objectEl=event.target.closest('[data-survey-object-id]');
+    if(objectEl && activeTool==='select'){
+      const objectId=String(objectEl.dataset.surveyObjectId||'');
+      const object=drawingObjectStore.get(objectId);
+      if(!object || object.locked) return;
+      selectedObjectId=objectId;
+      const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
+      const mode=handle==='resize'?'resize':handle==='rotate'?'rotate':'move';
+      const sheetRect=sheet.getBoundingClientRect();
+      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      pointerInteraction={
+        pointerId:event.pointerId,
+        objectId,
+        mode,
+        original:{...object},
+        draft:{...object},
+        startPoint,
+        sheetRect
+      };
+      objectEl.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+
+    if(activeTool==='rect' && !objectEl){
+      event.preventDefault();
+      void createRectangleAt(event.clientX,event.clientY);
+      return;
+    }
+
+    if(activeTool==='select' && !objectEl){
+      selectedObjectId='';
+      if(editPanelOpen) renderSurveyMap();
+    }
+  });
+
+  mount.addEventListener('pointermove',(event)=>{
+    const interaction=pointerInteraction;
+    if(!interaction || interaction.pointerId!==event.pointerId) return;
+    const drawing=selectedDrawing();
+    const objectEl=mount.querySelector(`[data-survey-object-id="${CSS.escape(interaction.objectId)}"]`);
+    if(!drawing || !objectEl) return;
+    const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+    const dx=currentPoint.x-interaction.startPoint.x;
+    const dy=currentPoint.y-interaction.startPoint.y;
+    let draft={...interaction.original};
+
+    if(interaction.mode==='move'){
+      const rect=clampObjectRect({
+        x:Number(interaction.original.x||0)+dx,
+        y:Number(interaction.original.y||0)+dy,
+        width:Number(interaction.original.width||0),
+        height:Number(interaction.original.height||0)
+      },drawing);
+      draft={...draft,...rect};
+    }else if(interaction.mode==='resize'){
+      const rect=clampObjectRect({
+        x:Number(interaction.original.x||0),
+        y:Number(interaction.original.y||0),
+        width:Number(interaction.original.width||0)+dx,
+        height:Number(interaction.original.height||0)+dy
+      },drawing);
+      draft={...draft,...rect};
+    }else if(interaction.mode==='rotate'){
+      draft.rotation=rotationFromPointer(interaction.original,event,interaction.sheetRect,drawing);
+    }
+
+    interaction.draft=draft;
+    objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
+    event.preventDefault();
+  });
+
+  const finishPointerInteraction=(event)=>{
+    const interaction=pointerInteraction;
+    if(!interaction || interaction.pointerId!==event.pointerId) return;
+    pointerInteraction=null;
+    const current=drawingObjectStore.get(interaction.objectId);
+    if(!current) return;
+    const draft=interaction.draft||interaction.original;
+    const fields=interaction.mode==='move'?['x','y']
+      :interaction.mode==='resize'?['x','y','width','height']
+      :['rotation'];
+    const now=Date.now();
+    const next=createDrawingObject({
+      ...current,
+      ...draft,
+      fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,fields,now)
+    });
+    void commitDrawingObject(next,`survey-map-object-${interaction.mode}`).then(()=>renderSurveyMap());
+  };
+
+  mount.addEventListener('pointerup',finishPointerInteraction);
+  mount.addEventListener('pointercancel',finishPointerInteraction);
+
   mount.addEventListener('change',(event)=>{
     if(event.target.matches('[data-survey-name]')) void renameDrawing(event.target.value);
     if(event.target.matches('[data-survey-display-name]')) void renamePageDisplay(event.target.value);
+  });
+
+  window.addEventListener('keydown',(event)=>{
+    if(root()?.style.display==='none') return;
+    if((event.key==='Delete' || event.key==='Backspace') && selectedObjectId && !event.target.matches('input,textarea')){
+      event.preventDefault();
+      void deleteSelectedObject();
+    }
   });
 
   window.addEventListener('chousa:tab-change',(event)=>{
@@ -440,6 +699,9 @@ export function initializeSurveyMap(){
   bindEvents();
   drawingRecordStore.subscribe(()=>{
     if(root()?.style.display!=='none') renderSurveyMap();
+  });
+  drawingObjectStore.subscribe(()=>{
+    if(root()?.style.display!=='none' && !pointerInteraction) renderSurveyMap();
   });
   renderSurveyMap();
 }
