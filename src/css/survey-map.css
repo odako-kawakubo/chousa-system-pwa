@@ -150,6 +150,7 @@ body.survey-map-focus-mode.survey-map-left-collapsed .survey-map-left{display:no
 body.survey-map-focus-mode.survey-map-right-collapsed .survey-map-root{grid-template-columns:84px minmax(0,1fr)}
 body.survey-map-focus-mode.survey-map-right-collapsed .survey-map-right{display:none}
 body.survey-map-focus-mode.survey-map-left-collapsed.survey-map-right-collapsed .survey-map-root{grid-template-columns:minmax(0,1fr)}
+body.survey-map-focus-mode:not(.survey-map-right-collapsed) .survey-map-right{display:block}
 
 @media(max-width:1180px){
   .survey-map-root{grid-template-columns:84px minmax(0,1fr)}
