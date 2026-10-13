@@ -1,7 +1,7 @@
 /**
  * src/js/projects/project-store.js
  *
- * 端末内の案件一覧と、案件ごとの3レコードSnapshot・同期メタ情報を保持する。
+ * 端末内の案件一覧と、案件ごとのRecord Snapshot・同期メタ情報を保持する。
  * Firestoreを正本としつつ、案件切替・圏外継続・再起動後の復元に必要な
  * 端末内SnapshotをlocalStorageへ保存する。
  */
@@ -30,6 +30,8 @@ function cloneEntry(entry) {
     finishRecords: cloneRecords(entry.finishRecords),
     materialRecords: cloneRecords(entry.materialRecords),
     photoRecords: cloneRecords(entry.photoRecords),
+    drawingRecords: cloneRecords(entry.drawingRecords),
+    drawingObjects: cloneRecords(entry.drawingObjects),
     syncMeta: { ...(entry.syncMeta || {}) }
   };
 }
@@ -59,7 +61,9 @@ function persistLocalProjects(source = 'unspecified') {
         projectId: entry.project?.projectId || '',
         finishCount: entry.finishRecords?.length || 0,
         materialCount: entry.materialRecords?.length || 0,
-        photoCount: entry.photoRecords?.length || 0
+        photoCount: entry.photoRecords?.length || 0,
+        drawingCount: entry.drawingRecords?.length || 0,
+        drawingObjectCount: entry.drawingObjects?.length || 0
       }))
     });
     return true;
@@ -79,6 +83,8 @@ projects.set(sampleProject.projectId, {
   finishRecords: [],
   materialRecords: [],
   photoRecords: [],
+  drawingRecords: [],
+  drawingObjects: [],
   syncMeta: {}
 });
 
@@ -110,6 +116,8 @@ function saveProjectSnapshotInternal({
   finishRecords = [],
   materialRecords = [],
   photoRecords = [],
+  drawingRecords = [],
+  drawingObjects = [],
   syncMeta = null,
   source = 'unspecified'
 }) {
@@ -121,9 +129,13 @@ function saveProjectSnapshotInternal({
     previousFinishCount: previous?.finishRecords?.length || 0,
     previousMaterialCount: previous?.materialRecords?.length || 0,
     previousPhotoCount: previous?.photoRecords?.length || 0,
+    previousDrawingCount: previous?.drawingRecords?.length || 0,
+    previousDrawingObjectCount: previous?.drawingObjects?.length || 0,
     nextFinishCount: finishRecords.length,
     nextMaterialCount: materialRecords.length,
     nextPhotoCount: photoRecords.length,
+    nextDrawingCount: drawingRecords.length,
+    nextDrawingObjectCount: drawingObjects.length,
     nextMaterialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
   });
 
@@ -132,6 +144,8 @@ function saveProjectSnapshotInternal({
     finishRecords: cloneRecords(finishRecords),
     materialRecords: cloneRecords(materialRecords),
     photoRecords: cloneRecords(photoRecords),
+    drawingRecords: cloneRecords(drawingRecords),
+    drawingObjects: cloneRecords(drawingObjects),
     syncMeta: { ...(previous?.syncMeta || {}), ...(syncMeta || {}) }
   });
   const persisted = project.isSample ? true : persistLocalProjects(source);
@@ -142,6 +156,8 @@ function saveProjectSnapshotInternal({
     finishCount: finishRecords.length,
     materialCount: materialRecords.length,
     photoCount: photoRecords.length,
+    drawingCount: drawingRecords.length,
+    drawingObjectCount: drawingObjects.length,
     materialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
   });
   notify();
