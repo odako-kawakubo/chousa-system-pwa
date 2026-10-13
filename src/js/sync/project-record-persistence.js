@@ -696,9 +696,9 @@ export async function readProjectRecordsForProject(project, {
   if (!shouldSyncProject(project)) {
     return {
       mode: 'local',
-      typeModes: { finish: 'local', material: 'local', photo: 'local' },
-      finishRecords: [], materialRecords: [], photoRecords: [], changes: [],
-      cursors: { finish: 0, material: 0, photo: 0 }, finishChangeCursor: null, lastSyncedAt: 0
+      typeModes: { finish: 'local', material: 'local', photo: 'local', drawing: 'local', drawingObject: 'local' },
+      finishRecords: [], materialRecords: [], photoRecords: [], drawingRecords: [], drawingObjects: [], changes: [],
+      cursors: { finish: 0, material: 0, photo: 0, drawing: 0, drawingObject: 0 }, finishChangeCursor: null, lastSyncedAt: 0
     };
   }
 
@@ -718,14 +718,18 @@ export async function readProjectRecordsForProject(project, {
   const typeModes = {
     finish: canFinishDelta ? 'delta' : 'full',
     material: hasLocalBaseline && Number(numericCursors.material || 0) > 0 ? 'delta' : 'full',
-    photo: hasLocalBaseline && Number(numericCursors.photo || 0) > 0 ? 'delta' : 'full'
+    photo: hasLocalBaseline && Number(numericCursors.photo || 0) > 0 ? 'delta' : 'full',
+    drawing: hasLocalBaseline && Number(numericCursors.drawing || 0) > 0 ? 'delta' : 'full',
+    drawingObject: hasLocalBaseline && Number(numericCursors.drawingObject || 0) > 0 ? 'delta' : 'full'
   };
 
   // material/photoは1回のreadProjectRecordsOnceで取得するが、since値はタイプ別。
   // 片方がfullでも、もう片方の健全なcursorは維持する。
   const otherSince = {
     material: typeModes.material === 'delta' ? Number(numericCursors.material || 0) : 0,
-    photo: typeModes.photo === 'delta' ? Number(numericCursors.photo || 0) : 0
+    photo: typeModes.photo === 'delta' ? Number(numericCursors.photo || 0) : 0,
+    drawing: typeModes.drawing === 'delta' ? Number(numericCursors.drawing || 0) : 0,
+    drawingObject: typeModes.drawingObject === 'delta' ? Number(numericCursors.drawingObject || 0) : 0
   };
 
   const finishPromise = typeModes.finish === 'delta'
@@ -741,7 +745,7 @@ export async function readProjectRecordsForProject(project, {
       projectId,
       environment,
       sinceByType: otherSince,
-      recordTypes: ['material', 'photo']
+      recordTypes: ['material', 'photo', 'drawing', 'drawingObject']
     })
   ]);
 
@@ -753,7 +757,13 @@ export async function readProjectRecordsForProject(project, {
       : newestRecordUpdatedAt(otherRaw.materialRecords || []),
     photo: typeModes.photo === 'delta'
       ? Math.max(Number(numericCursors.photo || 0), newestRecordUpdatedAt(otherRaw.photoRecords || []))
-      : newestRecordUpdatedAt(otherRaw.photoRecords || [])
+      : newestRecordUpdatedAt(otherRaw.photoRecords || []),
+    drawing: typeModes.drawing === 'delta'
+      ? Math.max(Number(numericCursors.drawing || 0), newestRecordUpdatedAt(otherRaw.drawingRecords || []))
+      : newestRecordUpdatedAt(otherRaw.drawingRecords || []),
+    drawingObject: typeModes.drawingObject === 'delta'
+      ? Math.max(Number(numericCursors.drawingObject || 0), newestRecordUpdatedAt(otherRaw.drawingObjects || []))
+      : newestRecordUpdatedAt(otherRaw.drawingObjects || [])
   };
 
   // finish全件復元時にmaterialId→inputIdを正しく引けるよう、現在形のmaterialをここで組み立てる。
@@ -886,6 +896,44 @@ export async function readProjectRecordsForProject(project, {
     photoRecords = hydratePhotoRecords(Array.from(photoMergedMap.values()));
   }
 
+  function mergeSimpleType(recordType, idField, rawRecords, baseList, hydrateOne) {
+    const map = new Map();
+    if (typeModes[recordType] === 'delta') {
+      (baseList || []).forEach((record) => {
+        const id = String(record?.[idField] || record?.id || '');
+        if (id) map.set(id, record);
+      });
+    }
+    (rawRecords || []).forEach((record) => {
+      const id = String(record?.[idField] || record?.id || '');
+      if (id) map.set(id, hydrateOne(record));
+    });
+    unsent.filter((item)=>item.recordType===recordType).forEach((item)=>{
+      const id=String(item.recordId||'');
+      if(!id)return;
+      if(item.operation==='delete'){ map.delete(id); return; }
+      if(!item.record)return;
+      const current=map.get(id);
+      const merged=current
+        ? mergeRecordByFieldEditedAt(recordType,current,item.record,{prefer:'incoming'}).record
+        : item.record;
+      map.set(id,hydrateOne(merged));
+      if(!sameMergedBusinessRecord(recordType,item.record,merged)){
+        putUnsent({projectId:item.projectId,environment:item.environment,recordType,recordId:id,operation:'set',record:merged});
+      }
+    });
+    return [...map.values()];
+  }
+
+  const effectiveDrawings = mergeSimpleType(
+    'drawing','drawingId',otherRaw.drawingRecords || [],baseRecords?.drawingRecords || [],hydrateIncomingDrawingRecord
+  );
+  const effectiveDrawingObjects = mergeSimpleType(
+    'drawingObject','objectId',otherRaw.drawingObjects || [],baseRecords?.drawingObjects || [],hydrateIncomingDrawingObject
+  );
+  const drawingRecords = typeModes.drawing === 'full' ? effectiveDrawings : [];
+  const drawingObjects = typeModes.drawingObject === 'full' ? effectiveDrawingObjects : [];
+
   const changes = [
     ...finishChanges,
     ...(typeModes.material === 'delta'
@@ -893,6 +941,12 @@ export async function readProjectRecordsForProject(project, {
       : []),
     ...(typeModes.photo === 'delta'
       ? (otherRaw.photoRecords || []).map((record) => ({ recordType: 'photo', changeType: 'modified', id: String(record.photoId || record.id || ''), record }))
+      : []),
+    ...(typeModes.drawing === 'delta'
+      ? (otherRaw.drawingRecords || []).map((record) => ({ recordType: 'drawing', changeType: 'modified', id: String(record.drawingId || record.id || ''), record: hydrateIncomingDrawingRecord(record) }))
+      : []),
+    ...(typeModes.drawingObject === 'delta'
+      ? (otherRaw.drawingObjects || []).map((record) => ({ recordType: 'drawingObject', changeType: 'modified', id: String(record.objectId || record.id || ''), record: hydrateIncomingDrawingObject(record) }))
       : [])
   ];
 
@@ -909,6 +963,8 @@ export async function readProjectRecordsForProject(project, {
     finishRecords,
     materialRecords,
     photoRecords,
+    drawingRecords,
+    drawingObjects,
     changes,
     cursors: nextCursors,
     finishChangeCursor: nextFinishChangeCursor,
@@ -939,10 +995,10 @@ export function subscribeRealtimeProjectRecordsForProject(project, { afterByType
     onError
   });
 
-  // material/photoだけは従来のupdatedAt listenerを継続する。finish本体listenerは張らない。
+  // finish以外はupdatedAt listenerを継続する。finish本体listenerは張らない。
   const stopOther = subscribeProjectRecordChanges({
     projectId, environment, afterByType,
-    recordTypes: ['material', 'photo'],
+    recordTypes: ['material', 'photo', 'drawing', 'drawingObject'],
     onChanges,
     onState,
     onError
@@ -958,7 +1014,9 @@ export function newestCursorsFromChanges(changes = [], fallback = {}) {
   const next = {
     finish: Number(fallback.finish || 0),
     material: Number(fallback.material || 0),
-    photo: Number(fallback.photo || 0)
+    photo: Number(fallback.photo || 0),
+    drawing: Number(fallback.drawing || 0),
+    drawingObject: Number(fallback.drawingObject || 0)
   };
   changes.forEach((change) => {
     const type = change?.recordType;
