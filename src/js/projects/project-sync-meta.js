@@ -32,7 +32,9 @@ export function normalizeProjectRecordCursors(value = {}) {
   return {
     finish: Number(value.finish || 0),
     material: Number(value.material || 0),
-    photo: Number(value.photo || 0)
+    photo: Number(value.photo || 0),
+    drawing: Number(value.drawing || 0),
+    drawingObject: Number(value.drawingObject || 0)
   };
 }
 
@@ -124,7 +126,9 @@ export function updateProjectRecordCursors(
   const next = {
     finish: Math.max(current.finish, Number(cursors.finish || 0)),
     material: Math.max(current.material, Number(cursors.material || 0)),
-    photo: Math.max(current.photo, Number(cursors.photo || 0))
+    photo: Math.max(current.photo, Number(cursors.photo || 0)),
+    drawing: Math.max(current.drawing, Number(cursors.drawing || 0)),
+    drawingObject: Math.max(current.drawingObject, Number(cursors.drawingObject || 0))
   };
 
   syncDiagnosticLog('SYNC_CURSOR_BEFORE', {
