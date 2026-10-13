@@ -1,10 +1,10 @@
 /*
- * v0.1.9.4 Service Worker
+ * v0.1.10.1 Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.4';
+const APP_CACHE = 'chousa-app-v0.1.10.1';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
-const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0194';
+const OUTPUT_LIB_CACHE = 'chousa-output-libs-v01101';
 const APP_CACHE_PREFIX = 'chousa-app-';
 const FIREBASE_SDK_PREFIX = 'https://www.gstatic.com/firebasejs/12.1.0/';
 const OUTPUT_LIB_URLS = new Set([
@@ -16,7 +16,7 @@ const OUTPUT_LIB_URLS = new Set([
 
 const APP_SHELL = [
   './','./index.html','./app.html','./manifest.json','./version.json',
-  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
+  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/survey-map.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
   './assets/microsoft-symbol.svg','./assets/audio/camera1.mp3.gz','./assets/audio/camera2.mp3.gz','./assets/audio/click.mp3.gz','./assets/audio/chime.mp3.gz',
   './js/home/home-init.js','./js/home/home-controller.js','./js/home/home-return-control.js',
   './js/app-init.js','./js/app-update.js','./js/app-version.js','./js/device-code.js',
@@ -26,15 +26,15 @@ const APP_SHELL = [
   './js/firestore/firestore-repository.js','./js/firestore/firestore-project-list.js','./js/firestore/record-serializer.js',
   './js/sync/sync-status.js','./js/sync/field-edit-meta.js','./js/sync/record-field-merge.js','./js/sync/change-log-retention.js','./js/sync/photo-visual-metadata.js','./js/sync/project-record-persistence.js','./js/sync/unsent-queue.js','./js/sync/finish-sparse-structure.js',
   './js/projects/project-controller.js','./js/projects/project-store.js','./js/projects/project-session.js','./js/projects/project-sync-meta.js','./js/projects/project-creation.js','./js/projects/project-factory.js','./js/projects/project-navigation.js','./js/projects/project-record-apply.js','./js/projects/project-side-panel-controller.js','./js/projects/project-entry-ui.js','./js/projects/firestore-project-browser.js','./js/projects/onedrive-project-browser.js','./js/projects/project-transfer.js','./js/projects/project-view-impact.js',
-  './js/records/finish-record.js','./js/records/material-record.js','./js/records/photo-record.js',
-  './js/store/finish-record-store.js','./js/store/material-record-store.js','./js/store/photo-record-store.js','./js/store/survey-candidate-store.js',
+  './js/records/finish-record.js','./js/records/material-record.js','./js/records/photo-record.js','./js/records/drawing-record.js','./js/records/drawing-object.js',
+  './js/store/finish-record-store.js','./js/store/material-record-store.js','./js/store/photo-record-store.js','./js/store/drawing-record-store.js','./js/store/drawing-object-store.js','./js/store/survey-candidate-store.js',
   './js/finish-table/finish-table-controller.js','./js/finish-table/finish-table-history-persistence.js','./js/finish-table/finish-table-candidate-input.js','./js/finish-table/finish-table-edit-session.js','./js/finish-table/finish-table-interactions.js','./js/finish-table/finish-table-sample-seed.js','./js/finish-table/finish-table-room-copy.js','./js/finish-table/finish-table-room-actions.js','./js/finish-table/finish-table-record-transaction.js','./js/finish-table/finish-table-cell-actions.js','./js/finish-table/material-usage-derived.js','./js/finish-table/finish-table-persistence.js','./js/finish-table/finish-table-structure-actions.js','./js/finish-table/finish-table-constants.js','./js/finish-table/finish-table-history.js','./js/finish-table/finish-table-renderer.js','./js/finish-table/finish-table-state.js','./js/finish-table/finish-table-view-model.js','./js/finish-table/finish-table-refresh-guard.js','./js/finish-table/finish-table-scroll-state.js','./js/finish-table/room-note-editor.js',
   './js/record-view/record-view-controller.js','./js/record-view/record-view-renderer.js','./js/record-view/record-view-view-model.js',
   './js/materials/material-list-controller.js','./js/materials/material-room-display-state.js','./js/materials/material-list-edit-actions.js','./js/materials/material-list-interactions.js','./js/materials/material-list-persistence.js','./js/materials/material-list-renderer.js','./js/materials/material-list-view-model.js','./js/materials/material-operations-controller.js','./js/materials/material-operations-renderer.js','./js/materials/material-operations.js','./js/materials/material-sample-name.js','./js/materials/material-sampling-autofill.js','./js/materials/simple-list.js',
   './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-completed-composer.js','./js/photos/sampling-location-change.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-board-editor.js','./js/photos/photo-board-editor-form.js','./js/photos/photo-board-editor-interactions.js','./js/photos/photo-board-editor-persistence.js','./js/photos/photo-board-editor-session.js','./js/photos/photo-compare-data.js','./js/photos/photo-controller.js','./js/photos/photo-interactions.js','./js/photos/photo-record-actions.js','./js/photos/photo-preview-manager.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-renderer.js','./js/photos/photo-view-model.js','./js/photos/photo-viewer-data.js','./js/photos/photo-viewer-gesture.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
   './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-pdf-preview-controller.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
-  './js/analysis/analysis-import-controller.js',
+  './js/analysis/analysis-import-controller.js','./js/survey-map/survey-map-controller.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
   './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-photo-id.js','./js/camera/camera-orientation.js','./js/camera/camera-shutter-sound.js','./js/camera/camera-controller.js',
   './js/debug/sync-diagnostic-log.js',
