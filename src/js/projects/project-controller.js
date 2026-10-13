@@ -49,6 +49,8 @@ import {
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
+import * as drawingRecordStore from '../store/drawing-record-store.js';
+import * as drawingObjectStore from '../store/drawing-object-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
@@ -99,7 +101,13 @@ function typeModeReasons(typeModes, storedCursors, target, remote) {
       : `full:cursor-${Number(storedCursors.material || 0)}-snapshot-${target.materialRecords?.length || 0}`,
     photo: typeModes.photo === 'delta'
       ? `delta:local-baseline+cursor-${Number(storedCursors.photo || 0)}`
-      : `full:cursor-${Number(storedCursors.photo || 0)}-snapshot-${target.photoRecords?.length || 0}`
+      : `full:cursor-${Number(storedCursors.photo || 0)}-snapshot-${target.photoRecords?.length || 0}`,
+    drawing: typeModes.drawing === 'delta'
+      ? `delta:local-baseline+cursor-${Number(storedCursors.drawing || 0)}`
+      : `full:cursor-${Number(storedCursors.drawing || 0)}-snapshot-${target.drawingRecords?.length || 0}`,
+    drawingObject: typeModes.drawingObject === 'delta'
+      ? `delta:local-baseline+cursor-${Number(storedCursors.drawingObject || 0)}`
+      : `full:cursor-${Number(storedCursors.drawingObject || 0)}-snapshot-${target.drawingObjects?.length || 0}`
   };
 }
 
@@ -125,6 +133,8 @@ async function migrateLegacyVisualPhotoMetadata(project) {
       finishRecords: finishRecordStore.exportSnapshot(),
       materialRecords: materialRecordStore.exportSnapshot(),
       photoRecords: photoRecordStore.exportSnapshot(),
+      drawingRecords: drawingRecordStore.exportSnapshot(),
+      drawingObjects: drawingObjectStore.exportSnapshot(),
       source: 'visual-photo-metadata-backfill'
     });
   }
@@ -262,6 +272,8 @@ async function openFirestoreProjectSession(target) {
     finishSnapshotCount: target.finishRecords?.length || 0,
     materialSnapshotCount: target.materialRecords?.length || 0,
     photoSnapshotCount: target.photoRecords?.length || 0,
+    drawingSnapshotCount: target.drawingRecords?.length || 0,
+    drawingObjectSnapshotCount: target.drawingObjects?.length || 0,
     storedCursors,
     finishChangeCursor,
     reason: useLocalSnapshot
@@ -289,13 +301,17 @@ async function openFirestoreProjectSession(target) {
       baseRecords: useLocalSnapshot ? {
         finishRecords: target.finishRecords || [],
         materialRecords: target.materialRecords || [],
-        photoRecords: target.photoRecords || []
+        photoRecords: target.photoRecords || [],
+        drawingRecords: target.drawingRecords || [],
+        drawingObjects: target.drawingObjects || []
       } : null
     });
     const typeModes = remote.typeModes || {
       finish: remote.mode,
       material: remote.mode,
-      photo: remote.mode
+      photo: remote.mode,
+      drawing: remote.mode,
+      drawingObject: remote.mode
     };
     syncDiagnosticLog('SYNC_TYPE_READ_PLAN', {
       projectId: project.projectId,
@@ -304,7 +320,9 @@ async function openFirestoreProjectSession(target) {
       snapshotCounts: {
         finish: target.finishRecords?.length || 0,
         material: target.materialRecords?.length || 0,
-        photo: target.photoRecords?.length || 0
+        photo: target.photoRecords?.length || 0,
+        drawing: target.drawingRecords?.length || 0,
+        drawingObject: target.drawingObjects?.length || 0
       },
       cursors: storedCursors
     });
@@ -316,6 +334,8 @@ async function openFirestoreProjectSession(target) {
       finishRecords: remote.finishRecords?.length || 0,
       materialRecords: remote.materialRecords?.length || 0,
       photoRecords: remote.photoRecords?.length || 0,
+      drawingRecords: remote.drawingRecords?.length || 0,
+      drawingObjects: remote.drawingObjects?.length || 0,
       finishHistoryMode: remote.finishHistoryMode || ''
     });
     if (token !== activeProjectStreamToken) {
@@ -333,6 +353,8 @@ async function openFirestoreProjectSession(target) {
         finishRecords: remote.finishRecords?.length ? remote.finishRecords : target.finishRecords,
         materialRecords: remote.materialRecords || target.materialRecords,
         photoRecords: remote.photoRecords || target.photoRecords || [],
+        drawingRecords: remote.drawingRecords || target.drawingRecords || [],
+        drawingObjects: remote.drawingObjects || target.drawingObjects || [],
         syncMeta: {
           ...(target.syncMeta || {}),
           recordCursors: normalizeProjectRecordCursors(remote.cursors),
@@ -359,6 +381,14 @@ async function openFirestoreProjectSession(target) {
         photoRecordStore.replaceAll(remote.photoRecords || [], { notify: false });
         replacedFullType = true;
       }
+      if (typeModes.drawing === 'full') {
+        drawingRecordStore.replaceAll(remote.drawingRecords || [], { notify: false });
+        replacedFullType = true;
+      }
+      if (typeModes.drawingObject === 'full') {
+        drawingObjectStore.replaceAll(remote.drawingObjects || [], { notify: false });
+        replacedFullType = true;
+      }
       if (typeModes.finish === 'full') {
         finishRecordStore.replaceAll(remote.finishRecords || [], { notify: false });
         replacedFullType = true;
@@ -374,6 +404,8 @@ async function openFirestoreProjectSession(target) {
           finishRecords: finishRecordStore.exportSnapshot(),
           materialRecords: materialRecordStore.exportSnapshot(),
           photoRecords: photoRecordStore.exportSnapshot(),
+          drawingRecords: drawingRecordStore.exportSnapshot(),
+          drawingObjects: drawingObjectStore.exportSnapshot(),
           syncMeta: {
             ...(target.syncMeta || {}),
             recordCursors: normalizeProjectRecordCursors(remote.cursors),
@@ -493,7 +525,7 @@ async function openFirestoreProjectSession(target) {
           return;
         }
         serverReadyTypes.add(recordType);
-        if (serverReadyTypes.size === 3) {
+        if (serverReadyTypes.size === 5) {
           markReady(latestCursorValue(getProjectRecordCursors(project.projectId)));
         }
       },
