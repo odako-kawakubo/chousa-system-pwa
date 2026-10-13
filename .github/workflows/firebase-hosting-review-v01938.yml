@@ -836,17 +836,17 @@ jobs:
           assert "const recordQueueResult = projectQueueReady" in block
           PY
 
-      - name: v0.1.9.37 review consistency checks
+      - name: v0.1.9.38 review consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.37'" src/config/app-config.js
+          grep -q "version: '0.1.9.38'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'review'" src/config/app-config.js
-          grep -q '"version": "0.1.9.37"' src/version.json
+          grep -q '"version": "0.1.9.38"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.37" src/service-worker.js
-          grep -q "chousa-output-libs-v01937" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.38" src/service-worker.js
+          grep -q "chousa-output-libs-v01938" src/service-worker.js
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
