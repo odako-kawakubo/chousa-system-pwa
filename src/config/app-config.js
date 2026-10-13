@@ -2,11 +2,11 @@
  * アプリ全体で共有する基本設定。
  * version は利用者へ表示する版、revision は同一version内の更新判定に使う。
  * HTMLへ番号を直書きしない。
- * v0.1.10.3 調査図全画面UIレビュー版。
+ * v0.1.10.4 調査図パネル開閉レビュー版。
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.10.3',
+  version: '0.1.10.4',
   revision: '',
   mode: 'stable'
 };
