@@ -41,7 +41,9 @@ export function createEmptyProjectViewImpact() {
   return {
     finish: { changed: false, fields: new Set(), structural: false, materialView: false, photoVisual: false },
     material: { changed: false, fields: new Set(), finishView: false, photoVisual: false, photoSampling: false },
-    photo: { changed: false, photoTypes: new Set(), fields: new Set(), forceRefresh: false }
+    photo: { changed: false, photoTypes: new Set(), fields: new Set(), forceRefresh: false },
+    drawing: { changed: false, fields: new Set() },
+    drawingObject: { changed: false, fields: new Set() }
   };
 }
 
@@ -63,6 +65,9 @@ export function createFullTypeProjectViewImpact(typeModes = {}, photoRecords = [
     impact.material.photoSampling = true;
     MATERIAL_IMPACT_FIELDS.forEach((field) => impact.material.fields.add(field));
   }
+
+  if (typeModes.drawing === 'full') impact.drawing.changed = true;
+  if (typeModes.drawingObject === 'full') impact.drawingObject.changed = true;
 
   if (typeModes.photo === 'full') {
     impact.photo.changed = true;
@@ -126,6 +131,22 @@ export function registerPhotoProjectViewImpact(impact, current, change) {
     .forEach((field) => impact.photo.fields.add(field));
 }
 
+export function registerDrawingProjectViewImpact(impact, current, change) {
+  impact.drawing.changed = true;
+  const incoming = change.changeType === 'removed' ? null : change.record;
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})]);
+  ['updatedAt','fieldEditedAt'].forEach((field)=>keys.delete(field));
+  [...keys].filter((field)=>!equalRecordValue(current?.[field],incoming?.[field])).forEach((field)=>impact.drawing.fields.add(field));
+}
+
+export function registerDrawingObjectProjectViewImpact(impact, current, change) {
+  impact.drawingObject.changed = true;
+  const incoming = change.changeType === 'removed' ? null : change.record;
+  const keys = new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})]);
+  ['updatedAt','fieldEditedAt'].forEach((field)=>keys.delete(field));
+  [...keys].filter((field)=>!equalRecordValue(current?.[field],incoming?.[field])).forEach((field)=>impact.drawingObject.fields.add(field));
+}
+
 export function serializeProjectViewImpact(impact) {
   return {
     finish: { ...impact.finish, fields: [...impact.finish.fields] },
@@ -134,6 +155,8 @@ export function serializeProjectViewImpact(impact) {
       ...impact.photo,
       photoTypes: [...impact.photo.photoTypes],
       fields: [...impact.photo.fields]
-    }
+    },
+    drawing: { ...impact.drawing, fields: [...impact.drawing.fields] },
+    drawingObject: { ...impact.drawingObject, fields: [...impact.drawingObject.fields] }
   };
 }
