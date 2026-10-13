@@ -116,13 +116,15 @@ function saveProjectSnapshotInternal({
   finishRecords = [],
   materialRecords = [],
   photoRecords = [],
-  drawingRecords = [],
-  drawingObjects = [],
+  drawingRecords = null,
+  drawingObjects = null,
   syncMeta = null,
   source = 'unspecified'
 }) {
   if (!project?.projectId) return { snapshot: null, persisted: false };
   const previous = projects.get(project.projectId);
+  const nextDrawingRecords = Array.isArray(drawingRecords) ? drawingRecords : (previous?.drawingRecords || []);
+  const nextDrawingObjects = Array.isArray(drawingObjects) ? drawingObjects : (previous?.drawingObjects || []);
   syncDiagnosticLog('LOCAL_SNAPSHOT_BEFORE_SAVE', {
     source,
     projectId: project.projectId,
@@ -134,8 +136,8 @@ function saveProjectSnapshotInternal({
     nextFinishCount: finishRecords.length,
     nextMaterialCount: materialRecords.length,
     nextPhotoCount: photoRecords.length,
-    nextDrawingCount: drawingRecords.length,
-    nextDrawingObjectCount: drawingObjects.length,
+    nextDrawingCount: nextDrawingRecords.length,
+    nextDrawingObjectCount: nextDrawingObjects.length,
     nextMaterialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
   });
 
@@ -144,8 +146,8 @@ function saveProjectSnapshotInternal({
     finishRecords: cloneRecords(finishRecords),
     materialRecords: cloneRecords(materialRecords),
     photoRecords: cloneRecords(photoRecords),
-    drawingRecords: cloneRecords(drawingRecords),
-    drawingObjects: cloneRecords(drawingObjects),
+    drawingRecords: cloneRecords(nextDrawingRecords),
+    drawingObjects: cloneRecords(nextDrawingObjects),
     syncMeta: { ...(previous?.syncMeta || {}), ...(syncMeta || {}) }
   });
   const persisted = project.isSample ? true : persistLocalProjects(source);
@@ -156,8 +158,8 @@ function saveProjectSnapshotInternal({
     finishCount: finishRecords.length,
     materialCount: materialRecords.length,
     photoCount: photoRecords.length,
-    drawingCount: drawingRecords.length,
-    drawingObjectCount: drawingObjects.length,
+    drawingCount: nextDrawingRecords.length,
+    drawingObjectCount: nextDrawingObjects.length,
     materialIds: materialRecords.map((record) => String(record?.materialId || '')).filter(Boolean)
   });
   notify();
