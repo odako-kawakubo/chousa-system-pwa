@@ -28,6 +28,7 @@ import { initializeMaterialOperations } from './materials/material-operations-co
 import { initializePhotoTab } from './photos/photo-controller.js';
 import { configurePhotoLocalStore } from './photos/photo-local-store.js';
 import { initializePhotoOneDriveSync } from './photos/photo-onedrive-sync.js';
+import { initializeSurveyMap } from './survey-map/survey-map-controller.js';
 import { initializeOutputTab } from './output/output-controller.js';
 import { initializeAnalysisImport } from './analysis/analysis-import-controller.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
@@ -97,6 +98,7 @@ async function initProjectApp() {
     initializeRecordView();
     initializePhotoTab();
     initializePhotoOneDriveSync();
+    initializeSurveyMap();
     initializeOutputTab();
     initializeAnalysisImport();
     initializeSettingsTab();
