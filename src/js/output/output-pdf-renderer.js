@@ -421,9 +421,21 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
   pages.forEach((item)=>{
     addPage(pdf,state);drawTitle(pdf,'試料採取写真',settings,true);
     const leftX=10;const metaY=32;const lineH=8.5;const labelW=15;const rightEdge=190;
-    [['件名：',item.projectName],['試料：',item.sampleName],['場所：',item.samplingPlace?(item.samplingPlaceLabel === '部屋名' ? item.samplingPlace : `部屋No.${item.samplingPlace}`):'']].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
+    [['件名：',item.projectName],['試料：',item.sampleName]].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
+    setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('場所：',leftX,metaY+2*lineH);
+    const roomNo=String(item.samplingPlaceRoomNo||'').trim();
+    const roomName=String(item.samplingPlaceRoomName||'').trim();
+    const placeX=leftX+labelW;const placeY=metaY+2*lineH;
+    if(item.samplingPlaceLabel==='部屋名'&&roomName){
+      setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(roomName,placeX,placeY);
+      const mainWidth=pdf.getTextWidth(roomName);
+      if(roomNo){setFont(pdf,8,'normal');pdf.text(`（部屋No.${roomNo}）`,placeX+mainWidth+1.2,placeY);}
+    }else{
+      const fallback=roomNo||String(item.samplingPlace||'').trim();
+      setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(fallback?`部屋No.${fallback}`:'',placeX,placeY);
+    }
     setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(formatSamplingCode(item),rightEdge,metaY,{align:'right'});
-    setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),rightEdge,metaY+lineH,{align:'right'});
+    setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);const capturedDateX=138+pdf.getTextWidth('採取日：')+1.2;setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),capturedDateX,metaY+lineH);
     const stageMap=new Map((item.stages||[]).map((stage)=>[stage.type,stage]));
     [['before','施工前'],['during','施工中'],['after','施工後']].forEach(([type,label],index)=>{
       const stage=stageMap.get(type)||{label,photoId:'',memo:''};const y=57+index*72;const photoX=38;const photoW=92;const photoH=69.5;const memoX=133;const memoW=53;const source=photoSources?.get?.(String(stage.photoId||''))||'';
