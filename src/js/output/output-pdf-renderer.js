@@ -435,7 +435,7 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
       setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(fallback?`部屋No.${fallback}`:'',placeX,placeY);
     }
     setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(formatSamplingCode(item),rightEdge,metaY,{align:'right'});
-    setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),rightEdge,metaY+lineH,{align:'right'});
+    setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);const capturedDateX=138+pdf.getTextWidth('採取日：')+1.2;setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),capturedDateX,metaY+lineH);
     const stageMap=new Map((item.stages||[]).map((stage)=>[stage.type,stage]));
     [['before','施工前'],['during','施工中'],['after','施工後']].forEach(([type,label],index)=>{
       const stage=stageMap.get(type)||{label,photoId:'',memo:''};const y=57+index*72;const photoX=38;const photoW=92;const photoH=69.5;const memoX=133;const memoW=53;const source=photoSources?.get?.(String(stage.photoId||''))||'';
