@@ -1,12 +1,13 @@
 /**
  * src/js/ui/header-visibility.js
  *
- * 横スマホ時の通常ヘッダー表示 / 非表示を端末単位で管理する。
+ * 横スマホと調査図iPad時の通常ヘッダー表示 / 非表示を端末単位で管理する。
  * タブ固有処理や同期処理は持たず、bodyクラスと切替ボタン表示だけを担当する。
  */
 
 const STORAGE_KEY = 'chousa-header-collapsed';
 const COMPACT_QUERY = '(orientation: landscape) and (max-width: 850px) and (max-height: 500px)';
+const SURVEY_MAP_TABLET_QUERY = '(orientation: landscape) and (max-width: 1400px) and (max-height: 1100px)';
 
 function readStoredState() {
   const value = localStorage.getItem(STORAGE_KEY);
@@ -16,7 +17,9 @@ function readStoredState() {
 }
 
 function isCompactViewport() {
-  return window.matchMedia(COMPACT_QUERY).matches;
+  if (window.matchMedia(COMPACT_QUERY).matches) return true;
+  return document.body.classList.contains('survey-map-tab-active')
+    && window.matchMedia(SURVEY_MAP_TABLET_QUERY).matches;
 }
 
 function applyState(collapsed) {
@@ -44,6 +47,9 @@ export function initializeHeaderVisibility() {
   });
 
   const media = window.matchMedia(COMPACT_QUERY);
+  const surveyMapMedia = window.matchMedia(SURVEY_MAP_TABLET_QUERY);
   media.addEventListener?.('change', () => applyState(collapsed));
+  surveyMapMedia.addEventListener?.('change', () => applyState(collapsed));
+  window.addEventListener('chousa:tab-change', () => applyState(collapsed));
   window.addEventListener('orientationchange', () => window.setTimeout(() => applyState(collapsed), 50));
 }
