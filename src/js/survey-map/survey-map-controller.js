@@ -236,7 +236,7 @@ function toolsHtml(){
   ];
   return `
     <div class="survey-map-tool-section">
-      <div class="survey-map-tool-grid">${primary.map(([icon,label],index])=>
+      <div class="survey-map-tool-grid">${primary.map(([icon,label],index)=>
         toolIconCell(icon,label,index!==0)
       ).join('')}</div>
       <div class="survey-map-divider"></div>
