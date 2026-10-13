@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.3 Stable
+name: Deploy v0.1.9.4 Stable
 
 on:
   push:
