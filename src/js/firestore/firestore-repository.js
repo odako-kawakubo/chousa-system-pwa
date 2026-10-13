@@ -35,7 +35,9 @@ import { firebaseApp } from '../../config/firebase-config.js';
 import {
   serializeFinishRecord,
   serializeMaterialRecord,
-  serializePhotoRecord
+  serializePhotoRecord,
+  serializeDrawingRecord,
+  serializeDrawingObject
 } from './record-serializer.js';
 import { putUnsent, removeUnsent, listUnsent } from '../sync/unsent-queue.js';
 import {
@@ -56,7 +58,9 @@ const db = getFirestore(firebaseApp);
 const RECORD_COLLECTIONS = Object.freeze({
   finish: 'finishRecords',
   material: 'materialRecords',
-  photo: 'photoRecords'
+  photo: 'photoRecords',
+  drawing: 'drawings',
+  drawingObject: 'drawingObjects'
 });
 const FINISH_BATCH_SIZE = 200;
 const CHANGE_LOG_COLLECTION = 'finishChangeLogs';
@@ -222,6 +226,20 @@ function appendRecordOperationToBatch(batch, entry) {
     batch.set(
       recordRef(projectId, environment, 'photo', recordId),
       serializePhotoRecord(record, { updatedAt: serverTimestamp() })
+    );
+    return;
+  }
+  if (recordType === 'drawing') {
+    batch.set(
+      recordRef(projectId, environment, 'drawing', recordId),
+      serializeDrawingRecord(record, { updatedAt: serverTimestamp() })
+    );
+    return;
+  }
+  if (recordType === 'drawingObject') {
+    batch.set(
+      recordRef(projectId, environment, 'drawingObject', recordId),
+      serializeDrawingObject(record, { updatedAt: serverTimestamp() })
     );
     return;
   }
@@ -582,6 +600,30 @@ export function savePhotoRecord({ projectId, environment = 'production', record,
     environment,
     recordType: 'photo',
     recordId: record.photoId,
+    operation: 'set',
+    localRecord: record,
+    source
+  }));
+}
+
+export function saveDrawingRecord({ projectId, environment = 'production', record, source = 'drawing-unspecified' }) {
+  return enqueueRepositoryWrite(() => writeWithQueue({
+    projectId,
+    environment,
+    recordType: 'drawing',
+    recordId: record.drawingId,
+    operation: 'set',
+    localRecord: record,
+    source
+  }));
+}
+
+export function saveDrawingObjectRecord({ projectId, environment = 'production', record, source = 'drawing-object-unspecified' }) {
+  return enqueueRepositoryWrite(() => writeWithQueue({
+    projectId,
+    environment,
+    recordType: 'drawingObject',
+    recordId: record.objectId,
     operation: 'set',
     localRecord: record,
     source
@@ -960,7 +1002,7 @@ export async function readProjectRecordsOnce({
   syncDiagnosticLog('RECORD_READ_START', { projectId, recordTypes, sinceByType });
   if (!canUseFirestore()) {
     syncDiagnosticLog('RECORD_READ_SKIPPED_OFFLINE', { projectId, recordTypes });
-    return { finishRecords: [], materialRecords: [], photoRecords: [] };
+    return { finishRecords: [], materialRecords: [], photoRecords: [], drawingRecords: [], drawingObjects: [] };
   }
 
   const entries = await Promise.all(recordTypes.map(async (recordType) => {
@@ -977,7 +1019,9 @@ export async function readProjectRecordsOnce({
   return {
     finishRecords: byType.finish || [],
     materialRecords: byType.material || [],
-    photoRecords: byType.photo || []
+    photoRecords: byType.photo || [],
+    drawingRecords: byType.drawing || [],
+    drawingObjects: byType.drawingObject || []
   };
 }
 
