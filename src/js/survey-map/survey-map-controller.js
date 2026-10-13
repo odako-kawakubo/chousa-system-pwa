@@ -17,7 +17,7 @@ let selectedDrawingId='';
 let gridVisible=false;
 let focusMode=false;
 let leftCollapsed=false;
-let rightCollapsed=false;
+let rightCollapsed=true;
 let pagesOpen=false;
 
 function root(){ return document.getElementById('survey-map'); }
@@ -140,19 +140,15 @@ async function deleteDrawing(){
 
 function setFocusMode(next){
   focusMode=Boolean(next);
-  if(!focusMode){
-    leftCollapsed=false;
-    rightCollapsed=false;
-    pagesOpen=false;
-  }
+  pagesOpen=false;
   applyLayoutClasses();
   renderSurveyMap();
 }
 
 function applyLayoutClasses(){
   document.body.classList.toggle('survey-map-focus-mode',focusMode);
-  document.body.classList.toggle('survey-map-left-collapsed',focusMode&&leftCollapsed);
-  document.body.classList.toggle('survey-map-right-collapsed',focusMode&&rightCollapsed);
+  document.body.classList.toggle('survey-map-left-collapsed',leftCollapsed);
+  document.body.classList.toggle('survey-map-right-collapsed',rightCollapsed);
 }
 
 function svgIcon(name){
@@ -298,6 +294,8 @@ export function renderSurveyMap(){
 
   mount.innerHTML=`
     <div class="survey-map-root">
+      <button type="button" class="survey-map-side-toggle survey-map-side-toggle-left" data-survey-left-toggle title="${leftCollapsed?'ツールを開く':'ツールをしまう'}" aria-label="${leftCollapsed?'ツールを開く':'ツールをしまう'}">${leftCollapsed?'▶':'◀'}</button>
+      <button type="button" class="survey-map-side-toggle survey-map-side-toggle-right" data-survey-right-toggle title="${rightCollapsed?'編集パネルを開く':'編集パネルをしまう'}" aria-label="${rightCollapsed?'編集パネルを開く':'編集パネルをしまう'}">${rightCollapsed?'◀':'▶'}</button>
       <aside class="survey-map-panel survey-map-left">
         <div class="survey-map-panel-head">
           ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
@@ -316,8 +314,6 @@ export function renderSurveyMap(){
             className:'survey-map-focus-toggle'
           })}
           ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
-          ${iconButton({icon:'tools',label:'ツール表示切替',attr:'data-survey-left-toggle',active:!leftCollapsed})}
-          ${iconButton({icon:'panel',label:'編集パネル表示切替',attr:'data-survey-right-toggle',active:!rightCollapsed})}
           ${iconButton({icon:'undo',label:'元に戻す',disabled:true})}
           ${iconButton({icon:'redo',label:'やり直す',disabled:true})}
           ${iconButton({icon:'grid',label:'グリッド',attr:'data-survey-grid',active:gridVisible})}
@@ -414,8 +410,6 @@ function bindEvents(){
     }
     if(focusMode){
       focusMode=false;
-      leftCollapsed=false;
-      rightCollapsed=false;
       pagesOpen=false;
       applyLayoutClasses();
     }
