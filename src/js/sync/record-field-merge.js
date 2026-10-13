@@ -19,6 +19,20 @@ export const RECORD_MERGE_FIELDS = Object.freeze({
     'boardSize','oneDriveDriveId','originalItemId','completedItemId','originalPath',
     'completedPath','areaCode','roomPosition','partSlot','roomNo','materialId','samplingPlace',
     'samplingBranch','sampleNo','part','shootingType'
+  ]),
+  drawing: Object.freeze([
+    'name','pageWidth','pageHeight','order','deleted','titleSettings','nameSettings','legendSettings'
+  ]),
+  drawingObject: Object.freeze([
+    'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
+    'areaCode','roomPosition','carrierPosition','roomNoSnapshot','roomNameSnapshot',
+    'materialId','samplingBranch','resultStatus','exclusionReason','materialNoSnapshot','partSnapshot','materialNameSnapshot',
+    'autoStyle','manualStyleOverride','textStyle','borderStyle','backgroundStyle',
+    'shape','color','size','strokeColor','strokeWidth','points','vertices','lineColor','lineWidth','lineStyle',
+    'startEndShape','endEndShape','startConnection','endConnection','fillEnabled','fillColor','fillOpacity',
+    'lineEnabled','shapeType','text','fontSize','textColor','fontWeight','textAlign','borderEnabled',
+    'backgroundEnabled','backgroundColor','wrapMode','sourceType','assetPath','fileName','fileType',
+    'originalWidth','originalHeight','crop','opacity','brightness','pdfPageNo','aspectLocked'
   ])
 });
 
