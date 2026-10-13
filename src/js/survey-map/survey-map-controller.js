@@ -1,6 +1,6 @@
 /**
- * v0.1.10.2 調査図タブ基盤。
- * iPad作図を優先し、全画面モード・左右パネル開閉・アイコン中心UIを提供する。
+ * v0.1.10.5 調査図タブUI。
+ * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
 import * as drawingObjectStore from '../store/drawing-object-store.js';
@@ -16,8 +16,8 @@ let initialized=false;
 let selectedDrawingId='';
 let gridVisible=false;
 let focusMode=false;
-let leftCollapsed=false;
-let rightCollapsed=true;
+let toolPanelOpen=false;
+let editPanelOpen=false;
 let pagesOpen=false;
 
 function root(){ return document.getElementById('survey-map'); }
@@ -141,14 +141,14 @@ async function deleteDrawing(){
 function setFocusMode(next){
   focusMode=Boolean(next);
   pagesOpen=false;
+  toolPanelOpen=false;
+  editPanelOpen=false;
   applyLayoutClasses();
   renderSurveyMap();
 }
 
 function applyLayoutClasses(){
   document.body.classList.toggle('survey-map-focus-mode',focusMode);
-  document.body.classList.toggle('survey-map-left-collapsed',leftCollapsed);
-  document.body.classList.toggle('survey-map-right-collapsed',rightCollapsed);
 }
 
 function svgIcon(name){
@@ -294,30 +294,15 @@ export function renderSurveyMap(){
 
   mount.innerHTML=`
     <div class="survey-map-root">
-      <button type="button" class="survey-map-side-toggle survey-map-side-toggle-left" data-survey-left-toggle title="${leftCollapsed?'ツールを開く':'ツールをしまう'}" aria-label="${leftCollapsed?'ツールを開く':'ツールをしまう'}">${leftCollapsed?'▶':'◀'}</button>
-      <button type="button" class="survey-map-side-toggle survey-map-side-toggle-right" data-survey-right-toggle title="${rightCollapsed?'編集パネルを開く':'編集パネルをしまう'}" aria-label="${rightCollapsed?'編集パネルを開く':'編集パネルをしまう'}">${rightCollapsed?'◀':'▶'}</button>
-      <aside class="survey-map-panel survey-map-left">
-        <div class="survey-map-panel-head">
-          ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
-          ${iconButton({icon:'plus',label:'新規調査図',attr:'data-survey-new'})}
-        </div>
-        <div class="survey-map-panel-body">${toolsHtml()}</div>
-      </aside>
-
       <main class="survey-map-center">
         <div class="survey-map-topbar">
-          ${iconButton({
-            icon:focusMode?'exitfullscreen':'fullscreen',
-            label:focusMode?'全画面を終了':'全画面',
-            attr:'data-survey-focus-toggle',
-            active:focusMode,
-            className:'survey-map-focus-toggle'
-          })}
-          ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
-          ${iconButton({icon:'undo',label:'元に戻す',disabled:true})}
-          ${iconButton({icon:'redo',label:'やり直す',disabled:true})}
-          ${iconButton({icon:'grid',label:'グリッド',attr:'data-survey-grid',active:gridVisible})}
-          ${iconButton({icon:'snap',label:'スナップ',disabled:true})}
+          <button type="button" class="btn small survey-map-text-btn ${focusMode?'active':''}" data-survey-focus-toggle>${focusMode?'全画面終了':'全画面'}</button>
+          <button type="button" class="btn small survey-map-text-btn" disabled>戻る</button>
+          <button type="button" class="btn small survey-map-text-btn" disabled>進む</button>
+          <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
+          <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
+          <button type="button" class="btn small survey-map-text-btn ${toolPanelOpen?'active':''}" data-survey-tool-toggle>ツール</button>
+          <button type="button" class="btn small survey-map-text-btn ${editPanelOpen?'active':''}" data-survey-edit-toggle>編集</button>
           <span class="spacer"></span>
           <span class="survey-map-status">${drawing?escapeHtml(drawing.name):'ページ未選択'}</span>
         </div>
@@ -328,12 +313,27 @@ export function renderSurveyMap(){
         </div>
       </main>
 
-      <aside class="survey-map-panel survey-map-right">
-        <div class="survey-map-panel-head">
-          <span>選択中</span>
-          <span class="pill">${drawing?'ページ':'未選択'}</span>
+      <aside class="survey-map-overlay-panel survey-map-tools-panel ${toolPanelOpen?'open':''}" aria-hidden="${toolPanelOpen?'false':'true'}">
+        <div class="survey-map-overlay-head">
+          <b>ツール</b>
+          <button type="button" class="btn small" data-survey-tool-close>閉じる</button>
         </div>
-        <div class="survey-map-panel-body">${editorHtml(drawing)}</div>
+        <div class="survey-map-overlay-body">
+          <div class="survey-map-overlay-page-actions">
+            ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
+            ${iconButton({icon:'plus',label:'新規調査図',attr:'data-survey-new'})}
+          </div>
+          <div class="survey-map-divider"></div>
+          ${toolsHtml()}
+        </div>
+      </aside>
+
+      <aside class="survey-map-overlay-panel survey-map-edit-panel ${editPanelOpen?'open':''}" aria-hidden="${editPanelOpen?'false':'true'}">
+        <div class="survey-map-overlay-head">
+          <b>編集</b>
+          <button type="button" class="btn small" data-survey-edit-close>閉じる</button>
+        </div>
+        <div class="survey-map-overlay-body">${editorHtml(drawing)}</div>
       </aside>
     </div>
   `;
@@ -380,14 +380,28 @@ function bindEvents(){
       return;
     }
 
-    if(event.target.closest('[data-survey-left-toggle]')){
-      leftCollapsed=!leftCollapsed;
+    if(event.target.closest('[data-survey-tool-toggle]')){
+      toolPanelOpen=!toolPanelOpen;
+      editPanelOpen=false;
       renderSurveyMap();
       return;
     }
 
-    if(event.target.closest('[data-survey-right-toggle]')){
-      rightCollapsed=!rightCollapsed;
+    if(event.target.closest('[data-survey-edit-toggle]')){
+      editPanelOpen=!editPanelOpen;
+      toolPanelOpen=false;
+      renderSurveyMap();
+      return;
+    }
+
+    if(event.target.closest('[data-survey-tool-close]')){
+      toolPanelOpen=false;
+      renderSurveyMap();
+      return;
+    }
+
+    if(event.target.closest('[data-survey-edit-close]')){
+      editPanelOpen=false;
       renderSurveyMap();
       return;
     }
@@ -411,6 +425,8 @@ function bindEvents(){
     if(focusMode){
       focusMode=false;
       pagesOpen=false;
+      toolPanelOpen=false;
+      editPanelOpen=false;
       applyLayoutClasses();
     }
   });
