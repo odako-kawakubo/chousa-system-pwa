@@ -5,6 +5,8 @@
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
+import * as drawingRecordStore from '../store/drawing-record-store.js';
+import * as drawingObjectStore from '../store/drawing-object-store.js';
 import { getCurrentProject, saveProjectSnapshot, setCurrentProject } from './project-store.js';
 import { setProject } from '../finish-table/finish-table-state.js';
 import { refreshFinishTableFromStores, resetFinishTableForProject } from '../finish-table/finish-table-controller.js';
@@ -21,6 +23,7 @@ import { refreshPhotoForImpact, initializePhotoRefreshOnTabActivation } from '..
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { activateProjectSyncStatus } from '../sync/sync-status.js';
+import { refreshSurveyMap } from '../survey-map/survey-map-controller.js';
 
 export function saveCurrentProjectSession() {
   const project = getCurrentProject();
@@ -30,6 +33,8 @@ export function saveCurrentProjectSession() {
     finishRecords: finishRecordStore.exportSnapshot(),
     materialRecords: materialRecordStore.exportSnapshot(),
     photoRecords: photoRecordStore.exportSnapshot(),
+    drawingRecords: drawingRecordStore.exportSnapshot(),
+    drawingObjects: drawingObjectStore.exportSnapshot(),
     source: 'current-project-session'
   });
 }
@@ -63,6 +68,7 @@ export function refreshOpenProjectSessionViews() {
   refreshRecordView();
   refreshPhotoTab();
   refreshSettingsTab();
+  refreshSurveyMap();
 }
 
 /**
@@ -74,6 +80,8 @@ export function refreshProjectViewsForChanges(impact = {}) {
   const finish = impact.finish || {};
   const material = impact.material || {};
   const photo = impact.photo || {};
+  const drawing = impact.drawing || {};
+  const drawingObject = impact.drawingObject || {};
 
   if (material.changed) refreshDerivedFinishInputIds();
 
@@ -93,6 +101,8 @@ export function refreshProjectViewsForChanges(impact = {}) {
   const photoTypes = photo.photoTypes instanceof Set
     ? photo.photoTypes
     : new Set(photo.photoTypes || []);
+  if (drawing.changed || drawingObject.changed) refreshSurveyMap();
+
   refreshPhotoForImpact({
     visual: Boolean(finish.photoVisual || material.photoVisual || photoTypes.has('visual')),
     sampling: Boolean(material.photoSampling || photoTypes.has('sampling')),
@@ -100,7 +110,7 @@ export function refreshProjectViewsForChanges(impact = {}) {
   });
 }
 
-export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [] }) {
+export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [], drawingRecords = [], drawingObjects = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
   resetFinishTableExternalRefresh();
@@ -109,6 +119,8 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   finishRecordStore.replaceAll(finishRecords, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
+  drawingRecordStore.replaceAll(drawingRecords, { notify: false });
+  drawingObjectStore.replaceAll(drawingObjects, { notify: false });
 
   resetPhotoUiStateForProject();
 
