@@ -10,17 +10,23 @@ import { refreshProjectViewsForChanges } from './project-session.js';
 import {
   hydrateIncomingMaterialRecord,
   hydrateIncomingPhotoRecord,
+  hydrateIncomingDrawingRecord,
+  hydrateIncomingDrawingObject,
   applyKnownFinishChange,
   restoreKnownFinishRecords,
   persistFinishForProject,
   persistMaterialForProject,
-  persistPhotoForProject
+  persistPhotoForProject,
+  persistDrawingForProject,
+  persistDrawingObjectForProject
 } from '../sync/project-record-persistence.js';
 import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from '../sync/record-field-merge.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
+import * as drawingRecordStore from '../store/drawing-record-store.js';
+import * as drawingObjectStore from '../store/drawing-object-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import {
@@ -32,6 +38,8 @@ import {
   registerFinishProjectViewImpact,
   registerMaterialProjectViewImpact,
   registerPhotoProjectViewImpact,
+  registerDrawingProjectViewImpact,
+  registerDrawingObjectProjectViewImpact,
   serializeProjectViewImpact
 } from './project-view-impact.js';
 
@@ -364,6 +372,70 @@ export function applyProjectRecordChanges(project, changes = []) {
       }
     });
 
+  [
+    {
+      recordType:'drawing',
+      idField:'drawingId',
+      store:drawingRecordStore,
+      hydrate:hydrateIncomingDrawingRecord,
+      persist:persistDrawingForProject,
+      register:registerDrawingProjectViewImpact
+    },
+    {
+      recordType:'drawingObject',
+      idField:'objectId',
+      store:drawingObjectStore,
+      hydrate:hydrateIncomingDrawingObject,
+      persist:persistDrawingObjectForProject,
+      register:registerDrawingObjectProjectViewImpact
+    }
+  ].forEach((config)=>{
+    safeChanges.filter((item)=>item.recordType===config.recordType).forEach((change)=>{
+      const id=String(change.id||change.record?.[config.idField]||'');
+      if(!id){ skipped+=1; return; }
+      const current=config.store.get(id);
+      let effectiveChange=change;
+      if(change.changeType!=='removed'&&change.record){
+        const incoming=config.hydrate(change.record);
+        if(current&&sameProjectFieldEditedAt(current.fieldEditedAt,incoming?.fieldEditedAt)
+          &&sameMergedBusinessRecord(config.recordType,current,incoming)){
+          skipped+=1;
+          return;
+        }
+        if(current){
+          const merged=mergeRecordByFieldEditedAt(config.recordType,current,incoming,{
+            prefer:change.unsent?'local':'incoming'
+          });
+          effectiveChange={...change,record:merged.record};
+          if(change.unsent?.record&&!sameMergedBusinessRecord(config.recordType,change.unsent.record,merged.record)){
+            putUnsent({
+              projectId:change.unsent.projectId,
+              environment:change.unsent.environment,
+              recordType:config.recordType,
+              recordId:id,
+              operation:'set',
+              record:merged.record
+            });
+          }
+          if(!change.unsent&&merged.localWins.length){
+            config.persist(project,merged.record,`conflict-merge-${config.recordType}`);
+          }
+        }else{
+          effectiveChange={...change,record:incoming};
+        }
+      }
+      config.register(viewImpact,current,effectiveChange);
+      if(effectiveChange.changeType==='removed') {
+        const existing=config.store.get(id);
+        if(existing) config.store.set({...existing,deleted:true});
+      } else if(effectiveChange.record) {
+        config.store.set(effectiveChange.record);
+      }
+      changed=true;
+      applied+=1;
+    });
+  });
+
   syncDiagnosticLog('SYNC_STORE_AFTER', {
     projectId: project.projectId,
     applied,
@@ -372,6 +444,8 @@ export function applyProjectRecordChanges(project, changes = []) {
     finishCount: finishRecordStore.exportSnapshot().length,
     materialCount: materialRecordStore.exportSnapshot().length,
     photoCount: photoRecordStore.exportSnapshot().length,
+    drawingCount: drawingRecordStore.exportSnapshot().length,
+    drawingObjectCount: drawingObjectStore.exportSnapshot().length,
     materialIds: materialRecordStore.exportSnapshot()
       .map((record) => String(record.materialId || ''))
       .filter(Boolean),
@@ -387,6 +461,8 @@ export function applyProjectRecordChanges(project, changes = []) {
     finishRecords: finishRecordStore.exportSnapshot(),
     materialRecords: materialRecordStore.exportSnapshot(),
     photoRecords: photoRecordStore.exportSnapshot(),
+    drawingRecords: drawingRecordStore.exportSnapshot(),
+    drawingObjects: drawingObjectStore.exportSnapshot(),
     source: 'listener-apply'
   });
 
