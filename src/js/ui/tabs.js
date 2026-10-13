@@ -63,6 +63,7 @@ export function showTab(tabId) {
 
   const nextId = target.id;
   document.body.classList.toggle('photo-tab-active', nextId === 'photos');
+  document.body.classList.toggle('survey-map-tab-active', nextId === 'survey-map');
   if (previousId !== nextId) {
     window.dispatchEvent(new CustomEvent('chousa:tab-change', {
       detail: { previousTab: previousId, currentTab: nextId }
