@@ -174,7 +174,15 @@ function nextInputIdForMaterials() {
 }
 
 function nextMaterialNoForMaterials() {
-  return materialRecordStore.getAll().filter((m) => m.status === 'active').length + 1;
+  const used = new Set(
+    materialRecordStore.getAll()
+      .filter((record) => record.status === 'active')
+      .map((record) => Number(record.materialNo))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  );
+  let next = 1;
+  while (used.has(next)) next += 1;
+  return next;
 }
 
 export function registerMaterialForCell(roomKey, partIndex, row, rawName, runRecordTransaction) {
