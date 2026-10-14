@@ -64,9 +64,9 @@ export async function importPickedPhotoFiles(context, fileList) {
           photoType: PHOTO_TYPES.VISUAL,
           areaCode: context.areaCode,
           roomPosition: context.roomPosition,
-          partSlot: 0,
+          partSlot: Number(context.partSlot || 0),
           roomNo: context.roomNo,
-          part: ''
+          part: String(context.part || '')
         }
       : {
           ...common,
