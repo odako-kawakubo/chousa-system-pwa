@@ -866,7 +866,7 @@ jobs:
           grep -q "chousa-app-v0.1.9.5" src/service-worker.js
           grep -q "chousa-output-libs-v0195" src/service-worker.js
           grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
-          grep -q "function normalizeActiveMaterialNumbers" src/js/materials/material-list-controller.js || { echo "materialNo normalization missing"; exit 1; }
+          grep -q "export function normalizeActiveMaterialNumbers" src/js/materials/material-list-persistence.js || { echo "materialNo normalization missing"; exit 1; }
           grep -q "slot <= 4" src/js/records/photo-record.js || { echo "visual photo other-part key split missing"; exit 1; }
           grep -q "partRecords.filter" src/js/photos/photo-view-model.js || { echo "visual other-part target split missing"; exit 1; }
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
