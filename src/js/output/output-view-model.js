@@ -22,7 +22,8 @@ import { normalizeOutputDigits } from './output-format.js';
 
 const AREA_ORDER = Object.freeze({ E:0, B:1, I:2, S:3, R:4 });
 
-function text(value){return normalizeOutputDigits(value).trim();}
+function text(value){return String(value??'').trim();}
+function numberText(value){return normalizeOutputDigits(value).trim();}
 function natural(a,b){return String(a??'').localeCompare(String(b??''),'ja',{numeric:true,sensitivity:'base'});}
 function photoSort(a,b){const time=natural(a.capturedAt,b.capturedAt);return time||natural(a.photoId,b.photoId);}
 function compareRoomRecord(a,b){
@@ -66,8 +67,10 @@ export function buildMaterialListOutput(){
       materialNo:getMaterialDisplayNo(record),
       name:text(record.name),
       part:text(record.part),
-      usageLocation:text(labels.join('、')||record.usageLocation),
-      level:text(record.level)||'-',
+      usageLocation:preferRoomName
+        ? text(labels.join('、')||record.usageLocation)
+        : numberText(labels.join('、')||record.usageLocation),
+      level:numberText(record.level)||'-',
       analysisRequired:reportAnalysis.analysisRequired,
       analysisResult:reportAnalysis.analysisResult,
       positive:reportAnalysis.positive,
@@ -85,11 +88,11 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
       const partIndex=partIndexFromPosition(record.position);
       const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外', positive:false };
       return {
-        floor:floorLabel(record),roomNo:text(record.roomNo),roomName:text(record.roomName),roomNote:text(record.roomNote),
+        floor:floorLabel(record),roomNo:numberText(record.roomNo),roomName:text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?getMaterialDisplayNo(material):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
-        level:material?(text(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,positive:reportAnalysis.positive,
+        level:material?(numberText(material.level)||'-'):'-',analysisResult:reportAnalysis.analysisResult,positive:reportAnalysis.positive,
         registered:Boolean(material)
       };
     })
@@ -105,7 +108,7 @@ export function buildVisualPhotoOutput(){
       const partSlot=partIndexFromPosition(usage.position);
       photoRecordStore.findVisual({areaCode:usage.areaCode,roomPosition:usage.roomPosition,partSlot,part:usage.part}).slice().sort(photoSort).forEach((photo)=>{
         if(seen.has(photo.photoId))return;seen.add(photo.photoId);
-        candidates.push({photo,photoId:photo.photoId,roomNo:text(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
+        candidates.push({photo,photoId:photo.photoId,roomNo:numberText(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
       });
     });
     const storedId=getVisualOutputPhotoId(material.materialId);
@@ -121,7 +124,7 @@ function selectedSamplingStage(materialId,branch,shootingType,label){
   const selected=candidates.find((photo)=>photo.photoId===storedId)||candidates[0]||null;
   return {type:shootingType,label,photoId:text(selected?.photoId),fileName:text(selected?.fileName),candidates,memo:getSamplingOutputMemo(materialId,branch,shootingType)};
 }
-function formatCapturedDate(photo){const raw=text(photo?.capturedAt);if(!raw)return '';const date=new Date(raw);if(Number.isNaN(date.getTime()))return raw.slice(0,10);return `${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日`;}
+function formatCapturedDate(photo){const raw=text(photo?.capturedAt);if(!raw)return '';const date=new Date(raw);if(Number.isNaN(date.getTime()))return numberText(raw.slice(0,10));return numberText(`${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日`);}
 function samplingBaseNo(photo,fallback){const explicit=text(photo?.sampleBaseNo);if(explicit)return explicit;const stored=text(photo?.sampleNo);if(stored)return stored.split('-')[0].trim();return String(fallback||'');}
 
 export function buildSamplingPhotoOutput(){
@@ -138,15 +141,15 @@ export function buildSamplingPhotoOutput(){
       const firstSelectedStage=stages.find((stage)=>stage.photoId)||null;
       const firstPhoto=firstSelectedStage?firstSelectedStage.candidates.find((photo)=>String(photo.photoId)===String(firstSelectedStage.photoId))||null:null;
       pages.push({
-        materialId:material.materialId,materialNo:getMaterialDisplayNo(material),sampleNo:text(samplingBaseNo(firstPhoto,materialIndex+1)),
-        sampleName:text(buildMaterialSampleName(material)),branch,projectName:text(getCurrentProject()?.projectName),projectNo:text(getCurrentProject()?.projectNo||getCurrentProject()?.projectId),
+        materialId:material.materialId,materialNo:numberText(getMaterialDisplayNo(material)),sampleNo:text(samplingBaseNo(firstPhoto,materialIndex+1)),
+        sampleName:text(buildMaterialSampleName(material)),branch:numberText(branch),projectName:text(getCurrentProject()?.projectName),projectNo:numberText(getCurrentProject()?.projectNo||getCurrentProject()?.projectId),
         materialName:text(material.name),part:samplePartsToText(material.samplePart)||text(material.part),
         ...(() => {
           const place=getMaterialSampleLocationDisplay(material.inputId,material[`sampleLocation${branch}`],{preferRoomName:getMaterialRoomNameMode()});
           return {
-            samplingPlace:text(place.value),
+            samplingPlace:place.label==='部屋名'?text(place.value):numberText(place.value),
             samplingPlaceLabel:text(place.label),
-            samplingPlaceRoomNo:text(place.roomNo),
+            samplingPlaceRoomNo:numberText(place.roomNo),
             samplingPlaceRoomName:text(place.roomName)
           };
         })(),
