@@ -74,10 +74,13 @@ export function getVisualPhotoRoomKey({ areaCode, roomPosition } = {}) {
   return area && room ? `${area}|${room}` : '';
 }
 
-export function getVisualPhotoTargetKey({ areaCode, roomPosition, partSlot } = {}) {
+export function getVisualPhotoTargetKey({ areaCode, roomPosition, partSlot, part } = {}) {
   const roomKey = getVisualPhotoRoomKey({ areaCode, roomPosition });
   const slot = normalizeVisualPartSlot(partSlot);
-  return roomKey && slot ? `visual|${roomKey}|${slot}` : '';
+  if (!roomKey || !slot) return '';
+  if (slot <= 4) return `visual|${roomKey}|${slot}`;
+  const actualPart = asText(part);
+  return actualPart ? `visual|${roomKey}|${slot}|${actualPart}` : '';
 }
 
 export function isVisualPhotoUnorganized(record = {}) {
