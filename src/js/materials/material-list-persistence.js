@@ -61,3 +61,42 @@ export function todayMaterialIsoDate() {
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+
+/**
+ * active建材のmaterialNoを現在の表示順に1..Nへ正規化する。
+ * inputId/materialIdは変更しない。変更Recordだけ既存の単一Record保存経路へ送る。
+ */
+export function normalizeActiveMaterialNumbers() {
+  const ordered = materialRecordStore.getAll()
+    .filter((record) => record.status === 'active')
+    .slice()
+    .sort((a, b) => {
+      const aNo = Number(a.materialNo) || Number(a.inputId) || Number.MAX_SAFE_INTEGER;
+      const bNo = Number(b.materialNo) || Number(b.inputId) || Number.MAX_SAFE_INTEGER;
+      if (aNo !== bNo) return aNo - bNo;
+      return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
+    });
+
+  const changed = [];
+  materialRecordStore.batch(() => {
+    ordered.forEach((record, index) => {
+      const nextNo = index + 1;
+      if (Number(record.materialNo) === nextNo) return;
+      const next = {
+        ...record,
+        materialNo: nextNo,
+        fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'materialNo')
+      };
+      materialRecordStore.set(next);
+      changed.push(next);
+    });
+  });
+
+  if (!changed.length) return [];
+  const project = getCurrentProject();
+  changed.forEach((record) => {
+    void persistMaterialForProject(project, record, 'material-number-normalize');
+  });
+  return changed;
+}
