@@ -6,8 +6,9 @@
  *
  * 目視比較は「部位 -> 建材ベース名 -> 場所」で絞り込めるよう、
  * 各比較targetへ part / baseNames / room情報を付与する。
- * targetの物理identityは従来どおり areaCode + roomPosition + partSlot を維持する。
- * 比較上の部位分類はpartSlotではなく実際のpart名を使うため、その他1/2でも同じ部位名なら同一候補として扱う。
+ * targetのidentityは基本4部位では areaCode + roomPosition + partSlot、
+ * その他1/2では areaCode + roomPosition + partSlot + part を使う。
+ * 比較上の部位分類も実際のpart名を使う。
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
@@ -67,7 +68,8 @@ function finishRecordsByVisualTarget() {
     const key = getVisualPhotoTargetKey({
       areaCode: record.areaCode,
       roomPosition: record.roomPosition,
-      partSlot
+      partSlot,
+      part: record.part
     });
     if (!key) return;
     if (!groups.has(key)) groups.set(key, []);
