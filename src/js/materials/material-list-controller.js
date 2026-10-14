@@ -32,8 +32,7 @@ import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 import { notifyTutorialAction } from '../guide/tutorial-action.js';
 import { requestSamplingLocationChange } from '../photos/sampling-location-change.js';
 import { refreshPhotoTab } from '../photos/photo-controller.js';
-import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { persistMaterialForProject } from '../sync/project-record-persistence.js';
+import { normalizeActiveMaterialNumbers } from './material-list-persistence.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -117,39 +116,6 @@ export function initializeMaterialList() {
 /**
  * material Storeから最新ViewModelを作り一覧を再描画する。選択材・スクロール位置・カラー表示等のUI状態を維持する。
  */
-function normalizeActiveMaterialNumbers() {
-  const ordered = materialRecordStore.getAll()
-    .filter((record) => record.status === 'active')
-    .slice()
-    .sort((a, b) => {
-      const aNo = Number(a.materialNo) || Number(a.inputId) || Number.MAX_SAFE_INTEGER;
-      const bNo = Number(b.materialNo) || Number(b.inputId) || Number.MAX_SAFE_INTEGER;
-      if (aNo !== bNo) return aNo - bNo;
-      return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
-    });
-
-  const changed = [];
-  materialRecordStore.batch(() => {
-    ordered.forEach((record, index) => {
-      const nextNo = index + 1;
-      if (Number(record.materialNo) === nextNo) return;
-      const next = {
-        ...record,
-        materialNo: nextNo,
-        fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'materialNo')
-      };
-      materialRecordStore.set(next);
-      changed.push(next);
-    });
-  });
-
-  if (!changed.length) return;
-  const project = getCurrentProject();
-  changed.forEach((record) => {
-    void persistMaterialForProject(project, record, 'material-number-normalize');
-  });
-}
-
 export function refreshMaterialList() {
   if (!rootElement) rootElement = document.getElementById('materials');
   if (!rootElement) return;
