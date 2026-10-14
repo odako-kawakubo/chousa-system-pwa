@@ -14,7 +14,7 @@ import { buildFloorRoomSeed, buildFlatRoomSeed } from './finish-table-structure-
 import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
 
 export function seedInitialMaterials() {
-  const records = SAMPLE_MATERIALS_SEED.map(([materialId, inputId, name, note, photoCount]) => {
+  const records = SAMPLE_MATERIALS_SEED.map(([materialId, inputId, name, note, photoCount], index) => {
     const samplingDemo = materialId === 'R001'
       ? { analysisRequired: '採取・分析', sampleCount: 2, sampleLocation1: '1-1', sampleLocation2: '1-2', samplePart: '壁' }
       : materialId === 'R002'
@@ -24,7 +24,7 @@ export function seedInitialMaterials() {
     return createMaterialRecord({
       materialId,
       inputId,
-      materialNo: inputId,
+      materialNo: index + 1,
       name: normalizeMaterialName(name),
       note,
       photoCount,
