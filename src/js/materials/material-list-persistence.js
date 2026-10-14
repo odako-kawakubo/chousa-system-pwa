@@ -6,6 +6,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
+import { getMaterialDisplayNo } from '../records/material-record.js';
 
 const MATERIAL_META_FIELDS = new Set([
   'updatedAt', 'updatedDevice', 'fieldEditedAt', 'color', 'photoCount',
@@ -72,8 +73,8 @@ export function normalizeActiveMaterialNumbers() {
     .filter((record) => record.status === 'active')
     .slice()
     .sort((a, b) => {
-      const aNo = Number(a.materialNo) || Number(a.inputId) || Number.MAX_SAFE_INTEGER;
-      const bNo = Number(b.materialNo) || Number(b.inputId) || Number.MAX_SAFE_INTEGER;
+      const aNo = Number(getMaterialDisplayNo(a)) || Number.MAX_SAFE_INTEGER;
+      const bNo = Number(getMaterialDisplayNo(b)) || Number.MAX_SAFE_INTEGER;
       if (aNo !== bNo) return aNo - bNo;
       return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
     });
