@@ -352,7 +352,12 @@ function refreshCameraPhotoBlock(record) {
       return false;
     }
 
-    const target = view.targets.find((item) => Number(item.partSlot) === Number(record.partSlot));
+    const recordPartSlot = Number(record.partSlot || 0);
+    const recordPart = String(record.part || '').trim();
+    const target = view.targets.find((item) => (
+      Number(item.partSlot || 0) === recordPartSlot
+      && (recordPartSlot <= 4 || String(item.part || '').trim() === recordPart)
+    ));
     if (!target) return false;
     const current = findElementByDataValue('[data-photo-target-key]', 'photoTargetKey', target.key);
     if (!current) return false;
