@@ -127,15 +127,25 @@ function buildVisualTargets(room) {
     targets.push(buildVisualTarget(room, partSlot, label, partRecords));
   }
 
-  // その他1/2は表示名称が同じでも別の物理枠なので、partSlot=5/6を混ぜない。
-  // 両方未入力の場合だけ、従来どおり「その他」枠を1つ表示する。
+  // その他1/2は、同じ物理枠の中に複数の実部位が入るため
+  // partSlotだけでまとめず「partSlot + 実部位」単位で写真枠を分ける。
   let hasOtherTarget = false;
   for (let partSlot = 5; partSlot <= 6; partSlot += 1) {
     const partRecords = records.filter((record) => partIndex(record) === partSlot);
-    const label = String(partRecords.find((record) => String(record.part || '').trim())?.part || '').trim();
-    if (!label) continue;
-    targets.push(buildVisualTarget(room, partSlot, label, partRecords));
-    hasOtherTarget = true;
+    const parts = [];
+    partRecords.forEach((record) => {
+      const part = String(record.part || '').trim();
+      if (part && !parts.includes(part)) parts.push(part);
+    });
+    parts.forEach((part) => {
+      targets.push(buildVisualTarget(
+        room,
+        partSlot,
+        part,
+        partRecords.filter((record) => String(record.part || '').trim() === part)
+      ));
+      hasOtherTarget = true;
+    });
   }
   if (!hasOtherTarget) {
     const fallbackRecords = records.filter((record) => partIndex(record) === 5);
@@ -160,7 +170,7 @@ function buildVisualTarget(room, partSlot, part, finishRecords) {
     materials.push(display);
   });
 
-  const targetIdentity = { areaCode: room.areaCode, roomPosition: room.roomPosition, partSlot };
+  const targetIdentity = { areaCode: room.areaCode, roomPosition: room.roomPosition, partSlot, part };
   const photos = representativeFirst(photoRecordStore.findVisual(targetIdentity));
 
   return {
