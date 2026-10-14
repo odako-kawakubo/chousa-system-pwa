@@ -67,6 +67,19 @@ function visualRoomLabel(room = {}) {
   return name && name !== no ? `${no}　${name}` : no;
 }
 
+function visualPartValue(target = {}) {
+  const slot = Number(target.partSlot || 0);
+  const part = String(target.part || '').trim();
+  return slot ? `${slot}::${encodeURIComponent(part)}` : '';
+}
+
+function visualPartMatchesDraft(target = {}, draft = {}) {
+  const slot = Number(target.partSlot || 0);
+  if (slot !== Number(draft.partSlot || 0)) return false;
+  if (slot <= 4) return true;
+  return String(target.part || '').trim() === String(draft.part || '').trim();
+}
+
 function visualFields(entry, optionsProvider) {
   const rooms = boardEditorVisualRooms(optionsProvider);
   const room = findBoardEditorVisualRoom(optionsProvider, entry.draft);
@@ -84,7 +97,7 @@ function visualFields(entry, optionsProvider) {
     </select></label>
     <label>部位<select data-editor-part>
       <option value="" ${Number(entry.draft.partSlot || 0) === 0 ? 'selected' : ''}>未整理</option>
-      ${parts.map((part) => `<option value="${Number(part.partSlot || 0)}" ${Number(part.partSlot || 0) === Number(entry.draft.partSlot || 0) ? 'selected' : ''}>${esc(part.part)}</option>`).join('')}
+      ${parts.map((part) => `<option value="${esc(visualPartValue(part))}" ${visualPartMatchesDraft(part, entry.draft) ? 'selected' : ''}>${esc(part.part)}</option>`).join('')}
     </select></label>
   </div>`;
 }
@@ -195,7 +208,7 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
   } else if (target.matches('[data-editor-part]')) {
     const room = findBoardEditorVisualRoom(optionsProvider, entry.draft);
     const partTarget = target.value
-      ? room?.targets?.find((item) => Number(item.partSlot || 0) === Number(target.value)) || null
+      ? room?.targets?.find((item) => visualPartValue(item) === target.value) || null
       : null;
     entry.draft.partSlot = Number(partTarget?.partSlot || 0);
     entry.draft.part = partTarget?.part || '';
