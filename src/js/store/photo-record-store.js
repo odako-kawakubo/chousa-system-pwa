@@ -152,12 +152,13 @@ export function markDeleted(photoId) {
 }
 
 /**
- * 目視写真は areaCode + roomPosition + partSlot の共通キーだけで検索する。
+ * 目視写真は基本4部位を areaCode + roomPosition + partSlot、
+ * その他1/2を areaCode + roomPosition + partSlot + part で検索する。
  *
  * 注意:
  * この方式はroomPositionが不変である現在運用を前提にしている。
  * ＋挿入機能を将来UIから再度有効化する場合は、roomUid基準へ再設計すること。
- * @param {{areaCode:string, roomPosition:string, partSlot:number, includeDeleted?:boolean}} criteria
+ * @param {{areaCode:string, roomPosition:string, partSlot:number, part?:string, includeDeleted?:boolean}} criteria
  */
 export function findVisual(criteria) {
   const targetKey = getVisualPhotoTargetKey(criteria);
