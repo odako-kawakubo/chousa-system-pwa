@@ -2,16 +2,16 @@
  * 帳票間で共有する文字列整形。
  */
 
-/** 出力帳票では全角数字を半角へ統一する。元Recordの値自体は変更しない。 */
+/** 番号・日付など指定項目だけ全角数字を半角へ統一する。元Recordの値自体は変更しない。 */
 export function normalizeOutputDigits(value) {
   return String(value ?? '').replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
 }
 
 export function formatSamplingCode(item = {}) {
   const projectNo = normalizeOutputDigits(item.projectNo).trim();
-  const sampleNo = normalizeOutputDigits(item.sampleNo).trim();
+  const materialNo = normalizeOutputDigits(item.materialNo).trim();
   const placeCount = normalizeOutputDigits(item.branch).trim();
-  const base = [projectNo, sampleNo].filter(Boolean).join('-');
+  const base = [projectNo, materialNo].filter(Boolean).join('-');
   return placeCount ? `${base} ${placeCount}`.trim() : base;
 }
 
@@ -22,7 +22,7 @@ export function formatSamplingCode(item = {}) {
  * - 「壁、床」のように3文字で収まるものは1行のまま。
  */
 export function formatPartDisplay(value) {
-  const text = normalizeOutputDigits(value).trim().replace(/[，,]/g, '、');
+  const text = String(value ?? '').trim().replace(/[，,]/g, '、');
   if (!text) return { text:'', lines:[], split:false };
 
   const tokens = text.split('、').map((token) => token.trim()).filter(Boolean);
