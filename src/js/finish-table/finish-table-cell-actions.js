@@ -173,6 +173,10 @@ function nextInputIdForMaterials() {
   return ids.length ? Math.max(...ids) + 1 : 1;
 }
 
+function nextMaterialNoForMaterials() {
+  return materialRecordStore.getAll().filter((m) => m.status === 'active').length + 1;
+}
+
 export function registerMaterialForCell(roomKey, partIndex, row, rawName, runRecordTransaction) {
   const anchor = findRepresentativeByRoomKey(roomKey);
   const normalized = normalizeCandidateMaterialInput(rawName);
@@ -192,10 +196,11 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName, runRec
       if (material && !beforeMaterial) beforeMaterial = { ...material };
       if (!material) {
         const inputId = nextInputIdForMaterials();
+        const materialNo = nextMaterialNoForMaterials();
         material = createMaterialRecord({
           materialId: nextMaterialId(materialRecordStore.getAll().map((m) => m.materialId)),
           inputId,
-          materialNo: inputId,
+          materialNo,
           name: finalName,
           baseName: parsed.baseName,
           suffixLetter: suffix
