@@ -155,7 +155,12 @@ function samplingMaterials() { return boardEditorSamplingMaterials(optionsProvid
 function snapshotVisualFromRecord_(record) {
   const room = visualRoomByIdentity(record);
   const unorganized = isVisualPhotoUnorganized(record);
-  const target = unorganized ? null : room?.targets?.find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0)) || null;
+  const recordPartSlot = Number(record.partSlot || 0);
+  const recordPart = String(record.part || '').trim();
+  const target = unorganized ? null : room?.targets?.find((item) => (
+    Number(item.partSlot || 0) === recordPartSlot
+    && (recordPartSlot <= 4 || (recordPart && String(item.part || '').trim() === recordPart))
+  )) || null;
 
   return {
     areaCode: record.areaCode || room?.areaCode || '',
