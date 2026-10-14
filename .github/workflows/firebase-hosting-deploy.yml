@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.4 Stable
+name: Deploy v0.1.9.5 Stable
 
 on:
   push:
@@ -854,17 +854,21 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.9.4 stable consistency checks
+      - name: v0.1.9.5 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.4'" src/config/app-config.js
+          grep -q "version: '0.1.9.5'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.4"' src/version.json
+          grep -q '"version": "0.1.9.5"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.4" src/service-worker.js
-          grep -q "chousa-output-libs-v0194" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.5" src/service-worker.js
+          grep -q "chousa-output-libs-v0195" src/service-worker.js
+          grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
+          grep -q "function normalizeActiveMaterialNumbers" src/js/materials/material-list-controller.js || { echo "materialNo normalization missing"; exit 1; }
+          grep -q "slot <= 4" src/js/records/photo-record.js || { echo "visual photo other-part key split missing"; exit 1; }
+          grep -q "partRecords.filter" src/js/photos/photo-view-model.js || { echo "visual other-part target split missing"; exit 1; }
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
