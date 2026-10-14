@@ -25,7 +25,12 @@ export function photosForViewer(photoId) {
           && item.roomPosition === photo.roomPosition
           && isVisualPhotoUnorganized(item)
         ))
-      : photoRecordStore.findVisual({ areaCode: photo.areaCode, roomPosition: photo.roomPosition, partSlot: photo.partSlot });
+      : photoRecordStore.findVisual({
+          areaCode: photo.areaCode,
+          roomPosition: photo.roomPosition,
+          partSlot: photo.partSlot,
+          part: photo.part
+        });
 
     return photos.sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')) || String(a.photoId).localeCompare(String(b.photoId)));
   }
