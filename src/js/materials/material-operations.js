@@ -20,7 +20,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import { runRecordTransaction } from '../finish-table/finish-table-record-transaction.js';
 import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { createMaterialRecord, nextMaterialId } from '../records/material-record.js';
+import { createMaterialRecord, getMaterialDisplayNo, nextMaterialId } from '../records/material-record.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { getCurrentProject, saveProjectSnapshotWithStatus } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -201,8 +201,8 @@ function activeMaterialsSorted() {
     .filter((record) => record.status === 'active')
     .slice()
     .sort((a, b) => {
-      const aNo = Number(a.materialNo) || Number(a.inputId) || Number.MAX_SAFE_INTEGER;
-      const bNo = Number(b.materialNo) || Number(b.inputId) || Number.MAX_SAFE_INTEGER;
+      const aNo = Number(getMaterialDisplayNo(a)) || Number.MAX_SAFE_INTEGER;
+      const bNo = Number(getMaterialDisplayNo(b)) || Number.MAX_SAFE_INTEGER;
       if (aNo !== bNo) return aNo - bNo;
       return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
     });
