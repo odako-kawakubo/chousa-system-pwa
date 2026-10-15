@@ -18,7 +18,7 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
-import { renderMaterialList } from './material-list-renderer.js';
+import { renderMaterialList, renderMaterialListRow } from './material-list-renderer.js';
 import {
   updateMaterialControlValue,
   updateMaterialSampleParts,
@@ -116,17 +116,9 @@ export function initializeMaterialList() {
 /**
  * material Storeから最新ViewModelを作り一覧を再描画する。選択材・スクロール位置・カラー表示等のUI状態を維持する。
  */
-export function refreshMaterialList() {
-  if (!rootElement) rootElement = document.getElementById('materials');
-  if (!rootElement) return;
 
-  captureMaterialListScroll();
-  normalizeActiveMaterialNumbers();
-  applySamplingAutofill();
-
-  // 正本は部屋No.のまま維持し、表示だけ共有の部屋表示状態に従う。
-  const roomNameMode = getMaterialRoomNameMode();
-  const rows = buildMaterialListRows(materialRecordStore.getAll()).map((row) => {
+function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) {
+  return buildMaterialListRows(materialRecordStore.getAll()).map((row) => {
     const roomOptions = getMaterialUsageRoomOptions(row.inputId, { preferRoomName: roomNameMode });
     return {
       ...row,
@@ -134,6 +126,49 @@ export function refreshMaterialList() {
       sampleLocationOptions: roomOptions
     };
   });
+}
+
+/**
+ * 編集された建材1件だけDOM差し替えする。
+ * 一覧全体のinnerHTML再生成を避け、select操作時のちらつきとフォーカス再生成を抑える。
+ */
+function refreshMaterialRow(materialId) {
+  if (!rootElement) return false;
+  const roomNameMode = getMaterialRoomNameMode();
+  const row = buildMaterialListDisplayRows(roomNameMode)
+    .find((item) => String(item.materialId) === String(materialId));
+  if (!row) return false;
+
+  const currentRow = [...rootElement.querySelectorAll('[data-material-row]')]
+    .find((node) => String(node.dataset.materialId || '') === String(materialId));
+  if (!currentRow) return false;
+
+  currentRow.outerHTML = renderMaterialListRow(row, selectedMaterialId, {
+    colorMode: materialListColorMode,
+    analysisColumnsOpen: materialListAnalysisColumnsOpen
+  });
+  return true;
+}
+
+/**
+ * 案件を開く時だけ行う建材Record整備。
+ * 旧データのmaterialNo正規化と既存Recordの採取設定自動補完をここで1回行い、
+ * 通常のrefreshMaterialList()には書き込み処理を持ち込まない。
+ */
+export function prepareMaterialListProjectData() {
+  normalizeActiveMaterialNumbers();
+  applyMaterialSamplingAutofill();
+}
+
+export function refreshMaterialList() {
+  if (!rootElement) rootElement = document.getElementById('materials');
+  if (!rootElement) return;
+
+  captureMaterialListScroll();
+
+  // refreshは読み取り＋描画だけに限定する。Record補正や保存は編集操作側で完結させる。
+  const roomNameMode = getMaterialRoomNameMode();
+  const rows = buildMaterialListDisplayRows(roomNameMode);
   if (selectedMaterialId && !rows.some((row) => row.materialId === selectedMaterialId)) {
     selectedMaterialId = null;
   }
@@ -383,9 +418,8 @@ async function updateMaterialControl(control) {
         nextLocation:String(control.value || '')
       });
 
-      // H側で確定した場合もキャンセルした場合も、一覧を正本から描き直して
-      // selectの一時表示値を残さない。
-      refreshMaterialList();
+      // 採取場所は対象行だけ正本から描き直し、一覧全体の再生成を避ける。
+      if (!refreshMaterialRow(materialId)) refreshMaterialList();
       refreshRecordView();
       refreshPhotoTab();
 
@@ -395,14 +429,18 @@ async function updateMaterialControl(control) {
     } catch (error) {
       console.error('建材リストの採取場所変更に失敗しました', error);
       window.alert(`採取場所の変更に失敗しました。\n${error.message || error}`);
-      refreshMaterialList();
+      if (!refreshMaterialRow(materialId)) refreshMaterialList();
     }
     return;
   }
 
   const result = updateMaterialControlValue(control);
   if (!result.changed) return;
-  refreshMaterialList();
+
+  // 分析要否はツールバー集計も変わるため全体更新。それ以外は行だけ差し替える。
+  if (field === 'analysisRequired') refreshMaterialList();
+  else if (!refreshMaterialRow(materialId)) refreshMaterialList();
+
   refreshRecordView();
   notifyTutorialAction('material.control.change', { materialId, field });
 }
@@ -473,13 +511,6 @@ function updateMaterialAnalysisText(materialId, field, rawValue) {
 }
 
 /**
- * 建材の使用箇所・部位から採取場所/採取部位を補完する処理をedit-actionsへ委譲する。
- */
-function applySamplingAutofill() {
-  applyMaterialSamplingAutofill();
-}
-
-/**
  * 建材変更が仕上表・簡易リスト・Record View等へ影響する場合に関連画面をまとめて再描画する。
  */
 function refreshConnectedViews() {
@@ -523,7 +554,7 @@ export function restoreMaterialListUiState(snapshot, { renderNow = true } = {}) 
 export function resetMaterialListUiStateForTutorial({ renderNow = true } = {}) {
   selectedMaterialId = null;
   materialListColorMode = false;
-  setMaterialRoomNameMode(false);
+  setMaterialRoomNameMode(false, { persist: false });
   materialListAnalysisColumnsOpen = false;
 
   const projectId = String(getCurrentProject()?.projectId || '');
