@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.8 Stable
+name: Deploy v0.1.9.9 Stable
 
 on:
   push:
@@ -855,17 +855,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.9.8 stable consistency checks
+      - name: v0.1.9.9 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.8'" src/config/app-config.js
+          grep -q "version: '0.1.9.9'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.8"' src/version.json
+          grep -q '"version": "0.1.9.9"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.8" src/service-worker.js
-          grep -q "chousa-output-libs-v0198" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.9" src/service-worker.js
+          grep -q "chousa-output-libs-v0199" src/service-worker.js
           grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
           grep -q "export function normalizeActiveMaterialNumbers" src/js/materials/material-list-persistence.js || { echo "materialNo normalization missing"; exit 1; }
           grep -q "part: photo.part" src/js/photos/photo-viewer-data.js || { echo "visual photo viewer actual-part identity missing"; exit 1; }
@@ -882,6 +882,12 @@ jobs:
           grep -q "const materialNo = normalizeOutputDigits(item.materialNo)" src/js/output/output-format.js || { echo "sampling code must use current materialNo"; exit 1; }
           grep -q "roomNo:numberText(record.roomNo)" src/js/output/output-view-model.js || { echo "room number normalization missing"; exit 1; }
           grep -q "projectNo:numberText" src/js/output/output-view-model.js || { echo "project number normalization missing"; exit 1; }
+          if sed -n '/export function refreshMaterialList()/,/^}/p' src/js/materials/material-list-controller.js | grep -q "normalizeActiveMaterialNumbers\|applyMaterialSamplingAutofill"; then echo "material list refresh still mutates records"; exit 1; fi
+          grep -q "export function prepareMaterialListProjectData" src/js/materials/material-list-controller.js || { echo "project-open material preparation missing"; exit 1; }
+          grep -q "prepareMaterialListProjectData();" src/js/projects/project-session.js || { echo "project-open material preparation is not called"; exit 1; }
+          grep -q "export function renderMaterialListRow" src/js/materials/material-list-renderer.js || { echo "material row renderer missing"; exit 1; }
+          grep -q "function refreshMaterialRow" src/js/materials/material-list-controller.js || { echo "material row refresh missing"; exit 1; }
+          grep -q "chousa-material-room-name-mode-v1" src/js/materials/material-room-display-state.js || { echo "room-name display persistence missing"; exit 1; }
           grep -q "partSlot,part:usage.part" src/js/output/output-view-model.js || { echo "visual output actual-part identity missing"; exit 1; }
           grep -q "slot <= 4" src/js/records/photo-record.js || { echo "visual photo other-part key split missing"; exit 1; }
           grep -q "partRecords.filter" src/js/photos/photo-view-model.js || { echo "visual other-part target split missing"; exit 1; }
