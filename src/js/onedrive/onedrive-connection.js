@@ -17,6 +17,8 @@ import { isManualOffline } from '../sync/sync-status.js';
 const listeners = [];
 let generation = 0;
 let initialized = false;
+let refreshPromise = null;
+let refreshForce = false;
 let state = {
   phase: 'unconnected',
   connected: false,
@@ -105,14 +107,8 @@ export async function getUsableSurveyRoot({ force = false } = {}) {
 
 export { clearSurveyRoot };
 
-export async function refreshOneDriveConnection({ force = false } = {}) {
+async function runOneDriveConnectionRefresh({ force = false } = {}) {
   const currentGeneration = ++generation;
-
-  if (navigator.onLine === false || isManualOffline()) {
-    clearSurveyRoot();
-    publish(unavailableState());
-    return cloneState();
-  }
 
   await initializeGraphSession().catch(() => null);
   const graph = getGraphSessionState();
@@ -122,11 +118,12 @@ export async function refreshOneDriveConnection({ force = false } = {}) {
     return cloneState();
   }
 
-  const cached = getCachedSurveyRoot();
+  const wasConnected = Boolean(state.connected);
+  const cached = state.root || getCachedSurveyRoot();
   publish({
     phase: 'checking',
-    connected: false,
-    text: '確認中',
+    connected: wasConnected,
+    text: wasConnected ? '接続' : '確認中',
     error: '',
     errorCode: '',
     root: cached,
@@ -159,6 +156,35 @@ export async function refreshOneDriveConnection({ force = false } = {}) {
     });
   }
   return cloneState();
+}
+
+export async function refreshOneDriveConnection({ force = false } = {}) {
+  // 圏外/手動オフラインは進行中確認より優先し、古い確認結果もgenerationで無効化する。
+  if (navigator.onLine === false || isManualOffline()) {
+    generation += 1;
+    clearSurveyRoot();
+    publish(unavailableState());
+    return cloneState();
+  }
+
+  // 同一確認の多重起動を避ける。force要求だけは、非force確認の完了後に1回だけ実行する。
+  if (refreshPromise) {
+    if (!force || refreshForce) return refreshPromise;
+    await refreshPromise;
+    return refreshOneDriveConnection({ force: true });
+  }
+
+  refreshForce = Boolean(force);
+  const task = runOneDriveConnectionRefresh({ force });
+  refreshPromise = task;
+  try {
+    return await task;
+  } finally {
+    if (refreshPromise === task) {
+      refreshPromise = null;
+      refreshForce = false;
+    }
+  }
 }
 
 export function initializeOneDriveConnection() {
