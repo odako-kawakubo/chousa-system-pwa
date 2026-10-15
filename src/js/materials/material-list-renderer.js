@@ -96,78 +96,85 @@ function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
   if (!rows.length) {
     return `<tr><td colspan="${analysisColumnsOpen ? 17 : 15}" class="material-list-empty">対象建材はまだありません</td></tr>`;
   }
+  return rows.map((row) => renderMaterialListRow(row, selectedMaterialId, {
+    colorMode,
+    analysisColumnsOpen
+  })).join('');
+}
 
-  return rows.map((row) => {
-    const selected = String(row.materialId) === String(selectedMaterialId)
-      ? ' selected-material-row'
-      : '';
-    const positive = row.positive ? ' positive-material-row' : '';
-    const rowColorStyle = colorMode && row.color
-      ? ` style="--material-row-color:${escapeAttr(row.color)}"`
-      : '';
+/** 1行だけ差し替える編集時描画用。全体innerHTML再生成を避ける。 */
+export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
+  const colorMode = options.colorMode !== false;
+  const analysisColumnsOpen = Boolean(options.analysisColumnsOpen);
+  const selected = String(row.materialId) === String(selectedMaterialId)
+    ? ' selected-material-row'
+    : '';
+  const positive = row.positive ? ' positive-material-row' : '';
+  const rowColorStyle = colorMode && row.color
+    ? ` style="--material-row-color:${escapeAttr(row.color)}"`
+    : '';
 
-    return `
-      <tr class="${(selected + positive).trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
-        <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
-        <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
-        <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
-        <td class="col-name material-color-cell material-edit-cell">
-          ${renderTextDisplay(row, 'name', row.name, '建材名称')}
+  return `
+    <tr class="${(selected + positive).trim()}" data-material-row data-material-id="${escapeAttr(row.materialId)}"${rowColorStyle}>
+      <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
+      <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
+      <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
+      <td class="col-name material-color-cell material-edit-cell">
+        ${renderTextDisplay(row, 'name', row.name, '建材名称')}
+      </td>
+      <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
+      <td class="col-level material-control-cell">
+        ${renderSelect(row, 'level', MATERIAL_LEVEL_OPTIONS, row.level)}
+      </td>
+      <td class="col-analysis material-control-cell">
+        ${renderAnalysisSelect(row)}
+      </td>
+      ${analysisColumnsOpen ? `
+        <td class="col-analysis-result material-edit-cell">
+          ${renderTextDisplay(row, 'analysisResult', row.analysisResult, '分析結果', '分析結果')}
         </td>
-        <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
-        <td class="col-level material-control-cell">
-          ${renderSelect(row, 'level', MATERIAL_LEVEL_OPTIONS, row.level)}
+        <td class="col-analysis-remarks material-edit-cell">
+          ${renderTextDisplay(row, 'remarks', row.remarks, '分析備考', '分析備考')}
         </td>
-        <td class="col-analysis material-control-cell">
-          ${renderAnalysisSelect(row)}
-        </td>
-        ${analysisColumnsOpen ? `
-          <td class="col-analysis-result material-edit-cell">
-            ${renderTextDisplay(row, 'analysisResult', row.analysisResult, '分析結果', '分析結果')}
-          </td>
-          <td class="col-analysis-remarks material-edit-cell">
-            ${renderTextDisplay(row, 'remarks', row.remarks, '分析備考', '分析備考')}
-          </td>
-        ` : ''}
-        <td class="col-note material-edit-cell">
-          ${renderTextDisplay(row, 'note', row.note, '調査備考', '調査備考')}
-        </td>
-        <td class="col-sample-count material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
-          ${renderSelect(row, 'sampleCount', row.samplingEnabled ? MATERIAL_SAMPLE_COUNT_OPTIONS : ['-', ...MATERIAL_SAMPLE_COUNT_OPTIONS], row.sampleCountLabel, !row.samplingEnabled)}
-        </td>
-        ${renderSamplePlaceCell(row, 1)}
-        ${renderSamplePlaceCell(row, 2)}
-        ${renderSamplePlaceCell(row, 3)}
-        <td class="col-sample-part material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
-          ${renderSamplePartMultiSelect(row, !row.samplingEnabled)}
-        </td>
-        <td class="col-sample-done material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
-          <input
-            type="checkbox"
-            class="material-checkbox"
-            data-material-control
-            data-field="sampleDone"
-            data-material-id="${escapeAttr(row.materialId)}"
-            ${row.sampleDone ? 'checked' : ''}
-            ${row.samplingEnabled ? '' : 'disabled'}
-            aria-label="採取 ${escapeAttr(row.inputId)}"
-          />
-        </td>
-        <td class="col-sample-date material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
-          <input
-            type="date"
-            class="material-date-input"
-            data-material-control
-            data-field="sampleDate"
-            data-material-id="${escapeAttr(row.materialId)}"
-            value="${escapeAttr(row.sampleDate)}"
-            ${row.samplingEnabled ? '' : 'disabled'}
-            aria-label="採取日 ${escapeAttr(row.inputId)}"
-          />
-        </td>
-      </tr>
-    `;
-  }).join('');
+      ` : ''}
+      <td class="col-note material-edit-cell">
+        ${renderTextDisplay(row, 'note', row.note, '調査備考', '調査備考')}
+      </td>
+      <td class="col-sample-count material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+        ${renderSelect(row, 'sampleCount', row.samplingEnabled ? MATERIAL_SAMPLE_COUNT_OPTIONS : ['-', ...MATERIAL_SAMPLE_COUNT_OPTIONS], row.sampleCountLabel, !row.samplingEnabled)}
+      </td>
+      ${renderSamplePlaceCell(row, 1)}
+      ${renderSamplePlaceCell(row, 2)}
+      ${renderSamplePlaceCell(row, 3)}
+      <td class="col-sample-part material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+        ${renderSamplePartMultiSelect(row, !row.samplingEnabled)}
+      </td>
+      <td class="col-sample-done material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+        <input
+          type="checkbox"
+          class="material-checkbox"
+          data-material-control
+          data-field="sampleDone"
+          data-material-id="${escapeAttr(row.materialId)}"
+          ${row.sampleDone ? 'checked' : ''}
+          ${row.samplingEnabled ? '' : 'disabled'}
+          aria-label="採取 ${escapeAttr(row.inputId)}"
+        />
+      </td>
+      <td class="col-sample-date material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+        <input
+          type="date"
+          class="material-date-input"
+          data-material-control
+          data-field="sampleDate"
+          data-material-id="${escapeAttr(row.materialId)}"
+          value="${escapeAttr(row.sampleDate)}"
+          ${row.samplingEnabled ? '' : 'disabled'}
+          aria-label="採取日 ${escapeAttr(row.inputId)}"
+        />
+      </td>
+    </tr>
+  `;
 }
 
 function renderTextDisplay(row, kind, value, label, placeholder = '') {
