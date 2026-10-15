@@ -13,7 +13,7 @@ import {
   resetFinishTableExternalRefresh
 } from '../finish-table/finish-table-refresh-guard.js';
 import { resetFinishTableScrollState } from '../finish-table/finish-table-scroll-state.js';
-import { refreshMaterialList } from '../materials/material-list-controller.js';
+import { prepareMaterialListProjectData, refreshMaterialList } from '../materials/material-list-controller.js';
 import { refreshMaterialOperations } from '../materials/material-operations-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { refreshPhotoTab, resetPhotoUiStateForProject } from '../photos/photo-controller.js';
@@ -56,6 +56,7 @@ function refreshDerivedFinishInputIds() {
  * 関係のないタブまで再描画しない。
  */
 export function refreshOpenProjectSessionViews() {
+  prepareMaterialListProjectData();
   refreshDerivedFinishInputIds();
   refreshFinishTableFromStores();
   refreshMaterialList();
