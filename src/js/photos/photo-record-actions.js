@@ -98,6 +98,10 @@ export async function registerCapturedPhoto({ record, originalBlob, completedBlo
 } = {}) {
   if (!record?.photoId) throw new Error('photoIdがありません。');
 
+  // 撮影成立の境界はローカル正本（IndexedDB）への保存完了まで。
+  // Firestore / OneDrive の通信状態で次の撮影を止めない。
+  await saveCapturedPhoto({ record, originalBlob, completedBlob });
+
   const stored = photoRecordStore.set(record);
   setLocalPhotoPreview(stored.photoId, completedBlob);
   let blockRefreshed = null;
@@ -112,8 +116,24 @@ export async function registerCapturedPhoto({ record, originalBlob, completedBlo
     refreshed: blockRefreshed
   });
 
-  await saveCapturedPhoto({ record: stored, originalBlob, completedBlob });
-  await persistPhoto(stored, 'photo-camera-save');
+  // Firestoreメタデータ保存は未送信キュー付きの後追い処理。
+  // 失敗・遅延してもローカル保存済み写真の撮影完了を巻き戻さない。
+  void persistPhoto(stored, 'photo-camera-save')
+    .then((result) => {
+      syncDiagnosticLog(result?.ok ? 'PHOTO_FIRESTORE_SAVE_OK' : 'PHOTO_FIRESTORE_SAVE_QUEUED', {
+        photoId: stored.photoId,
+        queued: Boolean(result?.queued),
+        reason: result?.reason || ''
+      });
+    })
+    .catch((error) => {
+      console.warn('Photo Firestore persistence failed after local save:', error);
+      syncDiagnosticLog('PHOTO_FIRESTORE_SAVE_ERROR', {
+        photoId: stored.photoId,
+        message: error?.message || String(error)
+      });
+    });
+
   return stored;
 }
 
