@@ -24,13 +24,15 @@ import {
   updateMaterialSampleParts,
   updateMaterialNameValue,
   updateMaterialNoteValue,
-  updateMaterialAnalysisTextValue
+  updateMaterialAnalysisTextValue,
+  applyMaterialSamplingAutofill
 } from './material-list-edit-actions.js';
 import { bindMaterialListInteractions } from './material-list-interactions.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
 import { notifyTutorialAction } from '../guide/tutorial-action.js';
 import { requestSamplingLocationChange } from '../photos/sampling-location-change.js';
 import { refreshPhotoTab } from '../photos/photo-controller.js';
+import { normalizeActiveMaterialNumbers } from './material-list-persistence.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -146,6 +148,16 @@ function refreshMaterialRow(materialId) {
     analysisColumnsOpen: materialListAnalysisColumnsOpen
   });
   return true;
+}
+
+/**
+ * 案件を開く時だけ行う建材Record整備。
+ * 旧データのmaterialNo正規化と既存Recordの採取設定自動補完をここで1回行い、
+ * 通常のrefreshMaterialList()には書き込み処理を持ち込まない。
+ */
+export function prepareMaterialListProjectData() {
+  normalizeActiveMaterialNumbers();
+  applyMaterialSamplingAutofill();
 }
 
 export function refreshMaterialList() {
