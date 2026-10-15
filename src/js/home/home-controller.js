@@ -20,6 +20,7 @@ import {
 } from '../onedrive/onedrive-connection.js';
 
 let checkToken = 0;
+let availabilityCheckPromise = null;
 let currentAvailability = {
   firestore: false,
   oneDrive: false,
@@ -116,21 +117,40 @@ function renderLocalProjects() {
 }
 
 async function checkAvailability() {
-  const token = ++checkToken;
   const auth = getAuthUiState();
-  currentAvailability.firestore = false;
+
+  // 明確に利用不可になった時だけ未接続へ落とす。
+  if (!auth.loggedIn || navigator.onLine === false || isManualOffline()) {
+    checkToken += 1;
+    currentAvailability.firestore = false;
+    currentAvailability.firestoreError = '';
+    renderAvailability();
+    return;
+  }
+
+  // 認証通知・onlineイベント・初期化が重なっても同じ読込を多重起動しない。
+  if (availabilityCheckPromise) return availabilityCheckPromise;
+
+  const token = ++checkToken;
   currentAvailability.firestoreError = '';
   renderAvailability();
 
-  if (!auth.loggedIn || navigator.onLine === false || isManualOffline()) return;
-
-  const firestore = await readFirestoreProjectList()
+  const task = readFirestoreProjectList()
     .then(() => ({ ok: true, error: '' }))
-    .catch((error) => ({ ok: false, error: error?.message || 'Firestoreへ接続できません。' }));
-  if (token !== checkToken) return;
-  currentAvailability.firestore = firestore.ok;
-  currentAvailability.firestoreError = firestore.error;
-  renderAvailability();
+    .catch((error) => ({ ok: false, error: error?.message || 'Firestoreへ接続できません。' }))
+    .then((firestore) => {
+      if (token !== checkToken) return firestore;
+      currentAvailability.firestore = firestore.ok;
+      currentAvailability.firestoreError = firestore.error;
+      renderAvailability();
+      return firestore;
+    })
+    .finally(() => {
+      if (availabilityCheckPromise === task) availabilityCheckPromise = null;
+    });
+
+  availabilityCheckPromise = task;
+  return task;
 }
 
 function showNewProjectStatus(message, type = '') {
