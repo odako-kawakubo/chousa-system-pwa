@@ -1,17 +1,13 @@
-name: Deploy v0.1.8 Preview
+name: Deploy v0.1.9.9 Review
 
 on:
   push:
     branches:
-      - work/v0.1.8.1-20260924
+      - fix/v0.1.9.9-20261015
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: firebase-preview-v018
-  cancel-in-progress: true
 
 jobs:
   test:
@@ -88,13 +84,522 @@ jobs:
           node --input-type=module <<'NODE'
           import { formatSamplingCode, formatPartDisplay } from './src/js/output/output-format.js';
           const assert = (condition, message) => { if (!condition) throw new Error(message); };
-          assert(formatSamplingCode({ projectNo:'260701014', sampleNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'260701014', materialNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'２６０７０１０１４', materialNo:'１', branch:'２' }) === '260701014-1 2', 'sampling code digits should be half-width');
           assert(formatPartDisplay('壁、床').split === false, 'short two-part label should remain one line');
           const split = formatPartDisplay('壁、天井');
           assert(split.split === true && split.lines.join('|') === '壁|天井', 'long multi-part label should split at delimiter');
           assert(formatPartDisplay('ハト小屋').split === false, 'single long part should stay one line');
           NODE
 
+
+      - name: M-03 variable room restoration checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { restoreFinishRecordsFromSparse, getRequiredStructureRecordIds } from './src/js/sync/finish-sparse-structure.js';
+          import { computeCellPosition, buildFloorRoomPosition } from './src/js/records/finish-record.js';
+
+          const marker = (areaCode, floor, index) => {
+            const roomPosition = areaCode === 'I' || areaCode === 'B'
+              ? buildFloorRoomPosition(floor, index)
+              : String(index).padStart(3, '0');
+            return {
+              finishId: `${areaCode}-${roomPosition}-${computeCellPosition(6, 2)}`,
+              areaCode,
+              roomPosition,
+              floor,
+              roomNo: areaCode === 'B' ? `B${floor}-${index}` : `${floor}-${index}`,
+              roomName: '',
+              roomNote: '',
+              position: computeCellPosition(6, 2),
+              part: '',
+              materialId: '',
+              materialName: '',
+              inputId: '',
+              status: 'active',
+              fieldEditedAt: {}
+            };
+          };
+
+          const roomsInFloor = (records, areaCode, floor) =>
+            new Set(records
+              .filter((record) => record.areaCode === areaCode && Number(record.floor) === Number(floor))
+              .map((record) => record.roomPosition)).size;
+
+          let restored = restoreFinishRecordsFromSparse([marker('I', 4, 3)]);
+          if (roomsInFloor(restored, 'I', 4) !== 3) throw new Error('added 3-room floor did not restore as 3 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('B', 1, 4)]);
+          if (roomsInFloor(restored, 'B', 1) !== 4) throw new Error('4-room basement floor did not restore as 4 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('I', 1, 11)]);
+          if (roomsInFloor(restored, 'I', 1) !== 11) throw new Error('default floor extended to 11 rooms did not restore as 11 rooms');
+
+          restored = restoreFinishRecordsFromSparse([marker('I', 4, 3), marker('I', 5, 7)]);
+          const required = getRequiredStructureRecordIds(restored);
+          if (!required.has(marker('I', 4, 3).finishId)) throw new Error('floor 4 tip marker is not retained');
+          if (!required.has(marker('I', 5, 7).finishId)) throw new Error('floor 5 tip marker is not retained');
+          NODE
+
+      - name: M-04 field conflict merge checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { mergeRecordByFieldEditedAt } from './src/js/sync/record-field-merge.js';
+
+          const local = {
+            materialId:'R001',
+            name:'端末Aの名称',
+            note:'旧備考',
+            fieldEditedAt:{ name:200, note:100 }
+          };
+          const incoming = {
+            materialId:'R001',
+            name:'旧名称',
+            note:'端末Bの備考',
+            fieldEditedAt:{ name:100, note:300 }
+          };
+          let result = mergeRecordByFieldEditedAt('material', local, incoming);
+          if (result.record.name !== '端末Aの名称') throw new Error('newer local field was lost');
+          if (result.record.note !== '端末Bの備考') throw new Error('newer incoming field was lost');
+
+          result = mergeRecordByFieldEditedAt(
+            'material',
+            { materialId:'R001', note:'local', fieldEditedAt:{note:100} },
+            { materialId:'R001', note:'remote', fieldEditedAt:{note:200} }
+          );
+          if (result.record.note !== 'remote') throw new Error('newer incoming same-field edit did not win');
+
+          result = mergeRecordByFieldEditedAt(
+            'material',
+            { materialId:'R001', note:'local', fieldEditedAt:{note:200} },
+            { materialId:'R001', note:'remote', fieldEditedAt:{note:200} },
+            { prefer:'local' }
+          );
+          if (result.record.note !== 'local') throw new Error('unsent tie did not prefer local');
+
+          result = mergeRecordByFieldEditedAt(
+            'material',
+            { materialId:'R001', note:'legacy-local', fieldEditedAt:{} },
+            { materialId:'R001', note:'legacy-remote', fieldEditedAt:{} }
+          );
+          if (result.record.note !== 'legacy-remote') throw new Error('legacy tie should prefer incoming');
+
+          result = mergeRecordByFieldEditedAt(
+            'photo',
+            { photoId:'P001', photoType:'visual', part:'壁', fieldEditedAt:{} },
+            { photoId:'P001', photoType:'visual', fileName:'a.jpg', fieldEditedAt:{} }
+          );
+          if (result.record.part !== '壁') throw new Error('field absent from remote schema erased local-only value');
+          NODE
+
+      - name: M-05 room carrier and other cells checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { restoreFinishRecordsFromSparse } from './src/js/sync/finish-sparse-structure.js';
+          import { computeCellPosition, buildFloorRoomPosition } from './src/js/records/finish-record.js';
+
+          const roomPosition = buildFloorRoomPosition(1, 1);
+          const nonCarrier = {
+            finishId:`I-${roomPosition}-${computeCellPosition(1,1)}`,
+            areaCode:'I',
+            roomPosition,
+            floor:1,
+            roomNo:'1-1',
+            roomName:'古い部屋名',
+            roomNote:'古い備考',
+            position:computeCellPosition(1,1),
+            part:'床',
+            materialId:'',
+            materialName:''
+          };
+          let restored = restoreFinishRecordsFromSparse([nonCarrier]);
+          const room = restored.filter((r)=>r.areaCode==='I' && r.roomPosition===roomPosition);
+          if (room.some((r)=>r.roomName==='古い部屋名')) throw new Error('non-602 roomName resurrected');
+          if (room.some((r)=>r.roomNote==='古い備考')) throw new Error('non-602 roomNote resurrected');
+
+          const carrier = {
+            finishId:`I-${roomPosition}-${computeCellPosition(6,2)}`,
+            areaCode:'I',
+            roomPosition,
+            floor:1,
+            roomNo:'101',
+            roomName:'機械室',
+            roomNote:'確認済み',
+            position:computeCellPosition(6,2),
+            part:'',
+            materialId:'',
+            materialName:''
+          };
+          restored = restoreFinishRecordsFromSparse([carrier]);
+          const room2 = restored.filter((r)=>r.areaCode==='I' && r.roomPosition===roomPosition);
+          if (!room2.length || room2.some((r)=>r.roomNo!=='101' || r.roomName!=='機械室' || r.roomNote!=='確認済み')) {
+            throw new Error('602 room common fields did not expand to whole room');
+          }
+          NODE
+
+          grep -q "return !materialName && !actualPart" src/js/finish-table/finish-table-persistence.js || { echo "other part/materialName independent sparse keep missing"; exit 1; }
+          grep -q "partPatchForExistingMaterial(currentCell, partIndex, material)" src/js/finish-table/finish-table-cell-actions.js || { echo "name-selection other part autofill missing"; exit 1; }
+
+      - name: M-06 project metadata and board settings checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+            setItem(key, value) { storage.set(key, String(value)); },
+            removeItem(key) { storage.delete(key); }
+          };
+
+          const board = await import('./src/js/settings/board-settings-store.js');
+
+          localStorage.setItem('chousa-board-settings:P1', JSON.stringify({
+            projectNo:'OLD',
+            projectName:'旧案件名',
+            address:'旧住所',
+            surveyDate:'2026-01-01',
+            surveyor:'旧調査者',
+            subjectText:'旧看板案件名',
+            addressText:'旧看板住所',
+            subjectFontSize:12,
+            addressFontSize:11
+          }));
+
+          board.activateProject({
+            projectId:'P1',
+            projectNo:'260001',
+            projectName:'Firestore案件名',
+            address:'Firestore住所',
+            boardSettings:{
+              surveyDate:'2026-10-05',
+              surveyor:'Firestore調査者',
+              subjectText:'Firestore看板案件名',
+              addressText:'Firestore看板住所',
+              subjectFontSize:22,
+              addressFontSize:21
+            }
+          });
+          let current = board.get();
+          if (current.projectNo !== '260001' || current.projectName !== 'Firestore案件名' || current.address !== 'Firestore住所') {
+            throw new Error('Firestore project fields did not override legacy local cache');
+          }
+          if (current.surveyDate !== '2026-10-05' || current.surveyor !== 'Firestore調査者') {
+            throw new Error('Firestore board settings did not override legacy local cache');
+          }
+          if (current.subjectText !== 'Firestore看板案件名' || current.addressText !== 'Firestore看板住所') {
+            throw new Error('Firestore board text did not override legacy local cache');
+          }
+
+          localStorage.setItem('chousa-board-settings:P2', JSON.stringify({
+            projectNo:'P2',
+            projectName:'旧案件',
+            address:'旧住所',
+            surveyDate:'2026-09-01',
+            surveyor:'移行対象調査者',
+            subjectText:'移行対象看板名',
+            addressText:'移行対象住所',
+            subjectFontSize:19,
+            addressFontSize:18
+          }));
+          board.activateProject({
+            projectId:'P2',
+            projectNo:'P2',
+            projectName:'案件名',
+            address:'住所'
+          });
+          current = board.get();
+          if (current.surveyor !== '移行対象調査者' || current.subjectText !== '移行対象看板名') {
+            throw new Error('legacy local board settings were not preserved for migration');
+          }
+          NODE
+
+          grep -q "boardSettings: normalizeBoardSettings" src/js/firestore/firestore-repository.js || { echo "Firestore project metadata does not save boardSettings"; exit 1; }
+          grep -q "export async function readProjectMetadata" src/js/firestore/firestore-repository.js || { echo "project metadata read API missing"; exit 1; }
+          grep -q "export function subscribeProjectMetadata" src/js/firestore/firestore-repository.js || { echo "project metadata realtime API missing"; exit 1; }
+          grep -q "readProjectMetadataForProject" src/js/projects/project-controller.js || { echo "project metadata initial read missing"; exit 1; }
+          grep -q "subscribeProjectMetadataForProject" src/js/projects/project-controller.js || { echo "project metadata realtime subscription missing"; exit 1; }
+          grep -q "PROJECT_METADATA_BOARD_MIGRATED" src/js/projects/project-controller.js || { echo "legacy board migration missing"; exit 1; }
+          grep -q "updateProjectFields(currentProject.projectId" src/js/settings/settings-controller.js || { echo "settings projectStore update missing"; exit 1; }
+          grep -q "persistProjectMetadataForProject(snapshot)" src/js/settings/settings-controller.js || { echo "settings Firestore metadata save missing"; exit 1; }
+          grep -q "applyProjectMetadata" src/js/settings/board-settings-store.js || { echo "board settings realtime apply missing"; exit 1; }
+          grep -q "String(item.projectId || '') === projectInfo.projectNo" src/js/projects/onedrive-project-browser.js || { echo "OneDrive stable projectId matching missing"; exit 1; }
+
+      - name: M-07 offline project and recovery checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { createTemporaryProject, nextTemporaryProjectNo } from './src/js/projects/project-factory.js';
+
+          const project = createTemporaryProject({
+            projectName:'圏外案件',
+            address:'神奈川県',
+            deviceCode:'AB12',
+            existingProjects:[],
+            existingProjectNos:[]
+          });
+          if (project.projectId === project.projectNo) throw new Error('temporary projectId still equals projectNo');
+          if (!project.projectId.startsWith('tmp-') || !project.projectId.includes('-AB12-')) {
+            throw new Error('temporary projectId is not device-scoped');
+          }
+          if (!/^\d{6}-\d+$/.test(project.projectNo)) throw new Error('temporary display projectNo format changed');
+
+          const nextNo = nextTemporaryProjectNo(
+            '261006',
+            [{ projectNo:'261006-01' }, { projectNo:'261006-02' }],
+            ['261006-03']
+          );
+          if (nextNo !== '261006-04') throw new Error('temporary project number allocation changed');
+
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+            setItem(key, value) { storage.set(key, String(value)); },
+            removeItem(key) { storage.delete(key); }
+          };
+          const unsent = await import('./src/js/sync/unsent-queue.js');
+          unsent.putUnsent({
+            projectId:'tmp-test',
+            recordType:'project',
+            recordId:'tmp-test',
+            operation:'set',
+            record:{ projectId:'tmp-test', projectName:'初回' },
+            meta:{ initializeChangeLog:true }
+          });
+          unsent.putUnsent({
+            projectId:'tmp-test',
+            recordType:'project',
+            recordId:'tmp-test',
+            operation:'set',
+            record:{ projectId:'tmp-test', projectName:'更新後' },
+            meta:{ initializeChangeLog:false }
+          });
+          const queued = unsent.listUnsent({ projectId:'tmp-test' });
+          if (queued.length !== 1) throw new Error('project UNSENT was not compressed to latest one');
+          if (queued[0].record?.projectName !== '更新後') throw new Error('project UNSENT did not keep latest record');
+          if (queued[0].meta?.initializeChangeLog !== true) throw new Error('project initialization flag was lost');
+
+          const controller = fs.readFileSync('./src/js/projects/project-controller.js','utf8');
+          const projectRecovery = controller.indexOf('PROJECT_UNSENT_RECOVERY_RESULT');
+          const catchup = controller.indexOf("SYNC_CATCHUP_START");
+          const recordRecovery = controller.indexOf('RECORD_UNSENT_RECOVERY_RESULT');
+          const listener = controller.indexOf("SYNC_LISTENER_START");
+          if (!(projectRecovery >= 0 && catchup > projectRecovery && recordRecovery > catchup && listener > recordRecovery)) {
+            throw new Error('M-07 recovery order is not project -> remote merge -> record retry -> realtime');
+          }
+          NODE
+
+          grep -q "recordType === 'project'" src/js/firestore/firestore-repository.js || { echo "project UNSENT repository handling missing"; exit 1; }
+          grep -q "project-write-does-not-passive-retry-records" src/js/firestore/firestore-repository.js || { echo "project write may retry records before M-04 merge"; exit 1; }
+          grep -q "readTemporaryProjectEntries" src/js/firestore/firestore-repository.js || { echo "temporary project ownership lookup missing"; exit 1; }
+          grep -q "syncQueuedProjectMetadataOnRecovery" src/js/sync/project-record-persistence.js || { echo "project metadata recovery sync missing"; exit 1; }
+          grep -q "syncQueuedRecordsOnRecovery" src/js/sync/project-record-persistence.js || { echo "record recovery sync missing"; exit 1; }
+          grep -q "excludeRecordTypes: \['project'\]" src/js/sync/project-record-persistence.js || { echo "record recovery does not exclude project entries"; exit 1; }
+          grep -q "PROJECT_METADATA_MISSING_RECREATED" src/js/projects/project-controller.js || { echo "v0.1.9.30 offline project migration missing"; exit 1; }
+          grep -q "TEMP_PROJECT_NO_REASSIGNED" src/js/projects/project-controller.js || { echo "temporary project number collision recovery missing"; exit 1; }
+          grep -q "new Set(\['project', 'finish', 'material', 'photo'\])" src/js/projects/project-transfer.js || { echo "project pending write missing from offline JSON transfer"; exit 1; }
+          grep -q "meta: item.meta || {}" src/js/projects/project-transfer.js || { echo "project queue metadata missing from offline JSON import"; exit 1; }
+
+      - name: M-08 server-clock change log retention checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {
+            buildChangeLogRetentionState,
+            canDeleteChangeLogCursor,
+            compareFinishCursors
+          } from './src/js/sync/change-log-retention.js';
+
+          const DAY = 24 * 60 * 60 * 1000;
+          const serverNow = 1_800_000_000_000;
+          const ts = (ms) => ({
+            seconds: Math.floor(ms / 1000),
+            nanoseconds: (ms % 1000) * 1_000_000
+          });
+          const cursor = (seconds, id) => ({ seconds, nanoseconds:0, changeId:id });
+
+          const state = buildChangeLogRetentionState([
+            { deviceCode:'A', lastSeenAt:ts(serverNow), finishChangeCursor:cursor(200,'B') },
+            { deviceCode:'B', lastSeenAt:ts(serverNow - 10 * DAY), finishChangeCursor:cursor(150,'A') },
+            { deviceCode:'OLD', lastSeenAt:ts(serverNow - 40 * DAY), finishChangeCursor:cursor(50,'Z') }
+          ], 30 * DAY);
+
+          if (state.serverNowMs !== serverNow) throw new Error('serverNow did not come from syncDevices lastSeenAt');
+          if (state.activeDevices.length !== 2) throw new Error('dormant device was not excluded');
+          if (state.oldestActiveCursor?.seconds !== 150 || state.oldestActiveCursor?.changeId !== 'A') {
+            throw new Error('oldest active device cursor was not selected');
+          }
+          if (!canDeleteChangeLogCursor(cursor(149,'Z'), state.oldestActiveCursor)) {
+            throw new Error('change before oldest active cursor should be deletable');
+          }
+          if (canDeleteChangeLogCursor(cursor(150,'A'), state.oldestActiveCursor)) {
+            throw new Error('oldest active cursor document itself must remain');
+          }
+          if (canDeleteChangeLogCursor(cursor(151,'A'), state.oldestActiveCursor)) {
+            throw new Error('change after oldest active cursor must remain');
+          }
+          if (compareFinishCursors(cursor(100,'A'), cursor(100,'B')) >= 0) {
+            throw new Error('cursor changeId tiebreak ordering changed');
+          }
+
+          const persistence = fs.readFileSync('./src/js/sync/project-record-persistence.js','utf8');
+          const freshFnStart = persistence.indexOf('export function isFinishChangeCursorFresh');
+          const freshFnEnd = persistence.indexOf('/**', freshFnStart + 10);
+          const freshFn = persistence.slice(freshFnStart, freshFnEnd);
+          if (freshFn.includes('Date.now()')) {
+            throw new Error('adapter cursor freshness still depends on client Date.now');
+          }
+
+          const repository = fs.readFileSync('./src/js/firestore/firestore-repository.js','utf8');
+          if (/expiresAt\s*:/.test(repository)) {
+            throw new Error('client-derived expiresAt write remains in Firestore repository');
+          }
+          const cursorFnStart = repository.indexOf('export async function isFinishChangeCursorAvailable');
+          const cursorFnEnd = repository.indexOf('/**', cursorFnStart + 10);
+          const cursorFn = repository.slice(cursorFnStart, cursorFnEnd);
+          if (cursorFn.includes('Date.now()')) {
+            throw new Error('cursor availability still depends on client Date.now');
+          }
+
+          const controller = fs.readFileSync('./src/js/projects/project-controller.js','utf8');
+          const touch = controller.indexOf('await recordProjectSyncDeviceContact');
+          const cleanup = controller.indexOf('await cleanupProjectFinishChangeLogIfDue');
+          if (!(touch >= 0 && cleanup > touch)) {
+            throw new Error('change log cleanup is not sequenced after device touch');
+          }
+          NODE
+
+          test -f src/js/sync/change-log-retention.js
+          grep -q "buildChangeLogRetentionState" src/js/firestore/firestore-repository.js || { echo "server-clock retention state missing"; exit 1; }
+          grep -q "SYNC_DEVICE_COLLECTION" src/js/firestore/firestore-repository.js || { echo "syncDevices cleanup read missing"; exit 1; }
+          grep -q "where('committedAt', '<=', Timestamp.fromMillis(retentionCutoffMs))" src/js/firestore/firestore-repository.js || { echo "committedAt retention query missing"; exit 1; }
+          grep -q "canDeleteChangeLogCursor" src/js/firestore/firestore-repository.js || { echo "active cursor protection missing"; exit 1; }
+          grep -q "CHANGELOG_CLEANUP_SKIP_NO_SERVER_TIME" src/js/firestore/firestore-repository.js || { echo "safe skip without server time missing"; exit 1; }
+          grep -q "change-log-retention.js" src/service-worker.js || { echo "M-08 retention helper missing from app shell"; exit 1; }
+
+      - name: M-09 visual photo roomNo and part checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { createPhotoRecord } from './src/js/records/photo-record.js';
+          import { serializePhotoRecord } from './src/js/firestore/record-serializer.js';
+          import { resolveVisualPhotoMetadata } from './src/js/sync/photo-visual-metadata.js';
+          import { mergeRecordByFieldEditedAt } from './src/js/sync/record-field-merge.js';
+
+          const visual = createPhotoRecord({
+            photoId:'P001',
+            photoType:'visual',
+            areaCode:'I',
+            roomPosition:'001001',
+            partSlot:3,
+            roomNo:'101',
+            part:'壁'
+          });
+          const payload = serializePhotoRecord(visual, { updatedAt:null });
+          if (payload.roomNo !== '101' || payload.part !== '壁') {
+            throw new Error('visual roomNo / part are not serialized to Firestore payload');
+          }
+
+          const legacy = createPhotoRecord({
+            photoId:'P002',
+            photoType:'visual',
+            areaCode:'I',
+            roomPosition:'001001',
+            partSlot:3,
+            roomNo:'',
+            part:'',
+            fieldEditedAt:{}
+          });
+          const finish = [{
+            finishId:'I-001001-301',
+            status:'active',
+            areaCode:'I',
+            roomPosition:'001001',
+            roomNo:'101',
+            position:301,
+            part:'壁'
+          }];
+          const migrated = resolveVisualPhotoMetadata(legacy, finish);
+          if (migrated.record.roomNo !== '101' || migrated.record.part !== '壁') {
+            throw new Error('legacy visual photo metadata was not backfilled from finish');
+          }
+          if (!migrated.changedFields.includes('roomNo') || !migrated.changedFields.includes('part')) {
+            throw new Error('backfilled fields were not reported');
+          }
+          if (!(migrated.record.fieldEditedAt?.roomNo > 0) || !(migrated.record.fieldEditedAt?.part > 0)) {
+            throw new Error('backfilled roomNo / part were not stamped in fieldEditedAt');
+          }
+
+          const preserved = resolveVisualPhotoMetadata(createPhotoRecord({
+            ...legacy,
+            photoId:'P003',
+            roomNo:'撮影時101',
+            part:'撮影時壁'
+          }), [{
+            ...finish[0],
+            roomNo:'現在102',
+            part:'現在天井'
+          }]);
+          if (preserved.record.roomNo !== '撮影時101' || preserved.record.part !== '撮影時壁') {
+            throw new Error('existing visual metadata was overwritten by finish fallback');
+          }
+          if (preserved.changedFields.length !== 0) {
+            throw new Error('existing visual metadata should not be marked migrated');
+          }
+
+          const merged = mergeRecordByFieldEditedAt(
+            'photo',
+            { ...visual, roomNo:'101', fieldEditedAt:{ roomNo:100 } },
+            { ...visual, roomNo:'102', fieldEditedAt:{ roomNo:200 } }
+          );
+          if (merged.record.roomNo !== '102') {
+            throw new Error('photo roomNo is not participating in field-level conflict merge');
+          }
+
+          const controller = fs.readFileSync('./src/js/projects/project-controller.js','utf8');
+          const migrate = controller.indexOf('await migrateLegacyVisualPhotoMetadata(project)');
+          const retry = controller.indexOf('await syncQueuedRecordsOnRecovery(project)');
+          if (!(migrate >= 0 && retry > migrate)) {
+            throw new Error('legacy photo migration must run after remote merge and before queued record retry');
+          }
+          NODE
+
+          grep -q "roomNo: text(record.roomNo)" src/js/firestore/record-serializer.js || { echo "visual roomNo serializer missing"; exit 1; }
+          grep -q "part: text(record.part)" src/js/firestore/record-serializer.js || { echo "visual part serializer missing"; exit 1; }
+          grep -q "'partSlot','roomNo'" src/js/sync/record-field-merge.js || { echo "photo roomNo merge field missing"; exit 1; }
+          grep -q "'partSlot', 'roomNo', 'part'" src/js/photos/photo-record-actions.js || { echo "visual import/create field stamps incomplete"; exit 1; }
+          grep -q "\['areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part'\]" src/js/camera/camera-controller.js || { echo "camera visual field stamps incomplete"; exit 1; }
+          grep -q "'partSlot', 'roomNo'" src/js/photos/photo-board-editor-persistence.js || { echo "board editor roomNo sync field missing"; exit 1; }
+          grep -q "visual-photo-metadata-backfill-realtime" src/js/projects/project-record-apply.js || { echo "realtime legacy photo backfill missing"; exit 1; }
+          grep -q "visual-photo-metadata-backfill" src/js/projects/project-controller.js || { echo "project-open legacy photo migration missing"; exit 1; }
+          grep -q "photo-visual-metadata.js" src/service-worker.js || { echo "M-09 helper missing from app shell"; exit 1; }
+
+      - name: Output first-open render check
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const source = fs.readFileSync('./src/js/output/output-controller.js','utf8');
+          const start = source.indexOf("window.addEventListener('chousa:tab-change'");
+          const end = source.indexOf("window.addEventListener('chousa:output-settings-change'", start);
+          const block = source.slice(start, end);
+          if (!block.includes("currentTab!=='sync'")) throw new Error('output tab change guard missing');
+          if (!block.includes('renderOutputTab();')) throw new Error('output tab does not fully rerender on first open');
+          if (block.includes('rerenderOutputPdfPreview();')) throw new Error('tab open still only rerenders existing PDF canvas');
+          NODE
 
       - name: Core architecture regression checks
         shell: bash
@@ -142,6 +647,18 @@ jobs:
           grep -q "export async function readOpenXmlCells" src/js/onedrive/openxml-workbook-reader.js
           grep -q "DecompressionStream" src/js/onedrive/openxml-workbook-reader.js
           grep -q "readOpenXmlCells" src/js/onedrive/onedrive-project-file.js
+          grep -q "isPhoneticTextNode" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML phonetic text filter missing"; exit 1; }
+          grep -q "current.localName === 'rPh'" src/js/onedrive/openxml-workbook-reader.js || { echo "OpenXML rPh exclusion missing"; exit 1; }
+          # v0.1.9.2 部屋表示共通化・未登録対象外切替・陽性行表示
+          test -f src/js/materials/material-room-display-state.js
+          grep -q "sampleLocationOptions" src/js/materials/material-list-controller.js || { echo "material sample location display mapping missing"; exit 1; }
+          grep -q "getMaterialSampleLocationDisplay" src/js/photos/photo-view-model.js || { echo "photo sampling room display mapping missing"; exit 1; }
+          grep -q "materialLocationLabel" src/js/output/output-view-model.js || { echo "output material location header mapping missing"; exit 1; }
+          grep -q "includeUnregisteredExcluded" src/js/output/output-controller.js || { echo "unregistered excluded output toggle missing"; exit 1; }
+          if grep -q "data-output-location-mode" src/js/output/output-controller.js; then
+            echo "legacy output room display switch remains"
+            exit 1
+          fi
           grep -q "xlsm" src/js/onedrive/onedrive-project-file.js
           grep -q "F2" src/js/onedrive/onedrive-project-file.js
           grep -q "K2" src/js/onedrive/onedrive-project-file.js
@@ -192,18 +709,188 @@ jobs:
           fi
           grep -q 'まとめて同期 ${status.unsentCount}件' src/js/ui/sync-ui.js
 
-      - name: v0.1.8 stable consistency checks
+          # M-09 目視写真roomNo / partのFirestore正本化
+          test -f src/js/sync/photo-visual-metadata.js
+          grep -q "roomNo: text(record.roomNo)" src/js/firestore/record-serializer.js || { echo "M-09 visual roomNo serializer missing"; exit 1; }
+          grep -q "'partSlot','roomNo'" src/js/sync/record-field-merge.js || { echo "M-09 photo roomNo merge missing"; exit 1; }
+          grep -q "migrateLegacyVisualPhotoMetadata" src/js/projects/project-controller.js || { echo "M-09 legacy migration missing"; exit 1; }
+          grep -q "resolveVisualPhotoMetadata" src/js/projects/project-record-apply.js || { echo "M-09 realtime backfill missing"; exit 1; }
+
+          # M-08 finishChangeLogsの端末時計依存解消
+          test -f src/js/sync/change-log-retention.js
+          grep -q "buildChangeLogRetentionState" src/js/firestore/firestore-repository.js || { echo "M-08 server-clock retention missing"; exit 1; }
+          grep -q "canDeleteChangeLogCursor" src/js/firestore/firestore-repository.js || { echo "M-08 active cursor guard missing"; exit 1; }
+          if grep -q "expiresAt:" src/js/firestore/firestore-repository.js; then
+            echo "M-08 client-derived expiresAt remains"
+            exit 1
+          fi
+          grep -q "await recordProjectSyncDeviceContact" src/js/projects/project-controller.js || { echo "M-08 awaited device touch missing"; exit 1; }
+          grep -q "await cleanupProjectFinishChangeLogIfDue" src/js/projects/project-controller.js || { echo "M-08 awaited cleanup missing"; exit 1; }
+          if sed -n '/export function isFinishChangeCursorFresh/,/^}/p' src/js/sync/project-record-persistence.js | grep -q "Date.now()"; then
+            echo "M-08 adapter cursor age still uses client clock"
+            exit 1
+          fi
+
+          # M-07 オフライン新規案件・復帰時未送信
+          grep -q "recordType === 'project'" src/js/firestore/firestore-repository.js || { echo "M-07 project queue handling missing"; exit 1; }
+          grep -q "syncQueuedProjectMetadataOnRecovery" src/js/projects/project-controller.js || { echo "M-07 project recovery hook missing"; exit 1; }
+          grep -q "syncQueuedRecordsOnRecovery" src/js/projects/project-controller.js || { echo "M-07 record recovery hook missing"; exit 1; }
+          grep -q "nextTemporaryProjectNo" src/js/projects/project-controller.js || { echo "M-07 temporary renumbering missing"; exit 1; }
+
+          # M-06 案件情報・看板設定のFirestore正本化
+          grep -q "boardSettings: normalizeBoardSettings" src/js/firestore/firestore-repository.js || { echo "M-06 boardSettings save missing"; exit 1; }
+          grep -q "subscribeProjectMetadataForProject" src/js/projects/project-controller.js || { echo "M-06 project metadata listener missing"; exit 1; }
+          grep -q "applyProjectMetadata(nextProject)" src/js/projects/project-controller.js || { echo "M-06 board cache realtime apply missing"; exit 1; }
+
+          # M-05 部屋共通情報とその他1/2の保存
+          grep -q "602以外の疎Recordに残っている古い部屋共通値は復元根拠にしない" src/js/sync/finish-sparse-structure.js || { echo "M-05 room carrier restore rule missing"; exit 1; }
+          grep -q "return !materialName && !actualPart" src/js/finish-table/finish-table-persistence.js || { echo "M-05 other sparse keep rule missing"; exit 1; }
+          grep -q "partPatchForExistingMaterial(currentCell, partIndex, material)" src/js/finish-table/finish-table-cell-actions.js || { echo "M-05 name selection part autofill missing"; exit 1; }
+
+          # M-04 項目単位競合マージ
+          test -f src/js/sync/record-field-merge.js
+          grep -q "mergeRecordByFieldEditedAt" src/js/projects/project-record-apply.js || { echo "M-04 realtime field merge missing"; exit 1; }
+          grep -q "mergeRecordByFieldEditedAt" src/js/sync/project-record-persistence.js || { echo "M-04 restore field merge missing"; exit 1; }
+          grep -q "putUnsent" src/js/projects/project-record-apply.js || { echo "M-04 unsent merge update missing"; exit 1; }
+          grep -q "conflict-merge-material" src/js/projects/project-record-apply.js || { echo "M-04 material convergence write missing"; exit 1; }
+          grep -q "conflict-merge-finish" src/js/projects/project-record-apply.js || { echo "M-04 finish convergence write missing"; exit 1; }
+          grep -q "conflict-merge-photo" src/js/projects/project-record-apply.js || { echo "M-04 photo convergence write missing"; exit 1; }
+          grep -q "record-field-merge.js" src/service-worker.js || { echo "M-04 merge module missing from app shell"; exit 1; }
+
+          # M-02 Undo/RedoのFirestore差分永続化
+          test -f src/js/finish-table/finish-table-history-persistence.js
+          grep -q "persistUndoRedoSnapshotDiff" src/js/finish-table/finish-table-controller.js || { echo "M-02 undo/redo persistence hook missing"; exit 1; }
+          grep -q "touchFieldEditedAt" src/js/finish-table/finish-table-history-persistence.js || { echo "M-02 history restore does not refresh fieldEditedAt"; exit 1; }
+          grep -q "deleteMaterialForProject" src/js/finish-table/finish-table-history-persistence.js || { echo "M-02 material undo delete adapter missing"; exit 1; }
+          grep -q "export function deleteMaterialRecord" src/js/firestore/firestore-repository.js || { echo "M-02 material delete repository API missing"; exit 1; }
+          grep -q "export function deleteMaterialForProject" src/js/sync/project-record-persistence.js || { echo "M-02 material delete sync adapter missing"; exit 1; }
+          grep -q "return persistFinishForProject" src/js/finish-table/finish-table-persistence.js || { echo "M-02 sparse finish persistence is not awaitable"; exit 1; }
+          grep -q "finish-table-history-persistence.js" src/service-worker.js || { echo "M-02 history persistence module missing from app shell"; exit 1; }
+
+          # M-01 仕上表の削除漏れ防止
+          grep -q "previousWasPersistable" src/js/finish-table/finish-table-persistence.js || { echo "M-01 transition-aware delete missing"; exit 1; }
+          grep -q "deleteFinishForProject(project, record, 'finish-sparse-reset')" src/js/finish-table/finish-table-persistence.js || { echo "M-01 sparse delete missing"; exit 1; }
+          grep -q "committedEntries" src/js/firestore/firestore-repository.js || { echo "M-01 retry commit result missing"; exit 1; }
+          grep -q "applyCommittedFinishEntries" src/js/sync/project-record-persistence.js || { echo "M-01 known finish retry sync missing"; exit 1; }
+          grep -q "retryUnsentForProject" src/js/ui/sync-ui.js || { echo "manual retry bypasses sync adapter"; exit 1; }
+
+      - name: v0.1.9.38 photo workflow regression checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.8'" src/config/app-config.js
+
+          # A: 完成画像再生成は共通composerへ一本化
+          test -f src/js/photos/photo-completed-composer.js
+          grep -q "composeCompletedPhotoBlob" src/js/photos/photo-board-editor-persistence.js
+          grep -q "photo-completed-composer.js" src/service-worker.js
+
+          # B/C: 看板編集は目視整理 + 採取の部屋No./採取部位を保持
+          grep -q "data-editor-room" src/js/photos/photo-board-editor-form.js
+          grep -q "data-editor-part" src/js/photos/photo-board-editor-form.js
+          grep -q "data-editor-sampling-place" src/js/photos/photo-board-editor-form.js
+          grep -q "data-editor-sampling-part" src/js/photos/photo-board-editor-form.js
+
+          # D/E: 目視比較は 部位 -> ベース名 -> 場所 の3段選択
+          test -f src/js/photos/photo-compare-data.js
+          grep -q "visualComparePartOptions" src/js/photos/photo-compare-data.js
+          grep -q "visualCompareBaseNameOptions" src/js/photos/photo-compare-data.js
+          grep -q "visualCompareLocationOptions" src/js/photos/photo-compare-data.js
+          grep -q "data-compare-part" src/js/photos/photo-viewer.js
+          grep -q "data-compare-base" src/js/photos/photo-viewer.js
+          grep -q "data-compare-target" src/js/photos/photo-viewer.js
+
+          # F/G: 任意写真比較 + 採取場所変更確認Viewer
+          grep -q "export function openDirectPhotoCompare" src/js/photos/photo-viewer.js
+          grep -q "export function openSamplingLocationReview" src/js/photos/photo-viewer.js
+          grep -q "samplingLocationReviewPhotos" src/js/photos/photo-viewer-data.js
+          grep -q "data-photo-selection-mode=\"compare\"" src/js/photos/photo-renderer.js
+
+          # H: 採取場所変更は3判断を共通処理へ集約
+          test -f src/js/photos/sampling-location-change.js
+          grep -q ">反映させる<" src/js/photos/sampling-location-change.js
+          grep -q ">撮り直す<" src/js/photos/sampling-location-change.js
+          grep -q ">確認する<" src/js/photos/sampling-location-change.js
+          grep -q "samplingBranch:0" src/js/photos/sampling-location-change.js
+          grep -q "shootingType:''" src/js/photos/sampling-location-change.js
+          grep -q "composeCompletedPhotoBlob" src/js/photos/sampling-location-change.js
+          grep -q "sampling-location-change.js" src/service-worker.js
+
+          # I/J/K: 写真タブ・建材リスト・看板編集から同じHへ接続
+          grep -q "requestSamplingLocationChange" src/js/photos/photo-controller.js
+          grep -q "requestSamplingLocationChange" src/js/materials/material-list-controller.js
+          grep -q "routed: 'sampling-location-change'" src/js/materials/material-list-edit-actions.js
+          grep -q "data-editor-reflect-sampling-place" src/js/photos/photo-board-editor-form.js
+          grep -q "requestSamplingLocationChange" src/js/photos/photo-board-editor.js
+
+      - name: projectQueueReady scope regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          s = Path("src/js/projects/project-controller.js").read_text(encoding="utf-8")
+          start = s.index("async function openFirestoreProjectSession")
+          end = s.index("\nexport async function openProjectById", start)
+          block = s[start:end]
+          assert "let projectQueueReady = true;" in block
+          assert "let projectQueueReady = projectQueueResult" not in block
+          assert "projectQueueReady = projectQueueResult?.ok !== false;" in block
+          assert "const recordQueueResult = projectQueueReady" in block
+          PY
+
+      - name: v0.1.9.38 camera and compare regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -q "data-camera-location-targets" src/js/camera/camera-controller.js || { echo "camera location target host missing"; exit 1; }
+          grep -q "data-camera-part" src/js/camera/camera-controller.js || { echo "visual part button missing"; exit 1; }
+          grep -q "if (state.photoType === PHOTO_TYPES.VISUAL) openSidePanel('room')" src/js/camera/camera-controller.js || { echo "visual default location panel open missing"; exit 1; }
+          grep -q "sampleSlot.hidden = true" src/js/camera/camera-controller.js || { echo "visual sample slot hide missing"; exit 1; }
+          grep -q "camera-board-control-panel.panel-open .camera-panel-slot:not(.active)" src/css/camera.css || { echo "standalone-style panel open behavior missing"; exit 1; }
+          grep -q "width: 58px" src/css/camera.css || { echo "58px expanded control width missing"; exit 1; }
+          grep -q "export function selectVisualRoom" src/js/camera/camera-state.js || { echo "visual direct room select helper missing"; exit 1; }
+          grep -q "export function selectSamplingTarget" src/js/camera/camera-state.js || { echo "sampling direct target select helper missing"; exit 1; }
+
+          grep -q '<option value="__all__"' src/js/photos/photo-viewer.js || { echo "compare all-locations option missing"; exit 1; }
+          grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
+          grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
+
+      - name: v0.1.9.9 stable consistency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "version: '0.1.9.8'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.8"' src/version.json
+          grep -q '"version": "0.1.9.8"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.8" src/service-worker.js
-          grep -q "chousa-output-libs-v018" src/service-worker.js
-          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js; do
+          grep -q "chousa-app-v0.1.9.9" src/service-worker.js
+          grep -q "chousa-output-libs-v0199" src/service-worker.js
+          grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
+          grep -q "export function normalizeActiveMaterialNumbers" src/js/materials/material-list-persistence.js || { echo "materialNo normalization missing"; exit 1; }
+          grep -q "part: photo.part" src/js/photos/photo-viewer-data.js || { echo "visual photo viewer actual-part identity missing"; exit 1; }
+          grep -q "visualPartValue" src/js/photos/photo-board-editor-form.js || { echo "board editor visual target identity missing"; exit 1; }
+          grep -q "part: record.part" src/js/photos/photo-compare-data.js || { echo "visual compare actual-part identity missing"; exit 1; }
+          grep -q "recordPartSlot <= 4" src/js/photos/photo-controller.js || { echo "camera photo partial refresh actual-part identity missing"; exit 1; }
+          if grep -q "find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0))" src/js/photos/photo-board-editor.js; then echo "board editor snapshot still matches visual part by slot only"; exit 1; fi
+          if grep -q "materialNo: inputId" src/js/finish-table/finish-table-sample-seed.js; then echo "sample seed still couples materialNo to inputId"; exit 1; fi
+          grep -q "export function getMaterialDisplayNo" src/js/records/material-record.js || { echo "material display number compatibility helper missing"; exit 1; }
+          grep -q "export function normalizeOutputDigits" src/js/output/output-format.js || { echo "output digit normalization missing"; exit 1; }
+          grep -q "function text(value){return String(value??'').trim();}" src/js/output/output-view-model.js || { echo "output text helper must preserve record text"; exit 1; }
+          grep -q "function numberText(value){return normalizeOutputDigits(value).trim();}" src/js/output/output-view-model.js || { echo "output number helper missing"; exit 1; }
+          if grep -q "const text = normalizeOutputDigits(value)" src/js/output/output-format.js; then echo "output part text still normalizes all digits"; exit 1; fi
+          grep -q "const materialNo = normalizeOutputDigits(item.materialNo)" src/js/output/output-format.js || { echo "sampling code must use current materialNo"; exit 1; }
+          grep -q "roomNo:numberText(record.roomNo)" src/js/output/output-view-model.js || { echo "room number normalization missing"; exit 1; }
+          grep -q "projectNo:numberText" src/js/output/output-view-model.js || { echo "project number normalization missing"; exit 1; }
+          if sed -n '/export function refreshMaterialList()/,/^}/p' src/js/materials/material-list-controller.js | grep -q "normalizeActiveMaterialNumbers\|applyMaterialSamplingAutofill"; then echo "material list refresh still mutates records"; exit 1; fi
+          grep -q "export function renderMaterialListRow" src/js/materials/material-list-renderer.js || { echo "material row renderer missing"; exit 1; }
+          grep -q "function refreshMaterialRow" src/js/materials/material-list-controller.js || { echo "material row refresh missing"; exit 1; }
+          grep -q "chousa-material-room-name-mode-v1" src/js/materials/material-room-display-state.js || { echo "room-name display persistence missing"; exit 1; }
+          grep -q "partSlot,part:usage.part" src/js/output/output-view-model.js || { echo "visual output actual-part identity missing"; exit 1; }
+          grep -q "slot <= 4" src/js/records/photo-record.js || { echo "visual photo other-part key split missing"; exit 1; }
+          grep -q "partRecords.filter" src/js/photos/photo-view-model.js || { echo "visual other-part target split missing"; exit 1; }
+          for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
           if grep -q "sampleProject" src/js/camera/camera-*.js; then
@@ -212,6 +899,45 @@ jobs:
           fi
           grep -q "import { nextPhotoId } from './camera-photo-id.js';" src/js/camera/camera-controller.js || { echo "nextPhotoId import is missing"; exit 1; }
           grep -q "export function nextPhotoId" src/js/camera/camera-photo-id.js || { echo "nextPhotoId definition is missing"; exit 1; }
+          grep -q "export function isCameraLandscape" src/js/camera/camera-orientation.js || { echo "camera landscape gate missing"; exit 1; }
+          grep -q "export async function playShutterSound" src/js/camera/camera-shutter-sound.js || { echo "camera shutter sound module missing"; exit 1; }
+          grep -q "DecompressionStream('gzip')" src/js/camera/camera-shutter-sound.js || { echo "bundled shutter sound decompression missing"; exit 1; }
+          grep -q "createGain()" src/js/camera/camera-shutter-sound.js || { echo "GainNode volume control missing"; exit 1; }
+          grep -q "gainNode.gain.value = volumeGain(volume)" src/js/camera/camera-shutter-sound.js || { echo "shutter volume gain assignment missing"; exit 1; }
+          grep -q "{ value:'small', label:'小', gain:0.10 }" src/js/camera/camera-shutter-sound.js || { echo "small shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'medium', label:'中', gain:0.40 }" src/js/camera/camera-shutter-sound.js || { echo "medium shutter volume gain changed"; exit 1; }
+          grep -q "{ value:'large', label:'大', gain:1 }" src/js/camera/camera-shutter-sound.js || { echo "large shutter volume gain changed"; exit 1; }
+          grep -q "createBufferSource()" src/js/camera/camera-shutter-sound.js || { echo "AudioBuffer playback missing"; exit 1; }
+          if grep -q "new Audio(url)\|audio.volume" src/js/camera/camera-shutter-sound.js; then
+            echo "legacy HTMLAudio volume control remains"
+            exit 1
+          fi
+          for sound in camera1 camera2 click chime; do
+            test -s "src/assets/audio/${sound}.mp3.gz" || { echo "bundled shutter sound missing: ${sound}"; exit 1; }
+            grep -q "./assets/audio/${sound}.mp3.gz" src/service-worker.js || { echo "shutter sound not cached: ${sound}"; exit 1; }
+          done
+          grep -q "OtoLogic" src/js/settings/settings-renderer.js || { echo "OtoLogic credit missing"; exit 1; }
+          grep -q "https://otologic.jp/" src/js/settings/settings-renderer.js || { echo "OtoLogic credit link missing"; exit 1; }
+          if grep -R "landscapeFlipped\|camera-landscape-flip" -n src/js/camera src/css/camera.css; then
+            echo "obsolete camera flip implementation remains"
+            exit 1
+          fi
+          grep -q "supportsTorch" src/js/camera/camera-session.js || { echo "camera torch capability missing"; exit 1; }
+          grep -q "applyConstraints({ advanced:\[{ torch:next }\] })" src/js/camera/camera-session.js || { echo "camera torch constraint missing"; exit 1; }
+          grep -q "data-camera-settings-open" src/js/camera/camera-controller.js || { echo "camera settings gear missing"; exit 1; }
+          grep -q "data-camera-sound-preview" src/js/camera/camera-controller.js || { echo "camera sound preview missing"; exit 1; }
+          grep -q "handleCameraCapturePointerUp" src/js/camera/camera-controller.js || { echo "camera torch double tap handler missing"; exit 1; }
+          grep -q "getBoardRect(rect.width, rect.height" src/js/camera/camera-controller.js || { echo "camera torch board exclusion missing"; exit 1; }
+          grep -q "ライト ON" src/js/camera/camera-controller.js || { echo "camera torch ON toast missing"; exit 1; }
+          grep -q "ライト OFF" src/js/camera/camera-controller.js || { echo "camera torch OFF toast missing"; exit 1; }
+          grep -q "shutterSound" src/js/camera/camera-preferences.js || { echo "camera shutter sound preference missing"; exit 1; }
+          grep -q "shutterVolume" src/js/camera/camera-preferences.js || { echo "camera shutter volume preference missing"; exit 1; }
+          grep -q "camera-orientation.js" src/service-worker.js || { echo "camera orientation module not cached"; exit 1; }
+          grep -q "camera-shutter-sound.js" src/service-worker.js || { echo "camera shutter sound module not cached"; exit 1; }
+          if grep -q "rotate(90deg)\|rotate(-90deg)" src/css/camera.css; then
+            echo "obsolete portrait forced rotation remains"
+            exit 1
+          fi
           if grep -q "currentSamplingTarget()" src/js/camera/camera-controller.js; then
             echo "camera state argument missing: currentSamplingTarget"
             exit 1
@@ -234,6 +960,11 @@ jobs:
           fi
           grep -q "const stored = photoRecordStore.set(record);" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own camera photo registration"; exit 1; }
           grep -q "await saveCapturedPhoto({" src/js/photos/photo-record-actions.js || { echo "photo record actions do not own captured photo persistence"; exit 1; }
+          grep -q "persistPhotoForProject(getCurrentProject(), record, 'photo-board-editor-save')" src/js/photos/photo-board-editor-persistence.js || { echo "board editor does not persist edited photo record"; exit 1; }
+          if grep -q "registerCameraPreview(item, { renderAfter: false })" src/js/photos/photo-controller.js; then
+            echo "board editor still reuses camera persistence path"
+            exit 1
+          fi
           grep -q "const isLocalPreview = localPreviewUrls.has(photoId);" src/js/photos/photo-preview-manager.js || { echo "local thumbnail eager loading is missing"; exit 1; }
           grep -q "image.loading = isLocalPreview ? 'eager' : 'lazy';" src/js/photos/photo-preview-manager.js || { echo "local thumbnail loading policy is missing"; exit 1; }
           grep -q "function refreshCameraPhotoBlock(record)" src/js/photos/photo-controller.js || { echo "camera photo local block refresh is missing"; exit 1; }
@@ -262,6 +993,91 @@ jobs:
           fi
           if grep -q "formatProjectLabel" src/js/finish-table/finish-table-controller.js src/js/projects/project-session.js; then
             echo "legacy project label writer remains"
+            exit 1
+          fi
+
+          # チュートリアル操作制限はアプリ側permission stateへ集約
+          test -f src/js/guide/tutorial-state.js
+          test -f src/js/guide/tutorial-snapshot.js
+          test -f src/js/guide/tutorial-action.js
+          test -f src/js/guide/tutorial-steps.js
+          test -f src/js/guide/tutorial-steps-finish.js
+          test -f src/js/guide/tutorial-steps-materials.js
+          test -f src/js/guide/tutorial-steps-photos.js
+          test -f src/js/guide/tutorial-steps-output.js
+          test -f src/js/guide/operation-guide-data.js
+          grep -q "export function isTutorialActionAllowed" src/js/guide/tutorial-state.js || { echo "tutorial permission API missing"; exit 1; }
+          grep -q "export function captureTutorialSnapshot" src/js/guide/tutorial-snapshot.js || { echo "tutorial snapshot API missing"; exit 1; }
+          if test -e src/js/guide/tutorial-runtime.js; then
+            echo "obsolete tutorial runtime still exists"
+            exit 1
+          fi
+          if test -e src/js/guide/guide-data.js; then
+            echo "obsolete combined guide-data still exists"
+            exit 1
+          fi
+          if grep -R "new MutationObserver" -n src/js/guide; then
+            echo "guide MutationObserver must not return"
+            exit 1
+          fi
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-interactions.js || { echo "finish interactions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/finish-table/finish-table-controller.js || { echo "finish structure actions are not tutorial guarded"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/ui/tabs.js || { echo "tab user actions are not tutorial guarded"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/finish-table/finish-table-candidate-input.js || { echo "generic finish guide layout notification missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/materials/material-list-interactions.js || { echo "generic material guide layout notification missing"; exit 1; }
+          grep -q "roomFieldInput.blur()" src/js/finish-table/finish-table-interactions.js || { echo "room field Enter commit missing"; exit 1; }
+          grep -q "openHomePage({ replace:true })" src/js/guide/guide-controller.js || { echo "tutorial interrupt home return missing"; exit 1; }
+          grep -q "watchStores" src/js/guide/guide-controller.js || { echo "generic tutorial store watch missing"; exit 1; }
+          grep -q "FINISH_TUTORIAL_STEPS" src/js/guide/tutorial-steps-finish.js || { echo "finish tutorial section missing"; exit 1; }
+          grep -q "finish-existing-material-id-note" src/js/guide/tutorial-steps-finish.js || { echo "existing material ID guidance missing"; exit 1; }
+          grep -q "MATERIAL_TUTORIAL_STEPS" src/js/guide/tutorial-steps-materials.js || { echo "material tutorial section missing"; exit 1; }
+          grep -q "PHOTO_TUTORIAL_STEPS" src/js/guide/tutorial-steps-photos.js || { echo "photo tutorial section missing"; exit 1; }
+          grep -q "OUTPUT_TUTORIAL_STEPS" src/js/guide/tutorial-steps-output.js || { echo "output tutorial section missing"; exit 1; }
+          grep -q "analysis-show-columns" src/js/guide/tutorial-steps-output.js || { echo "analysis columns tutorial step missing"; exit 1; }
+          grep -q "output-rooms" src/js/guide/tutorial-steps-output.js || { echo "output rooms tutorial step missing"; exit 1; }
+          grep -q "output-visual-photos" src/js/guide/tutorial-steps-output.js || { echo "output visual photos tutorial step missing"; exit 1; }
+          grep -q "output-sampling-photos" src/js/guide/tutorial-steps-output.js || { echo "output sampling photos tutorial step missing"; exit 1; }
+          grep -q "output-export-info" src/js/guide/tutorial-steps-output.js || { echo "output export guidance missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-controller.js || { echo "output tutorial guard missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/output/output-export-controller.js || { echo "output export tutorial guard missing"; exit 1; }
+
+          # v0.1.9.217 Tutorial State Lifecycle
+          grep -q "captureFinishUiState" src/js/finish-table/finish-table-state.js || { echo "finish tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureMaterialListUiState" src/js/materials/material-list-controller.js || { echo "material tutorial UI snapshot missing"; exit 1; }
+          grep -q "capturePhotoUiState" src/js/photos/photo-controller.js || { echo "photo tutorial UI snapshot missing"; exit 1; }
+          grep -q "captureOutputUiState" src/js/output/output-controller.js || { echo "output tutorial UI snapshot missing"; exit 1; }
+          grep -q "subscribeTutorialActions" src/js/guide/guide-controller.js || { echo "tutorial semantic action subscription missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/photos/photo-interactions.js || { echo "photo semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/materials/material-list-controller.js || { echo "material semantic action notification missing"; exit 1; }
+          grep -q "notifyTutorialAction" src/js/output/output-controller.js || { echo "output semantic action notification missing"; exit 1; }
+          if grep -q "tutorialMode && step?.interactive && typeof step.completeWhen" src/js/guide/guide-controller.js; then
+            echo "guide-layout-change still owns completion checks"
+            exit 1
+          fi
+          if grep -q "document.querySelectorAll('.tabs .tab\[data-tab\]')" src/js/photos/photo-interactions.js; then
+            echo "photo tab exit still uses direct tab click listeners"
+            exit 1
+          fi
+          grep -q "photos-switch-sampling" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling switch step missing"; exit 1; }
+          grep -q "photos-sampling-reflection" src/js/guide/tutorial-steps-photos.js || { echo "photo sampling reflection step missing"; exit 1; }
+          grep -q "photos-before-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo before-stage step missing"; exit 1; }
+          grep -q "photos-section-stage" src/js/guide/tutorial-steps-photos.js || { echo "photo section-stage step missing"; exit 1; }
+          grep -q "isTutorialActionAllowed" src/js/photos/photo-interactions.js || { echo "photo tutorial guard missing"; exit 1; }
+          grep -q "chousa:guide-layout-change" src/js/photos/photo-controller.js || { echo "photo guide layout notification missing"; exit 1; }
+          grep -q "materials-analysis-required" src/js/guide/tutorial-steps-materials.js || { echo "material analysis tutorial step missing"; exit 1; }
+          grep -q "materials-sample-done" src/js/guide/tutorial-steps-materials.js || { echo "material sample-done tutorial step missing"; exit 1; }
+          grep -q "materials-note-info" src/js/guide/tutorial-steps-materials.js || { echo "material note guidance step missing"; exit 1; }
+          if grep -q "id: 'materials-note'" src/js/guide/tutorial-steps-materials.js; then
+            echo "obsolete interactive material note step remains"
+            exit 1
+          fi
+          grep -q "sampleLocation1" src/js/guide/tutorial-steps-materials.js || { echo "sample location1 tutorial target missing"; exit 1; }
+          grep -q "sampleLocation2" src/js/guide/tutorial-steps-materials.js || { echo "sample location2 tutorial target missing"; exit 1; }
+          grep -q "refreshMaterialList();" src/js/materials/material-list-controller.js || { echo "material list tab refresh missing"; exit 1; }
+          grep -q "materialInteractionAllowed" src/js/materials/material-list-controller.js || { echo "material tutorial guard missing"; exit 1; }
+
+          if grep -R "guide-blocker\|guide-layer\|lockTargets\|resolveGuideLockTargets\|blockOutsideTutorialTarget\|stopImmediatePropagation" -n src/js/guide src/css/guide.css; then
+            echo "obsolete tutorial event/blocker lock remains"
             exit 1
           fi
 
@@ -592,12 +1408,20 @@ jobs:
           grep -q "sourceRequired==='対象外'.*positive:sourcePositive" src/js/output/output-view-model.js || { echo "out-of-scope positive source mapping missing"; exit 1; }
           grep -q "positive:reportAnalysis.positive" src/js/output/output-view-model.js || { echo "report positive flag missing"; exit 1; }
           grep -q "row.positive??isPositive" src/js/output/output-pdf-renderer.js || { echo "PDF does not use report positive flag"; exit 1; }
-          grep -q "roomNote.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room note must stay black"; exit 1; }
-
-          # 部屋別リストは階・部屋No.・部屋名を常に黒、部位以降のみ陽性時赤
-          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color must stay black"; exit 1; }
-          grep -q "roomNo.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room number color must stay black"; exit 1; }
-          grep -q "roomName.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room name color must stay black"; exit 1; }
+          if sed -n '/function wrapRoomNoLines/,/^}/p' src/js/output/output-pdf-renderer.js | grep -q "setFont(pdf"; then
+            echo "wrapRoomNoLines must not reset text color"
+            exit 1
+          fi
+          grep -q "positive: isMaterialPositive(record)" src/js/materials/material-list-view-model.js || { echo "material list positive mapping missing"; exit 1; }
+          grep -q "positive-material-row" src/js/materials/material-list-renderer.js || { echo "material list positive row class missing"; exit 1; }
+          grep -q "positive-material-row" src/css/material-list.css || { echo "material list positive red style missing"; exit 1; }
+          grep -q "if(r.positive)row.font" src/js/output/output-export-controller.js || { echo "Excel material positive row color missing"; exit 1; }
+          # 部屋別リストは陽性行の部屋No.・部屋名・部屋備考も含めて赤表示
+          grep -q "roomRows.some.*RED:BLACK" src/js/output/output-pdf-renderer.js || { echo "room group positive color mapping missing"; exit 1; }
+          grep -q "roomNo.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room number does not follow positive row color"; exit 1; }
+          grep -q "roomName.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room name does not follow positive row color"; exit 1; }
+          grep -q "roomNote.*color:roomColor" src/js/output/output-pdf-renderer.js || { echo "room note does not follow positive row color"; exit 1; }
+          grep -q "row.floor.*color:BLACK" src/js/output/output-pdf-renderer.js || { echo "room floor color rule changed"; exit 1; }
           if grep -q "remarks||record.note\|remarks||material.note" src/js/output/output-view-model.js; then
             echo "analysis remarks are still mixed into survey note output"
             exit 1
@@ -633,7 +1457,6 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Deploy to Firebase Hosting preview channel
-        id: firebase_hosting_preview
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
