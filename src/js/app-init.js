@@ -52,6 +52,8 @@ async function initProjectApp() {
     return;
   }
 
+  const main = document.querySelector('.main');
+  if (main) main.style.visibility = 'hidden';
   const loadingToken = beginLoading('起動しています…', { delay: 0 });
   try {
     void initializePwa();
@@ -102,7 +104,6 @@ async function initProjectApp() {
     initializeSettingsTab();
 
     ensureHomeReturnControl();
-    showTab('finish');
 
     if (!getProject(projectId)) {
       activateProjectSyncStatus('');
@@ -111,11 +112,14 @@ async function initProjectApp() {
     }
 
     await openProjectById(projectId);
+    showTab('finish');
+    if (main) main.style.visibility = '';
     if (!getCurrentProject()?.projectId) activateProjectSyncStatus('');
     await startRequestedTutorialIfNeeded();
     initializeSystemDataBackup();
     window.addEventListener('pagehide', captureInitialProjectSession);
   } finally {
+    if (main) main.style.visibility = '';
     endLoading(loadingToken);
   }
 }
