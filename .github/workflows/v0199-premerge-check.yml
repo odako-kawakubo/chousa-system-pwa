@@ -856,14 +856,65 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
+      - name: v0.1.9.9 material list focused regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { applySingleRecordSamplingAutofill } from './src/js/materials/material-sampling-autofill.js';
+          import { renderMaterialListRow } from './src/js/materials/material-list-renderer.js';
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+          const record = {
+            analysisRequired:'採取・分析',
+            sampleCount:2,
+            usageLocation:'1-1',
+            part:'壁',
+            sampleLocation1:'',
+            sampleLocation2:'',
+            sampleLocation3:'',
+            samplePart:[]
+          };
+          const changed = applySingleRecordSamplingAutofill(record);
+          assert(record.sampleLocation1 === '1-1' && record.sampleLocation2 === '1-1', 'sampling autofill lost');
+          assert(record.samplePart?.[0] === '壁', 'sample part autofill lost');
+          assert(changed.includes('sampleLocation1') && changed.includes('sampleLocation2'), 'autofill changed fields missing');
+
+          const rowHtml = renderMaterialListRow({
+            materialId:'m1', materialNo:1, inputId:9, part:'壁', name:'石こうボード',
+            usageLocation:'1-1', usageLocationDisplay:'1-1', level:'2',
+            analysisRequired:'採取・分析', analysisResult:'', positive:false, remarks:'', note:'',
+            samplingEnabled:true, sampleCount:2, sampleCountLabel:'2',
+            sampleLocation1:'1-1', sampleLocation2:'1-1', sampleLocation3:'',
+            sampleLocationEnabled:[true,true,false], sampleLocationOptions:[{value:'1-1',display:'1-1'}],
+            samplePart:['壁'], usageParts:['壁'], sampleDone:false, sampleDate:'', color:''
+          }, null, { colorMode:false, analysisColumnsOpen:false });
+          assert(rowHtml.includes('data-material-id="m1"'), 'row renderer material id missing');
+          assert(rowHtml.includes('data-field="level"'), 'row renderer level control missing');
+          assert(rowHtml.includes('data-field="sampleCount"'), 'row renderer sample count control missing');
+          assert(rowHtml.includes('data-field="sampleLocation1"'), 'row renderer sampling location missing');
+
+          globalThis.localStorage = {
+            values:new Map([['chousa-material-room-name-mode-v1','1']]),
+            getItem(key){ return this.values.has(key) ? this.values.get(key) : null; },
+            setItem(key,value){ this.values.set(key,String(value)); }
+          };
+          globalThis.window = { dispatchEvent(){} };
+          globalThis.CustomEvent = class CustomEvent { constructor(type, options={}){ this.type=type; this.detail=options.detail; } };
+          const state = await import('./src/js/materials/material-room-display-state.js?premerge=1');
+          assert(state.getMaterialRoomNameMode() === true, 'stored room-name mode did not restore');
+          state.setMaterialRoomNameMode(false);
+          assert(globalThis.localStorage.getItem('chousa-material-room-name-mode-v1') === '0', 'room-name mode did not persist');
+          NODE
+
       - name: v0.1.9.9 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.8'" src/config/app-config.js
+          grep -q "version: '0.1.9.9'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.8"' src/version.json
+          grep -q '"version": "0.1.9.9"' src/version.json
           grep -q '"revision": ""' src/version.json
           grep -q "chousa-app-v0.1.9.9" src/service-worker.js
           grep -q "chousa-output-libs-v0199" src/service-worker.js
