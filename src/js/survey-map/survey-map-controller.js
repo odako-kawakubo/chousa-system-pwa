@@ -12,7 +12,7 @@ import { createDrawingObject, DRAWING_LAYERS } from '../records/drawing-object.j
 import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
 import { persistDrawingForProject, persistDrawingObjectForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { clientToPagePoint, clampObjectRect, objectPercentStyle, rotationFromPointer } from './survey-map-geometry.js';
+import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 
 let initialized=false;
@@ -145,6 +145,109 @@ async function createRectangleAt(clientX,clientY){
   activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
+}
+
+function lineBounds(startX,startY,endX,endY){
+  return {
+    x:Math.min(Number(startX)||0,Number(endX)||0),
+    y:Math.min(Number(startY)||0,Number(endY)||0),
+    width:Math.abs((Number(endX)||0)-(Number(startX)||0)),
+    height:Math.abs((Number(endY)||0)-(Number(startY)||0))
+  };
+}
+
+function lineRecordWithPoints(record,startX,startY,endX,endY){
+  return {
+    ...record,
+    startX,
+    startY,
+    endX,
+    endY,
+    ...lineBounds(startX,startY,endX,endY),
+    rotation:0
+  };
+}
+
+function createLineDraftPreview(sheet,drawing,point){
+  const size=pageSize(drawing);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.classList.add('survey-map-line-draft');
+  svg.setAttribute('viewBox',`0 0 ${size.width} ${size.height}`);
+  svg.setAttribute('preserveAspectRatio','none');
+  const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',String(point.x));
+  line.setAttribute('y1',String(point.y));
+  line.setAttribute('x2',String(point.x));
+  line.setAttribute('y2',String(point.y));
+  svg.appendChild(line);
+  sheet.querySelector('.survey-map-object-layer')?.appendChild(svg);
+  return svg;
+}
+
+function updateLineDraftPreview(svg,point){
+  const line=svg?.querySelector('line');
+  if(!line) return;
+  line.setAttribute('x2',String(point.x));
+  line.setAttribute('y2',String(point.y));
+}
+
+function updateLineObjectElement(objectEl,record,drawing){
+  const size=pageSize(drawing);
+  const startX=Number(record.startX)||0;
+  const startY=Number(record.startY)||0;
+  const endX=Number(record.endX)||0;
+  const endY=Number(record.endY)||0;
+  objectEl.querySelectorAll('.survey-map-line-svg line').forEach((line)=>{
+    line.setAttribute('x1',String(startX));
+    line.setAttribute('y1',String(startY));
+    line.setAttribute('x2',String(endX));
+    line.setAttribute('y2',String(endY));
+  });
+  const startHandle=objectEl.querySelector('[data-survey-handle="line-start"]');
+  const endHandle=objectEl.querySelector('[data-survey-handle="line-end"]');
+  if(startHandle){
+    startHandle.style.left=`${(startX/size.width)*100}%`;
+    startHandle.style.top=`${(startY/size.height)*100}%`;
+  }
+  if(endHandle){
+    endHandle.style.left=`${(endX/size.width)*100}%`;
+    endHandle.style.top=`${(endY/size.height)*100}%`;
+  }
+}
+
+async function createLineFromPoints(drawing,startPoint,endPoint){
+  const dx=endPoint.x-startPoint.x;
+  const dy=endPoint.y-startPoint.y;
+  if(Math.hypot(dx,dy)<200) return null;
+
+  const now=Date.now();
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const base={
+    objectId:newObjectId(),
+    drawingId:drawing.drawingId,
+    type:'line',
+    layer:DRAWING_LAYERS.SHAPE,
+    order:objects.length?Math.max(...objects.map((item)=>Number(item.order)||0))+1:1,
+    visible:true,
+    locked:false,
+    deleted:false,
+    lineColor:'#334155',
+    lineWidth:80,
+    lineStyle:'solid',
+    createdAt:new Date(now).toISOString()
+  };
+  const withPoints=lineRecordWithPoints(base,startPoint.x,startPoint.y,endPoint.x,endPoint.y);
+  const record=createDrawingObject({
+    ...withPoints,
+    fieldEditedAt:touchFieldEditedAt({},[
+      'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
+      'startX','startY','endX','endY','lineColor','lineWidth','lineStyle'
+    ],now)
+  });
+  selectedObjectId=record.objectId;
+  activeTool='select';
+  await commitDrawingObject(record,'survey-map-line-create');
+  return record;
 }
 
 async function deleteSelectedObject(){
@@ -334,8 +437,8 @@ function toolsHtml(){
   ];
   return `
     <div class="survey-map-tool-section">
-      <div class="survey-map-tool-grid">${primary.map(([icon,label],index)=>
-        toolIconCell(icon,label,icon,index!==0)
+      <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
+        toolIconCell(icon,label,icon,!['select','line'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
       <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
@@ -365,13 +468,17 @@ function editorHtml(drawing){
   }
   const object=selectedObject();
   if(object){
+    const details=object.type==='line'
+      ? `始点：${Math.round(Number(object.startX)||0)}, ${Math.round(Number(object.startY)||0)}<br>
+        終点：${Math.round(Number(object.endX)||0)}, ${Math.round(Number(object.endY)||0)}`
+      : `X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
+        W：${Math.round(Number(object.width)||0)}　H：${Math.round(Number(object.height)||0)}<br>
+        回転：${Math.round(Number(object.rotation)||0)}°`;
     return `
       <div class="survey-map-hint">
         <b>選択オブジェクト</b><br>
         種類：${escapeHtml(object.type)} / ${escapeHtml(object.shapeType||'')}<br>
-        X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
-        W：${Math.round(Number(object.width)||0)}　H：${Math.round(Number(object.height)||0)}<br>
-        回転：${Math.round(Number(object.rotation)||0)}°
+        ${details}
       </div>
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
@@ -576,7 +683,9 @@ function bindEvents(){
       if(!object || object.locked) return;
       selectedObjectId=objectId;
       const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
-      const mode=handle==='resize'?'resize':handle==='rotate'?'rotate':'move';
+      const mode=object.type==='line'
+        ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
+        : (handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
       pointerInteraction={
@@ -599,6 +708,25 @@ function bindEvents(){
       return;
     }
 
+    if(activeTool==='line' && !objectEl){
+      const sheetRect=sheet.getBoundingClientRect();
+      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
+      pointerInteraction={
+        pointerId:event.pointerId,
+        objectId:'',
+        mode:'create-line',
+        original:null,
+        draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
+        startPoint,
+        sheetRect,
+        previewEl
+      };
+      sheet.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+
     if(activeTool==='select' && !objectEl){
       selectedObjectId='';
       if(editPanelOpen) renderSurveyMap();
@@ -609,14 +737,49 @@ function bindEvents(){
     const interaction=pointerInteraction;
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     const drawing=selectedDrawing();
-    const objectEl=mount.querySelector(`[data-survey-object-id="${CSS.escape(interaction.objectId)}"]`);
-    if(!drawing || !objectEl) return;
+    if(!drawing) return;
     const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+
+    if(interaction.mode==='create-line'){
+      interaction.draft={...interaction.draft,endX:currentPoint.x,endY:currentPoint.y};
+      updateLineDraftPreview(interaction.previewEl,currentPoint);
+      event.preventDefault();
+      return;
+    }
+
+    const objectEl=mount.querySelector(`[data-survey-object-id="${CSS.escape(interaction.objectId)}"]`);
+    if(!objectEl) return;
     const dx=currentPoint.x-interaction.startPoint.x;
     const dy=currentPoint.y-interaction.startPoint.y;
     let draft={...interaction.original};
 
-    if(interaction.mode==='move'){
+    if(interaction.mode==='line-move'){
+      const size=pageSize(drawing);
+      const minX=Math.min(Number(interaction.original.startX)||0,Number(interaction.original.endX)||0);
+      const maxX=Math.max(Number(interaction.original.startX)||0,Number(interaction.original.endX)||0);
+      const minY=Math.min(Number(interaction.original.startY)||0,Number(interaction.original.endY)||0);
+      const maxY=Math.max(Number(interaction.original.startY)||0,Number(interaction.original.endY)||0);
+      const moveX=clamp(dx,-minX,size.width-maxX);
+      const moveY=clamp(dy,-minY,size.height-maxY);
+      draft=lineRecordWithPoints(
+        interaction.original,
+        (Number(interaction.original.startX)||0)+moveX,
+        (Number(interaction.original.startY)||0)+moveY,
+        (Number(interaction.original.endX)||0)+moveX,
+        (Number(interaction.original.endY)||0)+moveY
+      );
+    }else if(interaction.mode==='line-start'){
+      draft=lineRecordWithPoints(
+        interaction.original,currentPoint.x,currentPoint.y,
+        Number(interaction.original.endX)||0,Number(interaction.original.endY)||0
+      );
+    }else if(interaction.mode==='line-end'){
+      draft=lineRecordWithPoints(
+        interaction.original,
+        Number(interaction.original.startX)||0,Number(interaction.original.startY)||0,
+        currentPoint.x,currentPoint.y
+      );
+    }else if(interaction.mode==='move'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0)+dx,
         y:Number(interaction.original.y||0)+dy,
@@ -637,7 +800,8 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
-    objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
+    if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
+    else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
     event.preventDefault();
   });
 
@@ -645,12 +809,27 @@ function bindEvents(){
     const interaction=pointerInteraction;
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
+
+    if(interaction.mode==='create-line'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){
+        renderSurveyMap();
+        return;
+      }
+      const drawing=selectedDrawing();
+      if(!drawing) return;
+      const endPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      void createLineFromPoints(drawing,interaction.startPoint,endPoint).then(()=>renderSurveyMap());
+      return;
+    }
+
     const current=drawingObjectStore.get(interaction.objectId);
     if(!current) return;
     const draft=interaction.draft||interaction.original;
     const fields=interaction.mode==='move'?['x','y']
       :interaction.mode==='resize'?['x','y','width','height']
-      :['rotation'];
+      :interaction.mode==='rotate'?['rotation']
+      :['startX','startY','endX','endY','x','y','width','height'];
     const now=Date.now();
     const next=createDrawingObject({
       ...current,
