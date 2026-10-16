@@ -111,7 +111,15 @@ export function locateInitialCameraState(initialContext = {}, options = {}) {
     ));
     next.visualRoomIndex = Math.max(0, roomIndex);
     const room = next.visualRooms[next.visualRoomIndex];
-    const partIndex = room?.targets?.findIndex((target) => Number(target.partSlot || 0) === Number(initialContext.partSlot || 0)) ?? -1;
+    const initialPartSlot = Number(initialContext.partSlot || 0);
+    const initialPart = String(initialContext.part || '').trim();
+    let partIndex = room?.targets?.findIndex((target) => (
+      Number(target.partSlot || 0) === initialPartSlot
+      && (initialPartSlot <= 4 || !initialPart || String(target.part || '').trim() === initialPart)
+    )) ?? -1;
+    if (partIndex < 0) {
+      partIndex = room?.targets?.findIndex((target) => Number(target.partSlot || 0) === initialPartSlot) ?? -1;
+    }
     next.visualPartIndex = Math.max(0, partIndex);
   } else {
     const samplingIndex = next.samplingTargets.findIndex((target) => (

@@ -147,6 +147,17 @@ export function samplePartsToText(value) {
   return normalizeSampleParts(value).join('、');
 }
 
+/**
+ * 建材No.表示用の互換helper。
+ * 新RecordではmaterialNoを正とし、旧Recordで欠落している場合だけinputIdへフォールバックする。
+ */
+export function getMaterialDisplayNo(material = {}) {
+  const materialNo = Number(material.materialNo);
+  if (Number.isFinite(materialNo) && materialNo > 0) return materialNo;
+  const legacyInputId = Number(material.inputId);
+  return Number.isFinite(legacyInputId) && legacyInputId > 0 ? legacyInputId : '';
+}
+
 /** materialRecordを1件生成する。 */
 export function createMaterialRecord(fields) {
   const name = String(fields.name ?? '');

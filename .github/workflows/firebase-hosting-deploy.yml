@@ -1,4 +1,4 @@
-name: Deploy v0.1.9.4 Stable
+name: Deploy v0.1.9.9 Stable
 
 on:
   push:
@@ -83,7 +83,8 @@ jobs:
           node --input-type=module <<'NODE'
           import { formatSamplingCode, formatPartDisplay } from './src/js/output/output-format.js';
           const assert = (condition, message) => { if (!condition) throw new Error(message); };
-          assert(formatSamplingCode({ projectNo:'260701014', sampleNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'260701014', materialNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'２６０７０１０１４', materialNo:'１', branch:'２' }) === '260701014-1 2', 'sampling code digits should be half-width');
           assert(formatPartDisplay('壁、床').split === false, 'short two-part label should remain one line');
           const split = formatPartDisplay('壁、天井');
           assert(split.split === true && split.lines.join('|') === '壁|天井', 'long multi-part label should split at delimiter');
@@ -854,17 +855,42 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.9.4 stable consistency checks
+      - name: v0.1.9.9 stable consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.4'" src/config/app-config.js
+          grep -q "version: '0.1.9.9'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.4"' src/version.json
+          grep -q '"version": "0.1.9.9"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.4" src/service-worker.js
-          grep -q "chousa-output-libs-v0194" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.9" src/service-worker.js
+          grep -q "chousa-output-libs-v0199" src/service-worker.js
+          grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
+          grep -q "export function normalizeActiveMaterialNumbers" src/js/materials/material-list-persistence.js || { echo "materialNo normalization missing"; exit 1; }
+          grep -q "part: photo.part" src/js/photos/photo-viewer-data.js || { echo "visual photo viewer actual-part identity missing"; exit 1; }
+          grep -q "visualPartValue" src/js/photos/photo-board-editor-form.js || { echo "board editor visual target identity missing"; exit 1; }
+          grep -q "part: record.part" src/js/photos/photo-compare-data.js || { echo "visual compare actual-part identity missing"; exit 1; }
+          grep -q "recordPartSlot <= 4" src/js/photos/photo-controller.js || { echo "camera photo partial refresh actual-part identity missing"; exit 1; }
+          if grep -q "find((item) => Number(item.partSlot || 0) === Number(record.partSlot || 0))" src/js/photos/photo-board-editor.js; then echo "board editor snapshot still matches visual part by slot only"; exit 1; fi
+          if grep -q "materialNo: inputId" src/js/finish-table/finish-table-sample-seed.js; then echo "sample seed still couples materialNo to inputId"; exit 1; fi
+          grep -q "export function getMaterialDisplayNo" src/js/records/material-record.js || { echo "material display number compatibility helper missing"; exit 1; }
+          grep -q "export function normalizeOutputDigits" src/js/output/output-format.js || { echo "output digit normalization missing"; exit 1; }
+          grep -q "function text(value){return String(value??'').trim();}" src/js/output/output-view-model.js || { echo "output text helper must preserve record text"; exit 1; }
+          grep -q "function numberText(value){return normalizeOutputDigits(value).trim();}" src/js/output/output-view-model.js || { echo "output number helper missing"; exit 1; }
+          if grep -q "const text = normalizeOutputDigits(value)" src/js/output/output-format.js; then echo "output part text still normalizes all digits"; exit 1; fi
+          grep -q "const materialNo = normalizeOutputDigits(item.materialNo)" src/js/output/output-format.js || { echo "sampling code must use current materialNo"; exit 1; }
+          grep -q "roomNo:numberText(record.roomNo)" src/js/output/output-view-model.js || { echo "room number normalization missing"; exit 1; }
+          grep -q "projectNo:numberText" src/js/output/output-view-model.js || { echo "project number normalization missing"; exit 1; }
+          if sed -n '/export function refreshMaterialList()/,/^}/p' src/js/materials/material-list-controller.js | grep -q "normalizeActiveMaterialNumbers\|applyMaterialSamplingAutofill"; then echo "material list refresh still mutates records"; exit 1; fi
+          grep -q "export function prepareMaterialListProjectData" src/js/materials/material-list-controller.js || { echo "project-open material preparation missing"; exit 1; }
+          grep -q "prepareMaterialListProjectData();" src/js/projects/project-session.js || { echo "project-open material preparation is not called"; exit 1; }
+          grep -q "export function renderMaterialListRow" src/js/materials/material-list-renderer.js || { echo "material row renderer missing"; exit 1; }
+          grep -q "function refreshMaterialRow" src/js/materials/material-list-controller.js || { echo "material row refresh missing"; exit 1; }
+          grep -q "chousa-material-room-name-mode-v1" src/js/materials/material-room-display-state.js || { echo "room-name display persistence missing"; exit 1; }
+          grep -q "partSlot,part:usage.part" src/js/output/output-view-model.js || { echo "visual output actual-part identity missing"; exit 1; }
+          grep -q "slot <= 4" src/js/records/photo-record.js || { echo "visual photo other-part key split missing"; exit 1; }
+          grep -q "partRecords.filter" src/js/photos/photo-view-model.js || { echo "visual other-part target split missing"; exit 1; }
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done

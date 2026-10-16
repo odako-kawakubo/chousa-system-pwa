@@ -2,10 +2,10 @@
  * 分析依頼・写真タブ・分析結果取込で共用する試料名称。
  * 例: 建材No.3　壁、天井　吹付材A
  */
-import { samplePartsToText } from '../records/material-record.js';
+import { getMaterialDisplayNo, samplePartsToText } from '../records/material-record.js';
 
 export function buildMaterialSampleName(material = {}) {
-  const materialNo = String(material.materialNo || material.inputId || '').trim();
+  const materialNo = String(getMaterialDisplayNo(material) || '').trim();
   const part = samplePartsToText(material.samplePart) || String(material.part || '').trim();
   const name = String(material.name || '').trim();
   const pieces = [];

@@ -1,4 +1,4 @@
-import { normalizeSampleParts, samplePartsToText } from '../records/material-record.js';
+import { getMaterialDisplayNo, normalizeSampleParts, samplePartsToText } from '../records/material-record.js';
 
 /**
  * src/js/materials/material-list-view-model.js
@@ -36,7 +36,7 @@ export function buildMaterialListRows(records) {
 
       return {
         materialId: String(record.materialId || ''),
-        materialNo: Number(record.materialNo) || Number(record.inputId) || 0,
+        materialNo: Number(getMaterialDisplayNo(record)) || 0,
         inputId: record.inputId,
         part: String(record.part || ''),
         name: String(record.name || ''),
@@ -109,8 +109,8 @@ function normalizeLevel(value) {
 }
 
 function compareMaterialRecords(a, b) {
-  const aNo = Number(a.materialNo) || Number(a.inputId) || Number.MAX_SAFE_INTEGER;
-  const bNo = Number(b.materialNo) || Number(b.inputId) || Number.MAX_SAFE_INTEGER;
+  const aNo = Number(getMaterialDisplayNo(a)) || Number.MAX_SAFE_INTEGER;
+  const bNo = Number(getMaterialDisplayNo(b)) || Number.MAX_SAFE_INTEGER;
   if (aNo !== bNo) return aNo - bNo;
   return String(a.materialId || '').localeCompare(String(b.materialId || ''), 'ja', { numeric: true });
 }

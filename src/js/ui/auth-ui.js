@@ -19,6 +19,7 @@ import {
 
 let currentUser = null;
 let bound = false;
+let lastNotifiedKey = '';
 const listeners = [];
 
 function snapshot() {
@@ -35,8 +36,23 @@ function snapshot() {
   };
 }
 
+function notificationKey(value) {
+  return JSON.stringify([
+    value.user?.uid || '',
+    value.displayName || '',
+    value.email || '',
+    Boolean(value.loggedIn),
+    Boolean(value.graphLoggedIn),
+    Boolean(value.graphTokenReady),
+    value.graphError || ''
+  ]);
+}
+
 function notify() {
   const value = snapshot();
+  const key = notificationKey(value);
+  if (key === lastNotifiedKey) return;
+  lastNotifiedKey = key;
   listeners.slice().forEach((callback) => callback(value));
   window.dispatchEvent(new CustomEvent('chousa:auth-state-change', { detail: value }));
 }

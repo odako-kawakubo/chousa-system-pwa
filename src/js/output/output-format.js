@@ -2,11 +2,16 @@
  * 帳票間で共有する文字列整形。
  */
 
+/** 番号・日付など指定項目だけ全角数字を半角へ統一する。元Recordの値自体は変更しない。 */
+export function normalizeOutputDigits(value) {
+  return String(value ?? '').replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+}
+
 export function formatSamplingCode(item = {}) {
-  const projectNo = String(item.projectNo ?? '').trim();
-  const sampleNo = String(item.sampleNo ?? '').trim();
-  const placeCount = String(item.branch ?? '').trim();
-  const base = [projectNo, sampleNo].filter(Boolean).join('-');
+  const projectNo = normalizeOutputDigits(item.projectNo).trim();
+  const materialNo = normalizeOutputDigits(item.materialNo).trim();
+  const placeCount = normalizeOutputDigits(item.branch).trim();
+  const base = [projectNo, materialNo].filter(Boolean).join('-');
   return placeCount ? `${base} ${placeCount}`.trim() : base;
 }
 
