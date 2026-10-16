@@ -93,7 +93,8 @@ jobs:
           node --input-type=module <<'NODE'
           import { formatSamplingCode, formatPartDisplay } from './src/js/output/output-format.js';
           const assert = (condition, message) => { if (!condition) throw new Error(message); };
-          assert(formatSamplingCode({ projectNo:'260701014', sampleNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'260701014', materialNo:'1', branch:1 }) === '260701014-1 1', 'sampling code format changed');
+          assert(formatSamplingCode({ projectNo:'２６０７０１０１４', materialNo:'１', branch:'２' }) === '260701014-1 2', 'sampling code digits should be half-width');
           assert(formatPartDisplay('壁、床').split === false, 'short two-part label should remain one line');
           const split = formatPartDisplay('壁、天井');
           assert(split.split === true && split.lines.join('|') === '壁|天井', 'long multi-part label should split at delimiter');
