@@ -90,6 +90,10 @@
  box-shadow:0 4px 16px #0f172a30;
 }
 .survey-map-shift-button.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.survey-map-edit-mode-row{display:flex;gap:6px}
+.survey-map-edit-mode-row .btn{flex:1}
+.survey-map-edit-mode-row .btn.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.survey-map-stroke-rotate-handle{border-color:#f59e0b;background:#fffbeb;cursor:grab}
 .survey-map-corner-handle{transform:translate(-50%,-50%);cursor:nwse-resize}
 .survey-map-corner-nw{left:0;top:0}
 .survey-map-corner-ne{left:100%;top:0}
