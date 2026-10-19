@@ -677,6 +677,21 @@ function editorHtml(drawing){
           <button type="button" class="btn small ${strokeEditMode==='points'?'active':''}"
             data-survey-stroke-edit-mode="points">頂点編集</button>
         </div></div>`:'';
+    const styleControls=object.type==='line'||object.type==='shape'
+      ? `<div class="survey-map-divider"></div>
+        <div class="survey-map-editor-row"><label>線の色</label>
+          <input type="color" data-survey-style-field="color"
+            value="${escapeHtml(object.type==='line'?object.lineColor||'#334155':object.strokeColor||'#334155')}"></div>
+        <div class="survey-map-editor-row"><label>線の太さ</label>
+          <input type="number" min="20" max="500" step="20" data-survey-style-field="width"
+            value="${Number(object.type==='line'?object.lineWidth||80:object.strokeWidth||80)}"></div>
+        ${object.type==='shape'?`
+          <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-style-field="fill"
+            ${object.fillEnabled?'checked':''}> 塗りつぶし</label>
+          <div class="survey-map-editor-row"><label>塗りの色</label>
+            <input type="color" data-survey-style-field="fillColor"
+              value="${escapeHtml(object.fillColor||'#93c5fd')}"></div>`:''}
+      `:'';
     const details=object.type==='line' && Array.isArray(object.points)
       ? `頂点：${object.points.length}　X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
         W：${Math.round(Number(object.width)||0)}　H：${Math.round(Number(object.height)||0)}`
@@ -693,6 +708,7 @@ function editorHtml(drawing){
         ${details}
       </div>
       ${modeControls}
+      ${styleControls}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
     `;
@@ -1347,6 +1363,29 @@ function bindEvents(){
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
   mount.addEventListener('change',(event)=>{
+    const styleInput=event.target.closest('[data-survey-style-field]');
+    if(styleInput){
+      const record=selectedObject();
+      if(!record)return;
+      const field=styleInput.dataset.surveyStyleField;
+      const isLine=record.type==='line';
+      const patch={};
+      if(field==='color'){
+        patch[isLine?'lineColor':'strokeColor']=String(styleInput.value||'#334155');
+      }else if(field==='width'){
+        patch[isLine?'lineWidth':'strokeWidth']=clamp(Number(styleInput.value)||80,20,500);
+      }else if(field==='fill'){
+        patch.fillEnabled=Boolean(styleInput.checked);
+        patch.fillOpacity=patch.fillEnabled?.2:0;
+      }else if(field==='fillColor'){
+        patch.fillColor=String(styleInput.value||'#93c5fd');
+      }else return;
+      const now=Date.now();
+      const next=createDrawingObject({...record,...patch,
+        fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),now)});
+      void commitDrawingObject(next,'survey-map-style-change').then(()=>renderSurveyMap());
+      return;
+    }
     if(event.target.matches('[data-survey-room-choice]')){
       selectedRoomKey=String(event.target.value||'');
       return;
