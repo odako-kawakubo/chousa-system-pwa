@@ -28,7 +28,9 @@ function polylineHandleHtml(record,size,editMode='shape'){
       <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
         data-survey-handle="${handle}" style="left:${finite(p.x)/size.width*100}%;top:${finite(p.y)/size.height*100}%"
         aria-label="${label}を移動"></button>
-    `).join('');
+    `).join('')+(editMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-line-endpoint survey-map-stroke-rotate-handle"
+      data-survey-handle="stroke-rotate" style="left:${(finite(record.x)+finite(record.width)/2)/size.width*100}%;top:${(finite(record.y)-500)/size.height*100}%"
+      aria-label="カギ線を回転"></button>`:'');
   }
   if(editMode==='shape'){
     const x=finite(record.x),y=finite(record.y),w=finite(record.width),h=finite(record.height);
@@ -58,8 +60,9 @@ function polylineHandleHtml(record,size,editMode='shape'){
 function lineObjectHtml(record,drawing,selected,editMode){
   const size=pageSize(drawing);
   const lineWidth=Math.max(20,finite(record.lineWidth,80));
+  const pixelWidth=Math.max(.5,lineWidth/40);
   const color=escapeHtml(record.lineColor||record.strokeColor||'#334155');
-  const dash=lineDashArray(String(record.lineStyle||'solid'),lineWidth);
+  const dash=lineDashArray(String(record.lineStyle||'solid'),pixelWidth);
   const isPolyline=Array.isArray(record.points)&&record.points.length>1;
   if(isPolyline){
     const points=record.points.map(p=>`${finite(p.x)},${finite(p.y)}`).join(' ');
@@ -71,7 +74,7 @@ function lineObjectHtml(record,drawing,selected,editMode){
           preserveAspectRatio="none" aria-hidden="true">
           <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
-            stroke-width="${lineWidth}" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
+            style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
         </svg>
         ${selected?polylineHandleHtml(record,size,editMode):''}
       </div>
@@ -86,7 +89,7 @@ function lineObjectHtml(record,drawing,selected,editMode){
         preserveAspectRatio="none" aria-hidden="true">
         <line class="survey-map-line-hit" x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}"></line>
         <line class="survey-map-line-main" x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}"
-          stroke="${color}" stroke-width="${lineWidth}" ${dash?`stroke-dasharray="${dash}"`:''}></line>
+          stroke="${color}" style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></line>
       </svg>
       ${selected?[
         ['line-start',startX,startY,'始点'],['line-end',endX,endY,'終点']
