@@ -24,6 +24,8 @@ import { refreshSettingsTab } from '../settings/settings-controller.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { activateProjectSyncStatus } from '../sync/sync-status.js';
 import { refreshSurveyMap } from '../survey-map/survey-map-controller.js';
+import {createInitialSurveyMap,needsInitialSurveyMap} from './initial-survey-drawing.js';
+import {persistDrawingForProject} from '../sync/project-record-persistence.js';
 
 export function saveCurrentProjectSession() {
   const project = getCurrentProject();
@@ -111,6 +113,20 @@ export function refreshProjectViewsForChanges(impact = {}) {
   });
 }
 
+export function ensureInitialSurveyDrawing({persist=true}={}){
+  const project=getCurrentProject();
+  if(!project?.projectId || !needsInitialSurveyMap(drawingRecordStore.getAll()))return false;
+  const record=createInitialSurveyMap(project);
+  drawingRecordStore.set(record);
+  saveCurrentProjectSession();
+  if(persist && !project.isSample){
+    void persistDrawingForProject(project,record,'initial-survey-drawing-repair')
+      .catch(error=>console.warn('調査図1の同期は保留しました',error));
+  }
+  refreshSurveyMap();
+  return true;
+}
+
 export function openProjectSession({ project, finishRecords = [], materialRecords = [], photoRecords = [], drawingRecords = [], drawingObjects = [] }) {
   if (!project?.projectId) throw new Error('案件情報が正しくありません。');
 
@@ -126,6 +142,7 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   resetPhotoUiStateForProject();
 
   setCurrentProject(project);
+  ensureInitialSurveyDrawing({persist:false});
   activateProjectSyncStatus(project.projectId);
   boardSettingsStore.activateProject(project);
   setProject(project);
