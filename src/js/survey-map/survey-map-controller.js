@@ -142,7 +142,7 @@ async function commitDrawing(record,source,{trackHistory=true}={}){
   const project=getCurrentProject();
   if(trackHistory)rememberSurveyEdit(project?.projectId,'drawing',
     drawingRecordStore.get(record.drawingId)||null,record,source);
-  const project=getCurrentProject();
+
   drawingRecordStore.set(record);
   persistSnapshot(source);
   if(project?.projectId && !project.isSample){
@@ -154,7 +154,7 @@ async function commitDrawingObject(record,source,{trackHistory=true}={}){
   const project=getCurrentProject();
   if(trackHistory)rememberSurveyEdit(project?.projectId,'drawingObject',
     drawingObjectStore.get(record.objectId)||null,record,source);
-  const project=getCurrentProject();
+
   drawingObjectStore.set(record);
   persistSnapshot(source);
   if(project?.projectId && !project.isSample){
