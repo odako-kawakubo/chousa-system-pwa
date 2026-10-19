@@ -768,7 +768,7 @@ export function renderSurveyMap(){
 
         <div class="survey-map-stage">
           ${pagesPopoverHtml()}
-          <div class="survey-map-sheet ${gridVisible?'grid-on':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px)">${sheetHtml(drawing)}</div>
+          <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px)">${sheetHtml(drawing)}</div>
         </div>
       </main>
       <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}"
