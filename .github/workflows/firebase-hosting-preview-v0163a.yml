@@ -880,6 +880,10 @@ jobs:
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
           grep -q "create-corrected" src/js/survey-map/survey-map-controller.js
+          grep -q "create-elbow" src/js/survey-map/survey-map-controller.js
+          grep -q "elbowRecordWithPoints" src/js/survey-map/survey-map-controller.js
+          grep -q "survey-map-tool-continuous" src/css/survey-map.css
+          grep -q "elbow-bend" src/js/survey-map/survey-map-object-view.js
           grep -q "survey-map-stroke-main" src/js/survey-map/survey-map-object-view.js
           grep -q "'points'" src/js/sync/record-field-merge.js
           node --input-type=module <<'STROKE'
