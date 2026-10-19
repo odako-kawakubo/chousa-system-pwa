@@ -6,6 +6,7 @@
  */
 import {
   openProjectSession,
+  ensureInitialSurveyDrawing,
   saveCurrentProjectSession,
   refreshProjectViewsForChanges
 } from './project-session.js';
@@ -286,6 +287,7 @@ async function openFirestoreProjectSession(target) {
 
   if (!canUseFirestore()) {
     if (!useLocalSnapshot) openProjectSession(target);
+    ensureInitialSurveyDrawing({persist:true});
     markLocalOnly();
     return target;
   }
@@ -422,6 +424,7 @@ async function openFirestoreProjectSession(target) {
     }
 
     if (token !== activeProjectStreamToken) return target;
+    ensureInitialSurveyDrawing({persist:true});
     await migrateLegacyVisualPhotoMetadata(project);
 
     // M-06: 旧案件でFirestoreにboardSettingsがまだ無い場合だけ、
@@ -609,7 +612,10 @@ async function openFirestoreProjectSession(target) {
       projectId: project.projectId,
       message: error?.message || String(error)
     });
-    if (token === activeProjectStreamToken) markError(error);
+    if (token === activeProjectStreamToken){
+      ensureInitialSurveyDrawing({persist:true});
+      markError(error);
+    }
     throw error;
   } finally {
     if (token === activeProjectStreamToken) {
@@ -634,6 +640,7 @@ export async function openProjectById(projectId) {
   try {
     if (target.project?.isSample) {
       openProjectSession(target);
+      ensureInitialSurveyDrawing({persist:false});
       markLocalOnly();
     } else {
       await openFirestoreProjectSession(target);
