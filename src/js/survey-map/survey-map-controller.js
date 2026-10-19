@@ -21,6 +21,7 @@ import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPo
 
 let initialized=false;
 let selectedDrawingId='';
+let boundProjectId='';
 let gridVisible=true;
 let focusMode=false;
 let toolPanelOpen=false;
@@ -58,6 +59,14 @@ function root(){ return document.getElementById('survey-map'); }
 function activeDrawings(){ return drawingRecordStore.getActive(); }
 
 function selectedDrawing(){
+  const projectId=String(getCurrentProject()?.projectId||'');
+  if(boundProjectId!==projectId){
+    boundProjectId=projectId;
+    selectedDrawingId='';
+    clearSelection();
+    polygonDraft=null;
+    strokeEditMode='shape';
+  }
   const active=activeDrawings();
   if(!active.length) return null;
   const selected=active.find((item)=>item.drawingId===selectedDrawingId) || active[0];
