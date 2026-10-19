@@ -1413,8 +1413,8 @@ function bindEvents(){
       const vertices=shapeVertices(original.shapeType,original.shapeParams,original.customVertices);
       if(interaction.pointIndex>=0 && interaction.pointIndex<vertices.length){
         vertices[interaction.pointIndex]={
-          x:clamp((localX-original.x)/Math.max(1,original.width),0,1),
-          y:clamp((localY-original.y)/Math.max(1,original.height),0,1)
+          x:clamp(original.flipX?1-(localX-original.x)/Math.max(1,original.width):(localX-original.x)/Math.max(1,original.width),0,1),
+          y:clamp(original.flipY?1-(localY-original.y)/Math.max(1,original.height):(localY-original.y)/Math.max(1,original.height),0,1)
         };
         draft.customVertices=vertices;
       }
