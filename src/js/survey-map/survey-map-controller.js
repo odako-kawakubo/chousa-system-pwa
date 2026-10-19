@@ -326,17 +326,13 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
   return record;
 }
 
-function addPolygonVertex(drawing,point,finish=false){
+function addPolygonVertex(drawing,point){
   if(!polygonDraft || polygonDraft.drawingId!==drawing.drawingId){
     polygonDraft={drawingId:drawing.drawingId,points:[]};
   }
   const points=polygonDraft.points;
   const last=points.at(-1);
   if(last && Math.hypot(last.x-point.x,last.y-point.y)<150 && !finish)return;
-  if(finish && points.length>=3){
-    void finishPolygon(drawing);
-    return;
-  }
   if(points.length>=3 && Math.hypot(points[0].x-point.x,points[0].y-point.y)<350){
     void finishPolygon(drawing);
     return;
