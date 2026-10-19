@@ -17,6 +17,7 @@ import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool } from './survey-map-shapes.js';
 import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
+import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject } from './survey-map-transforms.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -233,27 +234,6 @@ async function createShapeAt(kind,clientX,clientY){
   renderSurveyMap();
 }
 
-function lineBounds(startX,startY,endX,endY){
-  return {
-    x:Math.min(Number(startX)||0,Number(endX)||0),
-    y:Math.min(Number(startY)||0,Number(endY)||0),
-    width:Math.abs((Number(endX)||0)-(Number(startX)||0)),
-    height:Math.abs((Number(endY)||0)-(Number(startY)||0))
-  };
-}
-
-function lineRecordWithPoints(record,startX,startY,endX,endY){
-  return {
-    ...record,
-    startX,
-    startY,
-    endX,
-    endY,
-    ...lineBounds(startX,startY,endX,endY),
-    rotation:0
-  };
-}
-
 function createLineDraftPreview(sheet,drawing,point){
   const size=pageSize(drawing);
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -301,21 +281,6 @@ function updateLineObjectElement(objectEl,record,drawing){
   }
 }
 
-function elbowPath(startX,startY,endX,endY,bendX=(startX+endX)/2){
-  return [
-    {x:startX,y:startY},{x:bendX,y:startY},
-    {x:bendX,y:endY},{x:endX,y:endY}
-  ];
-}
-function strokeRecordWithPoints(record,points){
-  const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
-  return {...record,points,x:Math.min(...xs),y:Math.min(...ys),
-    width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
-}
-function elbowRecordWithPoints(record,startX,startY,endX,endY,bendX){
-  return strokeRecordWithPoints({...record,startX,startY,endX,endY,bendX},
-    elbowPath(startX,startY,endX,endY,bendX));
-}
 function updatePolylinePreview(svg,points){
   const line=svg?.querySelector('line');
   if(line)line.remove();
@@ -879,22 +844,6 @@ if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
 }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
 else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
 }
-function translateObject(record,dx,dy){
-  if(record.elbow){
-    return elbowRecordWithPoints(record,
-      record.startX+dx,record.startY+dy,record.endX+dx,record.endY+dy,record.bendX+dx);
-  }
-  if(record.type==='line' && Array.isArray(record.points) && record.points.length>1){
-    return strokeRecordWithPoints(record,record.points.map(p=>({x:p.x+dx,y:p.y+dy})));
-  }
-  if(record.type==='line'){
-    return lineRecordWithPoints(record,
-      (Number(record.startX)||0)+dx,(Number(record.startY)||0)+dy,
-      (Number(record.endX)||0)+dx,(Number(record.endY)||0)+dy);
-  }
-  return {...record,x:(Number(record.x)||0)+dx,y:(Number(record.y)||0)+dy};
-}
-
 function bindEvents(){
   const mount=root();
   if(!mount) return;
