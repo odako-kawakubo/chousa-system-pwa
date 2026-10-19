@@ -925,6 +925,26 @@ jobs:
           grep -q "create-polygon-edge" src/js/survey-map/survey-map-controller.js
           grep -q "create-shape" src/js/survey-map/survey-map-controller.js
           grep -q "event.ctrlKey" src/js/survey-map/survey-map-controller.js
+          grep -Fq "icon!=='polygon'&&!isShapeTool(icon)" src/js/survey-map/survey-map-controller.js
+          grep -q "resizeRectFromDrag" src/js/survey-map/survey-map-controller.js
+          node --input-type=module <<'CENTEREDSHIFT'
+          import {resizeRectFromDrag} from './src/js/survey-map/survey-map-geometry.js';
+          const eq=(a,b)=>Math.abs(a-b)<1e-7;
+          for(const rotation of [0,30,90]){
+            for(const corner of ['nw','ne','sw','se']){
+              const original={x:2000,y:3000,width:4000,height:2000,rotation};
+              const start={x:5790,y:4930};
+              const still=resizeRectFromDrag(original,corner,start,start,{centerFixed:true});
+              if(!eq(still.x,original.x)||!eq(still.y,original.y)||!eq(still.width,original.width)||!eq(still.height,original.height))
+                throw new Error('resize jumped before drag');
+              const moved=resizeRectFromDrag(original,corner,start,{x:start.x+300,y:start.y+200},{centerFixed:true});
+              if(!eq(moved.x+moved.width/2,4000)||!eq(moved.y+moved.height/2,4000))
+                throw new Error('Shift resize moved center');
+              if(!eq(moved.width/4000,moved.height/2000))
+                throw new Error('Shift resize changed aspect ratio');
+            }
+          }
+          CENTEREDSHIFT
           grep -q "ensureInitialSurveyDrawing" src/js/projects/project-controller.js
           grep -q "'shapeParams'" src/js/sync/record-field-merge.js
           grep -q "'customVertices'" src/js/sync/record-field-merge.js
