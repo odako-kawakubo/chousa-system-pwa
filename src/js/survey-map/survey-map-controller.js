@@ -425,16 +425,16 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
 }
 
 async function deleteSelectedObject(){
-  const current=selectedObject();
-  if(!current) return;
   const now=Date.now();
-  const next={
-    ...current,
-    deleted:true,
-    fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,'deleted',now)
-  };
-  selectedObjectId='';
-  await commitDrawingObject(next,'survey-map-object-delete');
+  const records=Array.from(selectedObjectIds)
+    .map(id=>drawingObjectStore.get(id))
+    .filter(item=>item && !item.deleted && item.drawingId===selectedDrawingId);
+  if(!records.length)return;
+  clearSelection();
+  await Promise.all(records.map(record=>commitDrawingObject(createDrawingObject({
+    ...record,deleted:true,
+    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,'deleted',now)
+  }),'survey-map-object-delete')));
   renderSurveyMap();
 }
 
@@ -663,6 +663,10 @@ function editorHtml(drawing){
     return '<div class="survey-map-hint">ページを選択すると編集項目が表示されます。</div>';
   }
   const object=selectedObject();
+  if(selectedObjectIds.size>1){
+    return `<div class="survey-map-hint"><b>${selectedObjectIds.size}個のオブジェクトを選択中</b><br>ドラッグするとまとめて移動できます。</div>
+      <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
+  }
   if(object){
     const details=object.type==='line'
       ? `始点：${Math.round(Number(object.startX)||0)}, ${Math.round(Number(object.startY)||0)}<br>
