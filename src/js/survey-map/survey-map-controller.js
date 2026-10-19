@@ -946,6 +946,7 @@ function bindEvents(){
         continuousTool='';
       }
       activeTool=requested;
+      mount.querySelector('.survey-map-sheet')?.classList.toggle('drawing-mode',activeTool!=='select');
       mount.querySelectorAll('[data-survey-draw-tool]').forEach((button)=>{
         const tool=button.dataset.surveyDrawTool;
         button.classList.toggle('active',tool===activeTool);
