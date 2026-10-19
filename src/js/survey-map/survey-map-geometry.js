@@ -90,6 +90,38 @@ export function resizeRectFromCorner(record,corner,point,{centerFixed=false,rati
   };
   return {...record,x:nextCenter.x-width/2,y:nextCenter.y-height/2,width,height};
 }
+/**
+ * ドラッグ開始点からの差分で変形する。ハンドル内の押下位置に依存しない。
+ * Shift時は中心を固定し、縦横を必ず同一倍率で変える。
+ */
+export function resizeRectFromDrag(record,corner,startPoint,currentPoint,{centerFixed=false,ratioFixed=false}={}){
+  const w=Math.max(120,finite(record.width)),h=Math.max(120,finite(record.height));
+  const sx=corner.endsWith('e')?1:-1,sy=corner.startsWith('s')?1:-1;
+  const angle=finite(record.rotation)*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
+  const dx=finite(currentPoint.x)-finite(startPoint.x),dy=finite(currentPoint.y)-finite(startPoint.y);
+  const localX=dx*c+dy*sn,localY=-dx*sn+dy*c;
+  const factor=centerFixed?2:1;
+  const lockRatio=centerFixed||ratioFixed;
+  let nw,nh;
+  if(lockRatio){
+    // Drag difference projected onto the original diagonal; avoids jumping at pointerdown.
+    const normalized=(sx*localX*w+sy*localY*h)/(w*w+h*h);
+    const scale=Math.max(120/w,120/h,1+normalized*factor);
+    nw=w*scale;nh=h*scale;
+  }else{
+    nw=Math.max(120,w+sx*localX);
+    nh=Math.max(120,h+sy*localY);
+  }
+  const originalCenter={x:finite(record.x)+w/2,y:finite(record.y)+h/2};
+  let center=originalCenter;
+  if(!centerFixed){
+    center={
+      x:originalCenter.x+(sx*c*(nw-w)-sy*sn*(nh-h))/2,
+      y:originalCenter.y+(sx*sn*(nw-w)+sy*c*(nh-h))/2
+    };
+  }
+  return {...record,x:center.x-nw/2,y:center.y-nh/2,width:nw,height:nh};
+}
 export function rotationFromPointer(record, pointer, sheetRect, drawing) {
   const size = pageSize(drawing);
   const center = {
