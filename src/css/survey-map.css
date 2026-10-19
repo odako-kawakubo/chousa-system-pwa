@@ -231,7 +231,7 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   background:transparent;
   pointer-events:none;
 }
-.survey-map-shape-svg{border:0;overflow:visible}
+.survey-map-shape-svg{width:100%;height:100%;display:block;border:0;overflow:visible}
 .survey-map-shape-svg polygon,.survey-map-shape-svg ellipse{
   fill:var(--survey-shape-fill,transparent);
   fill-opacity:var(--survey-shape-opacity,0);
