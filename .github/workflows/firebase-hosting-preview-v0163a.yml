@@ -927,6 +927,9 @@ jobs:
           grep -q "event.ctrlKey" src/js/survey-map/survey-map-controller.js
           grep -q "ensureInitialSurveyDrawing" src/js/projects/project-controller.js
           grep -q "'shapeParams'" src/js/sync/record-field-merge.js
+          grep -q "'customVertices'" src/js/sync/record-field-merge.js
+          grep -q "shape-vertex" src/js/survey-map/survey-map-object-view.js
+          grep -q "shape-vertex" src/js/survey-map/survey-map-controller.js
           grep -Fq "'./js/projects/initial-survey-drawing.js'" src/service-worker.js
           node --input-type=module <<'SHAPEADJUST'
           import {shapeVertices,shapeAdjusters,updatedShapeParams} from './src/js/survey-map/survey-map-shapes.js';
