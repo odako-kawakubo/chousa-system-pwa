@@ -61,10 +61,10 @@ function transformPoints(record,transform){
     [{x:Number(record.startX)||0,y:Number(record.startY)||0},{x:Number(record.endX)||0,y:Number(record.endY)||0}];
   const mapped=points.map(transform);
   if(record.elbow){
-    return strokeRecordWithPoints({...record,elbow:false,rotation:0},mapped);
+    return strokeRecordWithPoints({...record,elbow:false,rotation:(Number(record.rotation)||0)},mapped);
   }
   if(Array.isArray(record.points)&&record.points.length>1){
-    return strokeRecordWithPoints({...record,rotation:0},mapped);
+    return strokeRecordWithPoints({...record,rotation:(Number(record.rotation)||0)},mapped);
   }
   return lineRecordWithPoints(record,mapped[0].x,mapped[0].y,mapped[1].x,mapped[1].y);
 }
@@ -73,7 +73,7 @@ export function rotateSingleObject(record,angle){
   if(record.type!=='line')return {...record,rotation:((Number(record.rotation)||0)+delta)%360};
   const b=objectBounds(record),cx=b.x+b.width/2,cy=b.y+b.height/2;
   const r=delta*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
-  return transformPoints(record,p=>({x:cx+(p.x-cx)*c-(p.y-cy)*s,y:cy+(p.x-cx)*s+(p.y-cy)*c}));
+  return {...transformPoints(record,p=>({x:cx+(p.x-cx)*c-(p.y-cy)*s,y:cy+(p.x-cx)*s+(p.y-cy)*c})),rotation:((Number(record.rotation)||0)+delta)%360};
 }
 export function flipSingleObject(record,axis){
   if(record.type!=='line'){
@@ -89,6 +89,12 @@ export function flipSingleObject(record,axis){
 export function scaleObjectInGroup(record,bounds,nextBounds){
   const sx=nextBounds.width/Math.max(1,bounds.width),sy=nextBounds.height/Math.max(1,bounds.height);
   const map=p=>({x:nextBounds.x+(p.x-bounds.x)*sx,y:nextBounds.y+(p.y-bounds.y)*sy});
+  if(record.elbow){
+    const start=map({x:record.startX,y:record.startY});
+    const end=map({x:record.endX,y:record.endY});
+    const bend=map({x:record.bendX,y:record.startY});
+    return elbowRecordWithPoints(record,start.x,start.y,end.x,end.y,bend.x);
+  }
   if(record.type==='line')return transformPoints(record,map);
   const topLeft=map({x:record.x,y:record.y});
   return {...record,x:topLeft.x,y:topLeft.y,width:(Number(record.width)||0)*sx,height:(Number(record.height)||0)*sy};
