@@ -23,7 +23,8 @@ export function shapeVertices(kind,params={},customVertices=null){
     lshape:[[0,0],[x,0],[x,y],[1,y],[1,1],[0,1]],
     tshape:[[0,0],[1,0],[1,clamp(p.barY)],[r,clamp(p.barY)],[r,1],[l,1],[l,clamp(p.barY)],[0,clamp(p.barY)]],
     cross:[[l,0],[r,0],[r,t],[1,t],[1,b],[r,b],[r,1],[l,1],[l,b],[0,b],[0,t],[l,t]],
-    concave:[[0,0],[1,0],[1,1],[0,1],[0,clamp(p.bottom)],[clamp(p.depth),clamp(p.bottom)],[clamp(p.depth),clamp(p.top)],[0,clamp(p.top)]]
+    concave:[[0,0],[1,0],[1,1],[0,1],[0,clamp(p.bottom)],[clamp(p.depth),clamp(p.bottom)],[clamp(p.depth),clamp(p.top)],[0,clamp(p.top)]],
+    polygon:[[.22,0],[.78,0],[1,.38],[.82,1],[.18,1],[0,.38]]
   }[kind]||[[0,0],[1,0],[1,1],[0,1]];
   return vertices.map(([px,py])=>({x:px,y:py}));
 }
