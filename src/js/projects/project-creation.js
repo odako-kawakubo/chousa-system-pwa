@@ -7,25 +7,7 @@ import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { getProject, getProjectList, saveProjectSnapshot } from './project-store.js';
 import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject, persistDrawingForProject } from '../sync/project-record-persistence.js';
 import { getDeviceCode } from '../device-code.js';
-import { createDrawingRecord } from '../records/drawing-record.js';
-import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-
-function createInitialSurveyMap(project){
-  const now=Date.now();
-  return createDrawingRecord({
-    drawingId:globalThis.crypto?.randomUUID?`D-${crypto.randomUUID()}`:
-      `D-${now}-${Math.random().toString(36).slice(2,8)}`,
-    projectId:project.projectId,
-    name:'調査図1',order:1,
-    titleSettings:{text:'調査図'},
-    nameSettings:{text:project.projectName||'調査図1'},
-    legendSettings:{visible:true,items:[]},
-    createdAt:new Date(now).toISOString(),
-    fieldEditedAt:touchFieldEditedAt({},[
-      'name','order','deleted','titleSettings','nameSettings','legendSettings'
-    ],now)
-  });
-}
+import {createInitialSurveyMap} from './initial-survey-drawing.js';
 
 export async function createTemporaryProjectSnapshot({ projectName, address }) {
   const dateCode = temporaryDateCode();
