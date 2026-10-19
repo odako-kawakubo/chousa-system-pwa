@@ -62,6 +62,34 @@ export function objectPercentStyle(record, drawing) {
   ].join(';');
 }
 
+/** 四隅のドラッグで反対角を固定。centerFixed時だけ中心点を支点とする。 */
+export function resizeRectFromCorner(record,corner,point,{centerFixed=false,ratioFixed=false}={}){
+  const w=Math.max(120,finite(record.width)),h=Math.max(120,finite(record.height));
+  const signX=corner.endsWith('e')?1:-1;
+  const signY=corner.startsWith('s')?1:-1;
+  const angle=finite(record.rotation)*Math.PI/180;
+  const ux={x:Math.cos(angle),y:Math.sin(angle)};
+  const uy={x:-Math.sin(angle),y:Math.cos(angle)};
+  const center={x:finite(record.x)+w/2,y:finite(record.y)+h/2};
+  const anchor=centerFixed?center:{
+    x:center.x-(signX*ux.x*w+signY*uy.x*h)/2,
+    y:center.y-(signX*ux.y*w+signY*uy.y*h)/2
+  };
+  const dx=point.x-anchor.x,dy=point.y-anchor.y;
+  const factor=centerFixed?2:1;
+  let width=Math.max(120,signX*(dx*ux.x+dy*ux.y)*factor);
+  let height=Math.max(120,signY*(dx*uy.x+dy*uy.y)*factor);
+  if(ratioFixed){
+    const ratio=w/h;
+    if(width/w>=height/h)height=width/ratio;
+    else width=height*ratio;
+  }
+  const nextCenter=centerFixed?center:{
+    x:anchor.x+(signX*ux.x*width+signY*uy.x*height)/2,
+    y:anchor.y+(signX*ux.y*width+signY*uy.y*height)/2
+  };
+  return {...record,x:nextCenter.x-width/2,y:nextCenter.y-height/2,width,height};
+}
 export function rotationFromPointer(record, pointer, sheetRect, drawing) {
   const size = pageSize(drawing);
   const center = {
