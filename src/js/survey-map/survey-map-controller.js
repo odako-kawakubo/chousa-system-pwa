@@ -1,5 +1,5 @@
 /**
- * v0.1.10.9 調査図ポリライン編集レビュー。
+ * v0.1.10.10 調査図部屋ツールレビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -25,6 +25,7 @@ let editPanelOpen=false;
 let pagesOpen=false;
 let selectedObjectId='';
 let activeTool='select';
+let selectedRoomKey='';
 let continuousTool='';
 let lastToolTap=null;
 let zoomLevel=1;
@@ -41,6 +42,33 @@ function selectedDrawing(){
   return selected;
 }
 
+function availableRooms(){
+  const rooms=new Map();
+  for(const record of finishRecordStore.getAll()){
+    const areaCode=String(record.areaCode||'');
+    const roomPosition=String(record.roomPosition||'');
+    if(!areaCode || !roomPosition || record.status==='deleted')continue;
+    const key=`${areaCode}:${roomPosition}`;
+    const existing=rooms.get(key);
+    const name=String(record.roomName||'').trim();
+    const no=String(record.roomNo||'').trim();
+    if(!existing)rooms.set(key,{key,areaCode,roomPosition,roomNo:no,roomName:name});
+    else{
+      if(!existing.roomNo && no)existing.roomNo=no;
+      if(!existing.roomName && name)existing.roomName=name;
+    }
+  }
+  return [...rooms.values()].sort((a,b)=>a.key.localeCompare(b.key,'ja',{numeric:true}));
+}
+function roomLabel(room){
+  const detail=room.roomName? `　${room.roomName}` : '';
+  return `${room.roomNo||room.roomPosition}${detail}`;
+}
+function selectedRoom(){
+  const rooms=availableRooms();
+  if(!rooms.some(room=>room.key===selectedRoomKey))selectedRoomKey=rooms[0]?.key||'';
+  return rooms.find(room=>room.key===selectedRoomKey)||null;
+}
 function drawingObjectsForSelected(){
   const drawing=selectedDrawing();
   if(!drawing) return [];
@@ -105,6 +133,32 @@ async function commitDrawingObject(record,source){
   }
 }
 
+async function createRoomLabelAt(clientX,clientY){
+  const drawing=selectedDrawing(),room=selectedRoom();
+  const sheet=root()?.querySelector('.survey-map-sheet');
+  if(!drawing||!room||!sheet)return;
+  const point=clientToPagePoint(clientX,clientY,sheet.getBoundingClientRect(),drawing);
+  const rect=clampObjectRect({x:point.x-1600,y:point.y-480,width:3200,height:960},drawing);
+  const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const record=createDrawingObject({
+    objectId:newObjectId(),drawingId:drawing.drawingId,type:'roomLabel',
+    layer:DRAWING_LAYERS.TEXT,
+    order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
+    ...rect,rotation:0,visible:true,locked:false,deleted:false,
+    areaCode:room.areaCode,roomPosition:room.roomPosition,
+    roomNoSnapshot:room.roomNo,roomNameSnapshot:room.roomName,
+    text:roomLabel(room),fontSize:14,textColor:'#334155',fontWeight:'700',
+    createdAt:new Date(now).toISOString(),
+    fieldEditedAt:touchFieldEditedAt({},[
+      'drawingId','type','layer','order','x','y','width','height','rotation','visible','locked','deleted',
+      'areaCode','roomPosition','roomNoSnapshot','roomNameSnapshot','text','fontSize','textColor','fontWeight'
+    ],now)
+  });
+  selectedObjectId=record.objectId;
+  if(continuousTool!=='room')activeTool='select';
+  await commitDrawingObject(record,'survey-map-room-label-create');
+  renderSurveyMap();
+}
 async function createRectangleAt(clientX,clientY){
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
@@ -487,6 +541,17 @@ function toolIconCell(icon,label,toolName,disabled=true){
   })}</div>`;
 }
 
+function roomPickerHtml(){
+  const rooms=availableRooms();
+  selectedRoom();
+  return `<div class="survey-map-room-picker">
+    <label for="survey-map-room-choice">部屋ツールの対象</label>
+    <select id="survey-map-room-choice" data-survey-room-choice ${rooms.length?'':'disabled'}>
+      ${rooms.map(room=>`<option value="${escapeHtml(room.key)}" ${room.key===selectedRoomKey?'selected':''}>${escapeHtml(roomLabel(room))}</option>`).join('')}
+    </select>
+    ${rooms.length?'':'<span class="survey-map-hint">仕上表に部屋がありません。</span>'}
+  </div>`;
+}
 function toolsHtml(){
   const primary=[
     ['select','選択'],
@@ -513,10 +578,11 @@ function toolsHtml(){
   return `
     <div class="survey-map-tool-section">
       <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
-        toolIconCell(icon,label,icon,!['select','line','correct','elbow'].includes(icon))
+        toolIconCell(icon,label,icon,!['select','line','correct','elbow','room'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
       <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
+      ${roomPickerHtml()}
     </div>
   `;
 }
@@ -719,7 +785,7 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && ['line','rect','correct','elbow'].includes(requested)){
+      if(repeatedTap && ['line','rect','correct','elbow','room'].includes(requested)){
         continuousTool=continuousTool===requested?'':requested;
       }else if(requested!==continuousTool){
         continuousTool='';
@@ -799,6 +865,12 @@ function bindEvents(){
       return;
     }
 
+    if(activeTool==='room' && !objectEl){
+      if(!selectedRoom())return;
+      void createRoomLabelAt(event.clientX,event.clientY);
+      event.preventDefault();
+      return;
+    }
     if(activeTool==='rect' && !objectEl){
       event.preventDefault();
       void createRectangleAt(event.clientX,event.clientY);
@@ -1040,6 +1112,10 @@ function bindEvents(){
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
   mount.addEventListener('change',(event)=>{
+    if(event.target.matches('[data-survey-room-choice]')){
+      selectedRoomKey=String(event.target.value||'');
+      return;
+    }
     if(event.target.matches('[data-survey-name]')) void renameDrawing(event.target.value);
     if(event.target.matches('[data-survey-display-name]')) void renamePageDisplay(event.target.value);
   });
