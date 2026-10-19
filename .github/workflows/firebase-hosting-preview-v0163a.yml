@@ -898,6 +898,11 @@ jobs:
           grep -Fq "'./js/survey-map/survey-map-shapes.js'" src/service-worker.js
           grep -q "create-hand" src/js/survey-map/survey-map-controller.js
           grep -q "gridVisible=true" src/js/survey-map/survey-map-controller.js
+          grep -q "function addPolygonVertex" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-polygon-finish" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-polygon-cancel" src/js/survey-map/survey-map-controller.js
+          grep -q "survey-map-polygon-actions" src/css/survey-map.css
+          grep -q "'freehand'" src/js/sync/record-field-merge.js
           node --input-type=module <<'SHAPES'
           import {SHAPE_TOOLS,shapeVertices,shapeSvgMarkup} from './src/js/survey-map/survey-map-shapes.js';
           if(SHAPE_TOOLS.length!==8)throw new Error('missing basic shapes');
