@@ -99,6 +99,13 @@ function lineObjectHtml(record,drawing,selected,editMode){
   `;
 }
 
+function shapeFlipMarkup(record,markup){
+  const x=record.flipX?-1:1,y=record.flipY?-1:1;
+  return x===1&&y===1?markup:`<g transform="translate(${record.flipX?1000:0} ${record.flipY?1000:0}) scale(${x} ${y})">${markup}</g>`;
+}
+function flipHandle(record,p){
+  return {x:record.flipX?1-p.x:p.x,y:record.flipY?1-p.y:p.y};
+}
 export function drawingObjectsHtml(records = [], drawing, selection = '',editMode='shape') {
   const selectedIds=selection instanceof Set ? selection :
     new Set(Array.isArray(selection)?selection:[String(selection)]);
@@ -138,17 +145,17 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
                 --survey-shape-fill:${record.fillEnabled?escapeHtml(record.fillColor||'#93c5fd'):'transparent'};
                 --survey-shape-opacity:${record.fillEnabled?finite(record.fillOpacity,.2)||.2:0}"
               preserveAspectRatio="none" aria-hidden="true">
-              ${shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams,record.customVertices)}
+              ${shapeFlipMarkup(record,shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams,record.customVertices))}
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
           ${selected ? `
-            ${record.type==='shape' && shapeMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map((p,index)=>`
+            ${record.type==='shape' && shapeMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map(p=>flipHandle(record,p)).map((p,index)=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-vertex"
                 style="left:${p.x*100}%;top:${p.y*100}%"
                 data-survey-handle="shape-vertex" data-survey-point-index="${index}"
                 aria-label="図形頂点${index+1}を移動"></button>
             `).join(''):''}
-            ${record.type==='shape' && shapeMode==='shape' && !record.customVertices ? shapeAdjusters(record.shapeType,record.shapeParams).map(handle=>`
+            ${record.type==='shape' && shapeMode==='shape' && !record.customVertices ? shapeAdjusters(record.shapeType,record.shapeParams).map(h=>({...h,...flipHandle(record,h)})).map(handle=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-adjuster"
                 style="left:${handle.x*100}%;top:${handle.y*100}%"
                 data-survey-handle="shape-adjust" data-survey-param="${handle.key}"
