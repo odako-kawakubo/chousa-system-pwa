@@ -19,6 +19,21 @@ function lineDashArray(style,width){
 
 function lineObjectHtml(record,drawing,selected){
   const size=pageSize(drawing);
+  if(Array.isArray(record.points) && record.points.length>1){
+    const points=record.points.map(p=>`${finite(p.x)},${finite(p.y)}`).join(' ');
+    const lineWidth=Math.max(20,finite(record.lineWidth,80));
+    const color=escapeHtml(record.lineColor||'#334155');
+    const closed=Boolean(record.closed);
+    return `
+      <div class="survey-map-object survey-map-object-line survey-map-object-stroke ${selected?'selected':''}"
+        data-survey-object-id="${escapeHtml(record.objectId)}" role="button" aria-label="補正線">
+        <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
+          <polyline class="survey-map-stroke-hit" points="${points}" ${closed?'data-closed="true"':''}></polyline>
+          <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}" stroke-width="${lineWidth}" ${closed?'data-closed="true"':''}></polyline>
+        </svg>
+      </div>
+    `;
+  }
   const startX=finite(record.startX);
   const startY=finite(record.startY);
   const endX=finite(record.endX);
