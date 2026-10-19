@@ -966,9 +966,23 @@ function bindEvents(){
       const objectId=String(objectEl.dataset.surveyObjectId||'');
       const object=drawingObjectStore.get(objectId);
       if(!object || object.locked) return;
-      selectedObjectId=objectId;
+      const additive=shiftActive()||event.shiftKey;
       const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
-      const mode=object.elbow
+      if(additive && !handle){
+        if(selectedObjectIds.has(objectId)){
+          selectedObjectIds.delete(objectId);
+          selectedObjectId=Array.from(selectedObjectIds).at(-1)||'';
+        }else{
+          selectedObjectIds.add(objectId);
+          selectedObjectId=objectId;
+        }
+        objectEl.classList.toggle('selected',selectedObjectIds.has(objectId));
+        event.preventDefault();
+        return;
+      }
+      const groupMove=!handle && selectedObjectIds.size>1 && selectedObjectIds.has(objectId);
+      if(!groupMove)selectOnly(objectId);
+      const mode=groupMove?'group-move':object.elbow
         ? (handle==='line-start'?'elbow-start':handle==='line-end'?'elbow-end':handle==='elbow-bend'?'elbow-bend':'elbow-move')
         : object.type==='line' && Array.isArray(object.points) && object.points.length>1
         ? (handle==='stroke-point'?'stroke-point':'stroke-move')
@@ -985,6 +999,8 @@ function bindEvents(){
         corner:handle.startsWith('resize-')?handle.slice(7):'',
         original:{...object},
         draft:{...object},
+        groupOriginals:groupMove?Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(Boolean):[],
+        groupDrafts:[],
         startPoint,
         pointIndex:handle==='stroke-point'?Number(event.target.closest('[data-survey-point-index]')?.dataset.surveyPointIndex):-1,
         sheetRect
@@ -1032,11 +1048,11 @@ function bindEvents(){
       return;
     }
 
-    if(activeTool==='select' && !objectEl){
-      if(selectedObjectId){
-        selectedObjectId='';
-        renderSurveyMap();
-      }
+    if(activeTool==='select' && !objectEl && selectedObjectIds.size){
+      clearSelection();
+      if(shiftActive()){
+        mount.querySelectorAll('.survey-map-object.selected').forEach(el=>el.classList.remove('selected'));
+      }else renderSurveyMap();
     }
   });
 
@@ -1071,6 +1087,23 @@ function bindEvents(){
       return;
     }
 
+    if(interaction.mode==='group-move'){
+      const originals=interaction.groupOriginals;
+      const size=pageSize(drawing);
+      const minX=Math.min(...originals.map(o=>Number(o.x)||0));
+      const minY=Math.min(...originals.map(o=>Number(o.y)||0));
+      const maxX=Math.max(...originals.map(o=>(Number(o.x)||0)+(Number(o.width)||0)));
+      const maxY=Math.max(...originals.map(o=>(Number(o.y)||0)+(Number(o.height)||0)));
+      const dx=clamp(currentPoint.x-interaction.startPoint.x,-minX,size.width-maxX);
+      const dy=clamp(currentPoint.y-interaction.startPoint.y,-minY,size.height-maxY);
+      interaction.groupDrafts=originals.map(o=>translateObject(o,dx,dy));
+      for(const draft of interaction.groupDrafts){
+        const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
+        if(element)paintObjectDraft(element,draft,drawing);
+      }
+      event.preventDefault();
+      return;
+    }
     const objectEl=mount.querySelector(`[data-survey-object-id="${CSS.escape(interaction.objectId)}"]`);
     if(!objectEl) return;
     const dx=currentPoint.x-interaction.startPoint.x;
@@ -1172,6 +1205,20 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
 
+    if(interaction.mode==='group-move'){
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const now=Date.now();
+      const updates=interaction.groupDrafts.map(draft=>{
+        const current=drawingObjectStore.get(draft.objectId);
+        return createDrawingObject({...current,...draft,
+          fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,
+            draft.type==='line'?['points','x','y','width','height','startX','startY','endX','endY','bendX']
+              :['x','y'],now)});
+      });
+      void Promise.all(updates.map(record=>commitDrawingObject(record,'survey-map-group-move')))
+        .then(()=>renderSurveyMap());
+      return;
+    }
     if(interaction.mode==='create-elbow'){
       interaction.previewEl?.remove();
       if(event.type==='pointercancel'){renderSurveyMap();return;}
@@ -1227,10 +1274,13 @@ function bindEvents(){
   };
 
   function releaseShift(event){
-    if(shiftPointerId===event.pointerId){shiftPointerId=null;syncShiftButton();}
+    if(shiftPointerId===event.pointerId){
+      shiftPointerId=null;syncShiftButton();
+      if(!pointerInteraction)renderSurveyMap();
+    }
   }
-  mount.addEventListener('pointerup',releaseShift);
-  mount.addEventListener('pointercancel',releaseShift);
+  window.addEventListener('pointerup',releaseShift);
+  window.addEventListener('pointercancel',releaseShift);
   mount.addEventListener('pointerup',finishPointerInteraction);
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
@@ -1253,7 +1303,7 @@ function bindEvents(){
   });
 
   window.addEventListener('keyup',(event)=>{
-    if(event.key==='Shift'){physicalShift=false;syncShiftButton();}
+    if(event.key==='Shift'){physicalShift=false;syncShiftButton();if(!pointerInteraction)renderSurveyMap();}
   });
   window.addEventListener('blur',()=>{
     shiftPointerId=null;physicalShift=false;syncShiftButton();
