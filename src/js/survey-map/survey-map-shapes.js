@@ -9,7 +9,10 @@ export function defaultShapeParams(kind){
   return {};
 }
 export function isShapeTool(kind){return SHAPE_TOOLS.includes(kind)&&kind!=='polygon';}
-export function shapeVertices(kind,params={}){
+export function shapeVertices(kind,params={},customVertices=null){
+  if(Array.isArray(customVertices)&&customVertices.length>=3){
+    return customVertices.map(p=>({x:clamp(p.x,0,1),y:clamp(p.y,0,1)}));
+  }
   const p={...defaultShapeParams(kind),...params};
   const x=clamp(p.barX),y=clamp(p.barY);
   const l=clamp(p.left),r=clamp(p.right,l+.12,.95);
@@ -45,7 +48,7 @@ export function updatedShapeParams(kind,params,key,ratio){
   if(key==='bottom')min=(current.top||.33)+.12;
   return {...current,[key]:clamp(ratio,min,max)};
 }
-export function shapeSvgMarkup(kind,params={}){
-  if(kind==='circle')return '<ellipse cx="500" cy="500" rx="500" ry="500"/>';
-  return `<polygon points="${shapeVertices(kind,params).map(p=>`${p.x*1000},${p.y*1000}`).join(' ')}"/>`;
+export function shapeSvgMarkup(kind,params={},customVertices=null){
+  if(kind==='circle' && !customVertices)return '<ellipse cx="500" cy="500" rx="500" ry="500"/>';
+  return `<polygon points="${shapeVertices(kind,params,customVertices).map(p=>`${p.x*1000},${p.y*1000}`).join(' ')}"/>`;
 }
