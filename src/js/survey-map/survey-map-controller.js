@@ -900,8 +900,10 @@ function bindEvents(){
     }
 
     if(activeTool==='select' && !objectEl){
-      selectedObjectId='';
-      if(editPanelOpen) renderSurveyMap();
+      if(selectedObjectId){
+        selectedObjectId='';
+        renderSurveyMap();
+      }
     }
   });
 
