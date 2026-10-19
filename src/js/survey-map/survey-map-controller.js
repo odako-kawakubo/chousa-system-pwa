@@ -41,6 +41,7 @@ let polygonDraft=null;
 let shiftPointerId=null;
 let physicalShift=false;
 let ratioLocked=false;
+let strokeEditMode='shape';
 function shiftActive(){return shiftPointerId!==null||physicalShift;}
 function syncShiftButton(){
   root()?.querySelector('[data-survey-shift]')?.classList.toggle('active',shiftActive());
@@ -651,7 +652,7 @@ function sheetHtml(drawing){
   </svg>`:'';
   return `
     <div class="survey-map-fixed-title">${title}</div>
-    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds)}${draftHtml}</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}</div>
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
@@ -668,7 +669,18 @@ function editorHtml(drawing){
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
   }
   if(object){
-    const details=object.type==='line'
+    const modeControls=object.type==='line' && Array.isArray(object.points) && !object.elbow
+      ? `<div class="survey-map-editor-row"><label>編集モード</label>
+        <div class="survey-map-edit-mode-row">
+          <button type="button" class="btn small ${strokeEditMode==='shape'?'active':''}"
+            data-survey-stroke-edit-mode="shape">図形編集</button>
+          <button type="button" class="btn small ${strokeEditMode==='points'?'active':''}"
+            data-survey-stroke-edit-mode="points">頂点編集</button>
+        </div></div>`:'';
+    const details=object.type==='line' && Array.isArray(object.points)
+      ? `頂点：${object.points.length}　X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
+        W：${Math.round(Number(object.width)||0)}　H：${Math.round(Number(object.height)||0)}`
+      : object.type==='line'
       ? `始点：${Math.round(Number(object.startX)||0)}, ${Math.round(Number(object.startY)||0)}<br>
         終点：${Math.round(Number(object.endX)||0)}, ${Math.round(Number(object.endY)||0)}`
       : `X：${Math.round(Number(object.x)||0)}　Y：${Math.round(Number(object.y)||0)}<br>
@@ -680,6 +692,7 @@ function editorHtml(drawing){
         種類：${escapeHtml(object.type)} / ${escapeHtml(object.shapeType||'')}<br>
         ${details}
       </div>
+      ${modeControls}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
     `;
@@ -920,6 +933,12 @@ function bindEvents(){
       renderSurveyMap();
       return;
     }
+    const editModeButton=event.target.closest('[data-survey-stroke-edit-mode]');
+    if(editModeButton){
+      strokeEditMode=editModeButton.dataset.surveyStrokeEditMode==='points'?'points':'shape';
+      renderSurveyMap();
+      return;
+    }
     if(event.target.closest('[data-survey-ratio-toggle]')){
       ratioLocked=!ratioLocked;
       renderSurveyMap();
@@ -989,7 +1008,9 @@ function bindEvents(){
       const mode=groupMove?'group-move':object.elbow
         ? (handle==='line-start'?'elbow-start':handle==='line-end'?'elbow-end':handle==='elbow-bend'?'elbow-bend':'elbow-move')
         : object.type==='line' && Array.isArray(object.points) && object.points.length>1
-        ? (handle==='stroke-point'?'stroke-point':'stroke-move')
+        ? (handle.startsWith('stroke-resize-')?'stroke-resize':
+          handle==='stroke-rotate'?'stroke-rotate':
+          handle==='stroke-point'?'stroke-point':'stroke-move')
         : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
         : (handle.startsWith('resize-')?'resize-corner':
@@ -1000,7 +1021,7 @@ function bindEvents(){
         pointerId:event.pointerId,
         objectId,
         mode,
-        corner:handle.startsWith('resize-')?handle.slice(7):'',
+        corner:handle.startsWith('stroke-resize-')?handle.slice(14):handle.startsWith('resize-')?handle.slice(7):'',
         original:{...object},
         draft:{...object},
         groupOriginals:groupMove?Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(Boolean):[],
@@ -1133,6 +1154,27 @@ function bindEvents(){
         const moveY=clamp(dy,-Math.min(...ys),size.height-Math.max(...ys));
         draft=elbowRecordWithPoints(original,startX+moveX,startY+moveY,endX+moveX,endY+moveY,bendX+moveX);
       }
+    }else if(interaction.mode==='stroke-resize'){
+      const original=interaction.original,rect=resizeRectFromCorner(original,interaction.corner,currentPoint,{
+        centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
+      });
+      const oldW=Math.max(1,Number(original.width)||0),oldH=Math.max(1,Number(original.height)||0);
+      draft=strokeRecordWithPoints(original,original.points.map(p=>({
+        x:rect.x+(p.x-original.x)*rect.width/oldW,
+        y:rect.y+(p.y-original.y)*rect.height/oldH
+      })));
+    }else if(interaction.mode==='stroke-rotate'){
+      const original=interaction.original;
+      const center={x:original.x+original.width/2,y:original.y+original.height/2};
+      const a0=Math.atan2(interaction.startPoint.y-center.y,interaction.startPoint.x-center.x);
+      const a1=Math.atan2(currentPoint.y-center.y,currentPoint.x-center.x);
+      let rotation=a1-a0;
+      if(shiftActive()||event.shiftKey)rotation=Math.round(rotation/(Math.PI/12))*(Math.PI/12);
+      const cos=Math.cos(rotation),sin=Math.sin(rotation);
+      draft=strokeRecordWithPoints(original,original.points.map(p=>{
+        const x=p.x-center.x,y=p.y-center.y;
+        return {x:center.x+x*cos-y*sin,y:center.y+x*sin+y*cos};
+      }));
     }else if(interaction.mode==='stroke-point'){
       const points=interaction.original.points.map(p=>({...p}));
       const index=interaction.pointIndex;
@@ -1263,7 +1305,7 @@ function bindEvents(){
     const draft=interaction.draft||interaction.original;
     if(event.type==='pointercancel'){renderSurveyMap();return;}
     const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height']
-      :['stroke-move','stroke-point'].includes(interaction.mode)?['points','x','y','width','height']
+      :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height']
       :interaction.mode==='move'?['x','y']
       :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
