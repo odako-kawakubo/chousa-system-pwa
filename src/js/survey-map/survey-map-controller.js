@@ -15,7 +15,7 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
-import { isShapeTool } from './survey-map-shapes.js';
+import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup } from './survey-map-shapes.js';
 import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject } from './survey-map-transforms.js';
 
@@ -198,19 +198,16 @@ async function createRoomLabelAt(clientX,clientY){
   await commitDrawingObject(record,'survey-map-room-label-create');
   renderSurveyMap();
 }
-async function createShapeAt(kind,clientX,clientY){
+async function createShapeAt(kind,clientX,clientY,otherPoint=null){
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing || !sheet) return;
   const point=clientToPagePoint(clientX,clientY,sheet.getBoundingClientRect(),drawing);
-  const width=3600;
-  const height=2400;
-  const rect=clampObjectRect({
-    x:point.x-width/2,
-    y:point.y-height/2,
-    width,
-    height
-  },drawing);
+  const width=otherPoint?Math.abs(otherPoint.x-point.x):3600;
+  const height=otherPoint?Math.abs(otherPoint.y-point.y):2400;
+  const rect=clampObjectRect(otherPoint&&width>120&&height>120?{
+    x:Math.min(point.x,otherPoint.x),y:Math.min(point.y,otherPoint.y),width,height
+  }:{x:point.x-1800,y:point.y-1200,width:3600,height:2400},drawing);
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const record=createDrawingObject({
@@ -225,6 +222,7 @@ async function createShapeAt(kind,clientX,clientY){
     locked:false,
     deleted:false,
     shapeType:kind,
+    shapeParams:defaultShapeParams(kind),
     fillEnabled:false,
     fillColor:'#ffffff',
     fillOpacity:0,
@@ -234,7 +232,7 @@ async function createShapeAt(kind,clientX,clientY){
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
-      'shapeType','fillEnabled','fillColor','fillOpacity','lineEnabled','strokeColor','strokeWidth'
+      'shapeType','shapeParams','fillEnabled','fillColor','fillOpacity','lineEnabled','strokeColor','strokeWidth'
     ],now)
   });
   selectOnly(record.objectId);
@@ -1019,7 +1017,7 @@ function bindEvents(){
       const objectId=String(objectEl.dataset.surveyObjectId||'');
       const object=drawingObjectStore.get(objectId);
       if(!object || object.locked) return;
-      const additive=shiftActive()||event.shiftKey;
+      const additive=shiftActive()||event.shiftKey||event.ctrlKey||event.metaKey;
       const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
       if(additive && !handle){
         if(selectedObjectIds.has(objectId)){
@@ -1044,6 +1042,7 @@ function bindEvents(){
         : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
         : (handle.startsWith('resize-')?'resize-corner':
+          handle==='shape-adjust'?'shape-adjust':
           handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
@@ -1052,6 +1051,7 @@ function bindEvents(){
         objectId,
         mode,
         corner:handle.startsWith('stroke-resize-')?handle.slice(14):handle.startsWith('resize-')?handle.slice(7):'',
+        paramKey:handle==='shape-adjust'?String(event.target.closest('[data-survey-param]')?.dataset.surveyParam||''):'',
         original:{...object},
         draft:{...object},
         groupOriginals:groupMove?Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(Boolean):[],
@@ -1254,6 +1254,20 @@ function bindEvents(){
         height:Number(interaction.original.height||0)
       },drawing);
       draft={...draft,...rect};
+    }else if(interaction.mode==='shape-adjust'){
+      const original=interaction.original;
+      const key=interaction.paramKey;
+      const adjuster=shapeAdjusters(original.shapeType,original.shapeParams).find(item=>item.key===key);
+      if(adjuster){
+        const center={x:original.x+original.width/2,y:original.y+original.height/2};
+        const angle=-(Number(original.rotation)||0)*Math.PI/180;
+        const ddx=currentPoint.x-center.x,ddy=currentPoint.y-center.y;
+        const localX=center.x+ddx*Math.cos(angle)-ddy*Math.sin(angle);
+        const localY=center.y+ddx*Math.sin(angle)+ddy*Math.cos(angle);
+        const ratio=adjuster.axis==='x'?(localX-original.x)/Math.max(1,original.width):
+          (localY-original.y)/Math.max(1,original.height);
+        draft.shapeParams=updatedShapeParams(original.shapeType,original.shapeParams,key,ratio);
+      }
     }else if(interaction.mode==='resize-corner'){
       draft=resizeRectFromCorner(interaction.original,interaction.corner,currentPoint,{
         centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
@@ -1272,6 +1286,19 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
+    if(interaction.mode==='shape-adjust'){
+      const polygon=objectEl.querySelector('.survey-map-shape-svg polygon');
+      if(polygon){
+        const markup=shapeSvgMarkup(draft.shapeType,draft.shapeParams);
+        const points=markup.match(/points="([^"]+)"/)?.[1];
+        if(points)polygon.setAttribute('points',points);
+      }
+      const handles=shapeAdjusters(draft.shapeType,draft.shapeParams);
+      for(const adjuster of handles){
+        const grip=objectEl.querySelector(`[data-survey-param="${adjuster.key}"]`);
+        if(grip){grip.style.left=`${adjuster.x*100}%`;grip.style.top=`${adjuster.y*100}%`;}
+      }
+    }
     paintObjectDraft(objectEl,draft,drawing);
     event.preventDefault();
   });
@@ -1337,6 +1364,7 @@ function bindEvents(){
     const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height']
       :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height']
       :interaction.mode==='move'?['x','y']
+      :interaction.mode==='shape-adjust'?['shapeParams']
       :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
