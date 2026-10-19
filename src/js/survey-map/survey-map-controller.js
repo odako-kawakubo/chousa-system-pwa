@@ -825,7 +825,6 @@ if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
         handle.style.top=`${draft.points[i].y/size.height*100}%`;
       }
     }
-    const size=pageSize(drawing);
     const corners=[
       ['nw',draft.x,draft.y],
       ['ne',draft.x+draft.width,draft.y],
