@@ -218,6 +218,29 @@ function updateLineObjectElement(objectEl,record,drawing){
   }
 }
 
+function elbowPath(startX,startY,endX,endY,bendX=(startX+endX)/2){
+  return [
+    {x:startX,y:startY},{x:bendX,y:startY},
+    {x:bendX,y:endY},{x:endX,y:endY}
+  ];
+}
+function elbowRecordWithPoints(record,startX,startY,endX,endY,bendX){
+  const points=elbowPath(startX,startY,endX,endY,bendX);
+  const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+  return {...record,startX,startY,endX,endY,bendX,points,
+    x:Math.min(...xs),y:Math.min(...ys),
+    width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
+}
+function updatePolylinePreview(svg,points){
+  const line=svg?.querySelector('line');
+  if(line)line.remove();
+  let poly=svg?.querySelector('polyline');
+  if(!poly){
+    poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    svg?.appendChild(poly);
+  }
+  poly.setAttribute('points',points.map(p=>`${p.x},${p.y}`).join(' '));
+}
 function previewCorrectedStroke(svg,points){
   if(!svg) return;
   const rootLine=svg.querySelector('line');
@@ -257,6 +280,24 @@ async function createCorrectedStroke(drawing,rawPoints){
   return record;
 }
 
+async function createElbowFromPoints(drawing,start,end){
+  if(Math.hypot(end.x-start.x,end.y-start.y)<200)return null;
+  const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const base=elbowRecordWithPoints({
+    objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',elbow:true,
+    layer:DRAWING_LAYERS.SHAPE,order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
+    visible:true,locked:false,deleted:false,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
+    createdAt:new Date(now).toISOString()
+  },start.x,start.y,end.x,end.y,(start.x+end.x)/2);
+  const record=createDrawingObject({...base,fieldEditedAt:touchFieldEditedAt({},[
+    'drawingId','type','elbow','points','startX','startY','endX','endY','bendX',
+    'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle'
+  ],now)});
+  selectedObjectId=record.objectId;
+  if(continuousTool!=='elbow')activeTool='select';
+  await commitDrawingObject(record,'survey-map-elbow-create');
+  return record;
+}
 async function createLineFromPoints(drawing,startPoint,endPoint){
   const dx=endPoint.x-startPoint.x;
   const dy=endPoint.y-startPoint.y;
@@ -481,7 +522,7 @@ function toolsHtml(){
   return `
     <div class="survey-map-tool-section">
       <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
-        toolIconCell(icon,label,icon,!['select','line','correct'].includes(icon))
+        toolIconCell(icon,label,icon,!['select','line','correct','elbow'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
       <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
@@ -687,7 +728,7 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && ['line','rect','correct'].includes(requested)){
+      if(repeatedTap && ['line','rect','correct','elbow'].includes(requested)){
         continuousTool=continuousTool===requested?'':requested;
       }else if(requested!==continuousTool){
         continuousTool='';
@@ -743,7 +784,9 @@ function bindEvents(){
       if(!object || object.locked) return;
       selectedObjectId=objectId;
       const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
-      const mode=object.type==='line' && Array.isArray(object.points) && object.points.length>1
+      const mode=object.elbow
+        ? (handle==='line-start'?'elbow-start':handle==='line-end'?'elbow-end':handle==='elbow-bend'?'elbow-bend':'elbow-move')
+        : object.type==='line' && Array.isArray(object.points) && object.points.length>1
         ? 'stroke-move'
         : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
@@ -770,14 +813,14 @@ function bindEvents(){
       return;
     }
 
-    if((activeTool==='line' || activeTool==='correct') && !objectEl){
+    if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow') && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId:'',
-        mode:activeTool==='correct'?'create-corrected':'create-line',
+        mode:activeTool==='correct'?'create-corrected':activeTool==='elbow'?'create-elbow':'create-line',
         original:null,
         draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
         startPoint,
@@ -803,6 +846,12 @@ function bindEvents(){
     if(!drawing) return;
     const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
 
+    if(interaction.mode==='create-elbow'){
+      updatePolylinePreview(interaction.previewEl,elbowPath(
+        interaction.startPoint.x,interaction.startPoint.y,currentPoint.x,currentPoint.y));
+      event.preventDefault();
+      return;
+    }
     if(interaction.mode==='create-corrected'){
       const previous=interaction.rawPoints.at(-1);
       if(Math.hypot(currentPoint.x-previous.x,currentPoint.y-previous.y)>=45){
@@ -826,7 +875,26 @@ function bindEvents(){
     const dy=currentPoint.y-interaction.startPoint.y;
     let draft={...interaction.original};
 
-    if(interaction.mode==='stroke-move'){
+    if(interaction.mode.startsWith('elbow-')){
+      const original=interaction.original;
+      const startX=Number(original.startX)||0,startY=Number(original.startY)||0;
+      const endX=Number(original.endX)||0,endY=Number(original.endY)||0;
+      const bendX=Number(original.bendX??(startX+endX)/2);
+      if(interaction.mode==='elbow-start'){
+        draft=elbowRecordWithPoints(original,currentPoint.x,currentPoint.y,endX,endY,bendX);
+      }else if(interaction.mode==='elbow-end'){
+        draft=elbowRecordWithPoints(original,startX,startY,currentPoint.x,currentPoint.y,bendX);
+      }else if(interaction.mode==='elbow-bend'){
+        draft=elbowRecordWithPoints(original,startX,startY,endX,endY,currentPoint.x);
+      }else{
+        const size=pageSize(drawing);
+        const points=original.points;
+        const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+        const moveX=clamp(dx,-Math.min(...xs),size.width-Math.max(...xs));
+        const moveY=clamp(dy,-Math.min(...ys),size.height-Math.max(...ys));
+        draft=elbowRecordWithPoints(original,startX+moveX,startY+moveY,endX+moveX,endY+moveY,bendX+moveX);
+      }
+    }else if(interaction.mode==='stroke-move'){
       const size=pageSize(drawing);
       const pts=interaction.original.points;
       const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
@@ -885,6 +953,15 @@ function bindEvents(){
       if(polyline)polyline.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
       const hit=objectEl.querySelector('.survey-map-stroke-hit');
       if(hit)hit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+      if(draft.elbow){
+        const size=pageSize(drawing);
+        for(const [handleName,point] of [
+          ['line-start',draft.points[0]],['line-end',draft.points[3]],['elbow-bend',draft.points[1]]
+        ]){
+          const button=objectEl.querySelector(`[data-survey-handle="${handleName}"]`);
+          if(button){button.style.left=`${point.x/size.width*100}%`;button.style.top=`${point.y/size.height*100}%`;}
+        }
+      }
     }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
     else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
     event.preventDefault();
@@ -895,6 +972,15 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
 
+    if(interaction.mode==='create-elbow'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const drawing=selectedDrawing();
+      if(!drawing)return;
+      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      void createElbowFromPoints(drawing,interaction.startPoint,end).then(()=>renderSurveyMap());
+      return;
+    }
     if(interaction.mode==='create-corrected'){
       interaction.previewEl?.remove();
       if(event.type==='pointercancel'){renderSurveyMap();return;}
@@ -924,7 +1010,8 @@ function bindEvents(){
     if(!current) return;
     const draft=interaction.draft||interaction.original;
     if(event.type==='pointercancel'){renderSurveyMap();return;}
-    const fields=interaction.mode==='stroke-move'?['points','x','y']
+    const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height']
+      :interaction.mode==='stroke-move'?['points','x','y']
       :interaction.mode==='move'?['x','y']
       :interaction.mode==='resize'?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
