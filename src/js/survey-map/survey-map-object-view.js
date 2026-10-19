@@ -119,8 +119,15 @@ export function drawingObjectsHtml(records = [], drawing, selectedObjectId = '')
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
           ${selected ? `
-            <button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>
-            <button type="button" class="survey-map-object-handle survey-map-object-rotate-handle" data-survey-handle="rotate" aria-label="回転"></button>
+            ${record.type==='shape' ? ['nw','ne','sw','se'].map(corner=>`
+              <button type="button" class="survey-map-object-handle survey-map-corner-handle survey-map-corner-${corner}"
+                data-survey-handle="resize-${corner}" aria-label="${corner}からサイズ変更"></button>
+            `).join('') : `
+              <button type="button" class="survey-map-object-handle survey-map-object-resize-handle"
+                data-survey-handle="resize" aria-label="サイズ変更"></button>
+            `}
+            <button type="button" class="survey-map-object-handle survey-map-object-rotate-handle"
+              data-survey-handle="rotate" aria-label="回転"></button>
           ` : ''}
         </div>
       `;
