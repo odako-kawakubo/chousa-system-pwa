@@ -767,6 +767,51 @@ export function renderSurveyMap(){
   `;
 }
 
+function paintObjectDraft(objectEl,draft,drawing){
+if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
+  const polyline=objectEl.querySelector('.survey-map-stroke-main');
+  if(polyline)polyline.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+  const hit=objectEl.querySelector('.survey-map-stroke-hit');
+  if(hit)hit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+  if(draft.elbow){
+    const size=pageSize(drawing);
+    for(const [handleName,point] of [
+      ['line-start',draft.points[0]],['line-end',draft.points[3]],
+      ['elbow-bend',{x:draft.bendX,y:(draft.startY+draft.endY)/2}]
+    ]){
+      const button=objectEl.querySelector(`[data-survey-handle="${handleName}"]`);
+      if(button){button.style.left=`${point.x/size.width*100}%`;button.style.top=`${point.y/size.height*100}%`;}
+    }
+  }else{
+    const size=pageSize(drawing);
+    const count=draft.closed?draft.points.length-1:draft.points.length;
+    for(let i=0;i<count;i++){
+      const handle=objectEl.querySelector(`[data-survey-point-index="${i}"]`);
+      if(handle){
+        handle.style.left=`${draft.points[i].x/size.width*100}%`;
+        handle.style.top=`${draft.points[i].y/size.height*100}%`;
+      }
+    }
+  }
+}else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
+else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
+}
+function translateObject(record,dx,dy){
+  if(record.elbow){
+    return elbowRecordWithPoints(record,
+      record.startX+dx,record.startY+dy,record.endX+dx,record.endY+dy,record.bendX+dx);
+  }
+  if(record.type==='line' && Array.isArray(record.points) && record.points.length>1){
+    return strokeRecordWithPoints(record,record.points.map(p=>({x:p.x+dx,y:p.y+dy})));
+  }
+  if(record.type==='line'){
+    return lineRecordWithPoints(record,
+      (Number(record.startX)||0)+dx,(Number(record.startY)||0)+dy,
+      (Number(record.endX)||0)+dx,(Number(record.endY)||0)+dy);
+  }
+  return {...record,x:(Number(record.x)||0)+dx,y:(Number(record.y)||0)+dy};
+}
+
 function bindEvents(){
   const mount=root();
   if(!mount) return;
@@ -1118,33 +1163,7 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
-    if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
-      const polyline=objectEl.querySelector('.survey-map-stroke-main');
-      if(polyline)polyline.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
-      const hit=objectEl.querySelector('.survey-map-stroke-hit');
-      if(hit)hit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
-      if(draft.elbow){
-        const size=pageSize(drawing);
-        for(const [handleName,point] of [
-          ['line-start',draft.points[0]],['line-end',draft.points[3]],
-          ['elbow-bend',{x:draft.bendX,y:(draft.startY+draft.endY)/2}]
-        ]){
-          const button=objectEl.querySelector(`[data-survey-handle="${handleName}"]`);
-          if(button){button.style.left=`${point.x/size.width*100}%`;button.style.top=`${point.y/size.height*100}%`;}
-        }
-      }else{
-        const size=pageSize(drawing);
-        const count=draft.closed?draft.points.length-1:draft.points.length;
-        for(let i=0;i<count;i++){
-          const handle=objectEl.querySelector(`[data-survey-point-index="${i}"]`);
-          if(handle){
-            handle.style.left=`${draft.points[i].x/size.width*100}%`;
-            handle.style.top=`${draft.points[i].y/size.height*100}%`;
-          }
-        }
-      }
-    }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
-    else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
+    paintObjectDraft(objectEl,draft,drawing);
     event.preventDefault();
   });
 
