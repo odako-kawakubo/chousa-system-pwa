@@ -1,4 +1,5 @@
 import { pageSize, objectPercentStyle } from './survey-map-geometry.js';
+import { shapeSvgMarkup } from './survey-map-shapes.js';
 
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,(m)=>({
@@ -49,7 +50,7 @@ function lineObjectHtml(record,drawing,selected){
     return `
       <div class="survey-map-object survey-map-object-line survey-map-object-stroke ${selected?'selected':''}"
         data-survey-object-id="${escapeHtml(record.objectId)}" role="button"
-        aria-label="${record.elbow?'カギ線':record.closed?'多角形':'補正線'}">
+        aria-label="${record.elbow?'カギ線':record.freehand?'手描き':record.closed?'多角形':'手描き補正'}">
         <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
           preserveAspectRatio="none" aria-hidden="true">
           <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
@@ -111,7 +112,12 @@ export function drawingObjectsHtml(records = [], drawing, selectedObjectId = '')
           role="button"
           aria-label="${escapeHtml(label)}"
         >
-          <div class="survey-map-object-visual"></div>
+          ${record.type==='shape'
+            ? `<svg class="survey-map-shape-svg survey-map-object-visual" viewBox="0 0 1000 1000"
+              preserveAspectRatio="none" aria-hidden="true">
+              ${shapeSvgMarkup(String(record.shapeType||'rect'))}
+              </svg>`
+            : `<div class="survey-map-object-visual"></div>`}
           ${selected ? `
             <button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>
             <button type="button" class="survey-map-object-handle survey-map-object-rotate-handle" data-survey-handle="rotate" aria-label="回転"></button>
