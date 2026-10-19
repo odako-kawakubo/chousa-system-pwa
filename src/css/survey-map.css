@@ -330,6 +330,10 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   overflow:visible;
   pointer-events:none;
 }
+.survey-map-line-draft .survey-map-shape-draft-rect{
+ fill:#93c5fd20;stroke:#2563eb;stroke-width:80;stroke-dasharray:260 180;pointer-events:none
+}
+.survey-map-object-shape.selected .survey-map-shape-svg{outline:0;outline-offset:0}
 .survey-map-line-draft line{
   fill:none;
   stroke:#2563eb;
