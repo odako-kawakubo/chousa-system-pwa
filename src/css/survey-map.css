@@ -206,6 +206,7 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 
 
 /* v0.1.10.6 基本作図操作 */
+.survey-map-sheet.drawing-mode{touch-action:none}
 .survey-map-sheet{
   touch-action:pan-x pan-y;
   transform-origin:top left;
