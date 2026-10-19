@@ -304,3 +304,6 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-stroke-hit{fill:none;stroke:rgba(15,23,42,.001);stroke-width:520;stroke-linecap:round;stroke-linejoin:round;pointer-events:stroke;cursor:move}
 .survey-map-object-stroke.selected .survey-map-stroke-main{filter:drop-shadow(0 0 4px rgba(37,99,235,.7))}
 .survey-map-line-draft polyline{fill:none;stroke:#2563eb;stroke-width:80;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:260 180}
+
+/* ツールの連続入力モードは青枠と二重リングで表示する */
+.survey-map-icon-btn.survey-map-tool-continuous{outline:3px double #1d4ed8;outline-offset:2px}
