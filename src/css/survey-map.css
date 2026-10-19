@@ -82,7 +82,6 @@
 .survey-map-tool-cell{display:grid;gap:2px;justify-items:center}
 .survey-map-polygon-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:10px;font-size:12px;color:#475569}
 .survey-map-polygon-draft{z-index:25}
-.survey-map-object-handle{width:12px;height:12px;border-width:1.5px}
 .survey-map-shift-button{
  position:absolute;z-index:190;left:16px;bottom:18px;min-width:76px;min-height:50px;
  border:2px solid #64748b;border-radius:14px;background:#fff;color:#334155;
@@ -247,25 +246,25 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   outline:2px solid #2563eb;
   outline-offset:2px;
 }
-.survey-map-object-handle{
+ .survey-map-object-handle{
   position:absolute;
   z-index:4;
-  width:20px;
-  height:20px;
+  width:12px;
+  height:12px;
   padding:0;
-  border:2px solid #2563eb;
+  border:1.5px solid #2563eb;
   border-radius:50%;
   background:#fff;
   touch-action:none;
 }
 .survey-map-object-resize-handle{
-  right:-11px;
-  bottom:-11px;
+  right:-6px;
+  bottom:-6px;
   cursor:nwse-resize;
 }
 .survey-map-object-rotate-handle{
   left:50%;
-  top:-34px;
+  top:-28px;
   transform:translateX(-50%);
   cursor:grab;
 }
@@ -273,9 +272,9 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   content:'';
   position:absolute;
   left:50%;
-  top:18px;
+  top:12px;
   width:1px;
-  height:14px;
+  height:16px;
   background:#2563eb;
 }
 .survey-map-object-shape{min-width:4px;min-height:4px}
@@ -347,3 +346,5 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 
 /* ツールの連続入力モードは青枠と二重リングで表示する */
 .survey-map-icon-btn.survey-map-tool-continuous{outline:3px double #1d4ed8;outline-offset:2px}
+
+.survey-map-shape-adjuster{transform:translate(-50%,-50%);border-color:#d97706;background:#fef3c7;cursor:crosshair}
