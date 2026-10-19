@@ -858,6 +858,26 @@ async function commitChangedObject(current,draft,source){
   const next=createDrawingObject({...current,...draft,fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,changed,Date.now())});
   await commitDrawingObject(next,source);
 }
+function highlightAdjustedEdges(objectEl,record,key){
+  const svg=objectEl.querySelector('.survey-map-shape-svg');
+  if(!svg)return;
+  svg.querySelectorAll('.survey-map-adjust-highlight').forEach(el=>el.remove());
+  const adjuster=shapeAdjusters(record.shapeType,record.shapeParams).find(item=>item.key===key);
+  if(!adjuster)return;
+  const axis=adjuster.axis;
+  const target=(record.shapeParams||{})[key]??defaultShapeParams(record.shapeType)[key];
+  const points=shapeVertices(record.shapeType,record.shapeParams,record.customVertices);
+  for(let i=0;i<points.length;i++){
+    const a=points[i],b=points[(i+1)%points.length];
+    if(Math.abs(a[axis]-target)>0.002||Math.abs(b[axis]-target)>0.002)continue;
+    const ax=(record.flipX?1-a.x:a.x)*1000,ay=(record.flipY?1-a.y:a.y)*1000;
+    const bx=(record.flipX?1-b.x:b.x)*1000,by=(record.flipY?1-b.y:b.y)*1000;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','path');
+    line.classList.add('survey-map-adjust-highlight');
+    line.setAttribute('d',`M${ax} ${ay} L${bx} ${by}`);
+    svg.appendChild(line);
+  }
+}
 function paintObjectDraft(objectEl,draft,drawing){
 if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
   const polyline=objectEl.querySelector('.survey-map-stroke-main');
@@ -1094,20 +1114,20 @@ function bindEvents(){
           selectedObjectIds.add(objectId);
           selectedObjectId=objectId;
         }
-        objectEl.classList.toggle('selected',selectedObjectIds.has(objectId));
+        renderSurveyMap();
         event.preventDefault();
         return;
       }
       const groupMove=!handle && selectedObjectIds.size>1 && selectedObjectIds.has(objectId);
       if(!groupMove)selectOnly(objectId);
       const mode=groupMove?'group-move':object.elbow
-        ? (handle==='line-start'?'elbow-start':handle==='line-end'?'elbow-end':handle==='elbow-bend'?'elbow-bend':'elbow-move')
+        ? (handle==='stroke-rotate'?'stroke-rotate':handle==='line-start'?'elbow-start':handle==='line-end'?'elbow-end':handle==='elbow-bend'?'elbow-bend':'elbow-move')
         : object.type==='line' && Array.isArray(object.points) && object.points.length>1
         ? (handle.startsWith('stroke-resize-')?'stroke-resize':
           handle==='stroke-rotate'?'stroke-rotate':
           handle==='stroke-point'?'stroke-point':'stroke-move')
         : object.type==='line'
-        ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
+        ? (handle==='line-rotate'?'line-rotate':handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
         : (handle.startsWith('resize-')?'resize-corner':
           handle==='shape-vertex'?'shape-vertex':handle==='shape-adjust'?'shape-adjust':
           handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
@@ -1128,6 +1148,7 @@ function bindEvents(){
         sheetRect
       };
       objectEl.setPointerCapture?.(event.pointerId);
+      if(mode==='shape-adjust')highlightAdjustedEdges(objectEl,object,pointerInteraction.paramKey);
       event.preventDefault();
       return;
     }
@@ -1356,6 +1377,13 @@ function bindEvents(){
         (Number(interaction.original.endX)||0)+moveX,
         (Number(interaction.original.endY)||0)+moveY
       );
+    }else if(interaction.mode==='line-rotate'){
+      const original=interaction.original;
+      const cx=(original.startX+original.endX)/2,cy=(original.startY+original.endY)/2;
+      const a0=Math.atan2(interaction.startPoint.y-cy,interaction.startPoint.x-cx);
+      const a1=Math.atan2(currentPoint.y-cy,currentPoint.x-cx);
+      const delta=(a1-a0)*180/Math.PI;
+      draft=rotateSingleObject(original,(shiftActive()||event.shiftKey)?Math.round(delta/15)*15:delta);
     }else if(interaction.mode==='line-start'){
       draft=lineRecordWithPoints(
         interaction.original,currentPoint.x,currentPoint.y,
@@ -1400,8 +1428,9 @@ function bindEvents(){
         const ddx=currentPoint.x-center.x,ddy=currentPoint.y-center.y;
         const localX=center.x+ddx*Math.cos(angle)-ddy*Math.sin(angle);
         const localY=center.y+ddx*Math.sin(angle)+ddy*Math.cos(angle);
-        const ratio=adjuster.axis==='x'?(localX-original.x)/Math.max(1,original.width):
+        let ratio=adjuster.axis==='x'?(localX-original.x)/Math.max(1,original.width):
           (localY-original.y)/Math.max(1,original.height);
+        if((adjuster.axis==='x'&&original.flipX)||(adjuster.axis==='y'&&original.flipY))ratio=1-ratio;
         draft.shapeParams=updatedShapeParams(original.shapeType,original.shapeParams,key,ratio);
       }
     }else if(interaction.mode==='resize-corner'){
@@ -1434,12 +1463,13 @@ function bindEvents(){
         const points=shapeVertices(draft.shapeType,draft.shapeParams,draft.customVertices);
         for(let i=0;i<points.length;i++){
           const grip=objectEl.querySelector(`[data-survey-handle="shape-vertex"][data-survey-point-index="${i}"]`);
-          if(grip){grip.style.left=`${points[i].x*100}%`;grip.style.top=`${points[i].y*100}%`;}
+          if(grip){grip.style.left=`${(draft.flipX?1-points[i].x:points[i].x)*100}%`;grip.style.top=`${(draft.flipY?1-points[i].y:points[i].y)*100}%`;}
         }
       }
+      if(interaction.mode==='shape-adjust')highlightAdjustedEdges(objectEl,draft,interaction.paramKey);
       for(const adjuster of handles){
         const grip=objectEl.querySelector(`[data-survey-param="${adjuster.key}"]`);
-        if(grip){grip.style.left=`${adjuster.x*100}%`;grip.style.top=`${adjuster.y*100}%`;}
+        if(grip){grip.style.left=`${(draft.flipX?1-adjuster.x:adjuster.x)*100}%`;grip.style.top=`${(draft.flipY?1-adjuster.y:adjuster.y)*100}%`;}
       }
     }
     paintObjectDraft(objectEl,draft,drawing);
@@ -1539,7 +1569,8 @@ function bindEvents(){
     const draft=interaction.draft||interaction.original;
     if(event.type==='pointercancel'){renderSurveyMap();return;}
     const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height']
-      :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height']
+      :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height','rotation','elbow']
+      :interaction.mode==='line-rotate'?['startX','startY','endX','endY','x','y','width','height','rotation']
       :interaction.mode==='move'?['x','y']
       :interaction.mode==='shape-adjust'?['shapeParams']
       :interaction.mode==='shape-vertex'?['customVertices']
