@@ -18,7 +18,7 @@ function lineDashArray(style,width){
   return '';
 }
 
-function polylineHandleHtml(record,size){
+function polylineHandleHtml(record,size,editMode='shape'){
   if(record.elbow){
     const start=record.points[0],end=record.points.at(-1);
     const mid={x:(record.points[1].x+record.points[2].x)/2,y:(record.points[1].y+record.points[2].y)/2};
@@ -30,6 +30,22 @@ function polylineHandleHtml(record,size){
         aria-label="${label}を移動"></button>
     `).join('');
   }
+  if(editMode==='shape'){
+    const x=finite(record.x),y=finite(record.y),w=finite(record.width),h=finite(record.height);
+    const handles=[
+      ['nw',x,y],['ne',x+w,y],['sw',x,y+h],['se',x+w,y+h]
+    ];
+    return handles.map(([corner,px,py])=>`
+      <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
+        data-survey-handle="stroke-resize-${corner}"
+        style="left:${px/size.width*100}%;top:${py/size.height*100}%"
+        aria-label="${corner}から図形を拡大縮小"></button>
+    `).join('')+`<button type="button"
+      class="survey-map-object-handle survey-map-line-endpoint survey-map-stroke-rotate-handle"
+      data-survey-handle="stroke-rotate"
+      style="left:${(x+w/2)/size.width*100}%;top:${(y-500)/size.height*100}%"
+      aria-label="図形を回転"></button>`;
+  }
   const count=record.closed?record.points.length-1:record.points.length;
   return record.points.slice(0,count).map((p,index)=>`
     <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
@@ -39,7 +55,7 @@ function polylineHandleHtml(record,size){
   `).join('');
 }
 
-function lineObjectHtml(record,drawing,selected){
+function lineObjectHtml(record,drawing,selected,editMode){
   const size=pageSize(drawing);
   const lineWidth=Math.max(20,finite(record.lineWidth,80));
   const color=escapeHtml(record.lineColor||record.strokeColor||'#334155');
@@ -57,7 +73,7 @@ function lineObjectHtml(record,drawing,selected){
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
             stroke-width="${lineWidth}" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
         </svg>
-        ${selected?polylineHandleHtml(record,size):''}
+        ${selected?polylineHandleHtml(record,size,editMode):''}
       </div>
     `;
   }
@@ -83,14 +99,14 @@ function lineObjectHtml(record,drawing,selected){
   `;
 }
 
-export function drawingObjectsHtml(records = [], drawing, selection = '') {
+export function drawingObjectsHtml(records = [], drawing, selection = '',editMode='shape') {
   const selectedIds=selection instanceof Set ? selection :
     new Set(Array.isArray(selection)?selection:[String(selection)]);
   return records
     .filter((record)=>record && record.visible !== false && !record.deleted)
     .map((record)=>{
       const selected = selectedIds.has(String(record.objectId));
-      if(record.type==='line') return lineObjectHtml(record,drawing,selected);
+      if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode);
 
       const style = objectPercentStyle(record, drawing);
       if(record.type==='roomLabel'){
