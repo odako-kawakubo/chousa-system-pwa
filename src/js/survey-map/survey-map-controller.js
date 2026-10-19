@@ -1072,14 +1072,31 @@ function bindEvents(){
       return;
     }
     if(activeTool==='polygon' && !objectEl){
-      const point=clientToPagePoint(event.clientX,event.clientY,sheet.getBoundingClientRect(),drawing);
-      addPolygonVertex(drawing,point,event.detail>=2);
+      const sheetRect=sheet.getBoundingClientRect();
+      const point=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      if(!polygonDraft || polygonDraft.drawingId!==drawing.drawingId){
+        polygonDraft={drawingId:drawing.drawingId,points:[point]};
+      }
+      const start=polygonDraft.points.at(-1);
+      const previewEl=createLineDraftPreview(sheet,drawing,start);
+      pointerInteraction={pointerId:event.pointerId,mode:'create-polygon-edge',
+        objectId:'',startPoint:start,downPoint:point,sheetRect,previewEl};
+      sheet.setPointerCapture?.(event.pointerId);
       event.preventDefault();
       return;
     }
     if(isShapeTool(activeTool) && !objectEl){
+      const sheetRect=sheet.getBoundingClientRect();
+      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
+      previewEl?.querySelector('line')?.remove();
+      const previewRect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      previewRect.setAttribute('class','survey-map-shape-draft-rect');
+      previewEl?.appendChild(previewRect);
+      pointerInteraction={pointerId:event.pointerId,mode:'create-shape',kind:activeTool,
+        objectId:'',startPoint,sheetRect,previewEl};
+      sheet.setPointerCapture?.(event.pointerId);
       event.preventDefault();
-      void createShapeAt(activeTool,event.clientX,event.clientY);
       return;
     }
 
@@ -1118,6 +1135,23 @@ function bindEvents(){
     if(!drawing) return;
     const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
 
+    if(interaction.mode==='create-polygon-edge'){
+      const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
+      updateLineDraftPreview(interaction.previewEl,point);
+      event.preventDefault();
+      return;
+    }
+    if(interaction.mode==='create-shape'){
+      const rect=interaction.previewEl?.querySelector('rect');
+      if(rect){
+        rect.setAttribute('x',String(Math.min(interaction.startPoint.x,currentPoint.x)));
+        rect.setAttribute('y',String(Math.min(interaction.startPoint.y,currentPoint.y)));
+        rect.setAttribute('width',String(Math.abs(interaction.startPoint.x-currentPoint.x)));
+        rect.setAttribute('height',String(Math.abs(interaction.startPoint.y-currentPoint.y)));
+      }
+      event.preventDefault();
+      return;
+    }
     if(interaction.mode==='create-elbow'){
       updatePolylinePreview(interaction.previewEl,elbowPath(
         interaction.startPoint.x,interaction.startPoint.y,currentPoint.x,currentPoint.y));
@@ -1308,6 +1342,32 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
 
+    if(interaction.mode==='create-polygon-edge'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const drawing=selectedDrawing();
+      if(!drawing)return;
+      const raw=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,raw):raw;
+      if(Math.hypot(end.x-interaction.startPoint.x,end.y-interaction.startPoint.y)>=150){
+        addPolygonVertex(drawing,end);
+      }else if(Math.hypot(raw.x-interaction.downPoint.x,raw.y-interaction.downPoint.y)<100){
+        if(polygonDraft?.points.length>1)addPolygonVertex(drawing,raw);
+        else renderSurveyMap();
+      }
+      return;
+    }
+    if(interaction.mode==='create-shape'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const drawing=selectedDrawing();
+      if(!drawing)return;
+      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const x=interaction.sheetRect.left+interaction.startPoint.x/pageSize(drawing).width*interaction.sheetRect.width;
+      const y=interaction.sheetRect.top+interaction.startPoint.y/pageSize(drawing).height*interaction.sheetRect.height;
+      void createShapeAt(interaction.kind,x,y,end).then(()=>renderSurveyMap());
+      return;
+    }
     if(interaction.mode==='group-move'){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const now=Date.now();
