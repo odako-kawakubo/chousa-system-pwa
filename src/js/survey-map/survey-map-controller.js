@@ -969,7 +969,8 @@ function bindEvents(){
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
       const requested=String(drawTool.dataset.surveyDrawTool||'select');
-      if(requested!=='polygon')polygonDraft=null;
+      const hadPolygonDraft=requested!=='polygon'&&polygonDraft!==null;
+      if(hadPolygonDraft)polygonDraft=null;
       const now=Date.now();
       const repeatedTap=(event.detail>=2 || (
         lastToolTap?.tool===requested && now-lastToolTap.at<380
@@ -990,6 +991,7 @@ function bindEvents(){
         button.classList.toggle('survey-map-tool-continuous',tool===continuousTool);
         button.setAttribute('aria-pressed',String(tool===activeTool));
       });
+      if(hadPolygonDraft)renderSurveyMap();
       return;
     }
 
