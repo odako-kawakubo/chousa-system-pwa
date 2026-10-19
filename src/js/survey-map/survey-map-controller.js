@@ -1330,6 +1330,10 @@ function bindEvents(){
       :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
+    if(!fields.some(field=>JSON.stringify(current[field])!==JSON.stringify(draft[field]))){
+      renderSurveyMap();
+      return;
+    }
     const now=Date.now();
     const next=createDrawingObject({
       ...current,
