@@ -12,7 +12,7 @@ import { createDrawingObject, DRAWING_LAYERS } from '../records/drawing-object.j
 import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
 import { persistDrawingForProject, persistDrawingObjectForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner } from './survey-map-geometry.js';
+import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner, resizeRectFromDrag } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
@@ -633,7 +633,7 @@ function toolsHtml(){
         toolIconCell(icon,label,icon,!['select','line','correct','elbow','room','hand'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
-      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,!isShapeTool(icon))).join('')}</div>
+      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='polygon'&&!isShapeTool(icon))).join('')}</div>
       ${roomPickerHtml()}
       ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>多角形：${polygonDraft.points.length}点</span><button type="button" class="btn small" data-survey-polygon-finish ${polygonDraft.points.length<3?'disabled':''}>確定</button><button type="button" class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
     </div>
@@ -929,7 +929,7 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && (['line','correct','elbow','room','hand'].includes(requested) || isShapeTool(requested))){
+      if(repeatedTap && (['line','correct','elbow','room','hand','polygon'].includes(requested) || isShapeTool(requested))){
         continuousTool=continuousTool===requested?'':requested;
       }else if(requested!==continuousTool){
         continuousTool='';
@@ -1215,7 +1215,7 @@ function bindEvents(){
         draft=elbowRecordWithPoints(original,startX+moveX,startY+moveY,endX+moveX,endY+moveY,bendX+moveX);
       }
     }else if(interaction.mode==='stroke-resize'){
-      const original=interaction.original,rect=resizeRectFromCorner(original,interaction.corner,currentPoint,{
+      const original=interaction.original,rect=resizeRectFromDrag(original,interaction.corner,interaction.startPoint,currentPoint,{
         centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
       });
       const oldW=Math.max(1,Number(original.width)||0),oldH=Math.max(1,Number(original.height)||0);
@@ -1314,7 +1314,7 @@ function bindEvents(){
         draft.shapeParams=updatedShapeParams(original.shapeType,original.shapeParams,key,ratio);
       }
     }else if(interaction.mode==='resize-corner'){
-      draft=resizeRectFromCorner(interaction.original,interaction.corner,currentPoint,{
+      draft=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
         centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
       });
     }else if(interaction.mode==='resize'){
