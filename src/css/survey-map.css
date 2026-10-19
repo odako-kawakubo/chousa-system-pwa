@@ -233,7 +233,11 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 }
 .survey-map-shape-svg{border:0;overflow:visible}
 .survey-map-shape-svg polygon,.survey-map-shape-svg ellipse{
-  fill:transparent;stroke:#334155;stroke-width:2;vector-effect:non-scaling-stroke;
+  fill:var(--survey-shape-fill,transparent);
+  fill-opacity:var(--survey-shape-opacity,0);
+  stroke:var(--survey-shape-stroke,#334155);
+  stroke-width:var(--survey-shape-width,2px);
+  vector-effect:non-scaling-stroke;
   stroke-linejoin:round;stroke-linecap:round
 }
 .survey-map-object.selected .survey-map-shape-svg polygon,
