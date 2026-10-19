@@ -1343,7 +1343,8 @@ function bindEvents(){
       let rotation=a1-a0;
       if(shiftActive()||event.shiftKey)rotation=Math.round(rotation/(Math.PI/12))*(Math.PI/12);
       const cos=Math.cos(rotation),sin=Math.sin(rotation);
-      draft=strokeRecordWithPoints(original,original.points.map(p=>{
+      draft=strokeRecordWithPoints({...original,elbow:false,
+        rotation:(Number(original.rotation)||0)+rotation*180/Math.PI},original.points.map(p=>{
         const x=p.x-center.x,y=p.y-center.y;
         return {x:center.x+x*cos-y*sin,y:center.y+x*sin+y*cos};
       }));
