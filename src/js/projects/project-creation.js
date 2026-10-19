@@ -5,7 +5,7 @@
 import { createTemporaryProject, createFormalProjectFromOneDrive, temporaryDateCode } from './project-factory.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { getProject, getProjectList, saveProjectSnapshot } from './project-store.js';
-import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
+import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject, persistDrawingForProject } from '../sync/project-record-persistence.js';
 import { getDeviceCode } from '../device-code.js';
 import { createDrawingRecord } from '../records/drawing-record.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -44,16 +44,22 @@ export async function createTemporaryProjectSnapshot({ projectName, address }) {
     deviceCode: getDeviceCode()
   });
   const finishRecords = createDefaultFinishRecords();
+  const drawingRecord = createInitialSurveyMap(project);
   const snapshot = saveProjectSnapshot({
     project,
     finishRecords,
     materialRecords: [],
     photoRecords: [],
-    drawingRecords: [createInitialSurveyMap(project)],
+    drawingRecords: [drawingRecord],
     drawingObjects: [],
     source: 'temporary-project-create'
   });
   await persistProjectMetadataForProject(project, { initializeChangeLog: true });
+  try {
+    await persistDrawingForProject(project,drawingRecord,'initial-survey-map-create');
+  } catch (error) {
+    console.warn('初期調査図の同期を保留しました。',error);
+  }
   return snapshot || getProject(project.projectId);
 }
 
@@ -68,15 +74,21 @@ export async function createFormalProjectFromOneDriveSnapshot({ projectNo, proje
   }
 
   const finishRecords = createDefaultFinishRecords();
+  const drawingRecord = createInitialSurveyMap(project);
   const snapshot = saveProjectSnapshot({
     project,
     finishRecords,
     materialRecords: [],
     photoRecords: [],
-    drawingRecords: [createInitialSurveyMap(project)],
+    drawingRecords: [drawingRecord],
     drawingObjects: [],
     source: 'onedrive-formal-project-create'
   });
   await persistProjectMetadataForProject(project, { initializeChangeLog: true });
+  try {
+    await persistDrawingForProject(project,drawingRecord,'initial-survey-map-create');
+  } catch (error) {
+    console.warn('初期調査図の同期を保留しました。',error);
+  }
   return snapshot || getProject(project.projectId);
 }
