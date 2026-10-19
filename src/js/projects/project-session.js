@@ -113,15 +113,32 @@ export function refreshProjectViewsForChanges(impact = {}) {
   });
 }
 
+const unsentInitialDrawings=new Set();
 export function ensureInitialSurveyDrawing({persist=true}={}){
   const project=getCurrentProject();
-  if(!project?.projectId || !needsInitialSurveyMap(drawingRecordStore.getAll()))return false;
+  if(!project?.projectId)return false;
+  const active=drawingRecordStore.getActive();
+  if(active.length){
+    if(persist && unsentInitialDrawings.has(project.projectId)){
+      const initial=active.find(r=>r.drawingId===`D-initial-${project.projectId}`);
+      unsentInitialDrawings.delete(project.projectId);
+      if(initial && !project.isSample){
+        void persistDrawingForProject(project,initial,'initial-survey-drawing-repair')
+          .catch(error=>console.warn('調査図1の同期は保留しました',error));
+      }
+    }
+    return false;
+  }
   const record=createInitialSurveyMap(project);
   drawingRecordStore.set(record);
   saveCurrentProjectSession();
-  if(persist && !project.isSample){
-    void persistDrawingForProject(project,record,'initial-survey-drawing-repair')
-      .catch(error=>console.warn('調査図1の同期は保留しました',error));
+  if(!persist)unsentInitialDrawings.add(project.projectId);
+  else{
+    unsentInitialDrawings.delete(project.projectId);
+    if(!project.isSample){
+      void persistDrawingForProject(project,record,'initial-survey-drawing-repair')
+        .catch(error=>console.warn('調査図1の同期は保留しました',error));
+    }
   }
   refreshSurveyMap();
   return true;
