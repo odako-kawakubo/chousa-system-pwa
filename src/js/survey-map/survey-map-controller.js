@@ -413,10 +413,11 @@ async function deleteSelectedObject(){
     .filter(item=>item && !item.deleted && item.drawingId===selectedDrawingId);
   if(!records.length)return;
   clearSelection();
+  const source=records.length>1?'survey-map-group-delete':'survey-map-object-delete';
   await Promise.all(records.map(record=>commitDrawingObject(createDrawingObject({
     ...record,deleted:true,
     fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,'deleted',now)
-  }),'survey-map-object-delete')));
+  }),source)));
   renderSurveyMap();
 }
 
