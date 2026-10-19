@@ -902,6 +902,33 @@ jobs:
           grep -q "data-survey-polygon-finish" src/js/survey-map/survey-map-controller.js
           grep -q "data-survey-polygon-cancel" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-polygon-actions" src/css/survey-map.css
+          grep -Fq "'./js/survey-map/survey-map-history.js'" src/service-worker.js
+          grep -q "resizeRectFromCorner" src/js/survey-map/survey-map-geometry.js
+          grep -q "survey-map-shift-button" src/css/survey-map.css
+          grep -q "data-survey-shift" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-stroke-edit-mode" src/js/survey-map/survey-map-controller.js
+          grep -q "survey-map-group-move" src/js/survey-map/survey-map-controller.js
+          grep -q "createInitialSurveyMap" src/js/projects/project-creation.js
+          grep -q "activeDrawings().length<=1" src/js/survey-map/survey-map-controller.js
+          node --input-type=module <<'GEOMETRY'
+          import {resizeRectFromCorner} from './src/js/survey-map/survey-map-geometry.js';
+          const initial={x:2000,y:3000,width:4000,height:2000,rotation:0};
+          const opposite=resizeRectFromCorner(initial,'se',{x:9000,y:7000});
+          if(opposite.x!==2000||opposite.y!==3000||opposite.width!==7000||opposite.height!==4000)
+            throw new Error('opposite anchor resize failed');
+          const centered=resizeRectFromCorner(initial,'se',{x:9000,y:7000},{centerFixed:true});
+          if(Math.abs(centered.x+centered.width/2-4000)>0.001||Math.abs(centered.y+centered.height/2-4000)>0.001)
+            throw new Error('center anchored resize moved pivot');
+          GEOMETRY
+          node --input-type=module <<'HISTORY'
+          import {rememberSurveyEdit,historyStatus,takeUndo,takeRedo} from './src/js/survey-map/survey-map-history.js';
+          rememberSurveyEdit('T','drawingObject',null,{objectId:'O1',type:'shape'},'survey-map-object-create');
+          if(!historyStatus('T').undo)throw new Error('undo history missing');
+          const op=takeUndo('T');
+          if(op.changes[0].after.objectId!=='O1')throw new Error('undo operation mismatch');
+          if(!historyStatus('T').redo)throw new Error('redo history missing');
+          if(!takeRedo('T'))throw new Error('redo operation lost');
+          HISTORY
           grep -q "'freehand'" src/js/sync/record-field-merge.js
           node --input-type=module <<'SHAPES'
           import {SHAPE_TOOLS,shapeVertices,shapeSvgMarkup} from './src/js/survey-map/survey-map-shapes.js';
