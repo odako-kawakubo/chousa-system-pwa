@@ -246,7 +246,7 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   outline:2px solid #2563eb;
   outline-offset:2px;
 }
- .survey-map-object-handle{
+.survey-map-object-handle{
   position:absolute;
   z-index:4;
   width:12px;
