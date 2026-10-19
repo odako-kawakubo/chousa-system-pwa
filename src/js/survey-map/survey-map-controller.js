@@ -511,6 +511,7 @@ function svgIcon(name){
     range:'<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 3"/>',
     line:'<path d="M4 19L20 5"/>',
     correct:'<path d="M4 18L18 4"/><path d="M11 18h7v-7"/>',
+    hand:'<path d="M8 20l-3-4 1-3c.5-.8 1.6-.8 2.3 0l1.1 1V5a1.5 1.5 0 0 1 3 0v6-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v7-3a1.5 1.5 0 0 1 3 0v5c0 3-2 5-5 5z"/>',
     elbow:'<path d="M5 5v10h14"/>',
     room:'<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M8 9h8M8 13h5"/>',
     material:'<path d="M4 7h10l6 5-6 5H4z"/><circle cx="8" cy="12" r="1"/>',
