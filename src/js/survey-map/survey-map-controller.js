@@ -809,6 +809,22 @@ if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
         handle.style.top=`${draft.points[i].y/size.height*100}%`;
       }
     }
+    const size=pageSize(drawing);
+    const corners=[
+      ['nw',draft.x,draft.y],
+      ['ne',draft.x+draft.width,draft.y],
+      ['sw',draft.x,draft.y+draft.height],
+      ['se',draft.x+draft.width,draft.y+draft.height]
+    ];
+    for(const [corner,x,y] of corners){
+      const handle=objectEl.querySelector(`[data-survey-handle="stroke-resize-${corner}"]`);
+      if(handle){handle.style.left=`${x/size.width*100}%`;handle.style.top=`${y/size.height*100}%`;}
+    }
+    const rotateHandle=objectEl.querySelector('[data-survey-handle="stroke-rotate"]');
+    if(rotateHandle){
+      rotateHandle.style.left=`${(draft.x+draft.width/2)/size.width*100}%`;
+      rotateHandle.style.top=`${(draft.y-500)/size.height*100}%`;
+    }
   }
 }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
 else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
