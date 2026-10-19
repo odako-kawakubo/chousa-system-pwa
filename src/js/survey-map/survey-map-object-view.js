@@ -17,62 +17,67 @@ function lineDashArray(style,width){
   return '';
 }
 
+function polylineHandleHtml(record,size){
+  if(record.elbow){
+    const start=record.points[0],end=record.points.at(-1);
+    const mid={x:(record.points[1].x+record.points[2].x)/2,y:(record.points[1].y+record.points[2].y)/2};
+    return [
+      ['line-start',start,'始点'],['line-end',end,'終点'],['elbow-bend',mid,'折れ位置']
+    ].map(([handle,p,label])=>`
+      <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
+        data-survey-handle="${handle}" style="left:${finite(p.x)/size.width*100}%;top:${finite(p.y)/size.height*100}%"
+        aria-label="${label}を移動"></button>
+    `).join('');
+  }
+  const count=record.closed?record.points.length-1:record.points.length;
+  return record.points.slice(0,count).map((p,index)=>`
+    <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
+      data-survey-handle="stroke-point" data-survey-point-index="${index}"
+      style="left:${finite(p.x)/size.width*100}%;top:${finite(p.y)/size.height*100}%"
+      aria-label="頂点${index+1}を移動"></button>
+  `).join('');
+}
+
 function lineObjectHtml(record,drawing,selected){
   const size=pageSize(drawing);
-  if(Array.isArray(record.points) && record.points.length>1){
-    const points=record.points.map(p=>`${finite(p.x)},${finite(p.y)}`).join(' ');
-    const lineWidth=Math.max(20,finite(record.lineWidth,80));
-    const color=escapeHtml(record.lineColor||'#334155');
-    const closed=Boolean(record.closed);
-    return `
-      <div class="survey-map-object survey-map-object-line survey-map-object-stroke ${selected?'selected':''}"
-        data-survey-object-id="${escapeHtml(record.objectId)}" role="button" aria-label="補正線">
-        <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
-          <polyline class="survey-map-stroke-hit" points="${points}" ${closed?'data-closed="true"':''}></polyline>
-          <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}" stroke-width="${lineWidth}" ${closed?'data-closed="true"':''}></polyline>
-        </svg>
-        ${selected && record.elbow ? [
-          ['line-start',record.points[0],'始点'],
-          ['line-end',record.points[record.points.length-1],'終点'],
-          ['elbow-bend',record.points[1],'折れ位置']
-        ].map(([handle,p,label])=>`
-          <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
-            data-survey-handle="${handle}" style="left:${finite(p.x)/size.width*100}%;top:${finite(p.y)/size.height*100}%"
-            aria-label="${label}を移動"></button>
-        `).join(''):''}
-      </div>
-    `;
-  }
-  const startX=finite(record.startX);
-  const startY=finite(record.startY);
-  const endX=finite(record.endX);
-  const endY=finite(record.endY);
   const lineWidth=Math.max(20,finite(record.lineWidth,80));
   const color=escapeHtml(record.lineColor||record.strokeColor||'#334155');
   const dash=lineDashArray(String(record.lineStyle||'solid'),lineWidth);
-  const startLeft=(startX/size.width)*100;
-  const startTop=(startY/size.height)*100;
-  const endLeft=(endX/size.width)*100;
-  const endTop=(endY/size.height)*100;
-
+  const isPolyline=Array.isArray(record.points)&&record.points.length>1;
+  if(isPolyline){
+    const points=record.points.map(p=>`${finite(p.x)},${finite(p.y)}`).join(' ');
+    return `
+      <div class="survey-map-object survey-map-object-line survey-map-object-stroke ${selected?'selected':''}"
+        data-survey-object-id="${escapeHtml(record.objectId)}" role="button"
+        aria-label="${record.elbow?'カギ線':record.closed?'多角形':'補正線'}">
+        <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
+          preserveAspectRatio="none" aria-hidden="true">
+          <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
+          <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
+            stroke-width="${lineWidth}" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
+        </svg>
+        ${selected?polylineHandleHtml(record,size):''}
+      </div>
+    `;
+  }
+  const startX=finite(record.startX),startY=finite(record.startY);
+  const endX=finite(record.endX),endY=finite(record.endY);
   return `
-    <div
-      class="survey-map-object survey-map-object-line ${selected?'selected':''}"
-      data-survey-object-id="${escapeHtml(record.objectId)}"
-      role="button"
-      aria-label="直線"
-    >
-      <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
+    <div class="survey-map-object survey-map-object-line ${selected?'selected':''}"
+      data-survey-object-id="${escapeHtml(record.objectId)}" role="button" aria-label="直線">
+      <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
+        preserveAspectRatio="none" aria-hidden="true">
         <line class="survey-map-line-hit" x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}"></line>
         <line class="survey-map-line-main" x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}"
           stroke="${color}" stroke-width="${lineWidth}" ${dash?`stroke-dasharray="${dash}"`:''}></line>
       </svg>
-      ${selected?`
-        <button type="button" class="survey-map-object-handle survey-map-line-endpoint" data-survey-handle="line-start"
-          style="left:${startLeft}%;top:${startTop}%" aria-label="始点を移動"></button>
-        <button type="button" class="survey-map-object-handle survey-map-line-endpoint" data-survey-handle="line-end"
-          style="left:${endLeft}%;top:${endTop}%" aria-label="終点を移動"></button>
-      `:''}
+      ${selected?[
+        ['line-start',startX,startY,'始点'],['line-end',endX,endY,'終点']
+      ].map(([handle,x,y,label])=>`
+        <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
+          data-survey-handle="${handle}" style="left:${x/size.width*100}%;top:${y/size.height*100}%"
+          aria-label="${label}を移動"></button>
+      `).join(''):''}
     </div>
   `;
 }
