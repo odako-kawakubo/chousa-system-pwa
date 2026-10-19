@@ -80,6 +80,14 @@
 .survey-map-tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .survey-map-tool-grid .survey-map-icon-btn{width:100%;height:40px;min-width:0}
 .survey-map-tool-cell{display:grid;gap:2px;justify-items:center}
+.survey-map-room-picker{display:grid;gap:5px;margin-top:10px;font-size:12px}
+.survey-map-room-picker label{color:#64748b;font-weight:600}
+.survey-map-room-picker select{width:100%;min-height:38px;border:1px solid #d6dce5;border-radius:8px;background:#fff;padding:6px;color:#334155}
+.survey-map-room-label{height:100%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:clamp(10px,1.1vw,16px);color:#334155;white-space:nowrap;
+  border:1px solid transparent;pointer-events:none;overflow:hidden}
+.survey-map-object-room.selected .survey-map-room-label{border:1px dashed #2563eb;background:#eff6ff}
+
 
 .survey-map-overlay-panel{
   position:absolute;
