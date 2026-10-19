@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.11 Preview
+name: Deploy v0.1.10.12 Preview
 
 on:
   push:
@@ -865,17 +865,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.11 consistency checks
+      - name: v0.1.10.12 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.11'" src/config/app-config.js
+          grep -q "version: '0.1.10.12'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.11"' src/version.json
+          grep -q '"version": "0.1.10.12"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.11" src/service-worker.js
-          grep -q "chousa-output-libs-v011011" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.12" src/service-worker.js
+          grep -q "chousa-output-libs-v011012" src/service-worker.js
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
@@ -920,6 +920,30 @@ jobs:
           grep -q "data-survey-stroke-edit-mode" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-group-move" src/js/survey-map/survey-map-controller.js
           grep -q "createInitialSurveyMap" src/js/projects/project-creation.js
+          grep -q "shapeAdjusters" src/js/survey-map/survey-map-shapes.js
+          grep -q "updatedShapeParams" src/js/survey-map/survey-map-controller.js
+          grep -q "create-polygon-edge" src/js/survey-map/survey-map-controller.js
+          grep -q "create-shape" src/js/survey-map/survey-map-controller.js
+          grep -q "event.ctrlKey" src/js/survey-map/survey-map-controller.js
+          grep -q "ensureInitialSurveyDrawing" src/js/projects/project-controller.js
+          grep -q "'shapeParams'" src/js/sync/record-field-merge.js
+          grep -Fq "'./js/projects/initial-survey-drawing.js'" src/service-worker.js
+          node --input-type=module <<'SHAPEADJUST'
+          import {shapeVertices,shapeAdjusters,updatedShapeParams} from './src/js/survey-map/survey-map-shapes.js';
+          for(const kind of ['lshape','tshape','cross','concave']){
+            if(!shapeAdjusters(kind).length)throw new Error('missing shape adjusters '+kind);
+            const edit=shapeAdjusters(kind)[0];
+            const updated=updatedShapeParams(kind,{},edit.key,.55);
+            if(!shapeVertices(kind,updated).length)throw new Error('invalid adjusted shape '+kind);
+          }
+          SHAPEADJUST
+          node --input-type=module <<'FIRSTDRAWING'
+          import {createInitialSurveyMap,needsInitialSurveyMap} from './src/js/projects/initial-survey-drawing.js';
+          const p={projectId:'test-123',projectName:'test'};
+          const a=createInitialSurveyMap(p),b=createInitialSurveyMap(p);
+          if(a.drawingId!==b.drawingId||!needsInitialSurveyMap([])||needsInitialSurveyMap([a]))
+            throw new Error('initial drawing id or empty-check failed');
+          FIRSTDRAWING
           grep -q "activeDrawings().length<=1" src/js/survey-map/survey-map-controller.js
           node --input-type=module <<'GEOMETRY'
           import {resizeRectFromCorner} from './src/js/survey-map/survey-map-geometry.js';
