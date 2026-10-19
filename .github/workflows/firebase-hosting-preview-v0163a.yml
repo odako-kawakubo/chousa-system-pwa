@@ -914,7 +914,7 @@ jobs:
           const elbow=elbowRecordWithPoints({type:'line',elbow:true},100,200,500,700,300);
           if(elbow.points[1].x!==300||elbow.points[2].x!==300)throw new Error('elbow path incorrect');
           TRANSFORMS
-          grep -q "resizeRectFromCorner" src/js/survey-map/survey-map-geometry.js
+          grep -q "resizeRectFromDrag" src/js/survey-map/survey-map-geometry.js
           grep -q "survey-map-shift-button" src/css/survey-map.css
           grep -q "data-survey-shift" src/js/survey-map/survey-map-controller.js
           grep -q "data-survey-stroke-edit-mode" src/js/survey-map/survey-map-controller.js
