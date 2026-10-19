@@ -29,7 +29,7 @@ export const RECORD_MERGE_FIELDS = Object.freeze({
     'materialId','samplingBranch','resultStatus','exclusionReason','materialNoSnapshot','partSnapshot','materialNameSnapshot',
     'autoStyle','manualStyleOverride','textStyle','borderStyle','backgroundStyle',
     'shape','color','size','strokeColor','strokeWidth','points','vertices','lineColor','lineWidth','lineStyle',
-    'startX','startY','endX','endY','startEndShape','endEndShape','startConnection','endConnection','fillEnabled','fillColor','fillOpacity',
+    'startX','startY','endX','endY','closed','startEndShape','endEndShape','startConnection','endConnection','fillEnabled','fillColor','fillOpacity',
     'lineEnabled','shapeType','text','fontSize','textColor','fontWeight','textAlign','borderEnabled',
     'backgroundEnabled','backgroundColor','wrapMode','sourceType','assetPath','fileName','fileType',
     'originalWidth','originalHeight','crop','opacity','brightness','pdfPageNo','aspectLocked'
