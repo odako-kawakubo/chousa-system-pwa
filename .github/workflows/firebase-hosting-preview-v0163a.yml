@@ -3,7 +3,7 @@ name: Deploy v0.1.10.7 Preview
 on:
   push:
     branches:
-      - work/v0.1.10.7-20261013
+      - work/v0.1.10.6-20261013
 
 concurrency:
   group: firebase-preview-v0163a
