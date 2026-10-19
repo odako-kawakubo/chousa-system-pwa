@@ -903,6 +903,17 @@ jobs:
           grep -q "data-survey-polygon-cancel" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-polygon-actions" src/css/survey-map.css
           grep -Fq "'./js/survey-map/survey-map-history.js'" src/service-worker.js
+          grep -Fq "'./js/survey-map/survey-map-transforms.js'" src/service-worker.js
+          grep -q "from './survey-map-transforms.js'" src/js/survey-map/survey-map-controller.js
+          node --input-type=module <<'TRANSFORMS'
+          import {strokeRecordWithPoints,elbowRecordWithPoints,translateObject} from './src/js/survey-map/survey-map-transforms.js';
+          const stroke=strokeRecordWithPoints({type:'line'},[{x:50,y:80},{x:150,y:180}]);
+          if(stroke.width!==100||stroke.height!==100)throw new Error('stroke bounds incorrect');
+          const moved=translateObject(stroke,30,40);
+          if(moved.points[0].x!==80||moved.points[0].y!==120)throw new Error('stroke translation incorrect');
+          const elbow=elbowRecordWithPoints({type:'line',elbow:true},100,200,500,700,300);
+          if(elbow.points[1].x!==300||elbow.points[2].x!==300)throw new Error('elbow path incorrect');
+          TRANSFORMS
           grep -q "resizeRectFromCorner" src/js/survey-map/survey-map-geometry.js
           grep -q "survey-map-shift-button" src/css/survey-map.css
           grep -q "data-survey-shift" src/js/survey-map/survey-map-controller.js
