@@ -31,6 +31,15 @@ function lineObjectHtml(record,drawing,selected){
           <polyline class="survey-map-stroke-hit" points="${points}" ${closed?'data-closed="true"':''}></polyline>
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}" stroke-width="${lineWidth}" ${closed?'data-closed="true"':''}></polyline>
         </svg>
+        ${selected && record.elbow ? [
+          ['line-start',record.points[0],'始点'],
+          ['line-end',record.points[record.points.length-1],'終点'],
+          ['elbow-bend',record.points[1],'折れ位置']
+        ].map(([handle,p,label])=>`
+          <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
+            data-survey-handle="${handle}" style="left:${finite(p.x)/size.width*100}%;top:${finite(p.y)/size.height*100}%"
+            aria-label="${label}を移動"></button>
+        `).join(''):''}
       </div>
     `;
   }
