@@ -352,3 +352,5 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-icon-btn.survey-map-tool-continuous{outline:3px double #1d4ed8;outline-offset:2px}
 
 .survey-map-shape-adjuster{transform:translate(-50%,-50%);border-color:#d97706;background:#fef3c7;cursor:crosshair}
+
+.survey-map-shape-vertex{transform:translate(-50%,-50%);background:#fff;cursor:crosshair}
