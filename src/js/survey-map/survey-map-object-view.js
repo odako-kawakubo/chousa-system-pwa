@@ -106,6 +106,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
     .filter((record)=>record && record.visible !== false && !record.deleted)
     .map((record)=>{
       const selected = selectedIds.has(String(record.objectId));
+      const shapeMode=record.shapeType==='circle'?'shape':editMode;
       if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode);
 
       const style = objectPercentStyle(record, drawing);
@@ -141,26 +142,26 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
           ${selected ? `
-            ${record.type==='shape' && editMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map((p,index)=>`
+            ${record.type==='shape' && shapeMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map((p,index)=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-vertex"
                 style="left:${p.x*100}%;top:${p.y*100}%"
                 data-survey-handle="shape-vertex" data-survey-point-index="${index}"
                 aria-label="図形頂点${index+1}を移動"></button>
             `).join(''):''}
-            ${record.type==='shape' && editMode==='shape' && !record.customVertices ? shapeAdjusters(record.shapeType,record.shapeParams).map(handle=>`
+            ${record.type==='shape' && shapeMode==='shape' && !record.customVertices ? shapeAdjusters(record.shapeType,record.shapeParams).map(handle=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-adjuster"
                 style="left:${handle.x*100}%;top:${handle.y*100}%"
                 data-survey-handle="shape-adjust" data-survey-param="${handle.key}"
                 aria-label="図形の${handle.key}を調整"></button>
             `).join(''):''}
-            ${record.type==='shape' ? (editMode==='shape'?['nw','ne','sw','se']:[]).map(corner=>`
+            ${record.type==='shape' ? (shapeMode==='shape'?['nw','ne','sw','se']:[]).map(corner=>`
               <button type="button" class="survey-map-object-handle survey-map-corner-handle survey-map-corner-${corner}"
                 data-survey-handle="resize-${corner}" aria-label="${corner}からサイズ変更"></button>
             `).join('') : `
               <button type="button" class="survey-map-object-handle survey-map-object-resize-handle"
                 data-survey-handle="resize" aria-label="サイズ変更"></button>
             `}
-            ${editMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-object-rotate-handle"
+            ${shapeMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-object-rotate-handle"
               data-survey-handle="rotate" aria-label="回転"></button>`:''}
           ` : ''}
         </div>
