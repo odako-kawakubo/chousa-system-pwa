@@ -83,11 +83,13 @@ function lineObjectHtml(record,drawing,selected){
   `;
 }
 
-export function drawingObjectsHtml(records = [], drawing, selectedObjectId = '') {
+export function drawingObjectsHtml(records = [], drawing, selection = '') {
+  const selectedIds=selection instanceof Set ? selection :
+    new Set(Array.isArray(selection)?selection:[String(selection)]);
   return records
     .filter((record)=>record && record.visible !== false && !record.deleted)
     .map((record)=>{
-      const selected = String(record.objectId) === String(selectedObjectId);
+      const selected = selectedIds.has(String(record.objectId));
       if(record.type==='line') return lineObjectHtml(record,drawing,selected);
 
       const style = objectPercentStyle(record, drawing);
