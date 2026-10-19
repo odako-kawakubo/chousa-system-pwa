@@ -81,10 +81,12 @@ export function flipSingleObject(record,axis){
     return {...record,[name]:!record[name]};
   }
   const b=objectBounds(record),cx=b.x+b.width/2,cy=b.y+b.height/2;
-  return transformPoints(record,p=>({
+  const transformed=transformPoints(record,p=>({
     x:axis==='horizontal'?2*cx-p.x:p.x,
     y:axis==='vertical'?2*cy-p.y:p.y
   }));
+  const angle=Number(record.rotation)||0;
+  return {...transformed,rotation:axis==='horizontal'?180-angle:-angle};
 }
 export function scaleObjectInGroup(record,bounds,nextBounds){
   const sx=nextBounds.width/Math.max(1,bounds.width),sy=nextBounds.height/Math.max(1,bounds.height);
