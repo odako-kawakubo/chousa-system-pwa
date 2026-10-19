@@ -25,6 +25,8 @@ let editPanelOpen=false;
 let pagesOpen=false;
 let selectedObjectId='';
 let activeTool='select';
+let continuousTool='';
+let lastToolTap=null;
 let zoomLevel=1;
 let pointerInteraction=null;
 
@@ -143,7 +145,7 @@ async function createRectangleAt(clientX,clientY){
     ],now)
   });
   selectedObjectId=record.objectId;
-  activeTool='select';
+  if(continuousTool!=='rect') activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
 }
@@ -250,7 +252,7 @@ async function createCorrectedStroke(drawing,rawPoints){
     ],now)
   });
   selectedObjectId=record.objectId;
-  activeTool='select';
+  if(continuousTool!=='correct') activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
 }
@@ -285,7 +287,7 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
     ],now)
   });
   selectedObjectId=record.objectId;
-  activeTool='select';
+  if(continuousTool!=='line') activeTool='select';
   await commitDrawingObject(record,'survey-map-line-create');
   return record;
 }
@@ -448,7 +450,8 @@ function toolIconCell(icon,label,toolName,disabled=true){
     label,
     disabled,
     active:activeTool===toolName,
-    attr:disabled?'':`data-survey-draw-tool="${escapeHtml(toolName)}"`
+    className:continuousTool===toolName?'survey-map-tool-continuous':'',
+    attr:disabled?'':`data-survey-draw-tool="${escapeHtml(toolName)}" aria-pressed="${activeTool===toolName}"`
   })}</div>`;
 }
 
@@ -678,9 +681,26 @@ function bindEvents(){
 
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
-      activeTool=String(drawTool.dataset.surveyDrawTool||'select');
-      toolPanelOpen=false;
-      renderSurveyMap();
+      const requested=String(drawTool.dataset.surveyDrawTool||'select');
+      const now=Date.now();
+      const repeatedTap=(event.detail>=2 || (
+        lastToolTap?.tool===requested && now-lastToolTap.at<380
+      ));
+      lastToolTap={tool:requested,at:now};
+      if(repeatedTap && ['line','rect','correct'].includes(requested)){
+        continuousTool=continuousTool===requested?'':requested;
+      }else if(requested!==continuousTool){
+        continuousTool='';
+      }else{
+        continuousTool='';
+      }
+      activeTool=requested;
+      mount.querySelectorAll('[data-survey-draw-tool]').forEach((button)=>{
+        const tool=button.dataset.surveyDrawTool;
+        button.classList.toggle('active',tool===activeTool);
+        button.classList.toggle('survey-map-tool-continuous',tool===continuousTool);
+        button.setAttribute('aria-pressed',String(tool===activeTool));
+      });
       return;
     }
 
