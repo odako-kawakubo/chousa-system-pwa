@@ -25,6 +25,12 @@ let toolPanelOpen=false;
 let editPanelOpen=false;
 let pagesOpen=false;
 let selectedObjectId='';
+let selectedObjectIds=new Set();
+function selectOnly(id){
+  selectedObjectId=id||'';
+  selectedObjectIds=new Set(id?[id]:[]);
+}
+function clearSelection(){selectOnly('');}
 let activeTool='select';
 let selectedRoomKey='';
 let continuousTool='';
@@ -93,6 +99,7 @@ function selectedObject(){
   if(!selectedObjectId) return null;
   const object=drawingObjectStore.get(selectedObjectId);
   if(!object || object.deleted || object.drawingId!==selectedDrawingId){
+    selectedObjectIds.delete(selectedObjectId);
     selectedObjectId='';
     return null;
   }
@@ -168,7 +175,7 @@ async function createRoomLabelAt(clientX,clientY){
       'areaCode','roomPosition','roomNoSnapshot','roomNameSnapshot','text','fontSize','textColor','fontWeight'
     ],now)
   });
-  selectedObjectId=record.objectId;
+  selectOnly(record.objectId);
   if(continuousTool!=='room')activeTool='select';
   await commitDrawingObject(record,'survey-map-room-label-create');
   renderSurveyMap();
@@ -212,7 +219,7 @@ async function createShapeAt(kind,clientX,clientY){
       'shapeType','fillEnabled','fillColor','fillOpacity','lineEnabled','strokeColor','strokeWidth'
     ],now)
   });
-  selectedObjectId=record.objectId;
+  selectOnly(record.objectId);
   if(continuousTool!==kind) activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
@@ -333,7 +340,7 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
       'points','closed','freehand','lineColor','lineWidth','lineStyle','visible','locked','deleted'
     ],now)
   },corrected));
-  selectedObjectId=record.objectId;
+  selectOnly(record.objectId);
   if(continuousTool!==(polygon?'polygon':freehand?'hand':'correct')) activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
@@ -377,7 +384,7 @@ async function createElbowFromPoints(drawing,start,end){
     'drawingId','type','elbow','points','startX','startY','endX','endY','bendX',
     'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle'
   ],now)});
-  selectedObjectId=record.objectId;
+  selectOnly(record.objectId);
   if(continuousTool!=='elbow')activeTool='select';
   await commitDrawingObject(record,'survey-map-elbow-create');
   return record;
@@ -411,7 +418,7 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
       'startX','startY','endX','endY','lineColor','lineWidth','lineStyle'
     ],now)
   });
-  selectedObjectId=record.objectId;
+  selectOnly(record.objectId);
   if(continuousTool!=='line') activeTool='select';
   await commitDrawingObject(record,'survey-map-line-create');
   return record;
@@ -644,7 +651,7 @@ function sheetHtml(drawing){
   </svg>`:'';
   return `
     <div class="survey-map-fixed-title">${title}</div>
-    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectId)}${draftHtml}</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds)}${draftHtml}</div>
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
@@ -773,6 +780,7 @@ function bindEvents(){
     const pageButton=event.target.closest('[data-survey-page]');
     if(pageButton){
       selectedDrawingId=String(pageButton.dataset.surveyPage||'');
+      clearSelection();
       selectedObjectId='';
       pagesOpen=false;
       renderSurveyMap();
