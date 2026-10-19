@@ -17,7 +17,7 @@ import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
 import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
-import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject } from './survey-map-transforms.js';
+import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup } from './survey-map-transforms.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -43,11 +43,30 @@ let pointerInteraction=null;
 let polygonDraft=null;
 let shiftPointerId=null;
 let physicalShift=false;
-let ratioLocked=false;
+const DEFAULT_STROKE_WIDTH=80;
+const GRID_SPACINGS=[250,500,750,1000,2000];
+let gridSpacing=1000;
+let gridSnap=false;
 let strokeEditMode='shape';
 function shiftActive(){return shiftPointerId!==null||physicalShift;}
 function syncShiftButton(){
   root()?.querySelector('[data-survey-shift]')?.classList.toggle('active',shiftActive());
+}
+function snapGridPoint(point){
+  if(!gridSnap)return point;
+  return {x:Math.round(point.x/gridSpacing)*gridSpacing,
+    y:Math.round(point.y/gridSpacing)*gridSpacing};
+}
+function pagePointer(x,y,rect,drawing){
+  return snapGridPoint(clientToPagePoint(x,y,rect,drawing));
+}
+function multiBounds(objects){
+  if(!objects.length)return null;
+  const x=Math.min(...objects.map(o=>Number(o.x)||0));
+  const y=Math.min(...objects.map(o=>Number(o.y)||0));
+  const right=Math.max(...objects.map(o=>(Number(o.x)||0)+(Number(o.width)||0)));
+  const bottom=Math.max(...objects.map(o=>(Number(o.y)||0)+(Number(o.height)||0)));
+  return {x,y,width:Math.max(1,right-x),height:Math.max(1,bottom-y)};
 }
 function snapLinePoint(start,end){
   const dx=end.x-start.x,dy=end.y-start.y,dist=Math.hypot(dx,dy);
@@ -176,7 +195,7 @@ async function createRoomLabelAt(clientX,clientY){
   const drawing=selectedDrawing(),room=selectedRoom();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing||!room||!sheet)return;
-  const point=clientToPagePoint(clientX,clientY,sheet.getBoundingClientRect(),drawing);
+  const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing);
   const rect=clampObjectRect({x:point.x-1600,y:point.y-480,width:3200,height:960},drawing);
   const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const record=createDrawingObject({
@@ -202,7 +221,7 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null){
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing || !sheet) return;
-  const point=clientToPagePoint(clientX,clientY,sheet.getBoundingClientRect(),drawing);
+  const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing);
   const width=otherPoint?Math.abs(otherPoint.x-point.x):3600;
   const height=otherPoint?Math.abs(otherPoint.y-point.y):2400;
   const rect=clampObjectRect(otherPoint&&width>120&&height>120?{
@@ -228,7 +247,7 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null){
     fillOpacity:0,
     lineEnabled:true,
     strokeColor:'#334155',
-    strokeWidth:80,
+    strokeWidth:DEFAULT_STROKE_WIDTH,
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
@@ -313,7 +332,7 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
     layer:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
-    rotation:0,closed,freehand,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
+    rotation:0,closed,freehand,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','layer','order','x','y','width','height','rotation',
@@ -353,7 +372,7 @@ async function createElbowFromPoints(drawing,start,end){
   const base=elbowRecordWithPoints({
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',elbow:true,
     layer:DRAWING_LAYERS.SHAPE,order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
-    visible:true,locked:false,deleted:false,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
+    visible:true,locked:false,deleted:false,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     createdAt:new Date(now).toISOString()
   },start.x,start.y,end.x,end.y,(start.x+end.x)/2);
   const record=createDrawingObject({...base,fieldEditedAt:touchFieldEditedAt({},[
@@ -382,7 +401,7 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
     locked:false,
     deleted:false,
     lineColor:'#334155',
-    lineWidth:80,
+    lineWidth:DEFAULT_STROKE_WIDTH,
     lineStyle:'solid',
     createdAt:new Date(now).toISOString()
   };
@@ -655,20 +674,30 @@ function sheetHtml(drawing){
   </svg>`:'';
   return `
     <div class="survey-map-fixed-title">${title}</div>
-    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
   `;
 }
 
+function multiSelectionHandles(drawing,objects){
+  if(selectedObjectIds.size<2)return '';
+  const chosen=objects.filter(o=>selectedObjectIds.has(o.objectId)&&!o.deleted);
+  const b=multiBounds(chosen);
+  if(!b)return '';
+  const size=pageSize(drawing);
+  return `<div class="survey-map-group-bounds" style="left:${b.x/size.width*100}%;top:${b.y/size.height*100}%;width:${b.width/size.width*100}%;height:${b.height/size.height*100}%">
+    ${['nw','ne','sw','se'].map(c=>`<button class="survey-map-group-handle" type="button" data-survey-group-corner="${c}" aria-label="複数選択を${c}から拡大縮小"></button>`).join('')}
+  </div>`;
+}
 function editorHtml(drawing){
   if(!drawing){
     return '<div class="survey-map-hint">ページを選択すると編集項目が表示されます。</div>';
   }
   const object=selectedObject();
   if(selectedObjectIds.size>1){
-    return `<div class="survey-map-hint"><b>${selectedObjectIds.size}個のオブジェクトを選択中</b><br>ドラッグするとまとめて移動できます。</div>
+    return `<div class="survey-map-hint"><b>${selectedObjectIds.size}個のオブジェクトを選択中</b><br>ドラッグでまとめて移動、四隅のハンドルで拡大縮小できます。</div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
   }
   if(object){
@@ -711,6 +740,16 @@ function editorHtml(drawing){
         ${details}
       </div>
       ${modeControls}
+      <div class="survey-map-editor-row"><label>回転・反転（単体選択）</label>
+        <div class="survey-map-edit-mode-row">
+          <button type="button" class="btn small" data-survey-transform="ccw">左90°</button>
+          <button type="button" class="btn small" data-survey-transform="cw">右90°</button>
+          <button type="button" class="btn small" data-survey-transform="flipX">左右反転</button>
+          <button type="button" class="btn small" data-survey-transform="flipY">上下反転</button>
+        </div>
+        <label>回転角度（°）</label>
+        <input type="number" step="1" data-survey-angle value="${Math.round(Number(object.rotation)||0)}">
+      </div>
       ${styleControls}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
@@ -759,7 +798,14 @@ export function renderSurveyMap(){
           <button type="button" class="btn small survey-map-text-btn" data-survey-redo ${history.redo?'':'disabled'}>進む</button>
           <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
           <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
-          <button type="button" class="btn small survey-map-text-btn ${ratioLocked?'active':''}" data-survey-ratio-toggle>比率固定</button>
+          <div class="survey-map-grid-setting">
+            <label>間隔
+              <select data-survey-grid-spacing>
+                ${GRID_SPACINGS.map(v=>`<option value="${v}" ${gridSpacing===v?'selected':''}>${(v/1000).toFixed(2).replace(/0$/,'')}m</option>`).join('')}
+              </select>
+            </label>
+            <label><input type="checkbox" data-survey-grid-snap ${gridSnap?'checked':''}>スナップ</label>
+          </div>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-out>−</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-in>＋</button>
@@ -772,7 +818,7 @@ export function renderSurveyMap(){
 
         <div class="survey-map-stage">
           ${pagesPopoverHtml()}
-          <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px)">${sheetHtml(drawing)}</div>
+          <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
         </div>
       </main>
       <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}"
@@ -804,6 +850,14 @@ export function renderSurveyMap(){
   `;
 }
 
+async function commitChangedObject(current,draft,source){
+  if(!current)return;
+  const keys=['x','y','width','height','rotation','points','startX','startY','endX','endY','bendX','elbow','flipX','flipY'];
+  const changed=keys.filter(key=>JSON.stringify(current[key])!==JSON.stringify(draft[key]));
+  if(!changed.length)return;
+  const next=createDrawingObject({...current,...draft,fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,changed,Date.now())});
+  await commitDrawingObject(next,source);
+}
 function paintObjectDraft(objectEl,draft,drawing){
 if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
   const polyline=objectEl.querySelector('.survey-map-stroke-main');
@@ -963,9 +1017,15 @@ function bindEvents(){
       renderSurveyMap();
       return;
     }
-    if(event.target.closest('[data-survey-ratio-toggle]')){
-      ratioLocked=!ratioLocked;
-      renderSurveyMap();
+    const transformButton=event.target.closest('[data-survey-transform]');
+    if(transformButton){
+      const mode=transformButton.dataset.surveyTransform;
+      const record=selectedObject();
+      if(!record||selectedObjectIds.size!==1)return;
+      const updated=mode==='cw'?rotateSingleObject(record,90):
+        mode==='ccw'?rotateSingleObject(record,-90):
+        flipSingleObject(record,mode==='flipX'?'horizontal':'vertical');
+      void commitChangedObject(record,updated,'survey-map-transform').then(()=>renderSurveyMap());
       return;
     }
     if(event.target.closest('[data-survey-object-delete]')){
@@ -992,6 +1052,7 @@ function bindEvents(){
     if(event.target.closest('[data-survey-grid]')){
       gridVisible=!gridVisible;
       renderSurveyMap();
+      return;
     }
   });
 
@@ -1008,6 +1069,16 @@ function bindEvents(){
     const sheet=event.target.closest('.survey-map-sheet');
     if(!drawing || !sheet) return;
 
+    const groupHandle=event.target.closest('[data-survey-group-corner]');
+    if(groupHandle && activeTool==='select' && selectedObjectIds.size>1){
+      const originals=Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(o=>o&&!o.deleted);
+      const bounds=multiBounds(originals);
+      pointerInteraction={pointerId:event.pointerId,mode:'group-resize',corner:groupHandle.dataset.surveyGroupCorner,
+        groupOriginals:originals,groupDrafts:originals,startPoint:pagePointer(event.clientX,event.clientY,sheet.getBoundingClientRect(),drawing),
+        original:{...bounds},sheetRect:sheet.getBoundingClientRect()};
+      groupHandle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();return;
+    }
     const objectEl=event.target.closest('[data-survey-object-id]');
     if(objectEl && activeTool==='select'){
       const objectId=String(objectEl.dataset.surveyObjectId||'');
@@ -1041,7 +1112,7 @@ function bindEvents(){
           handle==='shape-vertex'?'shape-vertex':handle==='shape-adjust'?'shape-adjust':
           handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId,
@@ -1069,7 +1140,7 @@ function bindEvents(){
     }
     if(activeTool==='polygon' && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
-      const point=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const point=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       if(!polygonDraft || polygonDraft.drawingId!==drawing.drawingId){
         polygonDraft={drawingId:drawing.drawingId,points:[point]};
       }
@@ -1083,7 +1154,7 @@ function bindEvents(){
     }
     if(isShapeTool(activeTool) && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       previewEl?.querySelector('line')?.remove();
       const previewRect=document.createElementNS('http://www.w3.org/2000/svg','rect');
@@ -1098,7 +1169,7 @@ function bindEvents(){
 
     if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand') && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
+      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
@@ -1129,7 +1200,7 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     const drawing=selectedDrawing();
     if(!drawing) return;
-    const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+    const currentPoint=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
 
     if(interaction.mode==='create-polygon-edge'){
       const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
@@ -1172,6 +1243,26 @@ function bindEvents(){
       return;
     }
 
+    if(interaction.mode==='group-resize'){
+      const bounds=interaction.original;
+      const next=resizeRectFromDrag(bounds,interaction.corner,interaction.startPoint,currentPoint,{
+        centerFixed:shiftActive()||event.shiftKey,ratioFixed:false
+      });
+      interaction.groupDrafts=interaction.groupOriginals.map(o=>scaleObjectInGroup(o,bounds,next));
+      for(const draft of interaction.groupDrafts){
+        const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
+        if(element)paintObjectDraft(element,draft,drawing);
+      }
+      const outline=mount.querySelector('.survey-map-group-bounds');
+      if(outline){
+        const size=pageSize(drawing);
+        outline.style.left=`${next.x/size.width*100}%`;
+        outline.style.top=`${next.y/size.height*100}%`;
+        outline.style.width=`${next.width/size.width*100}%`;
+        outline.style.height=`${next.height/size.height*100}%`;
+      }
+      event.preventDefault();return;
+    }
     if(interaction.mode==='group-move'){
       const originals=interaction.groupOriginals;
       const size=pageSize(drawing);
@@ -1216,7 +1307,7 @@ function bindEvents(){
       }
     }else if(interaction.mode==='stroke-resize'){
       const original=interaction.original,rect=resizeRectFromDrag(original,interaction.corner,interaction.startPoint,currentPoint,{
-        centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
+        centerFixed:shiftActive()||event.shiftKey,ratioFixed:false
       });
       const oldW=Math.max(1,Number(original.width)||0),oldH=Math.max(1,Number(original.height)||0);
       draft=strokeRecordWithPoints(original,original.points.map(p=>({
@@ -1315,7 +1406,7 @@ function bindEvents(){
       }
     }else if(interaction.mode==='resize-corner'){
       draft=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
-        centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
+        centerFixed:shiftActive()||event.shiftKey,ratioFixed:false
       });
     }else if(interaction.mode==='resize'){
       const rect=clampObjectRect({
@@ -1365,7 +1456,7 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const raw=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const raw=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const end=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,raw):raw;
       if(Math.hypot(end.x-interaction.startPoint.x,end.y-interaction.startPoint.y)>=150){
         addPolygonVertex(drawing,end);
@@ -1380,10 +1471,18 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const x=interaction.sheetRect.left+interaction.startPoint.x/pageSize(drawing).width*interaction.sheetRect.width;
       const y=interaction.sheetRect.top+interaction.startPoint.y/pageSize(drawing).height*interaction.sheetRect.height;
       void createShapeAt(interaction.kind,x,y,end).then(()=>renderSurveyMap());
+      return;
+    }
+    if(interaction.mode==='group-resize'){
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      void Promise.all(interaction.groupDrafts.map(draft=>{
+        const old=drawingObjectStore.get(draft.objectId);
+        return commitChangedObject(old,draft,'survey-map-group-resize');
+      })).then(()=>renderSurveyMap());
       return;
     }
     if(interaction.mode==='group-move'){
@@ -1405,7 +1504,7 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       void createElbowFromPoints(drawing,interaction.startPoint,end).then(()=>renderSurveyMap());
       return;
     }
@@ -1414,7 +1513,7 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const last=interaction.rawPoints.at(-1);
       if(Math.hypot(end.x-last.x,end.y-last.y)>20)interaction.rawPoints.push(end);
       void createCorrectedStroke(drawing,interaction.rawPoints,interaction.mode==='create-hand').then(()=>renderSurveyMap());
@@ -1429,7 +1528,7 @@ function bindEvents(){
       }
       const drawing=selectedDrawing();
       if(!drawing) return;
-      const rawEnd=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const rawEnd=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const endPoint=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,rawEnd):rawEnd;
       void createLineFromPoints(drawing,interaction.startPoint,endPoint).then(()=>renderSurveyMap());
       return;
@@ -1472,6 +1571,23 @@ function bindEvents(){
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
   mount.addEventListener('change',(event)=>{
+    if(event.target.matches('[data-survey-grid-spacing]')){
+      gridSpacing=Number(event.target.value)||1000;
+      renderSurveyMap();return;
+    }
+    if(event.target.matches('[data-survey-grid-snap]')){
+      gridSnap=Boolean(event.target.checked);
+      renderSurveyMap();return;
+    }
+    if(event.target.matches('[data-survey-angle]')){
+      const record=selectedObject();
+      if(record&&selectedObjectIds.size===1){
+        const desired=Number(event.target.value)||0;
+        const updated=rotateSingleObject(record,desired-(Number(record.rotation)||0));
+        void commitChangedObject(record,updated,'survey-map-angle').then(()=>renderSurveyMap());
+      }
+      return;
+    }
     const styleInput=event.target.closest('[data-survey-style-field]');
     if(styleInput){
       const record=selectedObject();
