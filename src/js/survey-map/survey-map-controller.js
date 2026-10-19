@@ -31,6 +31,7 @@ let continuousTool='';
 let lastToolTap=null;
 let zoomLevel=1;
 let pointerInteraction=null;
+let polygonDraft=null;
 
 function root(){ return document.getElementById('survey-map'); }
 function activeDrawings(){ return drawingRecordStore.getActive(); }
@@ -302,13 +303,13 @@ function previewCorrectedStroke(svg,points){
   updatePolylinePreview(svg,points);
 }
 
-async function createCorrectedStroke(drawing,rawPoints,freehand=false){
+async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=false){
   if(traceLength(rawPoints)<200) return null;
-  const corrected=freehand?rawPoints:correctStroke(rawPoints,drawing);
+  const corrected=(freehand||polygon)?rawPoints:correctStroke(rawPoints,drawing);
   if(corrected.length<2) return null;
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
-  const closed=corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120;
+  const closed=polygon || (corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120);
   const record=createDrawingObject(strokeRecordWithPoints({
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
     layer:DRAWING_LAYERS.SHAPE,
@@ -321,11 +322,36 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false){
     ],now)
   },corrected));
   selectedObjectId=record.objectId;
-  if(continuousTool!==(freehand?'hand':'correct')) activeTool='select';
+  if(continuousTool!==(polygon?'polygon':freehand?'hand':'correct')) activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
 }
 
+function addPolygonVertex(drawing,point,finish=false){
+  if(!polygonDraft || polygonDraft.drawingId!==drawing.drawingId){
+    polygonDraft={drawingId:drawing.drawingId,points:[]};
+  }
+  const points=polygonDraft.points;
+  const last=points.at(-1);
+  if(last && Math.hypot(last.x-point.x,last.y-point.y)<150 && !finish)return;
+  if(finish && points.length>=3){
+    void finishPolygon(drawing);
+    return;
+  }
+  if(points.length>=3 && Math.hypot(points[0].x-point.x,points[0].y-point.y)<350){
+    void finishPolygon(drawing);
+    return;
+  }
+  points.push(point);
+  renderSurveyMap();
+}
+async function finishPolygon(drawing=selectedDrawing()){
+  const points=polygonDraft?.drawingId===drawing?.drawingId?polygonDraft.points:[];
+  if(points.length<3)return;
+  polygonDraft=null;
+  await createCorrectedStroke(drawing,[...points,{...points[0]}],false,true);
+  renderSurveyMap();
+}
 async function createElbowFromPoints(drawing,start,end){
   if(Math.hypot(end.x-start.x,end.y-start.y)<200)return null;
   const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
@@ -585,6 +611,7 @@ function toolsHtml(){
       <div class="survey-map-divider"></div>
       <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,!isShapeTool(icon))).join('')}</div>
       ${roomPickerHtml()}
+      ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>多角形：${polygonDraft.points.length}点</span><button type="button" class="btn small" data-survey-polygon-finish ${polygonDraft.points.length<3?'disabled':''}>確定</button><button type="button" class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
     </div>
   `;
 }
@@ -596,9 +623,15 @@ function sheetHtml(drawing){
   const title=escapeHtml(drawing.titleSettings?.text||'調査図');
   const name=escapeHtml(drawing.nameSettings?.text||drawing.name||'');
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
+  const size=pageSize(drawing);
+  const draftHtml=draft.length?`<svg class="survey-map-line-draft survey-map-polygon-draft"
+    viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none">
+    <polyline points="${draft.map(p=>`${p.x},${p.y}`).join(' ')}"></polyline>
+  </svg>`:'';
   return `
     <div class="survey-map-fixed-title">${title}</div>
-    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectId)}</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectId)}${draftHtml}</div>
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
@@ -782,6 +815,7 @@ function bindEvents(){
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
       const requested=String(drawTool.dataset.surveyDrawTool||'select');
+      if(requested!=='polygon')polygonDraft=null;
       const now=Date.now();
       const repeatedTap=(event.detail>=2 || (
         lastToolTap?.tool===requested && now-lastToolTap.at<380
@@ -804,6 +838,15 @@ function bindEvents(){
       return;
     }
 
+    if(event.target.closest('[data-survey-polygon-finish]')){
+      void finishPolygon();
+      return;
+    }
+    if(event.target.closest('[data-survey-polygon-cancel]')){
+      polygonDraft=null;
+      renderSurveyMap();
+      return;
+    }
     if(event.target.closest('[data-survey-object-delete]')){
       void deleteSelectedObject();
       return;
@@ -870,6 +913,12 @@ function bindEvents(){
     if(activeTool==='room' && !objectEl){
       if(!selectedRoom())return;
       void createRoomLabelAt(event.clientX,event.clientY);
+      event.preventDefault();
+      return;
+    }
+    if(activeTool==='polygon' && !objectEl){
+      const point=clientToPagePoint(event.clientX,event.clientY,sheet.getBoundingClientRect(),drawing);
+      addPolygonVertex(drawing,point,event.detail>=2);
       event.preventDefault();
       return;
     }
