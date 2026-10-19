@@ -500,7 +500,7 @@ async function renamePageDisplay(value){
 
 async function deleteDrawing(){
   const current=selectedDrawing();
-  if(!current) return;
+  if(!current || activeDrawings().length<=1) return;
   if(!window.confirm(`「${current.name}」を削除しますか？\n後から同期上は復活できる論理削除で保存します。`)) return;
   const now=Date.now();
   await commitDrawing({
@@ -573,7 +573,7 @@ function pageListHtml(){
   return pages.map((page)=>`
     <div class="survey-map-page-row">
       <button type="button" class="survey-map-page-btn ${page.drawingId===selectedDrawingId?'active':''}" data-survey-page="${escapeHtml(page.drawingId)}">${escapeHtml(page.name)}</button>
-      <button type="button" class="btn small" data-survey-page-delete="${escapeHtml(page.drawingId)}" aria-label="削除">×</button>
+      <button type="button" class="btn small" data-survey-page-delete="${escapeHtml(page.drawingId)}" aria-label="削除" ${pages.length<=1?'disabled':''}>×</button>
     </div>
   `).join('');
 }
@@ -708,7 +708,7 @@ function editorHtml(drawing){
     </div>
     <div class="survey-map-hint">図形を選択すると、位置・サイズ・回転の情報を表示します。</div>
     <div class="survey-map-divider"></div>
-    <button type="button" class="btn danger" data-survey-delete-current style="width:100%">この調査図を削除</button>
+    <button type="button" class="btn danger" data-survey-delete-current style="width:100%" ${activeDrawings().length<=1?'disabled title="最後の1枚は削除できません"':''}>この調査図を削除</button>
   `;
 }
 
