@@ -90,6 +90,18 @@ export function drawingObjectsHtml(records = [], drawing, selectedObjectId = '')
       if(record.type==='line') return lineObjectHtml(record,drawing,selected);
 
       const style = objectPercentStyle(record, drawing);
+      if(record.type==='roomLabel'){
+        return `
+          <div class="survey-map-object survey-map-object-room ${selected?'selected':''}"
+            data-survey-object-id="${escapeHtml(record.objectId)}"
+            style="${style}" role="button" aria-label="部屋ラベル">
+            <div class="survey-map-room-label">${escapeHtml(record.text||[record.roomNoSnapshot,record.roomNameSnapshot].filter(Boolean).join('　'))}</div>
+            ${selected?`
+              <button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>
+            `:''}
+          </div>
+        `;
+      }
       const label = record.type === 'shape' ? '図形' : String(record.type || 'オブジェクト');
       return `
         <div
