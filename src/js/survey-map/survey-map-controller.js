@@ -12,7 +12,7 @@ import { createDrawingObject, DRAWING_LAYERS } from '../records/drawing-object.j
 import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
 import { persistDrawingForProject, persistDrawingObjectForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer } from './survey-map-geometry.js';
+import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool } from './survey-map-shapes.js';
@@ -32,6 +32,18 @@ let lastToolTap=null;
 let zoomLevel=1;
 let pointerInteraction=null;
 let polygonDraft=null;
+let shiftPointerId=null;
+let physicalShift=false;
+let ratioLocked=false;
+function shiftActive(){return shiftPointerId!==null||physicalShift;}
+function syncShiftButton(){
+  root()?.querySelector('[data-survey-shift]')?.classList.toggle('active',shiftActive());
+}
+function snapLinePoint(start,end){
+  const dx=end.x-start.x,dy=end.y-start.y,dist=Math.hypot(dx,dy);
+  const angle=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*(Math.PI/4);
+  return {x:start.x+dist*Math.cos(angle),y:start.y+dist*Math.sin(angle)};
+}
 
 function root(){ return document.getElementById('survey-map'); }
 function activeDrawings(){ return drawingRecordStore.getActive(); }
@@ -703,6 +715,7 @@ export function renderSurveyMap(){
           <button type="button" class="btn small survey-map-text-btn" disabled>進む</button>
           <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
           <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
+          <button type="button" class="btn small survey-map-text-btn ${ratioLocked?'active':''}" data-survey-ratio-toggle>比率固定</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-out>−</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-in>＋</button>
@@ -718,6 +731,8 @@ export function renderSurveyMap(){
           <div class="survey-map-sheet ${gridVisible?'grid-on':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px)">${sheetHtml(drawing)}</div>
         </div>
       </main>
+      <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}"
+        data-survey-shift aria-label="押している間Shift補助操作">Shift</button>
 
       <aside class="survey-map-overlay-panel survey-map-tools-panel ${toolPanelOpen?'open':''}" aria-hidden="${toolPanelOpen?'false':'true'}">
         <div class="survey-map-overlay-head">
@@ -848,6 +863,11 @@ function bindEvents(){
       renderSurveyMap();
       return;
     }
+    if(event.target.closest('[data-survey-ratio-toggle]')){
+      ratioLocked=!ratioLocked;
+      renderSurveyMap();
+      return;
+    }
     if(event.target.closest('[data-survey-object-delete]')){
       void deleteSelectedObject();
       return;
@@ -876,6 +896,14 @@ function bindEvents(){
   });
 
   mount.addEventListener('pointerdown',(event)=>{
+    const shiftButton=event.target.closest('[data-survey-shift]');
+    if(shiftButton){
+      shiftPointerId=event.pointerId;
+      shiftButton.setPointerCapture?.(event.pointerId);
+      syncShiftButton();
+      event.preventDefault();
+      return;
+    }
     const drawing=selectedDrawing();
     const sheet=event.target.closest('.survey-map-sheet');
     if(!drawing || !sheet) return;
@@ -893,13 +921,15 @@ function bindEvents(){
         ? (handle==='stroke-point'?'stroke-point':'stroke-move')
         : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
-        : (handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
+        : (handle.startsWith('resize-')?'resize-corner':
+          handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId,
         mode,
+        corner:handle.startsWith('resize-')?handle.slice(7):'',
         original:{...object},
         draft:{...object},
         startPoint,
@@ -981,8 +1011,9 @@ function bindEvents(){
     }
 
     if(interaction.mode==='create-line'){
-      interaction.draft={...interaction.draft,endX:currentPoint.x,endY:currentPoint.y};
-      updateLineDraftPreview(interaction.previewEl,currentPoint);
+      const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
+      interaction.draft={...interaction.draft,endX:point.x,endY:point.y};
+      updateLineDraftPreview(interaction.previewEl,point);
       event.preventDefault();
       return;
     }
@@ -1061,6 +1092,10 @@ function bindEvents(){
         height:Number(interaction.original.height||0)
       },drawing);
       draft={...draft,...rect};
+    }else if(interaction.mode==='resize-corner'){
+      draft=resizeRectFromCorner(interaction.original,interaction.corner,currentPoint,{
+        centerFixed:shiftActive()||event.shiftKey,ratioFixed:ratioLocked
+      });
     }else if(interaction.mode==='resize'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0),
@@ -1070,7 +1105,8 @@ function bindEvents(){
       },drawing);
       draft={...draft,...rect};
     }else if(interaction.mode==='rotate'){
-      draft.rotation=rotationFromPointer(interaction.original,event,interaction.sheetRect,drawing);
+      const angle=rotationFromPointer(interaction.original,event,interaction.sheetRect,drawing);
+      draft.rotation=(shiftActive()||event.shiftKey)?Math.round(angle/15)*15:angle;
     }
 
     interaction.draft=draft;
@@ -1138,7 +1174,8 @@ function bindEvents(){
       }
       const drawing=selectedDrawing();
       if(!drawing) return;
-      const endPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const rawEnd=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const endPoint=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,rawEnd):rawEnd;
       void createLineFromPoints(drawing,interaction.startPoint,endPoint).then(()=>renderSurveyMap());
       return;
     }
@@ -1150,7 +1187,7 @@ function bindEvents(){
     const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height']
       :['stroke-move','stroke-point'].includes(interaction.mode)?['points','x','y','width','height']
       :interaction.mode==='move'?['x','y']
-      :interaction.mode==='resize'?['x','y','width','height']
+      :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
     const now=Date.now();
@@ -1162,6 +1199,11 @@ function bindEvents(){
     void commitDrawingObject(next,`survey-map-object-${interaction.mode}`).then(()=>renderSurveyMap());
   };
 
+  function releaseShift(event){
+    if(shiftPointerId===event.pointerId){shiftPointerId=null;syncShiftButton();}
+  }
+  mount.addEventListener('pointerup',releaseShift);
+  mount.addEventListener('pointercancel',releaseShift);
   mount.addEventListener('pointerup',finishPointerInteraction);
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
@@ -1175,6 +1217,7 @@ function bindEvents(){
   });
 
   window.addEventListener('keydown',(event)=>{
+    if(event.key==='Shift'){physicalShift=true;syncShiftButton();}
     if(root()?.style.display==='none') return;
     if((event.key==='Delete' || event.key==='Backspace') && selectedObjectId && !event.target.matches('input,textarea')){
       event.preventDefault();
@@ -1182,6 +1225,12 @@ function bindEvents(){
     }
   });
 
+  window.addEventListener('keyup',(event)=>{
+    if(event.key==='Shift'){physicalShift=false;syncShiftButton();}
+  });
+  window.addEventListener('blur',()=>{
+    shiftPointerId=null;physicalShift=false;syncShiftButton();
+  });
   window.addEventListener('chousa:tab-change',(event)=>{
     if(event.detail?.currentTab==='survey-map'){
       renderSurveyMap();
