@@ -1,5 +1,5 @@
 /**
- * v0.1.10.10 調査図部屋ツールレビュー。
+ * v0.1.10.11 調査図作図ツール一括レビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -15,10 +15,11 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
+import { isShapeTool } from './survey-map-shapes.js';
 
 let initialized=false;
 let selectedDrawingId='';
-let gridVisible=false;
+let gridVisible=true;
 let focusMode=false;
 let toolPanelOpen=false;
 let editPanelOpen=false;
@@ -159,7 +160,7 @@ async function createRoomLabelAt(clientX,clientY){
   await commitDrawingObject(record,'survey-map-room-label-create');
   renderSurveyMap();
 }
-async function createRectangleAt(clientX,clientY){
+async function createShapeAt(kind,clientX,clientY){
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing || !sheet) return;
@@ -185,7 +186,7 @@ async function createRectangleAt(clientX,clientY){
     visible:true,
     locked:false,
     deleted:false,
-    shapeType:'rect',
+    shapeType:kind,
     fillEnabled:false,
     fillColor:'#ffffff',
     fillOpacity:0,
@@ -199,7 +200,7 @@ async function createRectangleAt(clientX,clientY){
     ],now)
   });
   selectedObjectId=record.objectId;
-  if(continuousTool!=='rect') activeTool='select';
+  if(continuousTool!==kind) activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
 }
@@ -301,9 +302,9 @@ function previewCorrectedStroke(svg,points){
   updatePolylinePreview(svg,points);
 }
 
-async function createCorrectedStroke(drawing,rawPoints){
+async function createCorrectedStroke(drawing,rawPoints,freehand=false){
   if(traceLength(rawPoints)<200) return null;
-  const corrected=correctStroke(rawPoints,drawing);
+  const corrected=freehand?rawPoints:correctStroke(rawPoints,drawing);
   if(corrected.length<2) return null;
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
@@ -312,15 +313,15 @@ async function createCorrectedStroke(drawing,rawPoints){
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
     layer:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
-    rotation:0,closed,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
+    rotation:0,closed,freehand,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','layer','order','x','y','width','height','rotation',
-      'points','closed','lineColor','lineWidth','lineStyle','visible','locked','deleted'
+      'points','closed','freehand','lineColor','lineWidth','lineStyle','visible','locked','deleted'
     ],now)
   },corrected));
   selectedObjectId=record.objectId;
-  if(continuousTool!=='correct') activeTool='select';
+  if(continuousTool!==(freehand?'hand':'correct')) activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
 }
@@ -557,7 +558,8 @@ function toolsHtml(){
     ['select','選択'],
     ['range','範囲選択'],
     ['line','直線'],
-    ['correct','補正線'],
+    ['correct','手描き補正'],
+    ['hand','手描き'],
     ['elbow','カギ線'],
     ['room','部屋'],
     ['material','建材'],
@@ -578,10 +580,10 @@ function toolsHtml(){
   return `
     <div class="survey-map-tool-section">
       <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
-        toolIconCell(icon,label,icon,!['select','line','correct','elbow','room'].includes(icon))
+        toolIconCell(icon,label,icon,!['select','line','correct','elbow','room','hand'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
-      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
+      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,!isShapeTool(icon))).join('')}</div>
       ${roomPickerHtml()}
     </div>
   `;
@@ -785,7 +787,7 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && ['line','rect','correct','elbow','room'].includes(requested)){
+      if(repeatedTap && (['line','correct','elbow','room','hand'].includes(requested) || isShapeTool(requested))){
         continuousTool=continuousTool===requested?'':requested;
       }else if(requested!==continuousTool){
         continuousTool='';
@@ -871,20 +873,20 @@ function bindEvents(){
       event.preventDefault();
       return;
     }
-    if(activeTool==='rect' && !objectEl){
+    if(isShapeTool(activeTool) && !objectEl){
       event.preventDefault();
-      void createRectangleAt(event.clientX,event.clientY);
+      void createShapeAt(activeTool,event.clientX,event.clientY);
       return;
     }
 
-    if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow') && !objectEl){
+    if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand') && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId:'',
-        mode:activeTool==='correct'?'create-corrected':activeTool==='elbow'?'create-elbow':'create-line',
+        mode:activeTool==='correct'?'create-corrected':activeTool==='hand'?'create-hand':activeTool==='elbow'?'create-elbow':'create-line',
         original:null,
         draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
         startPoint,
@@ -916,7 +918,7 @@ function bindEvents(){
       event.preventDefault();
       return;
     }
-    if(interaction.mode==='create-corrected'){
+    if(interaction.mode==='create-corrected' || interaction.mode==='create-hand'){
       const previous=interaction.rawPoints.at(-1);
       if(Math.hypot(currentPoint.x-previous.x,currentPoint.y-previous.y)>=45){
         interaction.rawPoints.push(currentPoint);
@@ -1064,7 +1066,7 @@ function bindEvents(){
       void createElbowFromPoints(drawing,interaction.startPoint,end).then(()=>renderSurveyMap());
       return;
     }
-    if(interaction.mode==='create-corrected'){
+    if(interaction.mode==='create-corrected' || interaction.mode==='create-hand'){
       interaction.previewEl?.remove();
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
@@ -1072,7 +1074,7 @@ function bindEvents(){
       const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const last=interaction.rawPoints.at(-1);
       if(Math.hypot(end.x-last.x,end.y-last.y)>20)interaction.rawPoints.push(end);
-      void createCorrectedStroke(drawing,interaction.rawPoints).then(()=>renderSurveyMap());
+      void createCorrectedStroke(drawing,interaction.rawPoints,interaction.mode==='create-hand').then(()=>renderSurveyMap());
       return;
     }
 
