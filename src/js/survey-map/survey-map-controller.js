@@ -15,7 +15,7 @@ import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
-import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup } from './survey-map-shapes.js';
+import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
 import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject } from './survey-map-transforms.js';
 
@@ -676,7 +676,7 @@ function editorHtml(drawing){
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
   }
   if(object){
-    const modeControls=object.type==='line' && Array.isArray(object.points) && !object.elbow
+    const modeControls=(object.type==='line' && Array.isArray(object.points) && !object.elbow) || (object.type==='shape' && object.shapeType!=='circle')
       ? `<div class="survey-map-editor-row"><label>編集モード</label>
         <div class="survey-map-edit-mode-row">
           <button type="button" class="btn small ${strokeEditMode==='shape'?'active':''}"
@@ -1042,7 +1042,7 @@ function bindEvents(){
         : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
         : (handle.startsWith('resize-')?'resize-corner':
-          handle==='shape-adjust'?'shape-adjust':
+          handle==='shape-vertex'?'shape-vertex':handle==='shape-adjust'?'shape-adjust':
           handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
@@ -1288,6 +1288,21 @@ function bindEvents(){
         height:Number(interaction.original.height||0)
       },drawing);
       draft={...draft,...rect};
+    }else if(interaction.mode==='shape-vertex'){
+      const original=interaction.original;
+      const center={x:original.x+original.width/2,y:original.y+original.height/2};
+      const angle=-(Number(original.rotation)||0)*Math.PI/180;
+      const ddx=currentPoint.x-center.x,ddy=currentPoint.y-center.y;
+      const localX=center.x+ddx*Math.cos(angle)-ddy*Math.sin(angle);
+      const localY=center.y+ddx*Math.sin(angle)+ddy*Math.cos(angle);
+      const vertices=shapeVertices(original.shapeType,original.shapeParams,original.customVertices);
+      if(interaction.pointIndex>=0 && interaction.pointIndex<vertices.length){
+        vertices[interaction.pointIndex]={
+          x:clamp((localX-original.x)/Math.max(1,original.width),0,1),
+          y:clamp((localY-original.y)/Math.max(1,original.height),0,1)
+        };
+        draft.customVertices=vertices;
+      }
     }else if(interaction.mode==='shape-adjust'){
       const original=interaction.original;
       const key=interaction.paramKey;
@@ -1320,14 +1335,21 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
-    if(interaction.mode==='shape-adjust'){
+    if(interaction.mode==='shape-adjust' || interaction.mode==='shape-vertex'){
       const polygon=objectEl.querySelector('.survey-map-shape-svg polygon');
       if(polygon){
-        const markup=shapeSvgMarkup(draft.shapeType,draft.shapeParams);
+        const markup=shapeSvgMarkup(draft.shapeType,draft.shapeParams,draft.customVertices);
         const points=markup.match(/points="([^"]+)"/)?.[1];
         if(points)polygon.setAttribute('points',points);
       }
-      const handles=shapeAdjusters(draft.shapeType,draft.shapeParams);
+      const handles=interaction.mode==='shape-vertex'?[]:shapeAdjusters(draft.shapeType,draft.shapeParams);
+      if(interaction.mode==='shape-vertex'){
+        const points=shapeVertices(draft.shapeType,draft.shapeParams,draft.customVertices);
+        for(let i=0;i<points.length;i++){
+          const grip=objectEl.querySelector(`[data-survey-handle="shape-vertex"][data-survey-point-index="${i}"]`);
+          if(grip){grip.style.left=`${points[i].x*100}%`;grip.style.top=`${points[i].y*100}%`;}
+        }
+      }
       for(const adjuster of handles){
         const grip=objectEl.querySelector(`[data-survey-param="${adjuster.key}"]`);
         if(grip){grip.style.left=`${adjuster.x*100}%`;grip.style.top=`${adjuster.y*100}%`;}
@@ -1425,6 +1447,7 @@ function bindEvents(){
       :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height']
       :interaction.mode==='move'?['x','y']
       :interaction.mode==='shape-adjust'?['shapeParams']
+      :interaction.mode==='shape-vertex'?['customVertices']
       :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
