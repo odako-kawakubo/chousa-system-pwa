@@ -1,5 +1,5 @@
 import { pageSize, objectPercentStyle } from './survey-map-geometry.js';
-import { shapeSvgMarkup } from './survey-map-shapes.js';
+import { shapeSvgMarkup,shapeAdjusters } from './survey-map-shapes.js';
 
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,(m)=>({
@@ -137,10 +137,16 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
                 --survey-shape-fill:${record.fillEnabled?escapeHtml(record.fillColor||'#93c5fd'):'transparent'};
                 --survey-shape-opacity:${record.fillEnabled?finite(record.fillOpacity,.2)||.2:0}"
               preserveAspectRatio="none" aria-hidden="true">
-              ${shapeSvgMarkup(String(record.shapeType||'rect'))}
+              ${shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams)}
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
           ${selected ? `
+            ${record.type==='shape' ? shapeAdjusters(record.shapeType,record.shapeParams).map(handle=>`
+              <button type="button" class="survey-map-object-handle survey-map-shape-adjuster"
+                style="left:${handle.x*100}%;top:${handle.y*100}%"
+                data-survey-handle="shape-adjust" data-survey-param="${handle.key}"
+                aria-label="図形の${handle.key}を調整"></button>
+            `).join(''):''}
             ${record.type==='shape' ? ['nw','ne','sw','se'].map(corner=>`
               <button type="button" class="survey-map-object-handle survey-map-corner-handle survey-map-corner-${corner}"
                 data-survey-handle="resize-${corner}" aria-label="${corner}からサイズ変更"></button>
