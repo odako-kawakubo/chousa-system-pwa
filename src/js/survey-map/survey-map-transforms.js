@@ -51,3 +51,45 @@ export function translateObject(record,dx,dy){
   }
   return {...record,x:(Number(record.x)||0)+dx,y:(Number(record.y)||0)+dy};
 }
+
+/** 共通の幾何変換。線は実座標、図形は中心と寸法を変換する。 */
+export function objectBounds(record){
+  return {x:Number(record.x)||0,y:Number(record.y)||0,width:Number(record.width)||0,height:Number(record.height)||0};
+}
+function transformPoints(record,transform){
+  const points=Array.isArray(record.points)&&record.points.length>1?record.points:
+    [{x:Number(record.startX)||0,y:Number(record.startY)||0},{x:Number(record.endX)||0,y:Number(record.endY)||0}];
+  const mapped=points.map(transform);
+  if(record.elbow){
+    return strokeRecordWithPoints({...record,elbow:false,rotation:0},mapped);
+  }
+  if(Array.isArray(record.points)&&record.points.length>1){
+    return strokeRecordWithPoints({...record,rotation:0},mapped);
+  }
+  return lineRecordWithPoints(record,mapped[0].x,mapped[0].y,mapped[1].x,mapped[1].y);
+}
+export function rotateSingleObject(record,angle){
+  const delta=Number(angle)||0;
+  if(record.type!=='line')return {...record,rotation:((Number(record.rotation)||0)+delta)%360};
+  const b=objectBounds(record),cx=b.x+b.width/2,cy=b.y+b.height/2;
+  const r=delta*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+  return transformPoints(record,p=>({x:cx+(p.x-cx)*c-(p.y-cy)*s,y:cy+(p.x-cx)*s+(p.y-cy)*c}));
+}
+export function flipSingleObject(record,axis){
+  if(record.type!=='line'){
+    const name=axis==='horizontal'?'flipX':'flipY';
+    return {...record,[name]:!record[name]};
+  }
+  const b=objectBounds(record),cx=b.x+b.width/2,cy=b.y+b.height/2;
+  return transformPoints(record,p=>({
+    x:axis==='horizontal'?2*cx-p.x:p.x,
+    y:axis==='vertical'?2*cy-p.y:p.y
+  }));
+}
+export function scaleObjectInGroup(record,bounds,nextBounds){
+  const sx=nextBounds.width/Math.max(1,bounds.width),sy=nextBounds.height/Math.max(1,bounds.height);
+  const map=p=>({x:nextBounds.x+(p.x-bounds.x)*sx,y:nextBounds.y+(p.y-bounds.y)*sy});
+  if(record.type==='line')return transformPoints(record,map);
+  const topLeft=map({x:record.x,y:record.y});
+  return {...record,x:topLeft.x,y:topLeft.y,width:(Number(record.width)||0)*sx,height:(Number(record.height)||0)*sy};
+}
