@@ -12,7 +12,7 @@ export function rememberSurveyEdit(project,type,before,after,source){
   if(JSON.stringify(before)===JSON.stringify(after))return;
   const now=Date.now(),change={type,before:copy(before),after:copy(after)};
   const last=past.at(-1);
-  if(['survey-map-group-move','survey-map-group-delete'].includes(source) && last?.source===source && now-last.at<500){
+  if(['survey-map-group-move','survey-map-group-resize','survey-map-group-delete'].includes(source) && last?.source===source && now-last.at<500){
     last.changes.push(change);
   }else{
     past.push({source,at:now,changes:[change]});
