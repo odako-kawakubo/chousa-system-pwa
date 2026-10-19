@@ -1,5 +1,5 @@
 /**
- * v0.1.10.6 調査図基本作図操作。
+ * v0.1.10.7 調査図補正線レビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
