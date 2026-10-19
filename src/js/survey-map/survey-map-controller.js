@@ -740,7 +740,7 @@ function editorHtml(drawing){
         ${details}
       </div>
       ${modeControls}
-      <div class="survey-map-editor-row"><label>回転・反転（単体選択）</label>
+      ${object.type==='line'||object.type==='shape'?`<div class="survey-map-editor-row"><label>回転・反転（単体選択）</label>
         <div class="survey-map-edit-mode-row">
           <button type="button" class="btn small" data-survey-transform="ccw">左90°</button>
           <button type="button" class="btn small" data-survey-transform="cw">右90°</button>
@@ -749,7 +749,7 @@ function editorHtml(drawing){
         </div>
         <label>回転角度（°）</label>
         <input type="number" step="1" data-survey-angle value="${Math.round(Number(object.rotation)||0)}">
-      </div>
+      </div>` : ''}
       ${styleControls}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
@@ -1041,7 +1041,7 @@ function bindEvents(){
     if(transformButton){
       const mode=transformButton.dataset.surveyTransform;
       const record=selectedObject();
-      if(!record||selectedObjectIds.size!==1)return;
+      if(!record||selectedObjectIds.size!==1||!['line','shape'].includes(record.type))return;
       const updated=mode==='cw'?rotateSingleObject(record,90):
         mode==='ccw'?rotateSingleObject(record,-90):
         flipSingleObject(record,mode==='flipX'?'horizontal':'vertical');
