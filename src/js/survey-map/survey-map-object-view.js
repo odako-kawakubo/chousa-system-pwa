@@ -57,7 +57,7 @@ function polylineHandleHtml(record,size,editMode='shape'){
   `).join('');
 }
 
-function lineObjectHtml(record,drawing,selected,editMode){
+function lineObjectHtml(record,drawing,selected,editMode,showHandles){
   const size=pageSize(drawing);
   const lineWidth=Math.max(20,finite(record.lineWidth,80));
   const pixelWidth=Math.max(.5,lineWidth/40);
@@ -76,7 +76,7 @@ function lineObjectHtml(record,drawing,selected,editMode){
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
             style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
         </svg>
-        ${selected?polylineHandleHtml(record,size,editMode):''}
+        ${showHandles?polylineHandleHtml(record,size,editMode):''}
       </div>
     `;
   }
@@ -91,14 +91,14 @@ function lineObjectHtml(record,drawing,selected,editMode){
         <line class="survey-map-line-main" x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}"
           stroke="${color}" style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></line>
       </svg>
-      ${selected?[
+      ${showHandles?[
         ['line-start',startX,startY,'始点'],['line-end',endX,endY,'終点']
       ].map(([handle,x,y,label])=>`
         <button type="button" class="survey-map-object-handle survey-map-line-endpoint"
           data-survey-handle="${handle}" style="left:${x/size.width*100}%;top:${y/size.height*100}%"
           aria-label="${label}を移動"></button>
       `).join(''):''}
-      ${selected&&editMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-line-endpoint survey-map-stroke-rotate-handle"
+      ${showHandles&&editMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-line-endpoint survey-map-stroke-rotate-handle"
         data-survey-handle="line-rotate"
         style="left:${((startX+endX)/2)/size.width*100}%;top:${((startY+endY)/2-500)/size.height*100}%"
         aria-label="直線を回転"></button>`:''}
@@ -120,8 +120,9 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
     .filter((record)=>record && record.visible !== false && !record.deleted)
     .map((record)=>{
       const selected = selectedIds.has(String(record.objectId));
+      const showHandles=selected && selectedIds.size===1;
       const shapeMode=record.shapeType==='circle'?'shape':editMode;
-      if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode);
+      if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode,showHandles);
 
       const style = objectPercentStyle(record, drawing);
       if(record.type==='roomLabel'){
@@ -130,7 +131,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
             data-survey-object-id="${escapeHtml(record.objectId)}"
             style="${style}" role="button" aria-label="部屋ラベル">
             <div class="survey-map-room-label">${escapeHtml(record.text||[record.roomNoSnapshot,record.roomNameSnapshot].filter(Boolean).join('　'))}</div>
-            ${selected?`
+            ${showHandles?`
               <button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>
             `:''}
           </div>
@@ -155,7 +156,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
               ${shapeFlipMarkup(record,shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams,record.customVertices))}
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
-          ${selected ? `
+          ${showHandles ? `
             ${record.type==='shape' && shapeMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map(p=>flipHandle(record,p)).map((p,index)=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-vertex"
                 style="left:${p.x*100}%;top:${p.y*100}%"
