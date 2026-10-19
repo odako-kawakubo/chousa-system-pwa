@@ -16,6 +16,7 @@ import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool } from './survey-map-shapes.js';
+import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -137,7 +138,10 @@ function persistSnapshot(source='survey-map'){
   });
 }
 
-async function commitDrawing(record,source){
+async function commitDrawing(record,source,{trackHistory=true}={}){
+  const project=getCurrentProject();
+  if(trackHistory)rememberSurveyEdit(project?.projectId,'drawing',
+    drawingRecordStore.get(record.drawingId)||null,record,source);
   const project=getCurrentProject();
   drawingRecordStore.set(record);
   persistSnapshot(source);
@@ -146,7 +150,10 @@ async function commitDrawing(record,source){
   }
 }
 
-async function commitDrawingObject(record,source){
+async function commitDrawingObject(record,source,{trackHistory=true}={}){
+  const project=getCurrentProject();
+  if(trackHistory)rememberSurveyEdit(project?.projectId,'drawingObject',
+    drawingObjectStore.get(record.objectId)||null,record,source);
   const project=getCurrentProject();
   drawingObjectStore.set(record);
   persistSnapshot(source);
@@ -439,6 +446,33 @@ async function deleteSelectedObject(){
   renderSurveyMap();
 }
 
+async function applyHistory(redo=false){
+  const project=getCurrentProject();
+  if(!project?.projectId)return;
+  const entry=redo?takeRedo(project.projectId):takeUndo(project.projectId);
+  if(!entry)return;
+  const changes=redo?entry.changes:[...entry.changes].reverse();
+  for(const change of changes){
+    const isObject=change.type==='drawingObject';
+    const store=isObject?drawingObjectStore:drawingRecordStore;
+    const raw=redo?change.after:change.before;
+    const id=(raw||change.after||change.before)?.[isObject?'objectId':'drawingId'];
+    const current=store.get(id);
+    if(!current)continue;
+    const target=raw||{...current,deleted:true};
+    const fields=Object.keys(target).filter(key=>key!=='fieldEditedAt' &&
+      key!=='objectId' && key!=='drawingId' && key!=='projectId' &&
+      JSON.stringify(target[key])!==JSON.stringify(current[key]));
+    if(!fields.length)continue;
+    const updated={
+      ...target,fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,fields,Date.now())
+    };
+    if(isObject)await commitDrawingObject(createDrawingObject(updated),'survey-map-history',{trackHistory:false});
+    else await commitDrawing(createDrawingRecord(updated),'survey-map-history',{trackHistory:false});
+  }
+  clearSelection();
+  renderSurveyMap();
+}
 function nextPageName(){
   const used=new Set(activeDrawings().map((item)=>String(item.name||'')));
   let index=1;
@@ -745,14 +779,15 @@ export function renderSurveyMap(){
   if(!mount) return;
   applyLayoutClasses();
   const drawing=selectedDrawing();
+  const history=historyStatus(getCurrentProject()?.projectId);
 
   mount.innerHTML=`
     <div class="survey-map-root">
       <main class="survey-map-center">
         <div class="survey-map-topbar">
           <button type="button" class="btn small survey-map-text-btn ${focusMode?'active':''}" data-survey-focus-toggle>${focusMode?'全画面終了':'全画面'}</button>
-          <button type="button" class="btn small survey-map-text-btn" disabled>戻る</button>
-          <button type="button" class="btn small survey-map-text-btn" disabled>進む</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-undo ${history.undo?'':'disabled'}>戻る</button>
+          <button type="button" class="btn small survey-map-text-btn" data-survey-redo ${history.redo?'':'disabled'}>進む</button>
           <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
           <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
           <button type="button" class="btn small survey-map-text-btn ${ratioLocked?'active':''}" data-survey-ratio-toggle>比率固定</button>
@@ -865,6 +900,8 @@ function bindEvents(){
   if(!mount) return;
 
   mount.addEventListener('click',(event)=>{
+    if(event.target.closest('[data-survey-undo]')){void applyHistory(false);return;}
+    if(event.target.closest('[data-survey-redo]')){void applyHistory(true);return;}
     if(event.target.closest('[data-survey-new]')){
       void createDrawing();
       return;
@@ -1397,6 +1434,14 @@ function bindEvents(){
   window.addEventListener('keydown',(event)=>{
     if(event.key==='Shift'){physicalShift=true;syncShiftButton();}
     if(root()?.style.display==='none') return;
+    if((event.ctrlKey||event.metaKey) && !event.target.matches('input,textarea')){
+      const k=event.key.toLowerCase();
+      if(k==='z' || k==='y'){
+        event.preventDefault();
+        void applyHistory(k==='y'||(k==='z'&&event.shiftKey));
+        return;
+      }
+    }
     if((event.key==='Delete' || event.key==='Backspace') && selectedObjectId && !event.target.matches('input,textarea')){
       event.preventDefault();
       void deleteSelectedObject();
