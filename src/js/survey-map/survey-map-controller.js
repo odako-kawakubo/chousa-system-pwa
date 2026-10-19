@@ -14,6 +14,7 @@ import { persistDrawingForProject, persistDrawingObjectForProject } from '../syn
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
+import { correctStroke, traceLength } from './survey-map-stroke.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -213,6 +214,45 @@ function updateLineObjectElement(objectEl,record,drawing){
     endHandle.style.left=`${(endX/size.width)*100}%`;
     endHandle.style.top=`${(endY/size.height)*100}%`;
   }
+}
+
+function previewCorrectedStroke(svg,points){
+  if(!svg) return;
+  const rootLine=svg.querySelector('line');
+  if(rootLine) rootLine.remove();
+  let path=svg.querySelector('polyline');
+  if(!path){
+    path=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    svg.appendChild(path);
+  }
+  path.setAttribute('points',points.map(p=>`${p.x},${p.y}`).join(' '));
+}
+
+async function createCorrectedStroke(drawing,rawPoints){
+  if(traceLength(rawPoints)<200) return null;
+  const corrected=correctStroke(rawPoints,drawing);
+  if(corrected.length<2) return null;
+  const now=Date.now();
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const xs=corrected.map(p=>p.x), ys=corrected.map(p=>p.y);
+  const closed=corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120;
+  const record=createDrawingObject({
+    objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
+    layer:DRAWING_LAYERS.SHAPE,
+    order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
+    x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),
+    height:Math.max(...ys)-Math.min(...ys),rotation:0,
+    points:corrected,closed,lineColor:'#334155',lineWidth:80,lineStyle:'solid',
+    visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
+    fieldEditedAt:touchFieldEditedAt({},[
+      'drawingId','type','layer','order','x','y','width','height','rotation',
+      'points','closed','lineColor','lineWidth','lineStyle','visible','locked','deleted'
+    ],now)
+  });
+  selectedObjectId=record.objectId;
+  activeTool='select';
+  await commitDrawingObject(record,'survey-map-corrected-stroke-create');
+  return record;
 }
 
 async function createLineFromPoints(drawing,startPoint,endPoint){
@@ -438,7 +478,7 @@ function toolsHtml(){
   return `
     <div class="survey-map-tool-section">
       <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
-        toolIconCell(icon,label,icon,!['select','line'].includes(icon))
+        toolIconCell(icon,label,icon,!['select','line','correct'].includes(icon))
       ).join('')}</div>
       <div class="survey-map-divider"></div>
       <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='rect')).join('')}</div>
@@ -683,7 +723,9 @@ function bindEvents(){
       if(!object || object.locked) return;
       selectedObjectId=objectId;
       const handle=event.target.closest('[data-survey-handle]')?.dataset?.surveyHandle || '';
-      const mode=object.type==='line'
+      const mode=object.type==='line' && Array.isArray(object.points) && object.points.length>1
+        ? 'stroke-move'
+        : object.type==='line'
         ? (handle==='line-start'?'line-start':handle==='line-end'?'line-end':'line-move')
         : (handle==='resize'?'resize':handle==='rotate'?'rotate':'move');
       const sheetRect=sheet.getBoundingClientRect();
@@ -708,17 +750,18 @@ function bindEvents(){
       return;
     }
 
-    if(activeTool==='line' && !objectEl){
+    if((activeTool==='line' || activeTool==='correct') && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=clientToPagePoint(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId:'',
-        mode:'create-line',
+        mode:activeTool==='correct'?'create-corrected':'create-line',
         original:null,
         draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
         startPoint,
+        rawPoints:[startPoint],
         sheetRect,
         previewEl
       };
@@ -740,6 +783,16 @@ function bindEvents(){
     if(!drawing) return;
     const currentPoint=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
 
+    if(interaction.mode==='create-corrected'){
+      const previous=interaction.rawPoints.at(-1);
+      if(Math.hypot(currentPoint.x-previous.x,currentPoint.y-previous.y)>=45){
+        interaction.rawPoints.push(currentPoint);
+        previewCorrectedStroke(interaction.previewEl,interaction.rawPoints);
+      }
+      event.preventDefault();
+      return;
+    }
+
     if(interaction.mode==='create-line'){
       interaction.draft={...interaction.draft,endX:currentPoint.x,endY:currentPoint.y};
       updateLineDraftPreview(interaction.previewEl,currentPoint);
@@ -753,7 +806,14 @@ function bindEvents(){
     const dy=currentPoint.y-interaction.startPoint.y;
     let draft={...interaction.original};
 
-    if(interaction.mode==='line-move'){
+    if(interaction.mode==='stroke-move'){
+      const size=pageSize(drawing);
+      const pts=interaction.original.points;
+      const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+      const moveX=clamp(dx,-Math.min(...xs),size.width-Math.max(...xs));
+      const moveY=clamp(dy,-Math.min(...ys),size.height-Math.max(...ys));
+      draft={...interaction.original,points:pts.map(p=>({x:p.x+moveX,y:p.y+moveY})),x:interaction.original.x+moveX,y:interaction.original.y+moveY};
+    }else if(interaction.mode==='line-move'){
       const size=pageSize(drawing);
       const minX=Math.min(Number(interaction.original.startX)||0,Number(interaction.original.endX)||0);
       const maxX=Math.max(Number(interaction.original.startX)||0,Number(interaction.original.endX)||0);
@@ -800,7 +860,12 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
-    if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
+    if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
+      const polyline=objectEl.querySelector('.survey-map-stroke-main');
+      if(polyline)polyline.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+      const hit=objectEl.querySelector('.survey-map-stroke-hit');
+      if(hit)hit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+    }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
     else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
     event.preventDefault();
   });
@@ -809,6 +874,18 @@ function bindEvents(){
     const interaction=pointerInteraction;
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
+
+    if(interaction.mode==='create-corrected'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const drawing=selectedDrawing();
+      if(!drawing)return;
+      const end=clientToPagePoint(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const last=interaction.rawPoints.at(-1);
+      if(Math.hypot(end.x-last.x,end.y-last.y)>20)interaction.rawPoints.push(end);
+      void createCorrectedStroke(drawing,interaction.rawPoints).then(()=>renderSurveyMap());
+      return;
+    }
 
     if(interaction.mode==='create-line'){
       interaction.previewEl?.remove();
@@ -826,7 +903,9 @@ function bindEvents(){
     const current=drawingObjectStore.get(interaction.objectId);
     if(!current) return;
     const draft=interaction.draft||interaction.original;
-    const fields=interaction.mode==='move'?['x','y']
+    if(event.type==='pointercancel'){renderSurveyMap();return;}
+    const fields=interaction.mode==='stroke-move'?['points','x','y']
+      :interaction.mode==='move'?['x','y']
       :interaction.mode==='resize'?['x','y','width','height']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
