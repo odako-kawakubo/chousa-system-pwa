@@ -1,9 +1,9 @@
-name: Deploy v0.1.10.6 Preview
+name: Deploy v0.1.10.7 Preview
 
 on:
   push:
     branches:
-      - work/v0.1.10.6-20261013
+      - work/v0.1.10.7-20261013
 
 concurrency:
   group: firebase-preview-v0163a
@@ -865,17 +865,33 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.6 consistency checks
+      - name: v0.1.10.7 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.6'" src/config/app-config.js
+          grep -q "version: '0.1.10.7'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.6"' src/version.json
+          grep -q '"version": "0.1.10.7"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.6" src/service-worker.js
-          grep -q "chousa-output-libs-v01106" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.7" src/service-worker.js
+          grep -q "chousa-output-libs-v01107" src/service-worker.js
+          test -f src/js/survey-map/survey-map-stroke.js
+          grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
+          grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
+          grep -q "create-corrected" src/js/survey-map/survey-map-controller.js
+          grep -q "survey-map-stroke-main" src/js/survey-map/survey-map-object-view.js
+          grep -q "'points'" src/js/sync/record-field-merge.js
+          node --input-type=module <<'STROKE'
+          import {correctStroke,traceLength} from './src/js/survey-map/survey-map-stroke.js';
+          const page={pageWidth:29700,pageHeight:21000};
+          const raw=[{x:500,y:500},{x:1000,y:590},{x:2000,y:680},{x:3000,y:750}];
+          const fixed=correctStroke(raw,page);
+          if(traceLength(raw)<200 || fixed.length<2)throw new Error('correction returned empty stroke');
+          if(fixed.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)||p.x<0||p.y<0||p.x>29700||p.y>21000))throw new Error('corrected point outside A4');
+          const straight=correctStroke([{x:1000,y:1000},{x:1500,y:1000},{x:2100,y:1000}],page);
+          if(straight.length!==2 || Math.abs(straight[1].y-straight[0].y)>1)throw new Error('straight correction regressed');
+          STROKE
           for file in camera-preferences.js camera-state.js camera-session.js camera-capture.js camera-photo-id.js camera-orientation.js camera-shutter-sound.js; do
             test -f "src/js/camera/$file" || { echo "camera module split is incomplete: $file"; exit 1; }
           done
