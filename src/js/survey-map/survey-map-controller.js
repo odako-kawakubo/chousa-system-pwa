@@ -12,7 +12,7 @@ import { createDrawingObject, DRAWING_LAYERS } from '../records/drawing-object.j
 import { getCurrentProject, saveProjectSnapshot } from '../projects/project-store.js';
 import { persistDrawingForProject, persistDrawingObjectForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromCorner, resizeRectFromDrag } from './survey-map-geometry.js';
+import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize, rotationFromPointer, resizeRectFromDrag } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
