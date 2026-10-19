@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.12 Preview
+name: Deploy v0.1.10.13 Preview
 
 on:
   push:
@@ -865,17 +865,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.12 consistency checks
+      - name: v0.1.10.13 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.12'" src/config/app-config.js
+          grep -q "version: '0.1.10.13'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.12"' src/version.json
+          grep -q '"version": "0.1.10.13"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.12" src/service-worker.js
-          grep -q "chousa-output-libs-v011012" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.13" src/service-worker.js
+          grep -q "chousa-output-libs-v011013" src/service-worker.js
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
@@ -945,6 +945,35 @@ jobs:
             }
           }
           CENTEREDSHIFT
+          grep -q "data-survey-grid-spacing" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-grid-snap" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-transform" src/js/survey-map/survey-map-controller.js
+          grep -q "group-resize" src/js/survey-map/survey-map-controller.js
+          grep -q "highlightAdjustedEdges" src/js/survey-map/survey-map-controller.js
+          grep -q "vector-effect:non-scaling-stroke" src/css/survey-map.css
+          if grep -q 'data-survey-ratio-toggle' src/js/survey-map/survey-map-controller.js; then
+            echo "obsolete ratio toggle remains"; exit 1
+          fi
+          node --input-type=module <<'SURVEYTRANSFORMS'
+          import {rotateSingleObject,flipSingleObject,scaleObjectInGroup,elbowRecordWithPoints} from './src/js/survey-map/survey-map-transforms.js';
+          const eq=(a,b)=>Math.abs(a-b)<1e-7;
+          const rect={type:'shape',x:200,y:100,width:400,height:200,rotation:0};
+          const rotated=rotateSingleObject(rect,90);
+          if(rotated.rotation!==90||rotated.x!==rect.x||rotated.y!==rect.y)throw new Error('shape rotation moved center');
+          const flipped=flipSingleObject(rect,'horizontal');
+          if(!flipped.flipX||flipped.x!==rect.x)throw new Error('shape flip moved center');
+          const line={type:'line',startX:0,startY:0,endX:200,endY:0,x:0,y:0,width:200,height:0};
+          const lineTurned=rotateSingleObject(line,90);
+          if(!eq(lineTurned.startX,100)||!eq(lineTurned.endX,100)||!eq(lineTurned.startY,-100)||!eq(lineTurned.endY,100))throw new Error('line rotation coordinates invalid');
+          const lineFlipped=flipSingleObject(line,'horizontal');
+          if(lineFlipped.startX!==200||lineFlipped.endX!==0)throw new Error('line flip invalid');
+          const group={x:0,y:0,width:1000,height:1000};
+          const scaled=scaleObjectInGroup(rect,group,{x:0,y:0,width:500,height:500});
+          if(scaled.x!==100||scaled.y!==50||scaled.width!==200||scaled.height!==100)throw new Error('group scale incorrect');
+          const elbow=elbowRecordWithPoints({type:'line',elbow:true},100,100,500,500,300);
+          const scaledElbow=scaleObjectInGroup(elbow,group,{x:0,y:0,width:500,height:500});
+          if(!scaledElbow.elbow||scaledElbow.bendX!==150)throw new Error('elbow group scale invalid');
+          SURVEYTRANSFORMS
           grep -q "ensureInitialSurveyDrawing" src/js/projects/project-controller.js
           grep -q "'shapeParams'" src/js/sync/record-field-merge.js
           grep -q "'customVertices'" src/js/sync/record-field-merge.js
