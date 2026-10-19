@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.8 Preview
+name: Deploy v0.1.10.9 Preview
 
 on:
   push:
@@ -865,17 +865,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.8 consistency checks
+      - name: v0.1.10.9 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.8'" src/config/app-config.js
+          grep -q "version: '0.1.10.9'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.8"' src/version.json
+          grep -q '"version": "0.1.10.9"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.8" src/service-worker.js
-          grep -q "chousa-output-libs-v01108" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.9" src/service-worker.js
+          grep -q "chousa-output-libs-v01109" src/service-worker.js
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
@@ -884,6 +884,9 @@ jobs:
           grep -q "elbowRecordWithPoints" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-tool-continuous" src/css/survey-map.css
           grep -q "elbow-bend" src/js/survey-map/survey-map-object-view.js
+          grep -q "stroke-point" src/js/survey-map/survey-map-controller.js
+          grep -q "data-survey-point-index" src/js/survey-map/survey-map-object-view.js
+          grep -q "polylineHandleHtml" src/js/survey-map/survey-map-object-view.js
           grep -q "survey-map-stroke-main" src/js/survey-map/survey-map-object-view.js
           grep -q "'points'" src/js/sync/record-field-merge.js
           node --input-type=module <<'STROKE'
