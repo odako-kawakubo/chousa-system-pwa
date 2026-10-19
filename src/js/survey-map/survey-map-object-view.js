@@ -95,6 +95,10 @@ function lineObjectHtml(record,drawing,selected,editMode){
           data-survey-handle="${handle}" style="left:${x/size.width*100}%;top:${y/size.height*100}%"
           aria-label="${label}を移動"></button>
       `).join(''):''}
+      ${selected&&editMode==='shape'?`<button type="button" class="survey-map-object-handle survey-map-line-endpoint survey-map-stroke-rotate-handle"
+        data-survey-handle="line-rotate"
+        style="left:${((startX+endX)/2)/size.width*100}%;top:${((startY+endY)/2-500)/size.height*100}%"
+        aria-label="直線を回転"></button>`:''}
     </div>
   `;
 }
