@@ -922,9 +922,14 @@ jobs:
           grep -q "polylineHandleHtml" src/js/survey-map/survey-map-object-view.js
           grep -q "function availableRooms" src/js/survey-map/survey-map-controller.js
           grep -q "createRoomLabelAt" src/js/survey-map/survey-map-controller.js
+          grep -q "createMaterialLabelAt" src/js/survey-map/survey-map-controller.js
+          grep -q "ensurePaperLayout" src/js/survey-map/survey-map-controller.js
+          grep -q "snapToGuides" src/js/survey-map/survey-map-controller.js
+          test -f src/js/survey-map/survey-map-labels.js
+          test -f src/js/survey-map/survey-map-smart-guides.js
           grep -q "data-survey-room-choice" src/js/survey-map/survey-map-controller.js
-          grep -q "survey-map-object-room" src/js/survey-map/survey-map-object-view.js
-          grep -q "survey-map-room-label" src/css/survey-map.css
+          grep -q "survey-map-object-label" src/js/survey-map/survey-map-object-view.js
+          grep -q "survey-map-label-contents" src/css/survey-map.css
           grep -q "SHAPE_TOOLS" src/js/survey-map/survey-map-shapes.js
           grep -q "shapeSvgMarkup" src/js/survey-map/survey-map-object-view.js
           grep -q "createShapeAt" src/js/survey-map/survey-map-controller.js
