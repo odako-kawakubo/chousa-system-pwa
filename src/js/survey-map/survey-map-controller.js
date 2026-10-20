@@ -1,5 +1,5 @@
 /**
- * v0.1.10.13 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
+ * v0.1.10.14 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -44,8 +44,8 @@ let polygonDraft=null;
 let shiftPointerId=null;
 let physicalShift=false;
 const DEFAULT_STROKE_WIDTH=80;
-const GRID_SPACINGS=[250,500,750,1000,2000];
-let gridSpacing=1000;
+const GRID_SPACINGS=[250,500];
+let gridSpacing=500;
 let gridSnap=false;
 let strokeEditMode='shape';
 function shiftActive(){return shiftPointerId!==null||physicalShift;}
@@ -57,8 +57,18 @@ function snapGridPoint(point){
   return {x:Math.round(point.x/gridSpacing)*gridSpacing,
     y:Math.round(point.y/gridSpacing)*gridSpacing};
 }
-function pagePointer(x,y,rect,drawing){
-  return snapGridPoint(clientToPagePoint(x,y,rect,drawing));
+function pagePointer(x,y,rect,drawing,{snap=true}={}){
+  const point=clientToPagePoint(x,y,rect,drawing);
+  return snap?snapGridPoint(point):point;
+}
+function shapeDragBounds(start,end,constrain=false){
+  let dx=end.x-start.x,dy=end.y-start.y;
+  if(constrain){
+    const side=Math.max(Math.abs(dx),Math.abs(dy));
+    dx=(dx<0?-1:1)*side;
+    dy=(dy<0?-1:1)*side;
+  }
+  return {x:Math.min(start.x,start.x+dx),y:Math.min(start.y,start.y+dy),width:Math.abs(dx),height:Math.abs(dy)};
 }
 function multiBounds(objects){
   if(!objects.length)return null;
@@ -217,16 +227,17 @@ async function createRoomLabelAt(clientX,clientY){
   await commitDrawingObject(record,'survey-map-room-label-create');
   renderSurveyMap();
 }
-async function createShapeAt(kind,clientX,clientY,otherPoint=null){
+async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=false){
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing || !sheet) return;
   const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing);
-  const width=otherPoint?Math.abs(otherPoint.x-point.x):3600;
-  const height=otherPoint?Math.abs(otherPoint.y-point.y):2400;
-  const rect=clampObjectRect(otherPoint&&width>120&&height>120?{
-    x:Math.min(point.x,otherPoint.x),y:Math.min(point.y,otherPoint.y),width,height
-  }:{x:point.x-1800,y:point.y-1200,width:3600,height:2400},drawing);
+  const bounds=otherPoint?shapeDragBounds(point,otherPoint,constrain):null;
+  const defaultSide=kind==='circle'||constrain;
+  const defaultWidth=3600,defaultHeight=defaultSide?3600:2400;
+  const rect=clampObjectRect(bounds&&bounds.width>120&&bounds.height>120?bounds:{
+    x:point.x-defaultWidth/2,y:point.y-defaultHeight/2,width:defaultWidth,height:defaultHeight
+  },drawing);
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const record=createDrawingObject({
@@ -330,7 +341,7 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
   const closed=polygon || (corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120);
   const record=createDrawingObject(strokeRecordWithPoints({
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
-    layer:DRAWING_LAYERS.SHAPE,
+    layer:freehand?DRAWING_LAYERS.NOTE:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
     rotation:0,closed,freehand,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
@@ -628,7 +639,7 @@ function toolsHtml(){
     ['range','範囲選択'],
     ['line','直線'],
     ['correct','手描き補正'],
-    ['hand','手描き'],
+    ['hand','手描きメモ'],
     ['elbow','カギ線'],
     ['room','部屋'],
     ['material','建材'],
@@ -969,14 +980,12 @@ function bindEvents(){
 
     if(event.target.closest('[data-survey-tool-toggle]')){
       toolPanelOpen=!toolPanelOpen;
-      editPanelOpen=false;
       renderSurveyMap();
       return;
     }
 
     if(event.target.closest('[data-survey-edit-toggle]')){
       editPanelOpen=!editPanelOpen;
-      toolPanelOpen=false;
       renderSurveyMap();
       return;
     }
@@ -1178,9 +1187,9 @@ function bindEvents(){
       const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       previewEl?.querySelector('line')?.remove();
-      const previewRect=document.createElementNS('http://www.w3.org/2000/svg','rect');
-      previewRect.setAttribute('class','survey-map-shape-draft-rect');
-      previewEl?.appendChild(previewRect);
+      const previewShape=document.createElementNS('http://www.w3.org/2000/svg',activeTool==='circle'?'ellipse':'rect');
+      previewShape.setAttribute('class','survey-map-shape-draft-rect');
+      previewEl?.appendChild(previewShape);
       pointerInteraction={pointerId:event.pointerId,mode:'create-shape',kind:activeTool,
         objectId:'',startPoint,sheetRect,previewEl};
       sheet.setPointerCapture?.(event.pointerId);
@@ -1190,7 +1199,7 @@ function bindEvents(){
 
     if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand') && !objectEl){
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
+      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing,{snap:activeTool!=='correct'&&activeTool!=='hand'});
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
@@ -1221,7 +1230,9 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     const drawing=selectedDrawing();
     if(!drawing) return;
-    const currentPoint=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
+    const currentPoint=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{
+      snap:interaction.mode!=='create-corrected'&&interaction.mode!=='create-hand'
+    });
 
     if(interaction.mode==='create-polygon-edge'){
       const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
@@ -1230,12 +1241,20 @@ function bindEvents(){
       return;
     }
     if(interaction.mode==='create-shape'){
-      const rect=interaction.previewEl?.querySelector('rect');
-      if(rect){
-        rect.setAttribute('x',String(Math.min(interaction.startPoint.x,currentPoint.x)));
-        rect.setAttribute('y',String(Math.min(interaction.startPoint.y,currentPoint.y)));
-        rect.setAttribute('width',String(Math.abs(interaction.startPoint.x-currentPoint.x)));
-        rect.setAttribute('height',String(Math.abs(interaction.startPoint.y-currentPoint.y)));
+      const shape=interaction.previewEl?.querySelector('.survey-map-shape-draft-rect');
+      if(shape){
+        const bounds=shapeDragBounds(interaction.startPoint,currentPoint,shiftActive()||event.shiftKey);
+        if(interaction.kind==='circle'){
+          shape.setAttribute('cx',String(bounds.x+bounds.width/2));
+          shape.setAttribute('cy',String(bounds.y+bounds.height/2));
+          shape.setAttribute('rx',String(bounds.width/2));
+          shape.setAttribute('ry',String(bounds.height/2));
+        }else{
+          shape.setAttribute('x',String(bounds.x));
+          shape.setAttribute('y',String(bounds.y));
+          shape.setAttribute('width',String(bounds.width));
+          shape.setAttribute('height',String(bounds.height));
+        }
       }
       event.preventDefault();
       return;
@@ -1505,7 +1524,7 @@ function bindEvents(){
       const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
       const x=interaction.sheetRect.left+interaction.startPoint.x/pageSize(drawing).width*interaction.sheetRect.width;
       const y=interaction.sheetRect.top+interaction.startPoint.y/pageSize(drawing).height*interaction.sheetRect.height;
-      void createShapeAt(interaction.kind,x,y,end).then(()=>renderSurveyMap());
+      void createShapeAt(interaction.kind,x,y,end,shiftActive()||event.shiftKey).then(()=>renderSurveyMap());
       return;
     }
     if(interaction.mode==='group-resize'){
@@ -1544,7 +1563,7 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{snap:false});
       const last=interaction.rawPoints.at(-1);
       if(Math.hypot(end.x-last.x,end.y-last.y)>20)interaction.rawPoints.push(end);
       void createCorrectedStroke(drawing,interaction.rawPoints,interaction.mode==='create-hand').then(()=>renderSurveyMap());
