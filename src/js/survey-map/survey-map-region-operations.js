@@ -121,9 +121,34 @@ function internalEdges(grid){
     [{x:s.fixed,y:s.from},{x:s.fixed,y:s.to}]:
     [{x:s.from,y:s.fixed},{x:s.to,y:s.fixed}]);
 }
+// 作図中の微小なズレを統一座標へ吸着させる。
+ // 許容差100 = 調査図座標で1mm。見かけ上接している図形だけを対象にする。
+const JOIN_TOLERANCE=100;
+function clusteredCoordinates(values,tolerance){
+  const sorted=unique(values),groups=[];
+  for(const value of sorted){
+    const last=groups.at(-1);
+    if(last&&value-last[0]<=tolerance)last.push(value);
+    else groups.push([value]);
+  }
+  const anchors=groups.map(group=>({items:group,at:group.reduce((sum,x)=>sum+x,0)/group.length}));
+  return value=>{
+    const hit=anchors.find(group=>group.items.some(v=>near(v,value)));
+    return hit?hit.at:value;
+  };
+}
+function alignNearbyEdges(polygons){
+  const xMap=clusteredCoordinates(polygons.flatMap(p=>p.map(v=>v.x)),JOIN_TOLERANCE);
+  const yMap=clusteredCoordinates(polygons.flatMap(p=>p.map(v=>v.y)),JOIN_TOLERANCE);
+  const aligned=polygons.map(points=>points.map(p=>({x:xMap(p.x),y:yMap(p.y)})));
+  for(const points of aligned){
+    if(Math.abs(signedArea(points))<EPS)throw new Error('補正すると図形がつぶれるため統合できません');
+  }
+  return aligned;
+}
 export function joinRegions(records){
   if(records.length<2)throw new Error('2つ以上の図形を選択してください');
-  const polygons=records.map(objectPolygon),grid=gridFrom(polygons);
+  const polygons=alignNearbyEdges(records.map(objectPolygon)),grid=gridFrom(polygons);
   if(grid.owners.some(row=>row.some(owners=>owners.length>1))){
     throw new Error('重なった領域の統合は未対応です。辺を接するように配置してください');
   }
