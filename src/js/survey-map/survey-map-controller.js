@@ -77,6 +77,13 @@ function pagePointer(x,y,rect,drawing,{snap=true}={}){
   const point=clientToPagePoint(x,y,rect,drawing);
   return snap?snapGridPoint(point):point;
 }
+function snapCreationPoint(point,drawing,show=false){
+  if(!smartGuideEnabled)return point;
+  const {rect,guides}=snapToGuides({x:point.x,y:point.y,width:0,height:0},
+    drawingObjectStore.getByDrawingId(drawing.drawingId),pageSize(drawing));
+  if(show)showSmartGuides(guides,drawing);
+  return {x:rect.x,y:rect.y};
+}
 function shapeDragBounds(start,end,constrain=false){
   let dx=end.x-start.x,dy=end.y-start.y;
   if(constrain){
@@ -1356,7 +1363,7 @@ function bindEvents(){
     }
     if(isShapeTool(activeTool)){
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
+      const startPoint=snapCreationPoint(pagePointer(event.clientX,event.clientY,sheetRect,drawing),drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       previewEl?.querySelector('line')?.remove();
       const previewShape=document.createElementNS('http://www.w3.org/2000/svg',activeTool==='circle'?'ellipse':'rect');
@@ -1371,7 +1378,9 @@ function bindEvents(){
 
     if(activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand'){
       const sheetRect=sheet.getBoundingClientRect();
-      const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing,{snap:activeTool!=='correct'&&activeTool!=='hand'});
+      const rawStart=pagePointer(event.clientX,event.clientY,sheetRect,drawing,
+        {snap:activeTool!=='correct'&&activeTool!=='hand'});
+      const startPoint=(activeTool==='correct'||activeTool==='hand')?rawStart:snapCreationPoint(rawStart,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
@@ -1402,9 +1411,11 @@ function bindEvents(){
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     const drawing=selectedDrawing();
     if(!drawing) return;
-    const currentPoint=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{
+    const rawPoint=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{
       snap:interaction.mode!=='create-corrected'&&interaction.mode!=='create-hand'
     });
+    const currentPoint=['create-shape','create-line','create-elbow','create-polygon-edge']
+      .includes(interaction.mode)?snapCreationPoint(rawPoint,drawing,true):rawPoint;
 
     if(interaction.mode==='create-polygon-edge'){
       const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
@@ -1721,7 +1732,8 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=snapCreationPoint(pagePointer(event.clientX,event.clientY,
+        interaction.sheetRect,drawing),drawing);
       const x=interaction.sheetRect.left+interaction.startPoint.x/pageSize(drawing).width*interaction.sheetRect.width;
       const y=interaction.sheetRect.top+interaction.startPoint.y/pageSize(drawing).height*interaction.sheetRect.height;
       void createShapeAt(interaction.kind,x,y,end,shiftActive()||event.shiftKey).then(()=>renderSurveyMap());
@@ -1754,7 +1766,8 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const end=snapCreationPoint(pagePointer(event.clientX,event.clientY,
+        interaction.sheetRect,drawing),drawing);
       void createElbowFromPoints(drawing,interaction.startPoint,end).then(()=>renderSurveyMap());
       return;
     }
@@ -1778,7 +1791,8 @@ function bindEvents(){
       }
       const drawing=selectedDrawing();
       if(!drawing) return;
-      const rawEnd=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing);
+      const rawEnd=snapCreationPoint(pagePointer(event.clientX,event.clientY,
+        interaction.sheetRect,drawing),drawing);
       const endPoint=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,rawEnd):rawEnd;
       void createLineFromPoints(drawing,interaction.startPoint,endPoint).then(()=>renderSurveyMap());
       return;
