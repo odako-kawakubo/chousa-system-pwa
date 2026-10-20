@@ -366,3 +366,10 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-grid-setting{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .survey-map-grid-setting select{max-width:95px}
 .survey-map-grid-setting label{font-size:12px}
+
+/* v0.1.10.14: 図形の実際の輪郭だけで選択（空白部分は対象外） */
+.survey-map-object-shape{pointer-events:none}
+.survey-map-object-shape .survey-map-shape-svg{pointer-events:none}
+.survey-map-object-shape .survey-map-shape-svg polygon,
+.survey-map-object-shape .survey-map-shape-svg ellipse{pointer-events:all;cursor:move}
+.survey-map-object-shape .survey-map-object-handle{pointer-events:auto}
