@@ -487,6 +487,7 @@ async function confirmRegionOperation(){
   const active=drawingObjectStore.getByDrawingId(drawing.drawingId);
   let order=Math.max(0,...active.map(r=>Number(r.order)||0));
   const template=originals.find(r=>r.type==='shape');
+  const geometryGroupId=op.type==='merge'?newObjectId():'';
   const create=(fields,changed)=>createDrawingObject({
     objectId:newObjectId(),drawingId:drawing.drawingId,
     layer:DRAWING_LAYERS.SHAPE,order:++order,visible:true,locked:false,deleted:false,
@@ -494,19 +495,19 @@ async function confirmRegionOperation(){
     fieldEditedAt:touchFieldEditedAt({},changed,now)
   });
   const newShapes=op.result.outlines.map(points=>create({
-    type:'shape',...polygonRecordGeometry(points),
+    type:'shape',...polygonRecordGeometry(points),geometryGroupId,
     fillEnabled:Boolean(template.fillEnabled),fillColor:template.fillColor||'#ffffff',
     fillOpacity:Number(template.fillOpacity)||0,lineEnabled:true,
     strokeColor:template.strokeColor||'#334155',strokeWidth:template.strokeWidth||80
   },['drawingId','type','layer','order','x','y','width','height','rotation','flipX','flipY',
     'shapeType','shapeParams','customVertices','fillEnabled','fillColor','fillOpacity',
-    'lineEnabled','strokeColor','strokeWidth','deleted']));
+    'lineEnabled','strokeColor','strokeWidth','geometryGroupId','deleted']));
   const newLines=op.result.partitions.map(([a,b])=>create({
-    type:'line',startX:a.x,startY:a.y,endX:b.x,endY:b.y,
+    type:'line',geometryGroupId,startX:a.x,startY:a.y,endX:b.x,endY:b.y,
     x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),
     width:Math.abs(a.x-b.x),height:Math.abs(a.y-b.y),
     lineColor:template.strokeColor||'#334155',lineWidth:template.strokeWidth||80,lineStyle:'solid'
-  },['drawingId','type','layer','order','x','y','width','height','startX','startY','endX','endY','lineColor','lineWidth','lineStyle','deleted']));
+  },['drawingId','type','layer','order','x','y','width','height','startX','startY','endX','endY','lineColor','lineWidth','lineStyle','geometryGroupId','deleted']));
   const disabled=originals.filter(r=>op.type==='merge'||r.type==='shape').map(r=>createDrawingObject({
     ...r,deleted:true,fieldEditedAt:touchFieldEditedAt(r.fieldEditedAt,'deleted',now)
   }));
@@ -1268,6 +1269,10 @@ function bindEvents(){
         draft:{...object},
         groupOriginals:groupMove?Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(Boolean):[],
         groupDrafts:[],
+        linkedOriginals:!groupMove && object.type==='shape' && object.geometryGroupId
+          ?drawingObjectStore.getByDrawingId(object.drawingId).filter(record=>
+            record.type==='line'&&record.geometryGroupId===object.geometryGroupId):[],
+        linkedDrafts:[],
         startPoint,
         pointIndex:handle==='stroke-point'?Number(event.target.closest('[data-survey-point-index]')?.dataset.surveyPointIndex):-1,
         sheetRect
@@ -1587,6 +1592,18 @@ function bindEvents(){
     }
 
     interaction.draft=draft;
+    if(interaction.linkedOriginals?.length && ['move','resize','resize-corner'].includes(interaction.mode)){
+      const original=interaction.original;
+      const before={x:original.x,y:original.y,width:original.width,height:original.height};
+      const after={x:draft.x,y:draft.y,width:draft.width,height:draft.height};
+      interaction.linkedDrafts=interaction.linkedOriginals.map(record=>
+        interaction.mode==='move'?translateObject(record,draft.x-original.x,draft.y-original.y):
+          scaleObjectInGroup(record,before,after));
+      for(const linked of interaction.linkedDrafts){
+        const el=mount.querySelector(`[data-survey-object-id="${CSS.escape(linked.objectId)}"]`);
+        if(el)paintObjectDraft(el,linked,drawing);
+      }
+    }
     if(interaction.mode==='shape-adjust' || interaction.mode==='shape-vertex'){
       const polygon=objectEl.querySelector('.survey-map-shape-svg polygon');
       if(polygon){
@@ -1723,7 +1740,25 @@ function bindEvents(){
       ...draft,
       fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,fields,now)
     });
-    void commitDrawingObject(next,`survey-map-object-${interaction.mode}`).then(()=>renderSurveyMap());
+    if(interaction.linkedDrafts?.length){
+      const source='survey-map-region-related-transform';
+      const records=[next,...interaction.linkedDrafts.map(d=>{
+        const before=drawingObjectStore.get(d.objectId);
+        const changed=['points','startX','startY','endX','endY','x','y','width','height'];
+        return createDrawingObject({...before,...d,fieldEditedAt:touchFieldEditedAt(before.fieldEditedAt,changed,now)});
+      })];
+      const changes=records.map(after=>({type:'drawingObject',before:drawingObjectStore.get(after.objectId),after}));
+      drawingObjectStore.batch(()=>records.forEach(record=>drawingObjectStore.set(record)));
+      persistSnapshot(source);
+      rememberSurveyOperation(getCurrentProject()?.projectId,source,changes);
+      const project=getCurrentProject();
+      void (async()=>{
+        if(project&&!project.isSample)for(const record of records)await persistDrawingObjectForProject(project,record,source);
+        renderSurveyMap();
+      })();
+    }else{
+      void commitDrawingObject(next,`survey-map-object-${interaction.mode}`).then(()=>renderSurveyMap());
+    }
   };
 
   function releaseShift(event){
