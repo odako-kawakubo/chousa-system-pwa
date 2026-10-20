@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.14 Preview
+name: Deploy v0.1.10.15 Preview
 
 on:
   push:
@@ -865,17 +865,35 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.14 consistency checks
+      - name: v0.1.10.15 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.14'" src/config/app-config.js
+          grep -q "version: '0.1.10.15'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.14"' src/version.json
+          grep -q '"version": "0.1.10.15"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.14" src/service-worker.js
-          grep -q "chousa-output-libs-v011014" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.15" src/service-worker.js
+          grep -q "chousa-output-libs-v011015" src/service-worker.js
+          test -f src/js/survey-map/survey-map-region-operations.js
+          grep -Fq "'./js/survey-map/survey-map-region-operations.js'" src/service-worker.js
+          grep -q "data-survey-region-confirm" src/js/survey-map/survey-map-controller.js
+          grep -q "rememberSurveyOperation" src/js/survey-map/survey-map-history.js
+          node --input-type=module <<'REGION'
+          import {joinRegions,splitRegion,polygonRecordGeometry} from './src/js/survey-map/survey-map-region-operations.js';
+          const box=(id,x,y,w,h)=>({objectId:id,type:'shape',shapeType:'rect',x,y,width:w,height:h,rotation:0});
+          const a=box('a',0,0,1000,1000),b=box('b',1000,0,1000,1000);
+          const result=joinRegions([a,b]);
+          if(result.outlines.length!==1||result.partitions.length!==1)throw new Error('shared edge merge failed');
+          const merged=polygonRecordGeometry(result.outlines[0]);
+          const cut={type:'line',startX:1000,startY:0,endX:1000,endY:1000};
+          const split=splitRegion({...merged,type:'shape'},cut);
+          if(split.outlines.length!==2)throw new Error('straight split failed');
+          let failed=false;
+          try{joinRegions([a,box('remote',4000,0,1000,1000)]);}catch{failed=true;}
+          if(!failed)throw new Error('disconnected merge must fail');
+          REGION
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
