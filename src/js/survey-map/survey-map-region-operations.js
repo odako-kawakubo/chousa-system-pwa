@@ -124,6 +124,9 @@ function internalEdges(grid){
 export function joinRegions(records){
   if(records.length<2)throw new Error('2つ以上の図形を選択してください');
   const polygons=records.map(objectPolygon),grid=gridFrom(polygons);
+  if(grid.owners.some(row=>row.some(owners=>owners.length>1))){
+    throw new Error('重なった領域の統合は未対応です。辺を接するように配置してください');
+  }
   const outline=boundary(grid,(i,j)=>grid.owners[j][i].length>0);
   const partitions=internalEdges(grid);
   return {outlines:[outline],partitions};
