@@ -43,6 +43,8 @@
   aspect-ratio:297/210;
   width:min(100%,1180px);
   min-width:620px;
+  touch-action:pan-x pan-y;
+  transform-origin:top left;
 }
 .survey-map-grid-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
 .survey-map-grid-lines path{fill:none;stroke:#94a3b844;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
@@ -96,7 +98,6 @@
 .survey-map-corner-ne{left:100%;top:0}
 .survey-map-corner-sw{left:0;top:100%}
 .survey-map-corner-se{left:100%;top:100%}
-.survey-map-object-resize-handle{right:-6px;bottom:-6px}
 .survey-map-room-picker{display:grid;gap:5px;margin-top:10px;font-size:12px}
 .survey-map-room-picker label{color:#64748b;font-weight:600}
 .survey-map-room-picker select{width:100%;min-height:38px;border:1px solid #d6dce5;border-radius:8px;background:#fff;padding:6px;color:#334155}
@@ -202,12 +203,8 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 }
 
 
-/* v0.1.10.6 基本作図操作 */
+/* キャンバス操作・図形配置 */
 .survey-map-sheet.drawing-mode{touch-action:none}
-.survey-map-sheet{
-  touch-action:pan-x pan-y;
-  transform-origin:top left;
-}
 .survey-map-object-layer{
   position:absolute;
   inset:0;
@@ -275,14 +272,18 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   height:16px;
   background:#2563eb;
 }
-.survey-map-object-shape{min-width:4px;min-height:4px}
+.survey-map-object-shape{min-width:4px;min-height:4px;pointer-events:none}
+.survey-map-object-shape .survey-map-shape-svg{pointer-events:none}
+.survey-map-object-shape .survey-map-shape-svg polygon,
+.survey-map-object-shape .survey-map-shape-svg ellipse{pointer-events:all;cursor:move}
+.survey-map-object-shape .survey-map-object-handle{pointer-events:auto}
 .survey-map-object-layer + .survey-map-empty{z-index:2}
 .survey-map-fixed-title,
 .survey-map-fixed-name,
 .survey-map-fixed-legend{z-index:30}
 
 
-/* v0.1.10.6 直線ツール */
+/* 直線・ポリライン */
 .survey-map-object-line{
   inset:0;
   width:auto;
@@ -364,13 +365,6 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-grid-setting{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .survey-map-grid-setting select{max-width:95px}
 .survey-map-grid-setting label{font-size:12px}
-
-/* v0.1.10.14: 図形の実際の輪郭だけで選択（空白部分は対象外） */
-.survey-map-object-shape{pointer-events:none}
-.survey-map-object-shape .survey-map-shape-svg{pointer-events:none}
-.survey-map-object-shape .survey-map-shape-svg polygon,
-.survey-map-object-shape .survey-map-shape-svg ellipse{pointer-events:all;cursor:move}
-.survey-map-object-shape .survey-map-object-handle{pointer-events:auto}
 
 .survey-map-region-preview{position:absolute;inset:0;z-index:28;pointer-events:none}
 .survey-map-region-preview svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
