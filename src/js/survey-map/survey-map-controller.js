@@ -579,9 +579,9 @@ function paperLayoutFields(drawing){
   objects.push(make('text','legendHeading',22000,15300,1900,450,'凡例',
     {legendGroupId:group,fontSize:8}));
   const rows=[
-    ['positive','含有','建材No.1-①\\n壁 仕上塗材A'],
-    ['assumed','含有みなし','建材No.2\\n壁 仕上塗材B'],
-    ['none','含有なし','建材No.3-①\\n壁 仕上塗材C']
+    ['positive','含有','建材No.1-①\n壁 仕上塗材A'],
+    ['assumed','含有みなし','建材No.2\n壁 仕上塗材B'],
+    ['none','含有なし','建材No.3-①\n壁 仕上塗材C']
   ];
   for(let i=0;i<rows.length;i++){
     const [kind,label,text]=rows[i],y=16000+i*1120;
