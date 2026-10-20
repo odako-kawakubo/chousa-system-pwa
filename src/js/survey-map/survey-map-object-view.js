@@ -133,7 +133,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
           `--survey-label-font:${Math.max(1,Number(cfg.fontSize)||6)}pt`,
           `--survey-label-color:${escapeHtml(cfg.textColor)}`,
           `--survey-label-padding:${Math.max(0,Number(cfg.padding)||0)/100}mm`,
-          `--survey-label-border:${cfg.borderEnabled?'1px solid '+escapeHtml(cfg.strokeColor):'none'}`,
+          `--survey-label-border:${cfg.borderEnabled?Math.max(.25,Number(cfg.borderWidth)||1)+'px solid '+escapeHtml(cfg.strokeColor):'none'}`,
           `--survey-label-background:${cfg.backgroundEnabled?escapeHtml(cfg.backgroundColor):'transparent'}`
         ].join(';');
         return `
