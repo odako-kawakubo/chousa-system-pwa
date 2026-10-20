@@ -552,6 +552,87 @@ async function applyHistory(redo=false){
   clearSelection();
   renderSurveyMap();
 }
+function paperObjects(drawing){
+  return drawingObjectStore.getByDrawingId(drawing.drawingId).filter(o=>o.paperRole||o.legendGroupId);
+}
+function paperLayoutFields(drawing){
+  const make=(type,role,x,y,width,height,text,extra={})=>({
+    ...LABEL_DEFAULTS[type]||LABEL_DEFAULTS.text,
+    type,paperRole:role,x,y,width,height,text,...extra
+  });
+  const objects=[];
+  objects.push(make('text','title',2500,1500,4200,900,drawing.titleSettings?.text||'調査図',
+    {fontSize:14}));
+  objects.push(make('text','name',2500,19400,9000,650,drawing.nameSettings?.text||drawing.name||'',
+    {fontSize:9}));
+  const group='legend';
+  objects.push({type:'shape',paperRole:'legendFrame',legendGroupId:group,
+    x:21600,y:15000,width:7300,height:5300,shapeType:'rect',shapeParams:defaultShapeParams('rect'),
+    fillEnabled:false,fillColor:'#ffffff',fillOpacity:0,lineEnabled:true,strokeColor:'#111111',strokeWidth:35});
+  objects.push(make('text','legendHeading',22000,15300,1900,450,'凡例',
+    {legendGroupId:group,fontSize:8}));
+  const rows=[
+    ['positive','含有','建材No.1-①\\n壁 仕上塗材A'],
+    ['assumed','含有みなし','建材No.2\\n壁 仕上塗材B'],
+    ['none','含有なし','建材No.3-①\\n壁 仕上塗材C']
+  ];
+  for(let i=0;i<rows.length;i++){
+    const [kind,label,text]=rows[i],y=16000+i*1120;
+    objects.push(make('materialLabel','legendMaterial'+i,22000,y,2000,600,text,{
+      legendGroupId:group,materialKind:kind,...materialPalette(kind)
+    }));
+    objects.push(make('text','legendCaption'+i,24200,y+80,4000,450,label,{
+      legendGroupId:group,fontSize:6
+    }));
+  }
+  objects.push(make('sampleMarker','legendSample',22100,19400,400,400,'①',{
+    legendGroupId:group
+  }));
+  objects.push(make('text','legendSampleCaption',24200,19350,4200,500,'採取位置',{
+    legendGroupId:group,fontSize:6
+  }));
+  return objects;
+}
+async function ensurePaperLayout(drawing=selectedDrawing(),reset=false){
+  if(!drawing)return;
+  const existing=paperObjects(drawing);
+  if(existing.length&&!reset)return;
+  const defaults=paperLayoutFields(drawing);
+  const now=Date.now(),source=reset?'survey-map-paper-reset':'survey-map-paper-layout';
+  const all=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  let order=Math.max(0,...all.map(o=>Number(o.order)||0));
+  const changes=[];
+  const updates=defaults.map(fields=>{
+    const previous=existing.find(o=>o.paperRole===fields.paperRole);
+    const next=createDrawingObject({
+      ...previous,
+      objectId:previous?.objectId||newObjectId(),drawingId:drawing.drawingId,
+      layer:fields.type==='shape'?DRAWING_LAYERS.SHAPE:DRAWING_LAYERS.TEXT,
+      order:previous?.order||++order,visible:true,locked:false,deleted:false,rotation:0,
+      ...fields,
+      fieldEditedAt:touchFieldEditedAt(previous?.fieldEditedAt||{},Object.keys(fields),now)
+    });
+    changes.push({type:'drawingObject',before:previous||null,after:next});
+    return next;
+  });
+  drawingObjectStore.batch(()=>updates.forEach(o=>drawingObjectStore.set(o)));
+  persistSnapshot(source);
+  rememberSurveyOperation(getCurrentProject()?.projectId,source,changes);
+  const project=getCurrentProject();
+  if(project&&!project.isSample){
+    for(const next of updates)await persistDrawingObjectForProject(project,next,source);
+  }
+  renderSurveyMap();
+}
+function selectLegend(){
+  const drawing=selectedDrawing();
+  if(!drawing)return;
+  const ids=paperObjects(drawing).filter(o=>o.legendGroupId==='legend').map(o=>o.objectId);
+  selectedObjectIds=new Set(ids);
+  selectedObjectId=ids.at(-1)||'';
+  activeTool='select';
+  renderSurveyMap();
+}
 function nextPageName(){
   const used=new Set(activeDrawings().map((item)=>String(item.name||'')));
   let index=1;
@@ -581,7 +662,7 @@ async function createDrawing(){
   selectedDrawingId=record.drawingId;
   pagesOpen=false;
   await commitDrawing(record,'survey-map-create');
-  renderSurveyMap();
+  await ensurePaperLayout(record);
 }
 
 async function renameDrawing(value){
@@ -759,6 +840,7 @@ function sheetHtml(drawing){
   const title=escapeHtml(drawing.titleSettings?.text||'調査図');
   const name=escapeHtml(drawing.nameSettings?.text||drawing.name||'');
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const hasPaper=objects.some(o=>o.paperRole&&!o.deleted);
   const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
   const size=pageSize(drawing);
   const gridHtml=gridVisible?`<svg class="survey-map-grid-lines" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
@@ -770,12 +852,11 @@ function sheetHtml(drawing){
   </svg>`:'';
   return `
     ${gridHtml}
-    <div class="survey-map-fixed-title">${title}</div>
+    ${hasPaper?'':`<div class="survey-map-fixed-title">${title}</div>`}
     <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
     ${regionPreviewMarkup(drawing)}
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
-    <div class="survey-map-fixed-name">${name}</div>
-    <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
+    ${hasPaper?'':`<div class="survey-map-fixed-name">${name}</div><div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>`}
   `;
 }
 
@@ -899,6 +980,7 @@ function editorHtml(drawing){
       <label>紙面左下の名称</label>
       <input data-survey-display-name value="${escapeHtml(drawing.nameSettings?.text||'')}">
     </div>
+    <div class="survey-map-paper-actions"><button type="button" class="btn small" data-survey-paper-layout>紙面レイアウト配置</button><button type="button" class="btn small" data-survey-legend-select>凡例をまとめて選択</button><button type="button" class="btn small" data-survey-paper-reset>紙面位置を初期化</button></div>
     <div class="survey-map-hint">図形を選択すると、位置・サイズ・回転の情報を表示します。</div>
     <div class="survey-map-divider"></div>
     <button type="button" class="btn danger" data-survey-delete-current style="width:100%" ${activeDrawings().length<=1?'disabled title="最後の1枚は削除できません"':''}>この調査図を削除</button>
@@ -1122,6 +1204,9 @@ function bindEvents(){
       void commitChangedObject(record,updated,'survey-map-transform').then(()=>renderSurveyMap());
       return;
     }
+    if(event.target.closest('[data-survey-paper-layout]')){void ensurePaperLayout();return;}
+    if(event.target.closest('[data-survey-paper-reset]')){void ensurePaperLayout(selectedDrawing(),true);return;}
+    if(event.target.closest('[data-survey-legend-select]')){selectLegend();return;}
     if(event.target.closest('[data-survey-object-delete]')){
       void deleteSelectedObject();
       return;
