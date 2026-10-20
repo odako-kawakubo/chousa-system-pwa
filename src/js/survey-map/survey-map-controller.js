@@ -1,5 +1,5 @@
 /**
- * v0.1.10.15 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
+ * v0.1.10.16 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -1778,7 +1778,7 @@ function bindEvents(){
 
   mount.addEventListener('change',(event)=>{
     if(event.target.matches('[data-survey-grid-spacing]')){
-      gridSpacing=Number(event.target.value)||250;
+      gridSpacing=GRID_SPACINGS.includes(Number(event.target.value))?Number(event.target.value):250;
       renderSurveyMap();return;
     }
     if(event.target.matches('[data-survey-grid-snap]')){
