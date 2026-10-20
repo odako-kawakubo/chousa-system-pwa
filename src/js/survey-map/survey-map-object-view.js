@@ -1,4 +1,5 @@
 import { pageSize, objectPercentStyle } from './survey-map-geometry.js';
+import { isLabelType,labelText,labelSettings,escapeLabel } from './survey-map-labels.js';
 import { shapeSvgMarkup,shapeAdjusters,shapeVertices } from './survey-map-shapes.js';
 
 function escapeHtml(value){
@@ -125,17 +126,23 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
       if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode,showHandles);
 
       const style = objectPercentStyle(record, drawing);
-      if(record.type==='roomLabel'){
+      if(isLabelType(record.type)){
+        const cfg=labelSettings(record.type,record);
+        const textMarkup=labelText(record).split('\n').map(line=>`<span class="survey-map-label-line">${escapeLabel(line)}</span>`).join('');
+        const decoration=[
+          `--survey-label-font:${Math.max(1,Number(cfg.fontSize)||6)}pt`,
+          `--survey-label-color:${escapeHtml(cfg.textColor)}`,
+          `--survey-label-padding:${Math.max(0,Number(cfg.padding)||0)/100}mm`,
+          `--survey-label-border:${cfg.borderEnabled?'1px solid '+escapeHtml(cfg.strokeColor):'none'}`,
+          `--survey-label-background:${cfg.backgroundEnabled?escapeHtml(cfg.backgroundColor):'transparent'}`
+        ].join(';');
         return `
-          <div class="survey-map-object survey-map-object-room ${selected?'selected':''}"
+          <div class="survey-map-object survey-map-object-label survey-map-object-${escapeHtml(record.type)} ${selected?'selected':''}"
             data-survey-object-id="${escapeHtml(record.objectId)}"
-            style="${style}" role="button" aria-label="部屋ラベル">
-            <div class="survey-map-room-label">${escapeHtml(record.text||[record.roomNoSnapshot,record.roomNameSnapshot].filter(Boolean).join('　'))}</div>
-            ${showHandles?`
-              <button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>
-            `:''}
-          </div>
-        `;
+            style="${style};${decoration}" role="button" aria-label="ラベル">
+            <div class="survey-map-label-contents">${textMarkup}</div>
+            ${showHandles?`<button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>`:''}
+          </div>`;
       }
       const label = record.type === 'shape' ? '図形' : String(record.type || 'オブジェクト');
       return `
