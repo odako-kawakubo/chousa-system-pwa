@@ -44,10 +44,8 @@
   width:min(100%,1180px);
   min-width:620px;
 }
-.survey-map-sheet.grid-on{
-  background-image:linear-gradient(to right,#94a3b844 1px,transparent 1px),linear-gradient(to bottom,#94a3b844 1px,transparent 1px);
-  background-size:var(--survey-grid-x,3.367%) var(--survey-grid-y,4.762%)
-}
+.survey-map-grid-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
+.survey-map-grid-lines path{fill:none;stroke:#94a3b844;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
 .survey-map-fixed-title{position:absolute;left:2.5%;top:2.5%;font-size:22px;font-weight:800;pointer-events:none}
 .survey-map-fixed-name{position:absolute;left:2.5%;bottom:2.5%;font-size:14px;font-weight:700;pointer-events:none}
 .survey-map-fixed-legend{position:absolute;right:2.5%;bottom:2.5%;font-size:12px;line-height:1.6;text-align:left;pointer-events:none}
