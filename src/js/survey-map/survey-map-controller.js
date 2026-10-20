@@ -14,7 +14,9 @@ import { persistDrawingForProject, persistDrawingObjectForProject } from '../syn
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { clientToPagePoint, clamp, clampObjectRect, pageSize, rotationFromPointer, resizeRectFromDrag } from './survey-map-geometry.js';
 import { drawingObjectsHtml } from './survey-map-object-view.js';
-import { LABEL_DEFAULTS,materialPalette,isLabelType,roomText,escapeLabel } from './survey-map-labels.js';
+import { LABEL_DEFAULTS,materialPalette,isLabelType } from './survey-map-labels.js';
+import { paperLayoutFields } from './survey-map-paper-layout.js';
+import { labelEditorHtml } from './survey-map-label-editor.js';
 import { snapToGuides,guideSvg } from './survey-map-smart-guides.js';
 import { createLineDraftPreview, updateLineDraftPreview, updatePolylinePreview, previewCorrectedStroke, highlightAdjustedEdges, paintObjectDraft } from './survey-map-live-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
@@ -569,44 +571,6 @@ async function applyHistory(redo=false){
 function paperObjects(drawing){
   return drawingObjectStore.getByDrawingId(drawing.drawingId).filter(o=>o.paperRole||o.legendGroupId);
 }
-function paperLayoutFields(drawing){
-  const make=(type,role,x,y,width,height,text,extra={})=>({
-    ...LABEL_DEFAULTS[type]||LABEL_DEFAULTS.text,
-    type,paperRole:role,x,y,width,height,text,...extra
-  });
-  const objects=[];
-  objects.push(make('text','title',2500,1500,4200,900,drawing.titleSettings?.text||'調査図',
-    {fontSize:14}));
-  objects.push(make('text','name',2500,19400,9000,650,drawing.nameSettings?.text||drawing.name||'',
-    {fontSize:9}));
-  const group='legend';
-  objects.push({type:'shape',paperRole:'legendFrame',legendGroupId:group,
-    x:21600,y:15000,width:7300,height:5300,shapeType:'rect',shapeParams:defaultShapeParams('rect'),
-    fillEnabled:false,fillColor:'#ffffff',fillOpacity:0,lineEnabled:true,strokeColor:'#111111',strokeWidth:35});
-  objects.push(make('text','legendHeading',22000,15300,1900,450,'凡例',
-    {legendGroupId:group,fontSize:8}));
-  const rows=[
-    ['positive','含有','建材No.1-①\n壁 仕上塗材A'],
-    ['assumed','含有みなし','建材No.2\n壁 仕上塗材B'],
-    ['none','含有なし','建材No.3-①\n壁 仕上塗材C']
-  ];
-  for(let i=0;i<rows.length;i++){
-    const [kind,label,text]=rows[i],y=16000+i*1120;
-    objects.push(make('materialLabel','legendMaterial'+i,22000,y,2000,600,text,{
-      legendGroupId:group,materialKind:kind,...materialPalette(kind)
-    }));
-    objects.push(make('text','legendCaption'+i,24200,y+80,4000,450,label,{
-      legendGroupId:group,fontSize:6
-    }));
-  }
-  objects.push(make('sampleMarker','legendSample',22100,19400,400,400,'①',{
-    legendGroupId:group
-  }));
-  objects.push(make('text','legendSampleCaption',24200,19350,4200,500,'採取位置',{
-    legendGroupId:group,fontSize:6
-  }));
-  return objects;
-}
 async function ensurePaperLayout(drawing=selectedDrawing(),reset=false){
   if(!drawing)return;
   const existing=paperObjects(drawing);
@@ -889,40 +853,6 @@ function multiSelectionHandles(drawing,objects){
   const size=pageSize(drawing);
   return `<div class="survey-map-group-bounds" style="left:${b.x/size.width*100}%;top:${b.y/size.height*100}%;width:${b.width/size.width*100}%;height:${b.height/size.height*100}%">
     ${['nw','ne','sw','se'].map(c=>`<button class="survey-map-group-handle" type="button" data-survey-group-corner="${c}" aria-label="複数選択を${c}から拡大縮小"></button>`).join('')}
-  </div>`;
-}
-function labelEditorHtml(record){
-  const isRoom=record.type==='roomLabel';
-  const isMaterial=record.type==='materialLabel';
-  const colorField=(key,title,fallback)=>`<div class="survey-map-editor-row"><label>${title}</label>
-    <input type="color" data-survey-label-field="${key}" value="${escapeLabel(record[key]||fallback)}">
-    <input type="text" data-survey-label-hex="${key}" aria-label="${title}の色コード" value="${escapeLabel(record[key]||fallback)}" placeholder="#RRGGBB"></div>`;
-  const numField=(key,title,value,step='1')=>`<div class="survey-map-editor-row"><label>${title}</label>
-    <input type="number" step="${step}" min="0" data-survey-label-field="${key}" value="${Number(value)||0}"></div>`;
-  return `<div class="survey-map-label-edit">
-    ${isRoom?`<div class="survey-map-editor-row"><label>表示項目</label>
-      <select data-survey-label-field="roomDisplay">
-        <option value="number" ${record.roomDisplay!=='name'?'selected':''}>部屋No.</option>
-        <option value="name" ${record.roomDisplay==='name'?'selected':''}>部屋名</option>
-      </select></div>`:''}
-    <div class="survey-map-editor-row"><label>表示テキスト</label>
-      <textarea data-survey-label-field="text">${escapeLabel(record.text||'')}</textarea></div>
-    <div class="survey-map-editor-row"><label>幅 (mm)</label>
-      <input type="number" min="1" step=".5" data-survey-label-field="widthMm" value="${(Number(record.width)||500)/100}"></div>
-    <div class="survey-map-editor-row"><label>高さ (mm)</label>
-      <input type="number" min="1" step=".5" data-survey-label-field="heightMm" value="${(Number(record.height)||300)/100}"></div>
-    ${numField('fontSize','文字サイズ (pt)',record.fontSize||6,'.5')}
-    ${numField('borderWidth','枠線の太さ (px)',record.borderWidth||1,'.25')}
-    ${numField('paddingMm','余白 (mm)',(Number(record.padding)||0)/100,'.5')}
-    ${colorField('textColor','文字色','#111111')}
-    <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="borderEnabled" ${record.borderEnabled?'checked':''}> 枠線を付ける</label>
-    ${colorField('strokeColor','枠線色','#111111')}
-    <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="backgroundEnabled" ${record.backgroundEnabled?'checked':''}> 背景色を付ける</label>
-    ${colorField('backgroundColor','背景色','#ffffff')}
-    ${isMaterial?`<div class="survey-map-editor-row"><label>判定別の初期配色</label>
-      <select data-survey-material-palette>
-      <option value="">現在の配色を維持</option><option value="none">未確定・含有なし</option>
-      <option value="positive">含有</option><option value="assumed">みなし</option></select></div>`:''}
   </div>`;
 }
 function editorHtml(drawing){
