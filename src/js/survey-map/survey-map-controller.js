@@ -1,5 +1,5 @@
 /**
- * v0.1.10.14 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
+ * v0.1.10.15 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -16,7 +16,8 @@ import { clientToPagePoint, clamp, clampObjectRect, objectPercentStyle, pageSize
 import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
-import { rememberSurveyEdit,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
+import { rememberSurveyEdit,rememberSurveyOperation,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
+import { joinRegions,splitRegion,polygonRecordGeometry } from './survey-map-region-operations.js';
 import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup } from './survey-map-transforms.js';
 
 let initialized=false;
@@ -41,6 +42,8 @@ let lastToolTap=null;
 let zoomLevel=1;
 let pointerInteraction=null;
 let polygonDraft=null;
+let regionPreview=null;
+let regionCommitPending=false;
 let shiftPointerId=null;
 let physicalShift=false;
 const DEFAULT_STROKE_WIDTH=80;
@@ -430,6 +433,108 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
   return record;
 }
 
+function regionPreviewMarkup(drawing){
+  const operation=regionPreview;
+  if(!drawing||!operation||operation.drawingId!==drawing.drawingId)return '';
+  const size=pageSize(drawing);
+  const polygon=points=>points.map(p=>p.x+','+p.y).join(' ');
+  return `<div class="survey-map-region-preview">
+    <svg viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none">
+      ${operation.result.outlines.map(points=>`<polygon points="${polygon(points)}"/>`).join('')}
+      ${operation.result.partitions.map(([a,b])=>`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`).join('')}
+    </svg>
+    <div class="survey-map-region-confirm">
+      <strong>${operation.type==='merge'?'統合':'分割'}プレビュー</strong>
+      <button type="button" class="btn small primary" data-survey-region-confirm>確定</button>
+      <button type="button" class="btn small" data-survey-region-cancel>戻る</button>
+    </div>
+  </div>`;
+}
+function startRegionOperation(type){
+  const drawing=selectedDrawing();
+  if(!drawing||regionCommitPending)return;
+  const records=Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id))
+    .filter(record=>record&&!record.deleted&&record.drawingId===drawing.drawingId);
+  try{
+    let result;
+    if(type==='merge'){
+      if(records.length<2||records.some(r=>r.type!=='shape'))throw new Error('統合する図形を2つ以上選択してください');
+      result=joinRegions(records);
+    }else{
+      const shapes=records.filter(r=>r.type==='shape'),lines=records.filter(r=>r.type==='line');
+      if(records.length!==2||shapes.length!==1||lines.length!==1)throw new Error('図形1つと直線1本を選択してください');
+      result=splitRegion(shapes[0],lines[0]);
+    }
+    regionPreview={type,drawingId:drawing.drawingId,ids:records.map(r=>r.objectId),
+      originals:records.map(r=>JSON.stringify(r)),result};
+    renderSurveyMap();
+  }catch(error){
+    window.alert(error.message||'図形を処理できませんでした');
+  }
+}
+async function confirmRegionOperation(){
+  if(!regionPreview||regionCommitPending)return;
+  const op=regionPreview,drawing=selectedDrawing();
+  if(!drawing||drawing.drawingId!==op.drawingId)return;
+  const originals=op.ids.map(id=>drawingObjectStore.get(id));
+  if(originals.some((r,i)=>!r||JSON.stringify(r)!==op.originals[i])){
+    regionPreview=null;renderSurveyMap();
+    window.alert('図形が変更されています。もう一度選択して実行してください。');
+    return;
+  }
+  regionCommitPending=true;
+  const now=Date.now(),source='survey-map-region-'+op.type;
+  const active=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  let order=Math.max(0,...active.map(r=>Number(r.order)||0));
+  const template=originals.find(r=>r.type==='shape');
+  const create=(fields,changed)=>createDrawingObject({
+    objectId:newObjectId(),drawingId:drawing.drawingId,
+    layer:DRAWING_LAYERS.SHAPE,order:++order,visible:true,locked:false,deleted:false,
+    createdAt:new Date(now).toISOString(),...fields,
+    fieldEditedAt:touchFieldEditedAt({},changed,now)
+  });
+  const newShapes=op.result.outlines.map(points=>create({
+    type:'shape',...polygonRecordGeometry(points),
+    fillEnabled:Boolean(template.fillEnabled),fillColor:template.fillColor||'#ffffff',
+    fillOpacity:Number(template.fillOpacity)||0,lineEnabled:true,
+    strokeColor:template.strokeColor||'#334155',strokeWidth:template.strokeWidth||80
+  },['drawingId','type','layer','order','x','y','width','height','rotation','flipX','flipY',
+    'shapeType','shapeParams','customVertices','fillEnabled','fillColor','fillOpacity',
+    'lineEnabled','strokeColor','strokeWidth','deleted']));
+  const newLines=op.result.partitions.map(([a,b])=>create({
+    type:'line',startX:a.x,startY:a.y,endX:b.x,endY:b.y,
+    x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),
+    width:Math.abs(a.x-b.x),height:Math.abs(a.y-b.y),
+    lineColor:template.strokeColor||'#334155',lineWidth:template.strokeWidth||80,lineStyle:'solid'
+  },['drawingId','type','layer','order','x','y','width','height','startX','startY','endX','endY','lineColor','lineWidth','lineStyle','deleted']));
+  const disabled=originals.filter(r=>op.type==='merge'||r.type==='shape').map(r=>createDrawingObject({
+    ...r,deleted:true,fieldEditedAt:touchFieldEditedAt(r.fieldEditedAt,'deleted',now)
+  }));
+  const changes=[...disabled.map(after=>({
+    type:'drawingObject',before:drawingObjectStore.get(after.objectId),after
+  })),...[...newShapes,...newLines].map(after=>({type:'drawingObject',before:null,after}))];
+  const updates=changes.map(c=>c.after);
+  try{
+    drawingObjectStore.batch(()=>updates.forEach(r=>drawingObjectStore.set(r)));
+    persistSnapshot(source);
+    rememberSurveyOperation(getCurrentProject()?.projectId,source,changes);
+    regionPreview=null;
+    selectOnly(newShapes[0]?.objectId||'');
+    renderSurveyMap();
+    // 保存結果は各Recordの既存未送信キューへも残る。統合処理専用の
+    // Firestore原子バッチ／遠隔での一括表示は後続の同期改修で扱う。
+    const project=getCurrentProject();
+    if(project&&!project.isSample){
+      for(const record of updates){
+        await persistDrawingObjectForProject(project,record,source);
+      }
+    }
+  }catch(error){
+    window.alert('図形の保存に失敗しました。同期状態を確認してください。');
+  }finally{
+    regionCommitPending=false;
+  }
+}
 async function deleteSelectedObject(){
   const now=Date.now();
   const records=Array.from(selectedObjectIds)
@@ -686,6 +791,7 @@ function sheetHtml(drawing){
   return `
     <div class="survey-map-fixed-title">${title}</div>
     <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
+    ${regionPreviewMarkup(drawing)}
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     <div class="survey-map-fixed-name">${name}</div>
     <div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>
@@ -708,7 +814,11 @@ function editorHtml(drawing){
   }
   const object=selectedObject();
   if(selectedObjectIds.size>1){
+    const chosen=Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(Boolean);
+    const canMerge=chosen.length>=2&&chosen.every(r=>r.type==='shape');
+    const canSplit=chosen.length===2&&chosen.filter(r=>r.type==='shape').length===1&&chosen.filter(r=>r.type==='line').length===1;
     return `<div class="survey-map-hint"><b>${selectedObjectIds.size}個のオブジェクトを選択中</b><br>ドラッグでまとめて移動、四隅のハンドルで拡大縮小できます。</div>
+      <div class="survey-map-edit-mode-row"><button type="button" class="btn small" data-survey-region-start="merge" ${canMerge?'':'disabled'}>統合</button><button type="button" class="btn small" data-survey-region-start="split" ${canSplit?'':'disabled'}>分割</button></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
   }
   if(object){
@@ -938,6 +1048,11 @@ function bindEvents(){
   if(!mount) return;
 
   mount.addEventListener('click',(event)=>{
+    if(event.target.closest('[data-survey-region-cancel]')){regionPreview=null;renderSurveyMap();return;}
+    if(event.target.closest('[data-survey-region-confirm]')){void confirmRegionOperation();return;}
+    const regionButton=event.target.closest('[data-survey-region-start]');
+    if(regionButton){startRegionOperation(regionButton.dataset.surveyRegionStart);return;}
+    if(regionPreview)return;
     if(event.target.closest('[data-survey-undo]')){void applyHistory(false);return;}
     if(event.target.closest('[data-survey-redo]')){void applyHistory(true);return;}
     if(event.target.closest('[data-survey-new]')){
@@ -1086,6 +1201,7 @@ function bindEvents(){
   });
 
   mount.addEventListener('pointerdown',(event)=>{
+    if(regionPreview)return;
     const shiftButton=event.target.closest('[data-survey-shift]');
     if(shiftButton){
       shiftPointerId=event.pointerId;
