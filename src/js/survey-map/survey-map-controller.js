@@ -1,5 +1,5 @@
 /**
- * v0.1.10.16 調査図 回転・反転・複数拡大縮小・グリッド調整レビュー。
+ * v0.1.10.17 調査図既存実装の整理。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
