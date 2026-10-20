@@ -941,6 +941,8 @@ jobs:
           SURVEY_LABELS
           test -f src/js/survey-map/survey-map-labels.js
           test -f src/js/survey-map/survey-map-smart-guides.js
+          test -f src/js/survey-map/survey-map-paper-layout.js
+          test -f src/js/survey-map/survey-map-label-editor.js
           grep -q "data-survey-room-choice" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-object-label" src/js/survey-map/survey-map-object-view.js
           grep -q "survey-map-label-contents" src/css/survey-map.css
