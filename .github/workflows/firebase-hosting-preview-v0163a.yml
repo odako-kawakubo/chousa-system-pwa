@@ -880,7 +880,7 @@ jobs:
           expect(config.includes(`revision: '${revision}'`),'app revision mismatch');
           expect(config.includes("mode: 'stable'"),'app mode mismatch');
           expect(worker.includes(`chousa-app-v${version}`),'service worker app cache mismatch');
-          expect(worker.includes(`chousa-output-libs-v${version.replace(/\\./g,'')}`),'service worker output cache mismatch');
+          expect(worker.includes(`chousa-output-libs-v${version.split('.').join('')}`),'service worker output cache mismatch');
           VERSION
           test -f src/js/survey-map/survey-map-live-view.js
           grep -Fq "'./js/survey-map/survey-map-live-view.js'" src/service-worker.js
