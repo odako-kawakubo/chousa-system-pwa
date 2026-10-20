@@ -69,7 +69,7 @@ function lineObjectHtml(record,drawing,selected,editMode,showHandles){
     return `
       <div class="survey-map-object survey-map-object-line survey-map-object-stroke ${selected?'selected':''}"
         data-survey-object-id="${escapeHtml(record.objectId)}" role="button"
-        aria-label="${record.elbow?'カギ線':record.freehand?'手描き':record.closed?'多角形':'手描き補正'}">
+        aria-label="${record.elbow?'カギ線':record.freehand?'手描きメモ':record.closed?'多角形':'手描き補正'}">
         <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
           preserveAspectRatio="none" aria-hidden="true">
           <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
