@@ -905,6 +905,7 @@ function labelEditorHtml(record){
     <div class="survey-map-editor-row"><label>高さ (mm)</label>
       <input type="number" min="1" step=".5" data-survey-label-field="heightMm" value="${(Number(record.height)||300)/100}"></div>
     ${numField('fontSize','文字サイズ (pt)',record.fontSize||6,'.5')}
+    ${numField('borderWidth','枠線の太さ (px)',record.borderWidth||1,'.25')}
     ${numField('paddingMm','余白 (mm)',(Number(record.padding)||0)/100,'.5')}
     ${colorField('textColor','文字色','#111111')}
     <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="borderEnabled" ${record.borderEnabled?'checked':''}> 枠線を付ける</label>
@@ -1914,6 +1915,8 @@ function bindEvents(){
         patch.padding=Math.max(0,Math.round(Number(labelInput.value||0)*100));
       }else if(key==='fontSize'){
         patch.fontSize=Math.max(1,Number(labelInput.value)||6);
+      }else if(key==='borderWidth'){
+        patch.borderWidth=Math.max(.25,Number(labelInput.value)||1);
       }else if(['borderEnabled','backgroundEnabled'].includes(key)){
         patch[key]=Boolean(labelInput.checked);
       }else if(['textColor','strokeColor','backgroundColor'].includes(key)){
