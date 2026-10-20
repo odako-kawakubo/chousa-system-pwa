@@ -936,8 +936,8 @@ jobs:
           check(materialPalette('positive').backgroundColor==='#fef08a','positive color');
           check(materialPalette('assumed').backgroundColor==='#fbcfe8','assumed color');
           check(roomText({roomDisplay:'name',roomNoSnapshot:'1-1',roomNameSnapshot:'北面'})==='北面','room name switch');
-          const hit=snapToGuides({x:990,y:1000,width:500,height:300},[],{width:29700,height:21000});
-          check(hit.rect.x===990 && hit.guides.some(g=>g.axis==='y'),'smart guide center snap');
+          const hit=snapToGuides({x:990,y:60,width:500,height:300},[],{width:29700,height:21000});
+          check(hit.rect.x===990 && hit.rect.y===0 && hit.guides.some(g=>g.axis==='y'),'smart guide page edge snap');
           SURVEY_LABELS
           test -f src/js/survey-map/survey-map-labels.js
           test -f src/js/survey-map/survey-map-smart-guides.js
