@@ -1481,8 +1481,16 @@ function bindEvents(){
       const minY=Math.min(...originals.map(o=>Number(o.y)||0));
       const maxX=Math.max(...originals.map(o=>(Number(o.x)||0)+(Number(o.width)||0)));
       const maxY=Math.max(...originals.map(o=>(Number(o.y)||0)+(Number(o.height)||0)));
-      const dx=clamp(currentPoint.x-interaction.startPoint.x,-minX,size.width-maxX);
-      const dy=clamp(currentPoint.y-interaction.startPoint.y,-minY,size.height-maxY);
+      let dx=clamp(currentPoint.x-interaction.startPoint.x,-minX,size.width-maxX);
+      let dy=clamp(currentPoint.y-interaction.startPoint.y,-minY,size.height-maxY);
+      if(smartGuideEnabled){
+        const bounds={x:minX+dx,y:minY+dy,width:maxX-minX,height:maxY-minY};
+        const {rect,guides}=snapToGuides(bounds,drawingObjectStore.getByDrawingId(drawing.drawingId),
+          size,originals.map(o=>o.objectId));
+        dx=clamp(dx+rect.x-bounds.x,-minX,size.width-maxX);
+        dy=clamp(dy+rect.y-bounds.y,-minY,size.height-maxY);
+        showSmartGuides(guides,drawing);
+      }
       interaction.groupDrafts=originals.map(o=>translateObject(o,dx,dy));
       for(const draft of interaction.groupDrafts){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
