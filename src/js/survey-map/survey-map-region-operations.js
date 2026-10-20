@@ -21,7 +21,7 @@ export function objectPolygon(record){
   const points=shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map(p=>{
     const px=x+(record.flipX?1-p.x:p.x)*w,py=y+(record.flipY?1-p.y:p.y)*h;
     const dx=px-cx,dy=py-cy;
-    return {x:cx+dx*cs-dy*sn,y:cy+dx*sn+dy*cs};
+    return {x:Math.round((cx+dx*cs-dy*sn)*1e6)/1e6,y:Math.round((cy+dx*sn+dy*cs)*1e6)/1e6};
   });
   if(points.length<3||Math.abs(signedArea(points))<EPS)throw new Error('閉じた領域ではありません');
   for(let i=0;i<points.length;i++){
