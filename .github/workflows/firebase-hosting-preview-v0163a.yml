@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.16 Preview
+name: Deploy Survey Map Preview
 
 on:
   push:
@@ -865,17 +865,26 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.16 consistency checks
+      - name: Survey map consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.16'" src/config/app-config.js
-          grep -q "revision: ''" src/config/app-config.js
-          grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.16"' src/version.json
-          grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.16" src/service-worker.js
-          grep -q "chousa-output-libs-v011016" src/service-worker.js
+          # 版番号はversion.jsonを基準に照合し、ワークフローへの直書きを避ける。
+          node <<'VERSION'
+          const fs=require('node:fs');
+          const {version,revision}=JSON.parse(fs.readFileSync('src/version.json','utf8'));
+          const config=fs.readFileSync('src/config/app-config.js','utf8');
+          const worker=fs.readFileSync('src/service-worker.js','utf8');
+          const expect=(ok,message)=>{if(!ok)throw new Error(message);};
+          expect(config.includes(`version: '${version}'`),'app version mismatch');
+          expect(config.includes(`revision: '${revision}'`),'app revision mismatch');
+          expect(config.includes("mode: 'stable'"),'app mode mismatch');
+          expect(worker.includes(`chousa-app-v${version}`),'service worker app cache mismatch');
+          expect(worker.includes(`chousa-output-libs-v${version.replace(/\\./g,'')}`),'service worker output cache mismatch');
+          VERSION
+          test -f src/js/survey-map/survey-map-live-view.js
+          grep -Fq "'./js/survey-map/survey-map-live-view.js'" src/service-worker.js
+          grep -Fq "from './survey-map-live-view.js'" src/js/survey-map/survey-map-controller.js
           test -f src/js/survey-map/survey-map-region-operations.js
           grep -Fq "'./js/survey-map/survey-map-region-operations.js'" src/service-worker.js
           grep -q "data-survey-region-confirm" src/js/survey-map/survey-map-controller.js
