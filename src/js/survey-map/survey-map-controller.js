@@ -43,6 +43,13 @@ let selectedRoomKey='';
 let roomDisplay='number';
 let selectedMaterialId='';
 let smartGuideEnabled=true;
+function clearSmartGuides(){root()?.querySelector('.survey-map-smart-guides')?.remove();}
+function showSmartGuides(guides,drawing){
+  clearSmartGuides();
+  if(!smartGuideEnabled||!guides.length)return;
+  const layer=root()?.querySelector('.survey-map-sheet');
+  if(layer)layer.insertAdjacentHTML('beforeend',guideSvg(guides,pageSize(drawing)));
+}
 let continuousTool='';
 let lastToolTap=null;
 let zoomLevel=1;
@@ -1022,6 +1029,7 @@ export function renderSurveyMap(){
               </select>
             </label>
             <label><input type="checkbox" data-survey-grid-snap ${gridSnap?'checked':''}>スナップ</label>
+            <label><input type="checkbox" data-survey-smart-guide ${smartGuideEnabled?'checked':''}>スマートガイド</label>
           </div>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-out>−</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
@@ -1625,6 +1633,13 @@ function bindEvents(){
       draft.rotation=(shiftActive()||event.shiftKey)?Math.round(angle/15)*15:angle;
     }
 
+    if(smartGuideEnabled && ['move','resize','resize-corner'].includes(interaction.mode)){
+      const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+      const {rect,guides}=snapToGuides(draft,objects,pageSize(drawing),
+        [interaction.objectId,...(interaction.linkedOriginals||[]).map(o=>o.objectId)]);
+      draft={...draft,x:rect.x,y:rect.y};
+      showSmartGuides(guides,drawing);
+    }else clearSmartGuides();
     interaction.draft=draft;
     if(interaction.linkedOriginals?.length && ['move','resize','resize-corner'].includes(interaction.mode)){
       const original=interaction.original;
@@ -1667,6 +1682,7 @@ function bindEvents(){
     const interaction=pointerInteraction;
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
+    clearSmartGuides();
 
     if(interaction.mode==='create-polygon-edge'){
       interaction.previewEl?.remove();
@@ -1814,6 +1830,10 @@ function bindEvents(){
     if(event.target.matches('[data-survey-grid-snap]')){
       gridSnap=Boolean(event.target.checked);
       renderSurveyMap();return;
+    }
+    if(event.target.matches('[data-survey-smart-guide]')){
+      smartGuideEnabled=Boolean(event.target.checked);
+      clearSmartGuides();renderSurveyMap();return;
     }
     if(event.target.matches('[data-survey-angle]')){
       const record=selectedObject();
