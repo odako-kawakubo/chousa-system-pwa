@@ -943,7 +943,7 @@ jobs:
           check(layout.find(o=>o.paperRole==='legendFrame')?.type==='shape','legend must use shape');
           check(layout.filter(o=>o.type==='materialLabel').length===3,'legend must use material labels');
           check(layout.some(o=>o.type==='sampleMarker'),'legend must reuse sample marker');
-          check(layout.find(o=>o.paperRole==='legendMaterial0')?.text.includes('\\n'),'legend material must have two lines');
+          check(layout.find(o=>o.paperRole==='legendMaterial0')?.text.includes('\n'),'legend material must have two lines');
           const hit=snapToGuides({x:990,y:60,width:500,height:300},[],{width:29700,height:21000});
           check(hit.rect.x===990 && hit.rect.y===0 && hit.guides.some(g=>g.axis==='y'),'smart guide page edge snap');
           SURVEY_LABELS
