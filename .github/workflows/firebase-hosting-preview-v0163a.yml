@@ -925,6 +925,20 @@ jobs:
           grep -q "createMaterialLabelAt" src/js/survey-map/survey-map-controller.js
           grep -q "ensurePaperLayout" src/js/survey-map/survey-map-controller.js
           grep -q "snapToGuides" src/js/survey-map/survey-map-controller.js
+          node --input-type=module <<'SURVEY_LABELS'
+          import {LABEL_DEFAULTS,materialPalette,roomText} from './src/js/survey-map/survey-map-labels.js';
+          import {snapToGuides} from './src/js/survey-map/survey-map-smart-guides.js';
+          const check=(ok,message)=>{if(!ok)throw new Error(message);};
+          check(LABEL_DEFAULTS.roomLabel.width===500 && LABEL_DEFAULTS.roomLabel.height===300,'room default dimensions');
+          check(LABEL_DEFAULTS.roomLabel.fontSize===6 && LABEL_DEFAULTS.roomLabel.padding===0,'room font and padding');
+          check(LABEL_DEFAULTS.materialLabel.width===2000 && LABEL_DEFAULTS.materialLabel.height===600,'material default dimensions');
+          check(LABEL_DEFAULTS.materialLabel.padding===50 && LABEL_DEFAULTS.materialLabel.fontSize===4,'material font and padding');
+          check(materialPalette('positive').backgroundColor==='#fef08a','positive color');
+          check(materialPalette('assumed').backgroundColor==='#fbcfe8','assumed color');
+          check(roomText({roomDisplay:'name',roomNoSnapshot:'1-1',roomNameSnapshot:'北面'})==='北面','room name switch');
+          const hit=snapToGuides({x:990,y:1000,width:500,height:300},[],{width:29700,height:21000});
+          check(hit.rect.x===990 && hit.guides.some(g=>g.axis==='y'),'smart guide center snap');
+          SURVEY_LABELS
           test -f src/js/survey-map/survey-map-labels.js
           test -f src/js/survey-map/survey-map-smart-guides.js
           grep -q "data-survey-room-choice" src/js/survey-map/survey-map-controller.js
