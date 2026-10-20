@@ -611,13 +611,14 @@ async function ensurePaperLayout(drawing=selectedDrawing(),reset=false){
   const changes=[];
   const updates=defaults.map(fields=>{
     const previous=existing.find(o=>o.paperRole===fields.paperRole);
+    const updatedFields=reset&&previous?{x:fields.x,y:fields.y}:fields;
     const next=createDrawingObject({
       ...previous,
       objectId:previous?.objectId||newObjectId(),drawingId:drawing.drawingId,
       layer:fields.type==='shape'?DRAWING_LAYERS.SHAPE:DRAWING_LAYERS.TEXT,
       order:previous?.order||++order,visible:true,locked:false,deleted:false,rotation:0,
-      ...fields,
-      fieldEditedAt:touchFieldEditedAt(previous?.fieldEditedAt||{},Object.keys(fields),now)
+      ...updatedFields,
+      fieldEditedAt:touchFieldEditedAt(previous?.fieldEditedAt||{},Object.keys(updatedFields),now)
     });
     changes.push({type:'drawingObject',before:previous||null,after:next});
     return next;
@@ -696,6 +697,12 @@ async function renamePageDisplay(value){
     nameSettings:{...(current.nameSettings||{}),text},
     fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,'nameSettings',now)
   },'survey-map-name-display');
+  const label=paperObjects(current).find(o=>o.paperRole==='name');
+  if(label){
+    await commitDrawingObject(createDrawingObject({...label,text,
+      fieldEditedAt:touchFieldEditedAt(label.fieldEditedAt,'text',now)}),
+      'survey-map-paper-name-change');
+  }
   renderSurveyMap();
 }
 
@@ -881,7 +888,8 @@ function labelEditorHtml(record){
   const isRoom=record.type==='roomLabel';
   const isMaterial=record.type==='materialLabel';
   const colorField=(key,title,fallback)=>`<div class="survey-map-editor-row"><label>${title}</label>
-    <input type="color" data-survey-label-field="${key}" value="${escapeLabel(record[key]||fallback)}"></div>`;
+    <input type="color" data-survey-label-field="${key}" value="${escapeLabel(record[key]||fallback)}">
+    <input type="text" data-survey-label-hex="${key}" aria-label="${title}の色コード" value="${escapeLabel(record[key]||fallback)}" placeholder="#RRGGBB"></div>`;
   const numField=(key,title,value,step='1')=>`<div class="survey-map-editor-row"><label>${title}</label>
     <input type="number" step="${step}" min="0" data-survey-label-field="${key}" value="${Number(value)||0}"></div>`;
   return `<div class="survey-map-label-edit">
@@ -1865,6 +1873,18 @@ function bindEvents(){
       const next=createDrawingObject({...record,...patch,
         fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),now)});
       void commitDrawingObject(next,'survey-map-style-change').then(()=>renderSurveyMap());
+      return;
+    }
+    const colorCode=event.target.closest('[data-survey-label-hex]');
+    if(colorCode){
+      const record=selectedObject();
+      if(!record||!isLabelType(record.type))return;
+      const key=colorCode.dataset.surveyLabelHex,color=String(colorCode.value||'').trim();
+      if(!['textColor','strokeColor','backgroundColor'].includes(key)||!/^#[0-9a-fA-F]{6}$/.test(color))return;
+      const patch={[key]:color};
+      const next=createDrawingObject({...record,...patch,
+        fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,[key],Date.now())});
+      void commitDrawingObject(next,'survey-map-label-hex').then(()=>renderSurveyMap());
       return;
     }
     const labelInput=event.target.closest('[data-survey-label-field]');
