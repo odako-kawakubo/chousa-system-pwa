@@ -928,6 +928,7 @@ jobs:
           node --input-type=module <<'SURVEY_LABELS'
           import {LABEL_DEFAULTS,materialPalette,roomText} from './src/js/survey-map/survey-map-labels.js';
           import {snapToGuides} from './src/js/survey-map/survey-map-smart-guides.js';
+          import {paperLayoutFields} from './src/js/survey-map/survey-map-paper-layout.js';
           const check=(ok,message)=>{if(!ok)throw new Error(message);};
           check(LABEL_DEFAULTS.roomLabel.width===500 && LABEL_DEFAULTS.roomLabel.height===300,'room default dimensions');
           check(LABEL_DEFAULTS.roomLabel.fontSize===6 && LABEL_DEFAULTS.roomLabel.padding===0,'room font and padding');
@@ -936,6 +937,13 @@ jobs:
           check(materialPalette('positive').backgroundColor==='#fef08a','positive color');
           check(materialPalette('assumed').backgroundColor==='#fbcfe8','assumed color');
           check(roomText({roomDisplay:'name',roomNoSnapshot:'1-1',roomNameSnapshot:'北面'})==='北面','room name switch');
+          const layout=paperLayoutFields({name:'現場A',titleSettings:{text:'調査図'},nameSettings:{text:'建物名'}});
+          check(layout.length===12,'A4 paper object count');
+          check(layout.find(o=>o.paperRole==='title')?.y===1500,'title top 15mm');
+          check(layout.find(o=>o.paperRole==='legendFrame')?.type==='shape','legend must use shape');
+          check(layout.filter(o=>o.type==='materialLabel').length===3,'legend must use material labels');
+          check(layout.some(o=>o.type==='sampleMarker'),'legend must reuse sample marker');
+          check(layout.find(o=>o.paperRole==='legendMaterial0')?.text.includes('\\n'),'legend material must have two lines');
           const hit=snapToGuides({x:990,y:60,width:500,height:300},[],{width:29700,height:21000});
           check(hit.rect.x===990 && hit.rect.y===0 && hit.guides.some(g=>g.axis==='y'),'smart guide page edge snap');
           SURVEY_LABELS
