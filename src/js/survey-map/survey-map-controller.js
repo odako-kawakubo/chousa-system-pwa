@@ -48,8 +48,8 @@ let shiftPointerId=null;
 let physicalShift=false;
 const DEFAULT_STROKE_WIDTH=80;
 const GRID_SPACINGS=[250,500];
-let gridSpacing=500;
-let gridSnap=false;
+let gridSpacing=250;
+let gridSnap=true;
 let strokeEditMode='shape';
 function shiftActive(){return shiftPointerId!==null||physicalShift;}
 function syncShiftButton(){
@@ -785,11 +785,15 @@ function sheetHtml(drawing){
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
   const size=pageSize(drawing);
+  const gridHtml=gridVisible?`<svg class="survey-map-grid-lines" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${Array.from({length:Math.floor(size.width/gridSpacing)+1},(_,i)=>`M ${i*gridSpacing} 0 V ${size.height}`).join(' ')} ${Array.from({length:Math.floor(size.height/gridSpacing)+1},(_,i)=>`M 0 ${i*gridSpacing} H ${size.width}`).join(' ')}"/>
+  </svg>`:'';
   const draftHtml=draft.length?`<svg class="survey-map-line-draft survey-map-polygon-draft"
     viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none">
     <polyline points="${draft.map(p=>`${p.x},${p.y}`).join(' ')}"></polyline>
   </svg>`:'';
   return `
+    ${gridHtml}
     <div class="survey-map-fixed-title">${title}</div>
     <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
     ${regionPreviewMarkup(drawing)}
@@ -1283,13 +1287,13 @@ function bindEvents(){
       return;
     }
 
-    if(activeTool==='room' && !objectEl){
+    if(activeTool==='room'){
       if(!selectedRoom())return;
       void createRoomLabelAt(event.clientX,event.clientY);
       event.preventDefault();
       return;
     }
-    if(activeTool==='polygon' && !objectEl){
+    if(activeTool==='polygon'){
       const sheetRect=sheet.getBoundingClientRect();
       const point=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       if(!polygonDraft || polygonDraft.drawingId!==drawing.drawingId){
@@ -1303,7 +1307,7 @@ function bindEvents(){
       event.preventDefault();
       return;
     }
-    if(isShapeTool(activeTool) && !objectEl){
+    if(isShapeTool(activeTool)){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
@@ -1318,7 +1322,7 @@ function bindEvents(){
       return;
     }
 
-    if((activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand') && !objectEl){
+    if(activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand'){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=pagePointer(event.clientX,event.clientY,sheetRect,drawing,{snap:activeTool!=='correct'&&activeTool!=='hand'});
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
@@ -1774,7 +1778,7 @@ function bindEvents(){
 
   mount.addEventListener('change',(event)=>{
     if(event.target.matches('[data-survey-grid-spacing]')){
-      gridSpacing=Number(event.target.value)||1000;
+      gridSpacing=Number(event.target.value)||250;
       renderSurveyMap();return;
     }
     if(event.target.matches('[data-survey-grid-snap]')){
