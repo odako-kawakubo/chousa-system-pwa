@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.13 Preview
+name: Deploy v0.1.10.14 Preview
 
 on:
   push:
@@ -865,17 +865,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.13 consistency checks
+      - name: v0.1.10.14 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.13'" src/config/app-config.js
+          grep -q "version: '0.1.10.14'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.13"' src/version.json
+          grep -q '"version": "0.1.10.14"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.13" src/service-worker.js
-          grep -q "chousa-output-libs-v011013" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.14" src/service-worker.js
+          grep -q "chousa-output-libs-v011014" src/service-worker.js
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
           grep -q "from './survey-map-stroke.js'" src/js/survey-map/survey-map-controller.js
@@ -998,12 +998,16 @@ jobs:
           FIRSTDRAWING
           grep -q "activeDrawings().length<=1" src/js/survey-map/survey-map-controller.js
           node --input-type=module <<'GEOMETRY'
-          import {resizeRectFromCorner} from './src/js/survey-map/survey-map-geometry.js';
+          import {resizeRectFromDrag} from './src/js/survey-map/survey-map-geometry.js';
           const initial={x:2000,y:3000,width:4000,height:2000,rotation:0};
-          const opposite=resizeRectFromCorner(initial,'se',{x:9000,y:7000});
-          if(opposite.x!==2000||opposite.y!==3000||opposite.width!==7000||opposite.height!==4000)
-            throw new Error('opposite anchor resize failed');
-          const centered=resizeRectFromCorner(initial,'se',{x:9000,y:7000},{centerFixed:true});
+          const start={x:6000,y:5000};
+          const same=resizeRectFromDrag(initial,'se',start,start);
+          if(same.x!==initial.x||same.y!==initial.y||same.width!==initial.width||same.height!==initial.height)
+            throw new Error('resize jumped without drag');
+          const resized=resizeRectFromDrag(initial,'se',start,{x:7000,y:5600});
+          if(resized.width!==5000||resized.height!==2600||resized.x!==2000||resized.y!==3000)
+            throw new Error('opposite corner changed during resize');
+          const centered=resizeRectFromDrag(initial,'se',start,{x:7000,y:5600},{centerFixed:true});
           if(Math.abs(centered.x+centered.width/2-4000)>0.001||Math.abs(centered.y+centered.height/2-4000)>0.001)
             throw new Error('center anchored resize moved pivot');
           GEOMETRY
