@@ -31,7 +31,7 @@ export const RECORD_MERGE_FIELDS = Object.freeze({
     'shape','color','size','strokeColor','strokeWidth','points','vertices','lineColor','lineWidth','lineStyle',
     'startX','startY','endX','endY','bendX','elbow','closed','freehand','startEndShape','endEndShape','startConnection','endConnection','fillEnabled','fillColor','fillOpacity',
     'lineEnabled','shapeType','shapeParams','customVertices','flipX','flipY','geometryGroupId','text','fontSize','textColor','fontWeight','textAlign','borderEnabled',
-    'backgroundEnabled','backgroundColor','wrapMode','sourceType','assetPath','fileName','fileType',
+    'backgroundEnabled','backgroundColor','padding','borderWidth','roomDisplay','customText','materialKind','paperRole','legendGroupId','wrapMode','sourceType','assetPath','fileName','fileType',
     'originalWidth','originalHeight','crop','opacity','brightness','pdfPageNo','aspectLocked'
   ])
 });
