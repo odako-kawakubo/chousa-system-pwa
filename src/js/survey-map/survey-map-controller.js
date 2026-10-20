@@ -1,5 +1,5 @@
 /**
- * v0.1.10.17 調査図既存実装の整理。
+ * v0.1.10.18 調査図スマートガイド・共通ラベル・紙面レイアウト。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
