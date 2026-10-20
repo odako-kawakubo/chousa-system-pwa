@@ -20,6 +20,17 @@ export function rememberSurveyEdit(project,type,before,after,source){
   }
   future=[];
 }
+/** 図形化・分割を一つのUndoにする。 */
+export function rememberSurveyOperation(project,source,changes=[]){
+  scope(project);
+  const effective=changes.filter(change=>JSON.stringify(change.before)!==JSON.stringify(change.after));
+  if(!effective.length)return;
+  past.push({source,at:Date.now(),changes:effective.map(change=>({
+    type:change.type,before:copy(change.before),after:copy(change.after)
+  }))});
+  if(past.length>50)past.shift();
+  future=[];
+}
 export function historyStatus(project){
   scope(project);
   return {undo:past.length>0,redo:future.length>0};
