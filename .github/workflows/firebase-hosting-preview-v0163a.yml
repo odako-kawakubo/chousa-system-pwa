@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.15 Preview
+name: Deploy v0.1.10.16 Preview
 
 on:
   push:
@@ -865,17 +865,17 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.10.15 consistency checks
+      - name: v0.1.10.16 consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.15'" src/config/app-config.js
+          grep -q "version: '0.1.10.16'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.10.15"' src/version.json
+          grep -q '"version": "0.1.10.16"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.10.15" src/service-worker.js
-          grep -q "chousa-output-libs-v011015" src/service-worker.js
+          grep -q "chousa-app-v0.1.10.16" src/service-worker.js
+          grep -q "chousa-output-libs-v011016" src/service-worker.js
           test -f src/js/survey-map/survey-map-region-operations.js
           grep -Fq "'./js/survey-map/survey-map-region-operations.js'" src/service-worker.js
           grep -q "data-survey-region-confirm" src/js/survey-map/survey-map-controller.js
@@ -893,6 +893,12 @@ jobs:
           let failed=false;
           try{joinRegions([a,box('remote',4000,0,1000,1000)]);}catch{failed=true;}
           if(!failed)throw new Error('disconnected merge must fail');
+          const near=box('near',1040,30,1000,970);
+          const tolerant=joinRegions([a,near]);
+          if(tolerant.outlines.length!==1||tolerant.partitions.length!==1)throw new Error('nearby edges should merge');
+          let rejected=false;
+          try{joinRegions([a,box('far',1180,0,1000,1000)]);}catch{rejected=true;}
+          if(!rejected)throw new Error('large gap should not merge');
           REGION
           test -f src/js/survey-map/survey-map-stroke.js
           grep -Fq "'./js/survey-map/survey-map-stroke.js'" src/service-worker.js
