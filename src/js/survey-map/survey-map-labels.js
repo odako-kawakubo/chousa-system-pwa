@@ -3,10 +3,10 @@
  * 内部図面単位は 100 units = 1 mm。
  */
 export const LABEL_DEFAULTS = Object.freeze({
-  roomLabel:{width:500,height:300,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
-  materialLabel:{width:2000,height:600,fontSize:4,textColor:'#111111',strokeColor:'#111111',borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:50},
-  text:{width:2500,height:500,fontSize:6,textColor:'#111111',strokeColor:'#111111',borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
-  sampleMarker:{width:400,height:400,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0}
+  roomLabel:{width:500,height:300,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderWidth:1,borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
+  materialLabel:{width:2000,height:600,fontSize:4,textColor:'#111111',strokeColor:'#111111',borderWidth:1,borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:50},
+  text:{width:2500,height:500,fontSize:6,textColor:'#111111',strokeColor:'#111111',borderWidth:1,borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
+  sampleMarker:{width:400,height:400,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderWidth:1,borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0}
 });
 export const LABEL_TYPES=new Set(Object.keys(LABEL_DEFAULTS));
 export function isLabelType(type){return LABEL_TYPES.has(type);}
