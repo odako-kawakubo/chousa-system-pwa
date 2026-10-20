@@ -789,6 +789,38 @@ function multiSelectionHandles(drawing,objects){
     ${['nw','ne','sw','se'].map(c=>`<button class="survey-map-group-handle" type="button" data-survey-group-corner="${c}" aria-label="複数選択を${c}から拡大縮小"></button>`).join('')}
   </div>`;
 }
+function labelEditorHtml(record){
+  const isRoom=record.type==='roomLabel';
+  const isMaterial=record.type==='materialLabel';
+  const colorField=(key,title,fallback)=>`<div class="survey-map-editor-row"><label>${title}</label>
+    <input type="color" data-survey-label-field="${key}" value="${escapeLabel(record[key]||fallback)}"></div>`;
+  const numField=(key,title,value,step='1')=>`<div class="survey-map-editor-row"><label>${title}</label>
+    <input type="number" step="${step}" min="0" data-survey-label-field="${key}" value="${Number(value)||0}"></div>`;
+  return `<div class="survey-map-label-edit">
+    ${isRoom?`<div class="survey-map-editor-row"><label>表示項目</label>
+      <select data-survey-label-field="roomDisplay">
+        <option value="number" ${record.roomDisplay!=='name'?'selected':''}>部屋No.</option>
+        <option value="name" ${record.roomDisplay==='name'?'selected':''}>部屋名</option>
+      </select></div>`:''}
+    <div class="survey-map-editor-row"><label>表示テキスト</label>
+      <textarea data-survey-label-field="text">${escapeLabel(record.text||'')}</textarea></div>
+    <div class="survey-map-editor-row"><label>幅 (mm)</label>
+      <input type="number" min="1" step=".5" data-survey-label-field="widthMm" value="${(Number(record.width)||500)/100}"></div>
+    <div class="survey-map-editor-row"><label>高さ (mm)</label>
+      <input type="number" min="1" step=".5" data-survey-label-field="heightMm" value="${(Number(record.height)||300)/100}"></div>
+    ${numField('fontSize','文字サイズ (pt)',record.fontSize||6,'.5')}
+    ${numField('paddingMm','余白 (mm)',(Number(record.padding)||0)/100,'.5')}
+    ${colorField('textColor','文字色','#111111')}
+    <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="borderEnabled" ${record.borderEnabled?'checked':''}> 枠線を付ける</label>
+    ${colorField('strokeColor','枠線色','#111111')}
+    <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="backgroundEnabled" ${record.backgroundEnabled?'checked':''}> 背景色を付ける</label>
+    ${colorField('backgroundColor','背景色','#ffffff')}
+    ${isMaterial?`<div class="survey-map-editor-row"><label>判定別の初期配色</label>
+      <select data-survey-material-palette>
+      <option value="">現在の配色を維持</option><option value="none">未確定・含有なし</option>
+      <option value="positive">含有</option><option value="assumed">みなし</option></select></div>`:''}
+  </div>`;
+}
 function editorHtml(drawing){
   if(!drawing){
     return '<div class="survey-map-hint">ページを選択すると編集項目が表示されます。</div>';
@@ -853,6 +885,7 @@ function editorHtml(drawing){
         <input type="number" step="1" data-survey-angle value="${Math.round(Number(object.rotation)||0)}">
       </div>` : ''}
       ${styleControls}
+      ${isLabelType(object.type)?labelEditorHtml(object):''}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
     `;
@@ -1727,6 +1760,44 @@ function bindEvents(){
       const next=createDrawingObject({...record,...patch,
         fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),now)});
       void commitDrawingObject(next,'survey-map-style-change').then(()=>renderSurveyMap());
+      return;
+    }
+    const labelInput=event.target.closest('[data-survey-label-field]');
+    if(labelInput){
+      const record=selectedObject();
+      if(!record||!isLabelType(record.type))return;
+      const key=labelInput.dataset.surveyLabelField;
+      const patch={};
+      if(key==='roomDisplay'){
+        patch.roomDisplay=labelInput.value==='name'?'name':'number';
+        patch.customText=false;
+        patch.text=patch.roomDisplay==='name'?String(record.roomNameSnapshot||record.roomNoSnapshot||''):
+          String(record.roomNoSnapshot||record.roomPosition||'');
+      }else if(key==='text'){
+        patch.text=String(labelInput.value||'');if(record.type==='roomLabel')patch.customText=true;
+      }else if(key==='widthMm'||key==='heightMm'){
+        patch[key==='widthMm'?'width':'height']=Math.max(100,Math.round(Number(labelInput.value||1)*100));
+      }else if(key==='paddingMm'){
+        patch.padding=Math.max(0,Math.round(Number(labelInput.value||0)*100));
+      }else if(key==='fontSize'){
+        patch.fontSize=Math.max(1,Number(labelInput.value)||6);
+      }else if(['borderEnabled','backgroundEnabled'].includes(key)){
+        patch[key]=Boolean(labelInput.checked);
+      }else if(['textColor','strokeColor','backgroundColor'].includes(key)){
+        patch[key]=String(labelInput.value||'#111111');
+      }else return;
+      const next=createDrawingObject({...record,...patch,
+        fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),Date.now())});
+      void commitDrawingObject(next,'survey-map-label-edit').then(()=>renderSurveyMap());
+      return;
+    }
+    if(event.target.matches('[data-survey-material-palette]')){
+      const record=selectedObject(),kind=event.target.value;
+      if(record?.type!=='materialLabel'||!kind)return;
+      const patch={...materialPalette(kind),materialKind:kind};
+      const next=createDrawingObject({...record,...patch,
+        fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),Date.now())});
+      void commitDrawingObject(next,'survey-map-label-palette').then(()=>renderSurveyMap());
       return;
     }
     if(event.target.matches('[data-survey-room-choice]')){
