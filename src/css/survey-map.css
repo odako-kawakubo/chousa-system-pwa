@@ -403,3 +403,6 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-region-confirm strong{font-size:12px;color:#1e40af}
 
 .survey-map-object-sampleMarker .survey-map-label-contents{border-radius:50%}
+
+/* Connection target is held while the second endpoint is chosen. */
+.survey-map-connect-pending{outline:3px solid #2563eb;outline-offset:3px}
