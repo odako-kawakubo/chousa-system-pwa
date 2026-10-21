@@ -929,7 +929,9 @@ function editorHtml(drawing){
           <button type="button" class="btn small ${strokeEditMode==='points'?'active':''}"
             data-survey-stroke-edit-mode="points">頂点編集</button>
         </div></div>`:'';
-    const styleControls=object.type==='line'||object.type==='shape'
+    const styleControls=object.type==='shape'&&object.materialId
+      ? '<div class="survey-map-hint">建材の色は分析結果・判定から自動反映されます。</div>'
+      : object.type==='line'||object.type==='shape'
       ? `<div class="survey-map-divider"></div>
         <div class="survey-map-editor-row"><label>線の色</label>
           <input type="color" data-survey-style-field="color"
@@ -1950,18 +1952,6 @@ function bindEvents(){
       const next=createDrawingObject({...record,...patch,
         fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),Date.now())});
       void commitDrawingObject(next,'survey-map-label-edit').then(()=>renderSurveyMap());
-      return;
-    }
-    if(event.target.matches('[data-survey-material-palette]')){
-      const record=selectedObject(),kind=event.target.value;
-      if(!(record?.type==='materialLabel'||(record?.type==='shape'&&record.materialId))||!kind)return;
-      const palette=materialPalette(kind);
-      const patch=record.type==='shape'?{materialKind:kind,textColor:palette.textColor,
-        strokeColor:palette.strokeColor,fillEnabled:Boolean(palette.backgroundEnabled),
-        fillColor:palette.backgroundColor,fillOpacity:1}:{...palette,materialKind:kind};
-      const next=createDrawingObject({...record,...patch,
-        fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),Date.now())});
-      void commitDrawingObject(next,'survey-map-label-palette').then(()=>renderSurveyMap());
       return;
     }
     if(event.target.matches('[data-survey-room-choice]')){
