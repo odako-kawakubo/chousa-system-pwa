@@ -992,6 +992,8 @@ export function renderSurveyMap(){
   applyLayoutClasses();
   const drawing=selectedDrawing();
   const history=historyStatus(getCurrentProject()?.projectId);
+  const oldStage=mount.querySelector('.survey-map-stage');
+  const scroll=oldStage?{drawingId:oldStage.dataset.drawingId,x:oldStage.scrollLeft,y:oldStage.scrollTop,width:oldStage.scrollWidth,height:oldStage.scrollHeight}:null;
 
   mount.innerHTML=`
     <div class="survey-map-root">
@@ -1021,7 +1023,7 @@ export function renderSurveyMap(){
           <span class="survey-map-status">${drawing?escapeHtml(drawing.name):'ページ未選択'}</span>
         </div>
 
-        <div class="survey-map-stage">
+        <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
           ${pagesPopoverHtml()}
           <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
         </div>
@@ -1053,6 +1055,11 @@ export function renderSurveyMap(){
       </aside>
     </div>
   `;
+  const stage=mount.querySelector('.survey-map-stage');
+  if(stage&&scroll&&scroll.drawingId===(drawing?.drawingId||'')){
+    stage.scrollLeft=scroll.x;
+    stage.scrollTop=scroll.y;
+  }
 }
 
 async function commitChangedObject(current,draft,source){
