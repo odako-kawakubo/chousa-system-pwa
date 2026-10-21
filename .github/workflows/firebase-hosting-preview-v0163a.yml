@@ -938,12 +938,15 @@ jobs:
           check(materialPalette('assumed').backgroundColor==='#fbcfe8','assumed color');
           check(roomText({roomDisplay:'name',roomNoSnapshot:'1-1',roomNameSnapshot:'北面'})==='北面','room name switch');
           const layout=paperLayoutFields({name:'現場A',titleSettings:{text:'調査図'},nameSettings:{text:'建物名'}});
-          check(layout.length===12,'A4 paper object count');
+          check(layout.length===11,'A4 paper object count');
           check(layout.find(o=>o.paperRole==='title')?.y===1500,'title top 15mm');
           check(layout.find(o=>o.paperRole==='legendFrame')?.type==='shape','legend must use shape');
-          check(layout.filter(o=>o.type==='materialLabel').length===3,'legend must use material labels');
+          check(layout.filter(o=>o.paperRole?.startsWith('legendMaterial') && !o.paperRole.endsWith('Caption') && o.type==='shape' && o.shapeType==='rect').length===3,'legend must use text-bearing rect materials');
           check(layout.some(o=>o.type==='sampleMarker'),'legend must reuse sample marker');
-          check(layout.find(o=>o.paperRole==='legendMaterial0')?.text.includes('\n'),'legend material must have two lines');
+          check(layout.find(o=>o.paperRole==='legendMaterialNone')?.x===25250,'legend material location');
+          check(layout.find(o=>o.paperRole==='title')?.type==='shape','title must be text-bearing rect');
+          check(layout.find(o=>o.paperRole==='name')?.x===500,'building name location');
+          check(layout.find(o=>o.paperRole==='legendSample')?.text==='','sample should have no default number');
           const draft={x:990,y:60,width:500,height:300};
           const frozen=JSON.stringify(draft);
           const guides=alignmentGuides(draft,[],{width:29700,height:21000});
@@ -959,7 +962,7 @@ jobs:
           grep -q "data-survey-room-choice" src/js/survey-map/survey-map-controller.js
           grep -q "survey-map-object-label" src/js/survey-map/survey-map-object-view.js
           grep -q "survey-map-label-contents" src/css/survey-map.css
-          grep -q 'survey-map-object-materialLabel .survey-map-label-line{text-align:left}' src/css/survey-map.css
+          grep -q 'survey-map-rect-text' src/css/survey-map.css
           grep -q 'alignPositionToGrid' src/js/survey-map/survey-map-controller.js
           grep -q 'alignResizeToGrid' src/js/survey-map/survey-map-controller.js
           grep -q "SHAPE_TOOLS" src/js/survey-map/survey-map-shapes.js
