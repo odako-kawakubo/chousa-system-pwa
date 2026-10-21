@@ -590,15 +590,36 @@ async function deleteSelectedObject(){
     .map(id=>drawingObjectStore.get(id))
     .filter(item=>item && !item.deleted && item.drawingId===selectedDrawingId);
   if(!records.length)return;
+  const drawing=selectedDrawing();
+  const deletedIds=new Set(records.map(o=>o.objectId));
+  const active=drawingConnectionObjects(drawing);
+  const byId=new Map(active.map(o=>[o.objectId,o]));
+  const detached=active.filter(line=>line.type==='line'&&!deletedIds.has(line.objectId) &&
+    (deletedIds.has(line.startConnection?.targetObjectId)||deletedIds.has(line.endConnection?.targetObjectId)))
+    .map(line=>{
+      const resolved=resolveConnectedLine(line,byId);
+      const patch={
+        ...resolved,
+        startConnection:deletedIds.has(line.startConnection?.targetObjectId)?null:line.startConnection||null,
+        endConnection:deletedIds.has(line.endConnection?.targetObjectId)?null:line.endConnection||null
+      };
+      return createDrawingObject({...patch,
+        fieldEditedAt:touchFieldEditedAt(line.fieldEditedAt,
+          ['startConnection','endConnection','startX','startY','endX','endY','points','x','y','width','height'],now)});
+    });
+  const deleted=records.map(record=>createDrawingObject({...record,deleted:true,
+    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,'deleted',now)}));
+  const updates=[...detached,...deleted];
+  const changes=updates.map(after=>({type:'drawingObject',before:drawingObjectStore.get(after.objectId),after}));
   clearSelection();
   const source=records.length>1?'survey-map-group-delete':'survey-map-object-delete';
-  await Promise.all(records.map(record=>commitDrawingObject(createDrawingObject({
-    ...record,deleted:true,
-    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,'deleted',now)
-  }),source)));
+  drawingObjectStore.batch(()=>updates.forEach(record=>drawingObjectStore.set(record)));
+  persistSnapshot(source);
+  rememberSurveyOperation(getCurrentProject()?.projectId,source,changes);
+  const project=getCurrentProject();
+  if(project&&!project.isSample)for(const record of updates)await persistDrawingObjectForProject(project,record,source);
   renderSurveyMap();
 }
-
 async function applyHistory(redo=false){
   const project=getCurrentProject();
   if(!project?.projectId)return;
