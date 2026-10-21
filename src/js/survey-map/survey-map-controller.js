@@ -1668,16 +1668,17 @@ function bindEvents(){
       const delta=(a1-a0)*180/Math.PI;
       draft=rotateSingleObject(original,(shiftActive()||event.shiftKey)?Math.round(delta/15)*15:delta);
     }else if(interaction.mode==='line-start'){
-      draft=lineRecordWithPoints(
-        interaction.original,currentPoint.x,currentPoint.y,
-        Number(interaction.original.endX)||0,Number(interaction.original.endY)||0
-      );
+      const hit=connectionPoint(event,drawing,interaction.sheetRect,interaction.original.objectId);
+      const p=hit?.point||currentPoint;
+      draft=lineRecordWithPoints({...interaction.original,
+        startConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null},
+        p.x,p.y,Number(interaction.original.endX)||0,Number(interaction.original.endY)||0);
     }else if(interaction.mode==='line-end'){
-      draft=lineRecordWithPoints(
-        interaction.original,
-        Number(interaction.original.startX)||0,Number(interaction.original.startY)||0,
-        currentPoint.x,currentPoint.y
-      );
+      const hit=connectionPoint(event,drawing,interaction.sheetRect,interaction.original.objectId);
+      const p=hit?.point||currentPoint;
+      draft=lineRecordWithPoints({...interaction.original,
+        endConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null},
+        Number(interaction.original.startX)||0,Number(interaction.original.startY)||0,p.x,p.y);
     }else if(interaction.mode==='move'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0)+dx,
@@ -1886,6 +1887,7 @@ function bindEvents(){
     if(event.type==='pointercancel'){renderSurveyMap();return;}
     const fields=interaction.mode.startsWith('elbow-')?['points','startX','startY','endX','endY','bendX','x','y','width','height','startConnection','endConnection']
       :['stroke-move','stroke-point','stroke-resize','stroke-rotate'].includes(interaction.mode)?['points','x','y','width','height','rotation','elbow']
+      :['line-start','line-end'].includes(interaction.mode)?['startX','startY','endX','endY','x','y','width','height','startConnection','endConnection']
       :interaction.mode==='line-rotate'?['startX','startY','endX','endY','x','y','width','height','rotation']
       :interaction.mode==='move'?['x','y']
       :interaction.mode==='shape-adjust'?['shapeParams']
