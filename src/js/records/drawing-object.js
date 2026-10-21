@@ -2,7 +2,7 @@
  * 調査図上の1オブジェクトRecord定義。
  */
 export const DRAWING_OBJECT_TYPES = Object.freeze([
-  'roomLabel','materialLabel','sampleMarker','line','shape','text','underlay'
+  'roomLabel','sampleMarker','line','shape','underlay'
 ]);
 
 export const DRAWING_LAYERS = Object.freeze({
@@ -16,7 +16,7 @@ function text(value){ return String(value ?? ''); }
 function number(value, fallback = 0){ const n = Number(value); return Number.isFinite(n) ? n : fallback; }
 
 export function createDrawingObject(fields = {}) {
-  const type = DRAWING_OBJECT_TYPES.includes(fields.type) ? fields.type : 'text';
+  const type = DRAWING_OBJECT_TYPES.includes(fields.type) ? fields.type : 'shape';
   return {
     objectId: text(fields.objectId),
     drawingId: text(fields.drawingId),
