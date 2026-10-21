@@ -1,5 +1,5 @@
 /**
- * v0.1.10.19 グリッドスナップ補正・表示専用ガイド。
+ * v0.1.10.21 文字入り四角形・ズーム保持・初期配置。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -262,12 +262,21 @@ async function createLabelAt(type,clientX,clientY,extra={}){
   const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing,{snap:false});
   const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const fields=newLabelFields(type,point,drawing,extra);
+  const rectangular=type==='text'||type==='materialLabel';
+  const rectFields=rectangular?{
+    type:'shape',shapeType:'rect',shapeParams:defaultShapeParams('rect'),
+    fillEnabled:Boolean(fields.backgroundEnabled),fillColor:fields.backgroundColor||'#ffffff',
+    fillOpacity:1,lineEnabled:Boolean(fields.borderEnabled),
+    strokeColor:fields.strokeColor||'#111111',strokeWidth:40,
+    alignH:type==='materialLabel'?'left':'center',alignV:'middle',
+    ...fields
+  }:fields;
   const record=createDrawingObject({
-    objectId:newObjectId(),drawingId:drawing.drawingId,type,
+    objectId:newObjectId(),drawingId:drawing.drawingId,type:rectangular?'shape':type,
     layer:DRAWING_LAYERS.TEXT,order:Math.max(0,...objects.map(o=>Number(o.order)||0))+1,
-    rotation:0,visible:true,locked:false,deleted:false,...fields,
+    rotation:0,visible:true,locked:false,deleted:false,...rectFields,
     createdAt:new Date(now).toISOString(),
-    fieldEditedAt:touchFieldEditedAt({},Object.keys(fields).concat(['drawingId','type','layer','order','rotation']),now)
+    fieldEditedAt:touchFieldEditedAt({},Object.keys(rectFields).concat(['drawingId','type','layer','order','rotation']),now)
   });
   selectOnly(record.objectId);
   if(continuousTool!==({roomLabel:'room',materialLabel:'material',sampleMarker:'sample',text:'text'}[type]))activeTool='select';
@@ -297,7 +306,7 @@ async function createMaterialLabelAt(clientX,clientY){
   });
 }
 async function createSampleMarkerAt(clientX,clientY){
-  return createLabelAt('sampleMarker',clientX,clientY,{text:'①'});
+  return createLabelAt('sampleMarker',clientX,clientY,{text:'',backgroundEnabled:true,backgroundColor:'#dc2626'});
 }
 async function createFreeTextAt(clientX,clientY){
   return createLabelAt('text',clientX,clientY,{text:'テキスト'});
@@ -745,9 +754,9 @@ function svgIcon(name){
     hand:'<path d="M8 20l-3-4 1-3c.5-.8 1.6-.8 2.3 0l1.1 1V5a1.5 1.5 0 0 1 3 0v6-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v7-3a1.5 1.5 0 0 1 3 0v5c0 3-2 5-5 5z"/>',
     elbow:'<path d="M5 5v10h14"/>',
     room:'<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M8 9h8M8 13h5"/>',
-    material:'<path d="M4 7h10l6 5-6 5H4z"/><circle cx="8" cy="12" r="1"/>',
-    sample:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-    text:'<path d="M5 5h14M12 5v14M8 19h8"/>',
+    material:'<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M6 9h12M6 13h8M6 17h11"/>',
+    sample:'<circle cx="12" cy="12" r="7" fill="#dc2626" stroke="#dc2626"/>',
+    text:'<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 9h10M12 9v7M9 16h6"/>',
     eyedrop:'<path d="M15 4l5 5-9 9H6v-5z"/><path d="M13 6l5 5"/>',
     rect:'<rect x="4" y="5" width="16" height="14" rx="1"/>',
     circle:'<circle cx="12" cy="12" r="8"/>',
@@ -856,7 +865,16 @@ function sheetHtml(drawing){
   }
   const title=escapeHtml(drawing.titleSettings?.text||'調査図');
   const name=escapeHtml(drawing.nameSettings?.text||drawing.name||'');
-  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId).map(o=>{
+    if(o.type!=='shape'||o.shapeType!=='rect'||!o.materialId)return o;
+    const material=materialRecordStore.get(o.materialId);
+    if(!material)return o;
+    const kind=/みなし/.test(material.analysisRequired||'')?'assumed':
+      /含有/.test(material.analysisResult||'')&&!/なし|不検出/.test(material.analysisResult||'')?'positive':'none';
+    const palette=materialPalette(kind);
+    return {...o,materialKind:kind,textColor:palette.textColor,strokeColor:palette.strokeColor,
+      fillEnabled:Boolean(palette.backgroundEnabled),fillColor:palette.backgroundColor,fillOpacity:1};
+  });
   const hasPaper=objects.some(o=>o.paperRole&&!o.deleted);
   const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
   const size=pageSize(drawing);
@@ -953,7 +971,7 @@ function editorHtml(drawing){
         <input type="number" step="1" data-survey-angle value="${Math.round(Number(object.rotation)||0)}">
       </div>` : ''}
       ${styleControls}
-      ${isLabelType(object.type)?labelEditorHtml(object):''}
+      ${(isLabelType(object.type)||(object.type==='shape'&&object.shapeType==='rect'))?labelEditorHtml(object):''}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
     `;
@@ -1888,7 +1906,7 @@ function bindEvents(){
     const colorCode=event.target.closest('[data-survey-label-hex]');
     if(colorCode){
       const record=selectedObject();
-      if(!record||!isLabelType(record.type))return;
+      if(!record||!(isLabelType(record.type)||(record.type==='shape'&&record.shapeType==='rect')))return;
       const key=colorCode.dataset.surveyLabelHex,color=String(colorCode.value||'').trim();
       if(!['textColor','strokeColor','backgroundColor'].includes(key)||!/^#[0-9a-fA-F]{6}$/.test(color))return;
       const patch={[key]:color};
@@ -1900,7 +1918,7 @@ function bindEvents(){
     const labelInput=event.target.closest('[data-survey-label-field]');
     if(labelInput){
       const record=selectedObject();
-      if(!record||!isLabelType(record.type))return;
+      if(!record||!(isLabelType(record.type)||(record.type==='shape'&&record.shapeType==='rect')))return;
       const key=labelInput.dataset.surveyLabelField;
       const patch={};
       if(key==='roomDisplay'){
@@ -1914,6 +1932,12 @@ function bindEvents(){
         patch[key==='widthMm'?'width':'height']=Math.max(100,Math.round(Number(labelInput.value||1)*100));
       }else if(key==='paddingMm'){
         patch.padding=Math.max(0,Math.round(Number(labelInput.value||0)*100));
+      }else if(/^padding(Top|Right|Bottom|Left)Mm$/.test(key)){
+        patch[key.slice(0,-2)]=Math.max(0,Math.round(Number(labelInput.value||0)*100));
+      }else if(key==='alignH'){
+        patch.alignH=['left','center','right'].includes(labelInput.value)?labelInput.value:'center';
+      }else if(key==='alignV'){
+        patch.alignV=['top','middle','bottom'].includes(labelInput.value)?labelInput.value:'middle';
       }else if(key==='fontSize'){
         patch.fontSize=Math.max(1,Number(labelInput.value)||6);
       }else if(key==='borderWidth'){
@@ -1930,8 +1954,11 @@ function bindEvents(){
     }
     if(event.target.matches('[data-survey-material-palette]')){
       const record=selectedObject(),kind=event.target.value;
-      if(record?.type!=='materialLabel'||!kind)return;
-      const patch={...materialPalette(kind),materialKind:kind};
+      if(!(record?.type==='materialLabel'||(record?.type==='shape'&&record.materialId))||!kind)return;
+      const palette=materialPalette(kind);
+      const patch=record.type==='shape'?{materialKind:kind,textColor:palette.textColor,
+        strokeColor:palette.strokeColor,fillEnabled:Boolean(palette.backgroundEnabled),
+        fillColor:palette.backgroundColor,fillOpacity:1}:{...palette,materialKind:kind};
       const next=createDrawingObject({...record,...patch,
         fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,Object.keys(patch),Date.now())});
       void commitDrawingObject(next,'survey-map-label-palette').then(()=>renderSurveyMap());
