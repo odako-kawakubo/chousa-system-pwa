@@ -1,5 +1,5 @@
 /**
- * v0.1.10.18 調査図スマートガイド・共通ラベル・紙面レイアウト。
+ * v0.1.10.19 グリッドスナップ補正・表示専用ガイド。
  * iPad作図を優先し、中央キャンバスを押さないオーバーレイ式ツール/編集パネルを提供する。
  */
 import * as drawingRecordStore from '../store/drawing-record-store.js';
@@ -17,7 +17,7 @@ import { drawingObjectsHtml } from './survey-map-object-view.js';
 import { LABEL_DEFAULTS,materialPalette,isLabelType } from './survey-map-labels.js';
 import { paperLayoutFields } from './survey-map-paper-layout.js';
 import { labelEditorHtml } from './survey-map-label-editor.js';
-import { snapToGuides,guideSvg } from './survey-map-smart-guides.js';
+import { alignmentGuides,guideSvg } from './survey-map-smart-guides.js';
 import { createLineDraftPreview, updateLineDraftPreview, updatePolylinePreview, previewCorrectedStroke, highlightAdjustedEdges, paintObjectDraft } from './survey-map-live-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
@@ -70,21 +70,42 @@ function shiftActive(){return shiftPointerId!==null||physicalShift;}
 function syncShiftButton(){
   root()?.querySelector('[data-survey-shift]')?.classList.toggle('active',shiftActive());
 }
-function snapGridPoint(point){
-  if(!gridSnap)return point;
-  return {x:Math.round(point.x/gridSpacing)*gridSpacing,
-    y:Math.round(point.y/gridSpacing)*gridSpacing};
-}
+function snapGridValue(value){return gridSnap?Math.round(value/gridSpacing)*gridSpacing:value;}
+function snapGridPoint(point){return {x:snapGridValue(point.x),y:snapGridValue(point.y)};}
 function pagePointer(x,y,rect,drawing,{snap=true}={}){
   const point=clientToPagePoint(x,y,rect,drawing);
   return snap?snapGridPoint(point):point;
 }
 function snapCreationPoint(point,drawing,show=false){
-  if(!smartGuideEnabled)return point;
-  const {rect,guides}=snapToGuides({x:point.x,y:point.y,width:0,height:0},
-    drawingObjectStore.getByDrawingId(drawing.drawingId),pageSize(drawing));
-  if(show)showSmartGuides(guides,drawing);
-  return {x:rect.x,y:rect.y};
+  if(show&&smartGuideEnabled){
+    const guides=alignmentGuides({x:point.x,y:point.y,width:0,height:0},
+      drawingObjectStore.getByDrawingId(drawing.drawingId),pageSize(drawing));
+    showSmartGuides(guides,drawing);
+  }
+  return point;
+}
+/** 図形の座標そのものをグリッドへ揃える。ポインターの押下位置には依存しない。 */
+function alignPositionToGrid(rect,drawing){
+  if(!gridSnap)return rect;
+  const page=pageSize(drawing);
+  const limitX=Math.floor(Math.max(0,page.width-rect.width)/gridSpacing)*gridSpacing;
+  const limitY=Math.floor(Math.max(0,page.height-rect.height)/gridSpacing)*gridSpacing;
+  return {...rect,x:clamp(snapGridValue(rect.x),0,limitX),y:clamp(snapGridValue(rect.y),0,limitY)};
+}
+/** 回転なしのサイズ変更は、操作する側の輪郭をグリッド交点へ揃える。 */
+function alignResizeToGrid(rect,original,mode,corner,drawing,centerFixed=false){
+  if(!gridSnap||Math.abs(Number(original.rotation)||0)>0.001||centerFixed)return rect;
+  const page=pageSize(drawing);
+  const left=corner.includes('w'),top=corner.includes('n');
+  const right=mode==='resize'||corner.includes('e');
+  const bottom=mode==='resize'||corner.includes('s');
+  const x1=left?snapGridValue(rect.x):Number(original.x)||0;
+  const y1=top?snapGridValue(rect.y):Number(original.y)||0;
+  const x2=right?snapGridValue(rect.x+rect.width):(Number(original.x)||0)+(Number(original.width)||0);
+  const y2=bottom?snapGridValue(rect.y+rect.height):(Number(original.y)||0)+(Number(original.height)||0);
+  return {...rect,x:clamp(x1,0,page.width),y:clamp(y1,0,page.height),
+    width:Math.max(120,Math.min(page.width,x2)-x1),
+    height:Math.max(120,Math.min(page.height,y2)-y1)};
 }
 function shapeDragBounds(start,end,constrain=false){
   let dx=end.x-start.x,dy=end.y-start.y;
@@ -1423,16 +1444,14 @@ function bindEvents(){
       const minY=Math.min(...originals.map(o=>Number(o.y)||0));
       const maxX=Math.max(...originals.map(o=>(Number(o.x)||0)+(Number(o.width)||0)));
       const maxY=Math.max(...originals.map(o=>(Number(o.y)||0)+(Number(o.height)||0)));
-      let dx=clamp(currentPoint.x-interaction.startPoint.x,-minX,size.width-maxX);
-      let dy=clamp(currentPoint.y-interaction.startPoint.y,-minY,size.height-maxY);
+      const rawX=minX+currentPoint.x-interaction.startPoint.x;
+      const rawY=minY+currentPoint.y-interaction.startPoint.y;
+      const anchor=alignPositionToGrid({x:rawX,y:rawY,width:maxX-minX,height:maxY-minY},drawing);
+      const dx=anchor.x-minX,dy=anchor.y-minY;
       if(smartGuideEnabled){
-        const bounds={x:minX+dx,y:minY+dy,width:maxX-minX,height:maxY-minY};
-        const {rect,guides}=snapToGuides(bounds,drawingObjectStore.getByDrawingId(drawing.drawingId),
-          size,originals.map(o=>o.objectId));
-        dx=clamp(dx+rect.x-bounds.x,-minX,size.width-maxX);
-        dy=clamp(dy+rect.y-bounds.y,-minY,size.height-maxY);
-        showSmartGuides(guides,drawing);
-      }
+        showSmartGuides(alignmentGuides(anchor,drawingObjectStore.getByDrawingId(drawing.drawingId),
+          size,originals.map(o=>o.objectId)),drawing);
+      }else clearSmartGuides();
       interaction.groupDrafts=originals.map(o=>translateObject(o,dx,dy));
       for(const draft of interaction.groupDrafts){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
@@ -1543,7 +1562,7 @@ function bindEvents(){
         width:Number(interaction.original.width||0),
         height:Number(interaction.original.height||0)
       },drawing);
-      draft={...draft,...rect};
+      draft={...draft,...alignPositionToGrid(rect,drawing)};
     }else if(interaction.mode==='shape-vertex'){
       const original=interaction.original;
       const center={x:original.x+original.width/2,y:original.y+original.height/2};
@@ -1575,9 +1594,11 @@ function bindEvents(){
         draft.shapeParams=updatedShapeParams(original.shapeType,original.shapeParams,key,ratio);
       }
     }else if(interaction.mode==='resize-corner'){
-      draft=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
-        centerFixed:shiftActive()||event.shiftKey,ratioFixed:false
+      const shifted=shiftActive()||event.shiftKey;
+      const resized=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
+        centerFixed:shifted,ratioFixed:false
       });
+      draft=alignResizeToGrid(resized,interaction.original,'resize-corner',interaction.corner,drawing,shifted);
     }else if(interaction.mode==='resize'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0),
@@ -1585,7 +1606,7 @@ function bindEvents(){
         width:Number(interaction.original.width||0)+dx,
         height:Number(interaction.original.height||0)+dy
       },drawing);
-      draft={...draft,...rect};
+      draft={...draft,...alignResizeToGrid(rect,interaction.original,'resize','se',drawing)};
     }else if(interaction.mode==='rotate'){
       const angle=rotationFromPointer(interaction.original,event,interaction.sheetRect,drawing);
       draft.rotation=(shiftActive()||event.shiftKey)?Math.round(angle/15)*15:angle;
@@ -1593,10 +1614,8 @@ function bindEvents(){
 
     if(smartGuideEnabled && ['move','resize','resize-corner'].includes(interaction.mode)){
       const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
-      const {rect,guides}=snapToGuides(draft,objects,pageSize(drawing),
-        [interaction.objectId,...(interaction.linkedOriginals||[]).map(o=>o.objectId)]);
-      draft={...draft,x:rect.x,y:rect.y};
-      showSmartGuides(guides,drawing);
+      showSmartGuides(alignmentGuides(draft,objects,pageSize(drawing),
+        [interaction.objectId,...(interaction.linkedOriginals||[]).map(o=>o.objectId)]),drawing);
     }else clearSmartGuides();
     interaction.draft=draft;
     if(interaction.linkedOriginals?.length && ['move','resize','resize-corner'].includes(interaction.mode)){
