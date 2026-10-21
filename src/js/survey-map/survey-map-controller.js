@@ -86,10 +86,10 @@ function snapCreationPoint(point,drawing,show=false){
 }
 /** 図形の座標そのものをグリッドへ揃える。ポインターの押下位置には依存しない。 */
 function alignPositionToGrid(rect,drawing){
-  if(!gridSnap)return rect;
   const page=pageSize(drawing);
-  const limitX=Math.floor(Math.max(0,page.width-rect.width)/gridSpacing)*gridSpacing;
-  const limitY=Math.floor(Math.max(0,page.height-rect.height)/gridSpacing)*gridSpacing;
+  const maxX=Math.max(0,page.width-rect.width),maxY=Math.max(0,page.height-rect.height);
+  const limitX=gridSnap?Math.floor(maxX/gridSpacing)*gridSpacing:maxX;
+  const limitY=gridSnap?Math.floor(maxY/gridSpacing)*gridSpacing:maxY;
   return {...rect,x:clamp(snapGridValue(rect.x),0,limitX),y:clamp(snapGridValue(rect.y),0,limitY)};
 }
 /** 回転なしのサイズ変更は、操作する側の輪郭をグリッド交点へ揃える。 */
