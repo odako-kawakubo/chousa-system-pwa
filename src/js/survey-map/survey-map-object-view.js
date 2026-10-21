@@ -170,7 +170,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
         >
           ${record.type==='shape'
             ? `<svg class="survey-map-shape-svg survey-map-object-visual" viewBox="0 0 1000 1000"
-              style="--survey-shape-stroke:${escapeHtml(record.strokeColor||'#334155')};
+              style="--survey-shape-stroke:${record.lineEnabled===false?'transparent':escapeHtml(record.strokeColor||'#334155')};
                 --survey-shape-width:${Math.max(.5,finite(record.strokeWidth,80)/40)}px;
                 --survey-shape-fill:${record.fillEnabled?escapeHtml(record.fillColor||'#93c5fd'):'transparent'};
                 --survey-shape-opacity:${record.fillEnabled?finite(record.fillOpacity,.2)||.2:0}"
