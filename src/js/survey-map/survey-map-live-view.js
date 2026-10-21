@@ -130,5 +130,10 @@ if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
     }
   }
 }else if(draft.type==='line') updateLineObjectElement(objectEl,draft,drawing);
-else objectEl.setAttribute('style',objectPercentStyle(draft,drawing));
+else {
+  // Preserve typography and decoration custom properties during drag.
+  const geometry=document.createElement('div');
+  geometry.setAttribute('style',objectPercentStyle(draft,drawing));
+  for(const key of ['left','top','width','height','transform'])objectEl.style[key]=geometry.style[key];
+}
 }
