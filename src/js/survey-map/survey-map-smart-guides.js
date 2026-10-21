@@ -1,29 +1,26 @@
 /**
- * 調査図の移動中スマートガイド。座標はA4固定値(100=1mm)。
- * 候補: 紙端・他の図形/ラベルの左・中心・右、上・中心・下。
+ * 調査図の表示専用スマートガイド。座標はA4固定値(100=1mm)。
+ * 位置は一切変更しない。グリッドへの吸着とは独立した視覚補助。
  */
 const THRESHOLD=125;
 const positions=(o,axis)=>axis==='x'?
   [Number(o.x)||0,(Number(o.x)||0)+(Number(o.width)||0)/2,(Number(o.x)||0)+(Number(o.width)||0)]:
   [Number(o.y)||0,(Number(o.y)||0)+(Number(o.height)||0)/2,(Number(o.y)||0)+(Number(o.height)||0)];
-export function snapToGuides(draft,objects,page,omit=[]){
+export function alignmentGuides(draft,objects,page,omit=[]){
   const excluded=new Set(omit);
   const targets=objects.filter(o=>o&&!o.deleted&&o.visible!==false&&!excluded.has(o.objectId));
-  const result={...draft},guides=[];
+  const guides=[];
   for(const [axis,extent] of [['x',page.width],['y',page.height]]){
-    const own=positions(result,axis);
+    const own=positions(draft,axis);
     const candidates=[0,extent,...targets.flatMap(o=>positions(o,axis))];
-    let best={dist:THRESHOLD+1,delta:0,target:null};
+    let best={dist:THRESHOLD+1,target:null};
     for(const source of own)for(const target of candidates){
-      const delta=target-source,dist=Math.abs(delta);
-      if(dist<best.dist)best={dist,delta,target};
+      const dist=Math.abs(target-source);
+      if(dist<best.dist)best={dist,target};
     }
-    if(best.target!==null && best.dist<=THRESHOLD){
-      result[axis]+=best.delta;
-      guides.push({axis,value:best.target});
-    }
+    if(best.target!==null&&best.dist<=THRESHOLD)guides.push({axis,value:best.target});
   }
-  return {rect:result,guides};
+  return guides;
 }
 export function guideSvg(guides,page){
   if(!guides.length)return '';
