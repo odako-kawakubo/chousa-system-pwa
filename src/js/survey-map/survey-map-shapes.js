@@ -8,6 +8,21 @@ export function defaultShapeParams(kind){
   if(kind==='concave')return {depth:.55,top:.35,bottom:.65};
   return {};
 }
+/** 作成時だけ、図形内の折れ点を紙面共通グリッドへ合わせる。 */
+export function initialGridShapeParams(kind,rect,spacing){
+  const params=defaultShapeParams(kind);
+  if(!spacing||!Object.keys(params).length)return params;
+  const horizontal=new Set(['barX','left','right','depth']);
+  const result={...params};
+  for(const [key,ratio] of Object.entries(params)){
+    const isX=horizontal.has(key),origin=isX?rect.x:rect.y;
+    const extent=isX?rect.width:rect.height;
+    if(extent<=0)continue;
+    const aligned=Math.round((origin+extent*ratio)/spacing)*spacing;
+    result[key]=Math.min(.95,Math.max(.05,(aligned-origin)/extent));
+  }
+  return result;
+}
 export function isShapeTool(kind){return SHAPE_TOOLS.includes(kind)&&kind!=='polygon';}
 export function shapeVertices(kind,params={},customVertices=null){
   if(Array.isArray(customVertices)&&customVertices.length>=3){
