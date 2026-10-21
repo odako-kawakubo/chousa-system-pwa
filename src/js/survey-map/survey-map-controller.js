@@ -20,7 +20,7 @@ import { labelEditorHtml } from './survey-map-label-editor.js';
 import { alignmentGuides,guideSvg } from './survey-map-smart-guides.js';
 import { createLineDraftPreview, updateLineDraftPreview, updatePolylinePreview, previewCorrectedStroke, highlightAdjustedEdges, paintObjectDraft } from './survey-map-live-view.js';
 import { correctStroke, traceLength } from './survey-map-stroke.js';
-import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices } from './survey-map-shapes.js';
+import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices,initialGridShapeParams } from './survey-map-shapes.js';
 import { rememberSurveyEdit,rememberSurveyOperation,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 import { joinRegions,splitRegion,polygonRecordGeometry } from './survey-map-region-operations.js';
 import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup } from './survey-map-transforms.js';
@@ -313,9 +313,17 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
   const dragRect=bounds&&bounds.width>120&&bounds.height>120;
   const width=gridSnap?snapGridValue(defaultWidth):defaultWidth;
   const height=gridSnap?snapGridValue(defaultHeight):defaultHeight;
-  const rect=alignPositionToGrid(clampObjectRect(dragRect?bounds:{
+  const rawRect=clampObjectRect(dragRect?bounds:{
     x:point.x-width/2,y:point.y-height/2,width,height
-  },drawing),drawing);
+  },drawing);
+  const rect=gridSnap?(()=>{
+    const size=pageSize(drawing);
+    const x=Math.max(0,Math.min(size.width-gridSpacing,snapGridValue(rawRect.x)));
+    const y=Math.max(0,Math.min(size.height-gridSpacing,snapGridValue(rawRect.y)));
+    const right=Math.max(x+gridSpacing,Math.min(size.width,snapGridValue(rawRect.x+rawRect.width)));
+    const bottom=Math.max(y+gridSpacing,Math.min(size.height,snapGridValue(rawRect.y+rawRect.height)));
+    return {x,y,width:right-x,height:bottom-y};
+  })():alignPositionToGrid(rawRect,drawing);
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const record=createDrawingObject({
@@ -330,7 +338,7 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
     locked:false,
     deleted:false,
     shapeType:kind,
-    shapeParams:defaultShapeParams(kind),
+    shapeParams:gridSnap?initialGridShapeParams(kind,rect,gridSpacing):defaultShapeParams(kind),
     fillEnabled:false,
     fillColor:'#ffffff',
     fillOpacity:0,
@@ -379,7 +387,7 @@ function addPolygonVertex(drawing,point){
   }
   const points=polygonDraft.points;
   const last=points.at(-1);
-  if(last && Math.hypot(last.x-point.x,last.y-point.y)<150 && !finish)return;
+  if(last && Math.hypot(last.x-point.x,last.y-point.y)<150)return;
   if(points.length>=3 && Math.hypot(points[0].x-point.x,points[0].y-point.y)<350){
     void finishPolygon(drawing);
     return;
@@ -858,6 +866,8 @@ function sheetHtml(drawing){
   const draftHtml=draft.length?`<svg class="survey-map-line-draft survey-map-polygon-draft"
     viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none">
     <polyline points="${draft.map(p=>`${p.x},${p.y}`).join(' ')}"></polyline>
+    <line class="survey-map-polygon-tail" x1="${draft.at(-1).x}" y1="${draft.at(-1).y}"
+      x2="${draft.at(-1).x}" y2="${draft.at(-1).y}"></line>
   </svg>`:'';
   return `
     ${gridHtml}
@@ -1362,6 +1372,18 @@ function bindEvents(){
 
   mount.addEventListener('pointermove',(event)=>{
     const interaction=pointerInteraction;
+    if(!interaction && activeTool==='polygon' && polygonDraft?.points?.length){
+      const drawing=selectedDrawing();
+      const sheet=mount.querySelector('.survey-map-sheet');
+      const tail=sheet?.querySelector('.survey-map-polygon-tail');
+      if(drawing && sheet && tail && polygonDraft.drawingId===drawing.drawingId){
+        const point=pagePointer(event.clientX,event.clientY,sheet.getBoundingClientRect(),drawing);
+        const end=(shiftActive()||event.shiftKey)?snapLinePoint(polygonDraft.points.at(-1),point):point;
+        tail.setAttribute('x2',String(end.x));
+        tail.setAttribute('y2',String(end.y));
+      }
+      return;
+    }
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     const drawing=selectedDrawing();
     if(!drawing) return;
