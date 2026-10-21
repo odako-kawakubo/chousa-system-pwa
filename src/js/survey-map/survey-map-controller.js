@@ -921,7 +921,7 @@ function editorHtml(drawing){
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトをまとめて削除</button>`;
   }
   if(object){
-    const modeControls=(object.type==='line' && Array.isArray(object.points) && !object.elbow) || (object.type==='shape' && object.shapeType!=='circle')
+    const modeControls=(object.type==='line' && Array.isArray(object.points) && !object.elbow) || (object.type==='shape' && !['circle','rect'].includes(object.shapeType))
       ? `<div class="survey-map-editor-row"><label>編集モード</label>
         <div class="survey-map-edit-mode-row">
           <button type="button" class="btn small ${strokeEditMode==='shape'?'active':''}"
