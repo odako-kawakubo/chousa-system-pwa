@@ -124,7 +124,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
     .map((record)=>{
       const selected = selectedIds.has(String(record.objectId));
       const showHandles=selected && selectedIds.size===1;
-      const shapeMode=record.shapeType==='circle'?'shape':editMode;
+      const shapeMode=['circle','rect'].includes(record.shapeType)?'shape':editMode;
       if(record.type==='line') return lineObjectHtml(record,drawing,selected,editMode,showHandles);
 
       const style = objectPercentStyle(record, drawing);
