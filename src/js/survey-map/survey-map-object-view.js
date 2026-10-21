@@ -146,12 +146,25 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
             ${showHandles?`<button type="button" class="survey-map-object-handle survey-map-object-resize-handle" data-survey-handle="resize" aria-label="サイズ変更"></button>`:''}
           </div>`;
       }
+      const isTextRect=record.type==='shape'&&record.shapeType==='rect'&&record.text!==undefined;
+      const textCfg=isTextRect?labelSettings('text',record):null;
+      const textHtml=isTextRect?labelText(record).split('\n').map(line=>`<span class="survey-map-label-line">${escapeLabel(line)}</span>`).join(''):'';
+      const textStyle=isTextRect?[
+        `--survey-label-font:${Math.max(1,Number(textCfg.fontSize)||6)}pt`,
+        `--survey-label-color:${escapeHtml(textCfg.textColor||'#111111')}`,
+        `--survey-padding-top:${Math.max(0,Number(textCfg.paddingTop??textCfg.padding??0))/100}mm`,
+        `--survey-padding-right:${Math.max(0,Number(textCfg.paddingRight??textCfg.padding??0))/100}mm`,
+        `--survey-padding-bottom:${Math.max(0,Number(textCfg.paddingBottom??textCfg.padding??0))/100}mm`,
+        `--survey-padding-left:${Math.max(0,Number(textCfg.paddingLeft??textCfg.padding??0))/100}mm`,
+        `--survey-text-align:${escapeHtml(textCfg.alignH||'center')}`,
+        `--survey-text-justify:${({top:'flex-start',middle:'center',bottom:'flex-end'})[textCfg.alignV]||'center'}`
+      ].join(';'):'';
       const label = record.type === 'shape' ? '図形' : String(record.type || 'オブジェクト');
       return `
         <div
           class="survey-map-object survey-map-object-${escapeHtml(record.type)} ${selected?'selected':''}"
           data-survey-object-id="${escapeHtml(record.objectId)}"
-          style="${style}"
+          style="${style};${textStyle}"
           role="button"
           aria-label="${escapeHtml(label)}"
         >
@@ -165,6 +178,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
               ${shapeFlipMarkup(record,shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams,record.customVertices))}
               </svg>`
             : `<div class="survey-map-object-visual"></div>`}
+          ${isTextRect?`<div class="survey-map-rect-text">${textHtml}</div>`:''}
           ${showHandles ? `
             ${record.type==='shape' && shapeMode==='points' ? shapeVertices(record.shapeType,record.shapeParams,record.customVertices).map(p=>flipHandle(record,p)).map((p,index)=>`
               <button type="button" class="survey-map-object-handle survey-map-shape-vertex"
