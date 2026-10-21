@@ -763,26 +763,27 @@ function applyLayoutClasses(){
 }
 
 function svgIcon(name){
+  // Survey drawing-specific pictograms share one 24px viewBox.
   const icons={
     select:'<path d="M5 3l13 9-6 1 3 6-3 1-3-6-4 4z"/>',
     range:'<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 3"/>',
-    line:'<path d="M4 19L20 5"/>',
-    correct:'<path d="M4 18L18 4"/><path d="M11 18h7v-7"/>',
-    hand:'<path d="M8 20l-3-4 1-3c.5-.8 1.6-.8 2.3 0l1.1 1V5a1.5 1.5 0 0 1 3 0v6-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v7-3a1.5 1.5 0 0 1 3 0v5c0 3-2 5-5 5z"/>',
-    elbow:'<path d="M5 5v10h14"/>',
-    room:'<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M8 9h8M8 13h5"/>',
-    material:'<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M6 9h12M6 13h8M6 17h11"/>',
+    line:'<path d="M4 20L20 4"/><circle cx="4" cy="20" r="1.3" fill="currentColor"/><circle cx="20" cy="4" r="1.3" fill="currentColor"/>',
+    correct:'<path d="M3 19Q7 3 11 13T21 5" stroke-dasharray="2 3" opacity=".5"/><path d="M3 19L11 13L21 5"/>',
+    hand:'<path d="M3 19Q6 3 10 12T16 12T21 5"/><path d="M14 19l4-4 3 3-4 4-4 1z"/>',
+    elbow:'<path d="M4 5H12V19H20"/><circle cx="4" cy="5" r="1.2" fill="currentColor"/><circle cx="20" cy="19" r="1.2" fill="currentColor"/>',
+    room:'<rect x="5" y="3" width="14" height="18"/><path d="M10 3v18M14 12h2"/>',
+    material:'<rect x="2" y="4" width="20" height="16" rx="1"/><rect x="4" y="6" width="16" height="12" fill="#fef08a" stroke="none"/><path d="M6 10H18M6 13H15M6 16H18" stroke="#b91c1c"/>',
     sample:'<circle cx="12" cy="12" r="7" fill="#dc2626" stroke="#dc2626"/>',
-    text:'<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 9h10M12 9v7M9 16h6"/>',
+    text:'<rect x="2" y="4" width="20" height="16" rx="1"/><path d="M6 8h12M12 8v9M9 17h6"/>',
     eyedrop:'<path d="M15 4l5 5-9 9H6v-5z"/><path d="M13 6l5 5"/>',
-    rect:'<rect x="4" y="5" width="16" height="14" rx="1"/>',
+    rect:'<rect x="4" y="5" width="16" height="14"/>',
     circle:'<circle cx="12" cy="12" r="8"/>',
     triangle:'<path d="M5 19V5l14 14z"/>',
-    lshape:'<path d="M5 4v15h14v-6h-8V4z"/>',
-    tshape:'<path d="M4 5h16v6h-5v8H9v-8H4z"/>',
-    cross:'<path d="M9 4h6v5h5v6h-5v5H9v-5H4V9h5z"/>',
-    concave:'<path d="M4 5h16v14H4v-5h7V9H4z"/>',
-    polygon:'<path d="M8 4h8l5 7-4 9H7l-4-9z"/>',
+    lshape:'<path d="M4 4h8v9h8v7H4z"/>',
+    tshape:'<path d="M3 4h18v8h-6v9H9v-9H3z"/>',
+    cross:'<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/>',
+    concave:'<path d="M3 4h18v17h-7V11H9v10H3z"/>',
+    polygon:'<path d="M8 3l10 3 4 9-8 7-11-5L4 8z"/>',
     undo:'<path d="M9 7L4 12l5 5"/><path d="M5 12h8a6 6 0 016 6"/>',
     redo:'<path d="M15 7l5 5-5 5"/><path d="M19 12h-8a6 6 0 00-6 6"/>',
     grid:'<path d="M4 4h16v16H4zM4 10h16M4 15h16M10 4v16M15 4v16"/>',
@@ -797,7 +798,6 @@ function svgIcon(name){
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.select}</svg>`;
 }
-
 function iconButton({icon,label,attr='',active=false,disabled=false,className=''}) {
   return `<button type="button" class="survey-map-icon-btn ${active?'active':''} ${className}" ${attr} ${disabled?'disabled':''} title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${svgIcon(icon)}</button>`;
 }
