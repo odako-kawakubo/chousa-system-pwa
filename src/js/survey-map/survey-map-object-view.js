@@ -62,7 +62,7 @@ function lineObjectHtml(record,drawing,selected,editMode,showHandles){
   const size=pageSize(drawing);
   const lineWidth=Math.max(20,finite(record.lineWidth,80));
   const pixelWidth=Math.max(.5,lineWidth/40);
-  const color=escapeHtml(record.lineColor||record.lineEnabled===false?'transparent':record.strokeColor||'#334155');
+  const color=escapeHtml(record.lineColor||record.strokeColor||'#334155');
   const dash=lineDashArray(String(record.lineStyle||'solid'),pixelWidth);
   const isPolyline=Array.isArray(record.points)&&record.points.length>1;
   if(isPolyline){
