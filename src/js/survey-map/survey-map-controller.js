@@ -2027,5 +2027,8 @@ export function initializeSurveyMap(){
   drawingObjectStore.subscribe(()=>{
     if(root()?.style.display!=='none' && !pointerInteraction) renderSurveyMap();
   });
+  materialRecordStore.subscribe(()=>{
+    if(root()?.style.display!=='none' && !pointerInteraction) renderSurveyMap();
+  });
   renderSurveyMap();
 }
