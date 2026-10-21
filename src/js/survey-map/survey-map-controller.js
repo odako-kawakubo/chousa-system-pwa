@@ -252,8 +252,8 @@ function selectedMaterial(){
 }
 function newLabelFields(type,point,drawing,extra={}){
   const settings=LABEL_DEFAULTS[type]||LABEL_DEFAULTS.text;
-  const rect=clampObjectRect({x:point.x-settings.width/2,y:point.y-settings.height/2,
-    width:settings.width,height:settings.height},drawing);
+  const rect=alignPositionToGrid(clampObjectRect({x:point.x-settings.width/2,y:point.y-settings.height/2,
+    width:settings.width,height:settings.height},drawing),drawing);
   return {...settings,...rect,...extra};
 }
 async function createLabelAt(type,clientX,clientY,extra={}){
@@ -310,9 +310,12 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
   const bounds=otherPoint?shapeDragBounds(point,otherPoint,constrain):null;
   const defaultSide=kind==='circle'||constrain;
   const defaultWidth=3600,defaultHeight=defaultSide?3600:2400;
-  const rect=clampObjectRect(bounds&&bounds.width>120&&bounds.height>120?bounds:{
-    x:point.x-defaultWidth/2,y:point.y-defaultHeight/2,width:defaultWidth,height:defaultHeight
-  },drawing);
+  const dragRect=bounds&&bounds.width>120&&bounds.height>120;
+  const width=gridSnap?snapGridValue(defaultWidth):defaultWidth;
+  const height=gridSnap?snapGridValue(defaultHeight):defaultHeight;
+  const rect=alignPositionToGrid(clampObjectRect(dragRect?bounds:{
+    x:point.x-width/2,y:point.y-height/2,width,height
+  },drawing),drawing);
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const record=createDrawingObject({
@@ -1419,10 +1422,16 @@ function bindEvents(){
 
     if(interaction.mode==='group-resize'){
       const bounds=interaction.original;
-      const next=resizeRectFromDrag(bounds,interaction.corner,interaction.startPoint,currentPoint,{
-        centerFixed:shiftActive()||event.shiftKey,ratioFixed:false
+      const shifted=shiftActive()||event.shiftKey;
+      const resized=resizeRectFromDrag(bounds,interaction.corner,interaction.startPoint,currentPoint,{
+        centerFixed:shifted,ratioFixed:false
       });
+      const next=alignResizeToGrid(resized,bounds,'resize-corner',interaction.corner,drawing,shifted);
       interaction.groupDrafts=interaction.groupOriginals.map(o=>scaleObjectInGroup(o,bounds,next));
+      if(smartGuideEnabled){
+        showSmartGuides(alignmentGuides(next,drawingObjectStore.getByDrawingId(drawing.drawingId),
+          pageSize(drawing),interaction.groupOriginals.map(o=>o.objectId)),drawing);
+      }else clearSmartGuides();
       for(const draft of interaction.groupDrafts){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
         if(element)paintObjectDraft(element,draft,drawing);
