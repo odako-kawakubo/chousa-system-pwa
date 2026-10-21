@@ -113,6 +113,17 @@
   pointer-events:none;
 }
 .survey-map-label-line{width:100%;display:block;text-align:center;white-space:nowrap}
+/* Rectangle text is part of the shape's geometry and shares its transform. */
+.survey-map-rect-text{
+  position:absolute;inset:0;box-sizing:border-box;pointer-events:none;
+  display:flex;flex-direction:column;align-items:stretch;
+  justify-content:var(--survey-text-justify,center);
+  padding:var(--survey-padding-top,0) var(--survey-padding-right,0) var(--survey-padding-bottom,0) var(--survey-padding-left,0);
+  color:var(--survey-label-color,#111);font-size:var(--survey-label-font,6pt);
+  line-height:1.05;font-weight:700;overflow:hidden;
+}
+.survey-map-rect-text .survey-map-label-line{text-align:var(--survey-text-align,center);white-space:pre-wrap;overflow-wrap:anywhere}
+
 /* 建材ボックスのみ4pt・左寄せ。部屋やテキストの配置は維持する。 */
 .survey-map-object-materialLabel .survey-map-label-contents{align-items:flex-start;text-align:left}
 .survey-map-object-materialLabel .survey-map-label-line{text-align:left}
