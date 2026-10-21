@@ -92,6 +92,8 @@ if(draft.type==='line' && Array.isArray(draft.points) && draft.points.length>1){
   if(polyline)polyline.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
   const hit=objectEl.querySelector('.survey-map-stroke-hit');
   if(hit)hit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
+  const fillHit=objectEl.querySelector('.survey-map-stroke-fill-hit');
+  if(fillHit)fillHit.setAttribute('points',draft.points.map(p=>`${p.x},${p.y}`).join(' '));
   if(draft.elbow){
     const size=pageSize(drawing);
     for(const [handleName,point] of [
