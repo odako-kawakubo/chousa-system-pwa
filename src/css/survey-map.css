@@ -381,7 +381,7 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 .survey-map-group-handle[data-survey-group-corner="ne"]{left:100%;top:0;cursor:nesw-resize}
 .survey-map-group-handle[data-survey-group-corner="sw"]{left:0;top:100%;cursor:nesw-resize}
 .survey-map-group-handle[data-survey-group-corner="se"]{left:100%;top:100%;cursor:nwse-resize}
-.survey-map-adjust-highlight{fill:none!important;stroke:#ea580c!important;stroke-width:8!important;vector-effect:non-scaling-stroke;pointer-events:none}
+.survey-map-adjust-highlight{fill:none!important;stroke:#ea580c!important;stroke-width:2!important;vector-effect:non-scaling-stroke;pointer-events:none}
 .survey-map-grid-setting{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .survey-map-grid-setting select{max-width:95px}
 .survey-map-grid-setting label{font-size:12px}
