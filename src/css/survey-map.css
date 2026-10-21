@@ -125,8 +125,6 @@
 .survey-map-rect-text .survey-map-label-line{text-align:var(--survey-text-align,center);white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* 建材ボックスのみ4pt・左寄せ。部屋やテキストの配置は維持する。 */
-.survey-map-object-materialLabel .survey-map-label-contents{align-items:flex-start;text-align:left}
-.survey-map-object-materialLabel .survey-map-label-line{text-align:left}
 .survey-map-object-label.selected .survey-map-label-contents{outline:1px dashed #2563eb;outline-offset:1px}
 .survey-map-smart-guides{position:absolute;inset:0;z-index:26;pointer-events:none;width:100%;height:100%;overflow:visible}
 .survey-map-smart-guides line{stroke:#db2777;stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;pointer-events:none}
