@@ -73,6 +73,8 @@ function lineObjectHtml(record,drawing,selected,editMode,showHandles){
         aria-label="${record.elbow?'カギ線':record.freehand?'手描きメモ':record.closed?'多角形':'手描き補正'}">
         <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
           preserveAspectRatio="none" aria-hidden="true">
+          ${record.closed && record.points.length>=4?
+            `<polygon class="survey-map-stroke-fill-hit" points="${points}"></polygon>`:''}
           <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
             style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
