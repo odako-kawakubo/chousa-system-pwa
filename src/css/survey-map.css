@@ -125,6 +125,10 @@
   line-height:1.05;font-weight:700;overflow:hidden;
 }
 .survey-map-rect-text .survey-map-label-line{text-align:var(--survey-text-align,center);white-space:pre-wrap;overflow-wrap:anywhere}
+.survey-map-rect-text{writing-mode:var(--survey-text-direction,horizontal-tb)}
+.survey-map-rect-text[style*="vertical-rl"]{text-orientation:mixed}
+.survey-map-object-shape .survey-map-rect-text{z-index:2;pointer-events:auto}
+
 /* Keep free-text rectangles visible and touch-selectable above their SVG outline. */
 .survey-map-object-shape .survey-map-rect-text{z-index:2;pointer-events:auto;min-height:100%;}
 
