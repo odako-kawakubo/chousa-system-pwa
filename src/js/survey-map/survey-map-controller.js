@@ -1068,7 +1068,7 @@ export function renderSurveyMap(){
   mount.innerHTML=`
     <div class="survey-map-root"><main class="survey-map-center">
         <div class="survey-map-topbar" aria-label="調査図操作">
-          ${iconButton({icon:'focus',label:focusMode?'全画面終了':'全画面',attr:'data-survey-focus-toggle',active:focusMode})}
+          ${iconButton({icon:focusMode?'exitfullscreen':'fullscreen',label:focusMode?'全画面終了':'全画面',attr:'data-survey-focus-toggle',active:focusMode})}
           ${iconButton({icon:'undo',label:'戻る',attr:'data-survey-undo',disabled:!history.undo})}
           ${iconButton({icon:'redo',label:'進む',attr:'data-survey-redo',disabled:!history.redo})}
           ${iconButton({icon:'plus',label:'図面一覧・追加',attr:'data-survey-pages-toggle',active:pagesOpen})}
