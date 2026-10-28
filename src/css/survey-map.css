@@ -134,35 +134,30 @@
 
 
 
-.survey-map-workbar{
-  flex:0 0 auto;display:grid;grid-template-columns:minmax(0,54fr) minmax(0,46fr);
-  gap:8px;margin-top:6px;padding:6px;background:#fff;border:1px solid #d6dce5;border-radius:10px;
-  min-height:112px;max-height:205px;overflow:hidden;
-}
-.survey-map-tools-inline,.survey-map-edit-inline{min-width:0;min-height:0;display:flex;flex-direction:column;gap:5px}
-.survey-map-edit-inline{border-left:1px solid #d6dce5;padding-left:8px}
-.survey-map-category-row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;overflow-x:auto;flex:0 0 auto}
-.survey-map-category-row .btn{flex:0 0 auto}
-.survey-map-category-row .survey-map-icon-btn{width:30px;min-width:30px;height:30px}
-.survey-map-category-row .survey-map-icon-btn svg{width:17px;height:17px}
-.survey-map-toolbar-tools{display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;overflow-y:auto;min-height:0;align-content:start}
+.survey-map-workbar{position:relative;flex:0 0 42px;min-height:42px;margin-top:4px;padding:4px 6px;background:#fff;border:1px solid #d6dce5;border-radius:9px;min-width:0;display:flex;align-items:center}
+.survey-map-topbar{overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin}
+.survey-map-topbar>*{flex-shrink:0}
+.survey-map-topbar-separator{width:1px;height:23px;background:#d6dce5;margin:0 3px}
+.survey-map-topbar .survey-map-icon-btn{min-width:32px;width:32px;height:32px}
+.survey-map-toolbar-tools,.survey-map-inline-fields{display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:7px;overflow-x:auto;overflow-y:hidden;width:100%;min-width:0;scrollbar-width:thin}
+.survey-map-toolbar-tools>* ,.survey-map-inline-fields>*{flex:0 0 auto}
 .survey-map-toolbar-tools .survey-map-tool-cell{flex:0 0 34px}
 .survey-map-toolbar-tools .survey-map-icon-btn{width:32px;min-width:32px;height:32px;border-radius:7px}
 .survey-map-toolbar-tools .survey-map-icon-btn svg{width:19px;height:19px}
-.survey-map-toolbar-option,.survey-map-toolbar-tools .survey-map-room-picker{display:flex;align-items:center;gap:4px;margin:0;font-size:11px}
+.survey-map-toolbar-option,.survey-map-toolbar-tools .survey-map-room-picker{display:flex;align-items:center;gap:4px;margin:0;font-size:11px;white-space:nowrap}
 .survey-map-toolbar-option select,.survey-map-toolbar-tools .survey-map-room-picker select{min-height:28px;max-width:165px;font-size:11px;padding:3px}
-.survey-map-inline-heading{font-size:12px;font-weight:700;flex:0 0 auto}
-.survey-map-inline-fields{display:flex;flex-direction:column;gap:4px;overflow:auto;min-height:0;padding-right:3px}
-.survey-map-inline-fields .survey-map-editor-row{display:flex;flex-direction:row;align-items:center;gap:5px;margin:0}
-.survey-map-inline-fields .survey-map-editor-row label{flex:0 0 auto;font-size:11px}
-.survey-map-inline-fields .survey-map-editor-row input{width:auto;min-width:50px;max-width:120px;min-height:28px;padding:3px}
-.survey-map-inline-fields .survey-map-editor-row input[type="color"]{min-width:42px;width:48px;height:30px}
-.survey-map-inline-fields .survey-map-hint{padding:4px 6px;font-size:10px}
-.survey-map-inline-fields .survey-map-divider{margin:3px 0}
-.survey-map-inline-fields .survey-map-edit-mode-row{flex-wrap:wrap}
-.survey-map-inline-fields .survey-map-label-edit{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.survey-map-inline-fields .survey-map-label-edit .survey-map-editor-row{margin:0}
-.survey-map-inline-fields .survey-map-label-edit textarea{max-width:200px;min-height:32px}
+.survey-map-inline-fields label,.survey-map-inline-fields .survey-map-editor-row{display:flex;flex:0 0 auto;align-items:center;gap:4px;margin:0;white-space:nowrap;font-size:11px}
+.survey-map-inline-fields input:not([type=checkbox]),.survey-map-inline-fields select{min-height:27px;max-width:115px;padding:2px;font-size:11px}
+.survey-map-inline-fields input[type=color]{width:42px;height:28px}
+.survey-map-inline-fields .survey-map-edit-mode-row,.survey-map-inline-fields .survey-map-label-edit,.survey-map-inline-fields .survey-map-paper-actions{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+.survey-map-inline-fields .survey-map-hint,.survey-map-inline-fields .survey-map-divider{display:none}
+.survey-map-inline-fields textarea{width:150px;height:30px;min-height:30px;resize:none}
+.survey-map-inline-fields .btn{white-space:nowrap}
+.survey-map-settings-popover{position:absolute;left:8px;top:43px;z-index:155;width:min(500px,calc(100vw - 36px));max-height:min(70vh,550px);overflow:auto;border:1px solid #cbd5e1;border-radius:10px;background:#fff;box-shadow:0 8px 25px #0f172a33;padding:12px}
+.survey-map-settings-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.survey-map-settings-fields{display:flex;flex-direction:column;gap:8px}
+.survey-map-settings-fields .survey-map-editor-row{display:flex;gap:8px;align-items:center}
+.survey-map-settings-zoom{display:flex;gap:5px;margin-top:12px}
 .survey-map-pages-popover{
   position:absolute;
   left:8px;
@@ -206,7 +201,6 @@ body.survey-map-focus-mode .survey-map-sheet{
 
 
 @media(max-width:1180px){
-  .survey-map-workbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .survey-map-stage{padding:8px}
 }
 @media(max-width:900px){
@@ -215,8 +209,7 @@ body.survey-map-focus-mode .survey-map-sheet{
   .survey-map-text-btn{padding:5px 8px;font-size:11px}
   .survey-map-stage{margin-top:5px;padding:5px}
   .survey-map-sheet{min-width:0}
-  .survey-map-workbar{gap:4px;padding:4px;max-height:192px}
-  .survey-map-edit-inline{padding-left:4px}
+  .survey-map-workbar{padding:4px}
 }
 
 
@@ -381,9 +374,6 @@ body.survey-map-focus-mode .survey-map-sheet{
 .survey-map-group-handle[data-survey-group-corner="sw"]{left:0;top:100%;cursor:nesw-resize}
 .survey-map-group-handle[data-survey-group-corner="se"]{left:100%;top:100%;cursor:nwse-resize}
 .survey-map-adjust-highlight{fill:none!important;stroke:#ea580c!important;stroke-width:2!important;vector-effect:non-scaling-stroke;pointer-events:none}
-.survey-map-grid-setting{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.survey-map-grid-setting select{max-width:95px}
-.survey-map-grid-setting label{font-size:12px}
 
 .survey-map-region-preview{position:absolute;inset:0;z-index:28;pointer-events:none}
 .survey-map-region-preview svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
