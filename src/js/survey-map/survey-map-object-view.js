@@ -139,7 +139,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
           `--survey-label-background:${cfg.backgroundEnabled?escapeHtml(cfg.backgroundColor):'transparent'}`
         ].join(';');
         return `
-          <div class="survey-map-object survey-map-object-label survey-map-object-${escapeHtml(record.type)} ${selected?'selected':''}"
+          <div class="survey-map-object survey-map-object-label survey-map-object-${escapeHtml(record.type)} ${record.strokeDash==='dash'?'survey-map-room-area':''} ${selected?'selected':''}"
             data-survey-object-id="${escapeHtml(record.objectId)}"
             style="${style};${decoration}" role="button" aria-label="ラベル">
             <div class="survey-map-label-contents">${textMarkup}</div>
@@ -173,7 +173,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
               style="--survey-shape-stroke:${record.lineEnabled===false?'transparent':escapeHtml(record.strokeColor||'#334155')};
                 --survey-shape-width:${Math.max(.5,finite(record.strokeWidth,80)/40)}px;
                 --survey-shape-fill:${record.fillEnabled?escapeHtml(record.fillColor||'#93c5fd'):'transparent'};
-                --survey-shape-opacity:${record.fillEnabled?finite(record.fillOpacity,.2)||.2:0}"
+                --survey-shape-opacity:${record.fillEnabled?Math.max(0,Math.min(1,finite(record.fillOpacity,1))):0}"
               preserveAspectRatio="none" aria-hidden="true">
               ${shapeFlipMarkup(record,shapeSvgMarkup(String(record.shapeType||'rect'),record.shapeParams,record.customVertices))}
               </svg>`
