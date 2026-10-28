@@ -395,4 +395,5 @@ body.survey-map-focus-mode .survey-map-sheet{
   -webkit-user-select:text;user-select:text;-webkit-touch-callout:default
 }
 .survey-map-shift-button{-webkit-user-select:none;-webkit-touch-callout:none}
-.survey-map-room-area .survey-map-shape-svg polygon{stroke-dasharray:32 18}
+.survey-map-room-area .survey-map-shape-svg polygon{stroke-dasharray:var(--survey-room-dash,32 18)}
+.survey-map-range-preview{position:absolute;z-index:35;box-sizing:border-box;border:2px dashed #2563eb;background:rgba(37,99,235,.13);pointer-events:none}
