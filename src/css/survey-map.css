@@ -125,6 +125,9 @@
   line-height:1.05;font-weight:700;overflow:hidden;
 }
 .survey-map-rect-text .survey-map-label-line{text-align:var(--survey-text-align,center);white-space:pre-wrap;overflow-wrap:anywhere}
+/* Keep free-text rectangles visible and touch-selectable above their SVG outline. */
+.survey-map-object-shape .survey-map-rect-text{z-index:2;pointer-events:auto;min-height:100%;}
+
 
 /* 建材ボックスのみ4pt・左寄せ。部屋やテキストの配置は維持する。 */
 .survey-map-object-label.selected .survey-map-label-contents{outline:1px dashed #2563eb;outline-offset:1px}
