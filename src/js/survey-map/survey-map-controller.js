@@ -65,15 +65,48 @@ let regionPreview=null;
 let regionCommitPending=false;
 let shiftPointerId=null;
 let physicalShift=false;
+let shiftLatched=false;
+let shiftMoveMode=false;
+let shiftGesture=null;
+let shiftTapTimer=null;
+let shiftPosition=null;
+const SHIFT_POSITION_KEY='survey-map-shift-position-v1';
+try{
+  const stored=JSON.parse(localStorage.getItem(SHIFT_POSITION_KEY)||'null');
+  if(stored&&Number.isFinite(stored.left)&&Number.isFinite(stored.bottom))shiftPosition=stored;
+}catch(_error){ /* Private browsing may not expose storage. */ }
+function shiftButtonPositionStyle(){
+  if(!shiftPosition)return '';
+  return `left:${shiftPosition.left}px;bottom:${shiftPosition.bottom}px`;
+}
+function placeShiftButton(left,bottom,save=false){
+  const mount=root();
+  const btn=mount?.querySelector('[data-survey-shift]');
+  if(!mount||!btn)return;
+  const bounds=mount.getBoundingClientRect();
+  const maxLeft=Math.max(8,bounds.width-btn.offsetWidth-8);
+  const maxBottom=Math.max(8,bounds.height-btn.offsetHeight-8);
+  shiftPosition={left:Math.max(8,Math.min(maxLeft,left)),bottom:Math.max(8,Math.min(maxBottom,bottom))};
+  btn.style.left=`${shiftPosition.left}px`;
+  btn.style.bottom=`${shiftPosition.bottom}px`;
+  if(save)try{localStorage.setItem(SHIFT_POSITION_KEY,JSON.stringify(shiftPosition));}catch(_error){}
+}
+function cancelShiftTap(){if(shiftTapTimer!==null){clearTimeout(shiftTapTimer);shiftTapTimer=null;}}
+function refreshShiftButton(){
+  const btn=root()?.querySelector('[data-survey-shift]');
+  if(!btn)return;
+  btn.classList.toggle('active',shiftActive());
+  btn.classList.toggle('moving',shiftMoveMode);
+  btn.setAttribute('aria-pressed',String(shiftLatched));
+  btn.textContent=shiftMoveMode?'移動中':shiftActive()?'Shift ON':'Shift';
+}
 const DEFAULT_STROKE_WIDTH=80;
 const GRID_SPACINGS=[250,500];
 let gridSpacing=250;
 let gridSnap=true;
 let strokeEditMode='shape';
-function shiftActive(){return shiftPointerId!==null||physicalShift;}
-function syncShiftButton(){
-  root()?.querySelector('[data-survey-shift]')?.classList.toggle('active',shiftActive());
-}
+function shiftActive(){return shiftLatched||shiftPointerId!==null||physicalShift;}
+function syncShiftButton(){refreshShiftButton();}
 function snapGridValue(value){return gridSnap?Math.round(value/gridSpacing)*gridSpacing:value;}
 function snapGridPoint(point){return {x:snapGridValue(point.x),y:snapGridValue(point.y)};}
 function pagePointer(x,y,rect,drawing,{snap=true}={}){
@@ -1091,7 +1124,7 @@ export function renderSurveyMap(){
         <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
       </div>
     </main>
-    <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}" data-survey-shift aria-label="押している間Shift補助操作">Shift</button>
+    <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''} ${shiftMoveMode?'moving':''}" style="${shiftButtonPositionStyle()}" data-survey-shift aria-pressed="${shiftLatched}" aria-label="Shift: タップで固定、長押しで一時、ダブルタップで移動">${shiftMoveMode?'移動中':shiftActive()?'Shift ON':'Shift'}</button>
     </div>`;
   const stage=mount.querySelector('.survey-map-stage');
   if(stage&&scroll&&scroll.drawingId===(drawing?.drawingId||'')){
@@ -1272,15 +1305,25 @@ function bindEvents(){
   });
 
   mount.addEventListener('pointerdown',(event)=>{
-    if(regionPreview)return;
     const shiftButton=event.target.closest('[data-survey-shift]');
     if(shiftButton){
-      shiftPointerId=event.pointerId;
+      if(shiftGesture)return;
+      const start={x:event.clientX,y:event.clientY};
+      shiftGesture={pointerId:event.pointerId,start,move:shiftMoveMode,long:false,moved:false,timer:null,
+        initialPosition:shiftPosition||{left:16,bottom:18}};
+      if(!shiftMoveMode){
+        shiftGesture.timer=setTimeout(()=>{
+          if(shiftGesture?.pointerId!==event.pointerId||shiftGesture.moved)return;
+          shiftGesture.long=true;
+          shiftPointerId=event.pointerId;
+          syncShiftButton();
+        },450);
+      }
       shiftButton.setPointerCapture?.(event.pointerId);
-      syncShiftButton();
       event.preventDefault();
       return;
     }
+    if(regionPreview)return;
     const drawing=selectedDrawing();
     const sheet=event.target.closest('.survey-map-sheet');
     if(!drawing || !sheet) return;
@@ -1906,14 +1949,45 @@ function bindEvents(){
     }
   };
 
-  function releaseShift(event){
-    if(shiftPointerId===event.pointerId){
-      shiftPointerId=null;syncShiftButton();
-      if(!pointerInteraction)renderSurveyMap();
+  function finishShiftGesture(event){
+    if(!shiftGesture||shiftGesture.pointerId!==event.pointerId)return;
+    const gesture=shiftGesture;
+    shiftGesture=null;
+    if(gesture.timer!==null)clearTimeout(gesture.timer);
+    if(shiftPointerId===event.pointerId)shiftPointerId=null;
+    if(gesture.move){
+      if(gesture.moved)placeShiftButton(shiftPosition?.left??16,shiftPosition?.bottom??18,true);
+    }else if(event.type!=='pointercancel'&&!gesture.long&&!gesture.moved){
+      if(shiftTapTimer!==null){
+        cancelShiftTap();
+        shiftMoveMode=!shiftMoveMode;
+        shiftPointerId=null;
+        shiftLatched=false;
+      }else{
+        shiftTapTimer=setTimeout(()=>{
+          shiftTapTimer=null;
+          if(!shiftMoveMode){shiftLatched=!shiftLatched;syncShiftButton();}
+        },320);
+      }
     }
+    syncShiftButton();
   }
-  window.addEventListener('pointerup',releaseShift);
-  window.addEventListener('pointercancel',releaseShift);
+  mount.addEventListener('pointermove',(event)=>{
+    const gesture=shiftGesture;
+    if(!gesture||gesture.pointerId!==event.pointerId)return;
+    const dx=event.clientX-gesture.start.x;
+    const dy=event.clientY-gesture.start.y;
+    if(Math.hypot(dx,dy)>9){
+      gesture.moved=true;
+      if(gesture.timer!==null){clearTimeout(gesture.timer);gesture.timer=null;}
+    }
+    if(gesture.move){
+      placeShiftButton(gesture.initialPosition.left+dx,gesture.initialPosition.bottom-dy);
+      event.preventDefault();
+    }
+  });
+  window.addEventListener('pointerup',finishShiftGesture);
+  window.addEventListener('pointercancel',finishShiftGesture);
   mount.addEventListener('pointerup',finishPointerInteraction);
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
@@ -2046,7 +2120,8 @@ function bindEvents(){
     if(event.key==='Shift'){physicalShift=false;syncShiftButton();if(!pointerInteraction)renderSurveyMap();}
   });
   window.addEventListener('blur',()=>{
-    shiftPointerId=null;physicalShift=false;syncShiftButton();
+    if(shiftGesture?.timer!==null)clearTimeout(shiftGesture.timer);
+    shiftGesture=null;shiftPointerId=null;physicalShift=false;cancelShiftTap();syncShiftButton();
   });
   window.addEventListener('chousa:tab-change',(event)=>{
     if(event.detail?.currentTab==='survey-map'){
