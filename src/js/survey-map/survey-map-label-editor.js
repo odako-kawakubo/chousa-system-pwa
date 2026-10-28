@@ -25,6 +25,11 @@ export function labelEditorHtml(record){
     ${numField('fontSize','文字サイズ (pt)',record.fontSize||6,'.5')}
     ${isRect?'':numField('borderWidth','枠線の太さ (px)',record.borderWidth||1,'.25')}
     ${isRect?['Top','Right','Bottom','Left'].map((side)=>numField('padding'+side+'Mm',({Top:'上',Right:'右',Bottom:'下',Left:'左'})[side]+'余白 (mm)',(Number(record['padding'+side]??record.padding??0))/100,'.5')).join(''):numField('paddingMm','余白 (mm)',(Number(record.padding)||0)/100,'.5')}
+    ${isRect && !isMaterial?`<div class="survey-map-editor-row"><label>文字方向</label>
+      <select data-survey-label-field="textDirection">
+        <option value="horizontal" ${record.textDirection!=='vertical'?'selected':''}>横書き</option>
+        <option value="vertical" ${record.textDirection==='vertical'?'selected':''}>縦書き</option>
+      </select></div>`:''}
     ${isRect?`<div class="survey-map-editor-row"><label>文字の左右配置</label><select data-survey-label-field="alignH">${[['left','左'],['center','中央'],['right','右']].map(([v,t])=>`<option value="${v}" ${record.alignH===v||(!record.alignH&&v==='center')?'selected':''}>${t}</option>`).join('')}</select></div><div class="survey-map-editor-row"><label>文字の上下配置</label><select data-survey-label-field="alignV">${[['top','上'],['middle','中央'],['bottom','下']].map(([v,t])=>`<option value="${v}" ${record.alignV===v||(!record.alignV&&v==='middle')?'selected':''}>${t}</option>`).join('')}</select></div>`:''}
     ${isMaterial&&isRect?'<div class="survey-map-hint">文字色・枠線色・背景色は建材の判定に自動連動します。</div>':colorField('textColor','文字色','#111111')}
     ${isRect?'':`<label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="borderEnabled" ${record.borderEnabled?'checked':''}> 枠線を付ける</label>${colorField('strokeColor','枠線色','#111111')}<label class="survey-map-fill-toggle"><input type="checkbox" data-survey-label-field="backgroundEnabled" ${record.backgroundEnabled?'checked':''}> 背景色を付ける</label>${colorField('backgroundColor','背景色','#ffffff')}`}
