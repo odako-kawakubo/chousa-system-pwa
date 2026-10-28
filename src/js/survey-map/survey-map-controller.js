@@ -956,7 +956,7 @@ const TOOL_CATEGORIES={
 };
 function toolsHtml(){
   const entries=TOOL_CATEGORIES[toolCategory]||TOOL_CATEGORIES['採取'];
-  const options=toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
+  const options=toolCategory==='作図'?roomDashSelect(roomAreaDash,'data-survey-room-dash'):toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
     availableMaterials().map(m=>`<option value="${escapeHtml(m.materialId)}" ${m.materialId===selectedMaterial()?.materialId?'selected':''}>${escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))}</option>`).join('')+
     '</select></label>':toolCategory==='調査'?roomPickerHtml()+
     `<label class="survey-map-toolbar-option">部屋表示 <select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></label>`+roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
