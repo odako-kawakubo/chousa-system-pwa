@@ -949,8 +949,8 @@ function roomPickerHtml(){
   </div>`;
 }
 const TOOL_CATEGORIES={
-  '作図':[['room-area','部屋分け'],['rect','四角'],['circle','丸'],['triangle','直角三角'],['lshape','L字'],['tshape','T字'],['cross','十字'],['concave','凹字'],['polygon','多角形'],['line','直線'],['correct','手書き線']],
-  '採取':[['sample-set','採取セット'],['sample','マーカー'],['elbow','カギ線'],['material','建材ボックス'],['pen','ペン']],
+  '作図':[['rect','四角'],['circle','丸'],['triangle','直角三角'],['lshape','L字'],['tshape','T字'],['cross','十字'],['concave','凹字'],['polygon','多角形'],['line','直線'],['correct','手書き線'],['room-area','部屋分け']],
+  '採取':[['sample','マーカー'],['elbow','カギ線'],['material','建材ボックス'],['pen','ペン'],['sample-set','採取セット']],
   '調査':[['room','部屋No.'],['room-area','部屋分け'],['pen','ペン']],
   'テキスト':[['text','テキスト']]
 };
