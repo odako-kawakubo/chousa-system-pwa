@@ -192,48 +192,30 @@ function selectedDrawing(){
   return selected;
 }
 
-function availableRooms(){
-  const rooms=new Map();
-  for(const record of finishRecordStore.getAll()){
-    const areaCode=String(record.areaCode||'');
-    const roomPosition=String(record.roomPosition||'');
-    if(!areaCode || !roomPosition || record.status==='deleted')continue;
-    const key=`${areaCode}:${roomPosition}`;
-    const existing=rooms.get(key);
-    const name=String(record.roomName||'').trim();
-    const no=String(record.roomNo||'').trim();
-    if(!existing)rooms.set(key,{key,areaCode,roomPosition,roomNo:no,roomName:name});
-    else{
-      if(!existing.roomNo && no)existing.roomNo=no;
-      if(!existing.roomName && name)existing.roomName=name;
-    }
-  }
-  return [...rooms.values()].sort((a,b)=>a.key.localeCompare(b.key,'ja',{numeric:true}));
-}
-function roomLabel(room){
-  const detail=room.roomName? `　${room.roomName}` : '';
-  return `${room.roomNo||room.roomPosition}${detail}`;
-}
-function unusedRooms(drawing=selectedDrawing()){
-  const used=new Set(drawingObjectStore.getByDrawingId(drawing?.drawingId||'')
+function placedRoomNumbers(drawing=selectedDrawing()){
+  return new Set(drawingObjectStore.getByDrawingId(drawing?.drawingId||'')
     .filter(o=>o.type==='roomLabel'&&!o.deleted)
-    .map(o=>String(o.areaCode||'')+':'+String(o.roomPosition||'')));
-  return availableRooms().filter(room=>!used.has(room.key));
+    .map(o=>String(o.roomNoSnapshot||o.text||'').trim()).filter(Boolean));
 }
-function selectedRoom(){
-  const rooms=availableRooms();
-  if(!rooms.some(room=>room.key===selectedRoomKey)){
-    const available=unusedRooms();
-    selectedRoomKey=(available.find(room=>room.roomNo==='1-1')||available[0]||rooms[0])?.key||'';
+function normalizeRoomNumber(value){
+  return String(value||'').trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/－/g,'-');
+}
+function nextRoomNumber(current,used){
+  const m=normalizeRoomNumber(current).match(/^(\\d+)-(\\d+)$/);
+  const floor=m?Number(m[1]):1;
+  let room=m?Number(m[2]):0;
+  for(let i=0;i<10000;i++){
+    const value=`${floor}-${++room}`;
+    if(!used.has(value))return value;
   }
-  return rooms.find(room=>room.key===selectedRoomKey)||null;
+  return `${floor}-${room+1}`;
+}
+function selectedRoomNumber(){
+  if(!selectedRoomKey)selectedRoomKey=nextRoomNumber('1-0',placedRoomNumbers());
+  return selectedRoomKey;
 }
 function advanceRoomSelection(){
-  const remaining=unusedRooms();
-  if(!remaining.length)return;
-  const current=selectedRoomKey;
-  const next=remaining.find(room=>room.key.localeCompare(current,'ja',{numeric:true})>0)||remaining[0];
-  selectedRoomKey=next.key;
+  selectedRoomKey=nextRoomNumber(selectedRoomNumber(),placedRoomNumbers());
 }
 function selectedObject(){
   if(!selectedObjectId) return null;
@@ -344,12 +326,10 @@ async function createLabelAt(type,clientX,clientY,extra={}){
   return record;
 }
 async function createRoomLabelAt(clientX,clientY){
-  const room=selectedRoom();
-  if(!room)return;
+  const roomNo=selectedRoomNumber();
   const record=await createLabelAt('roomLabel',clientX,clientY,{
-    areaCode:room.areaCode,roomPosition:room.roomPosition,
-    roomNoSnapshot:room.roomNo,roomNameSnapshot:room.roomName,
-    roomDisplay,text:roomDisplay==='name'?room.roomName:room.roomNo,customText:false
+    roomNoSnapshot:roomNo,roomNameSnapshot:'',
+    roomDisplay:'number',text:roomNo,customText:true
   });
   if(record){
     advanceRoomSelection();
@@ -375,7 +355,13 @@ async function createSampleMarkerAt(clientX,clientY){
   return createLabelAt('sampleMarker',clientX,clientY,{text:'',backgroundEnabled:true,backgroundColor:'#dc2626'});
 }
 async function createFreeTextAt(clientX,clientY){
-  return createLabelAt('text',clientX,clientY,{text:'テキスト'});
+  const created=await createLabelAt('text',clientX,clientY,{text:'テキスト',textDirection:'horizontal'});
+  if(created){
+    toolbarMode='編集';
+    activeTool='select';
+    renderSurveyMap();
+  }
+  return created;
 }
 /** Three independently editable records connected through the existing elbow anchors. */
 async function createSampleSetAt(clientX,clientY){
@@ -386,11 +372,16 @@ async function createSampleSetAt(clientX,clientY){
   const marker=await createSampleMarkerAt(clientX,clientY);
   const box=await createMaterialLabelAt(clientX+dx,clientY+dy);
   if(!marker||!box)return;
-  const link=bestConnectionPair(marker,box);
+  const sampleSetId=newObjectId();
+  const nextMarker=createDrawingObject({...marker,sampleSetId,fieldEditedAt:touchFieldEditedAt(marker.fieldEditedAt,['sampleSetId'])});
+  const nextBox=createDrawingObject({...box,sampleSetId,fieldEditedAt:touchFieldEditedAt(box.fieldEditedAt,['sampleSetId'])});
+  await commitDrawingObject(nextMarker,'survey-map-sample-set-link');
+  await commitDrawingObject(nextBox,'survey-map-sample-set-link');
+  const link=bestConnectionPair(nextMarker,nextBox);
   if(link){
     const elbow=await createElbowFromPoints(drawing,link.start,link.end,{
-      startConnection:link.startConnection,endConnection:link.endConnection
-    });
+      startConnection:link.startConnection,endConnection:link.endConnection,sampleSetId
+    },{allowShort:true});
     selectedObjectIds=new Set([marker.objectId,box.objectId,...(elbow?[elbow.objectId]:[])]);
     selectedObjectId=box.objectId;
   }else{
@@ -503,19 +494,20 @@ async function finishPolygon(drawing=selectedDrawing()){
   await createCorrectedStroke(drawing,[...points,{...points[0]}],false,true);
   renderSurveyMap();
 }
-async function createElbowFromPoints(drawing,start,end,connections={}){
-  if(Math.hypot(end.x-start.x,end.y-start.y)<200)return null;
+async function createElbowFromPoints(drawing,start,end,connections={},options={}){
+  if(!options.allowShort&&Math.hypot(end.x-start.x,end.y-start.y)<200)return null;
   const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const base=elbowRecordWithPoints({
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',elbow:true,
     startConnection:connections.startConnection||null,endConnection:connections.endConnection||null,
+    ...(connections.sampleSetId?{sampleSetId:connections.sampleSetId}:{}),
     layer:DRAWING_LAYERS.SHAPE,order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
     visible:true,locked:false,deleted:false,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     createdAt:new Date(now).toISOString()
   },start.x,start.y,end.x,end.y,(start.x+end.x)/2);
   const record=createDrawingObject({...base,fieldEditedAt:touchFieldEditedAt({},[
     'drawingId','type','elbow','points','startX','startY','endX','endY','bendX',
-    'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle','startConnection','endConnection'
+    'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle','startConnection','endConnection','sampleSetId'
   ],now)});
   selectOnly(record.objectId);
   if(continuousTool!=='elbow')activeTool='select';
@@ -938,14 +930,10 @@ function toolIconCell(icon,label,toolName,disabled=true){
 }
 
 function roomPickerHtml(){
-  const rooms=availableRooms();
-  selectedRoom();
   return `<div class="survey-map-room-picker">
-    <label for="survey-map-room-choice">部屋ツールの対象</label>
-    <select id="survey-map-room-choice" data-survey-room-choice ${rooms.length?'':'disabled'}>
-      ${rooms.map(room=>`<option value="${escapeHtml(room.key)}" ${room.key===selectedRoomKey?'selected':''}>${escapeHtml(roomLabel(room))}</option>`).join('')}
-    </select>
-    ${rooms.length?'':'<span class="survey-map-hint">仕上表に部屋がありません。</span>'}
+    <label for="survey-map-room-choice">次に配置する部屋No.</label>
+    <input id="survey-map-room-choice" data-survey-room-choice type="text" value="${escapeHtml(selectedRoomNumber())}" aria-label="部屋No.">
+    <span class="survey-map-hint">仕上表とは独立して採番</span>
   </div>`;
 }
 const TOOL_CATEGORIES={
@@ -959,7 +947,7 @@ function toolsHtml(){
   const options=toolCategory==='作図'?roomDashSelect(roomAreaDash,'data-survey-room-dash'):toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
     availableMaterials().map(m=>`<option value="${escapeHtml(m.materialId)}" ${m.materialId===selectedMaterial()?.materialId?'selected':''}>${escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))}</option>`).join('')+
     '</select></label>':toolCategory==='調査'?roomPickerHtml()+
-    `<label class="survey-map-toolbar-option">部屋表示 <select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></label>`+roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
+    roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
   return `<div class="survey-map-toolbar-tools">${entries.map(([icon,label])=>toolIconCell(icon,label,icon,false)).join('')}
     ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>${polygonDraft.points.length}点</span><button class="btn small" data-survey-polygon-finish>確定</button><button class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
     ${options}</div>`;
@@ -1261,6 +1249,7 @@ function bindEvents(){
         toolCategory=requestedCategory;
         toolbarMode=requestedCategory;
         drawingSettingsOpen=false;
+        if(requestedCategory==='テキスト')activeTool='text';
       }
       renderSurveyMap();
       return;
@@ -2179,7 +2168,10 @@ function bindEvents(){
         patch.text=patch.roomDisplay==='name'?String(record.roomNameSnapshot||record.roomNoSnapshot||''):
           String(record.roomNoSnapshot||record.roomPosition||'');
       }else if(key==='text'){
-        patch.text=String(labelInput.value||'');if(record.type==='roomLabel')patch.customText=true;
+        patch.text=String(labelInput.value||'');
+        if(record.type==='roomLabel'){patch.customText=true;patch.roomNoSnapshot=patch.text;}
+      }else if(key==='textDirection'){
+        patch.textDirection=labelInput.value==='vertical'?'vertical':'horizontal';
       }else if(key==='widthMm'||key==='heightMm'){
         patch[key==='widthMm'?'width':'height']=Math.max(100,Math.round(Number(labelInput.value||1)*100));
       }else if(key==='paddingMm'){
@@ -2205,10 +2197,7 @@ function bindEvents(){
       return;
     }
     if(event.target.matches('[data-survey-room-choice]')){
-      selectedRoomKey=String(event.target.value||'');return;
-    }
-    if(event.target.matches('[data-survey-room-display]')){
-      roomDisplay=event.target.value==='name'?'name':'number';return;
+      selectedRoomKey=normalizeRoomNumber(event.target.value)||'1-1';return;
     }
     if(event.target.matches('[data-survey-material-choice]')){
       selectedMaterialId=String(event.target.value||'');return;
