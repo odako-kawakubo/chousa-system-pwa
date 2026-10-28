@@ -795,6 +795,8 @@ function svgIcon(name){
     room:'<rect x="5" y="3" width="14" height="18"/><path d="M10 3v18M14 12h2"/>',
     material:'<rect x="2" y="4" width="20" height="16" rx="1"/><rect x="4" y="6" width="16" height="12" fill="#fef08a" stroke="none"/><path d="M6 10H18M6 13H15M6 16H18" stroke="#b91c1c"/>',
     sample:'<circle cx="12" cy="12" r="7" fill="#dc2626" stroke="#dc2626"/>',
+    pen:'<path d="M4 19L18 5l2 2L6 21H4zM13 9l4 4"/>',
+    'room-area':'<rect x="4" y="4" width="16" height="16" stroke="#dc2626" stroke-dasharray="3 2"/>',
     text:'<rect x="2" y="4" width="20" height="16" rx="1"/><path d="M6 8h12M12 8v9M9 17h6"/>',
     eyedrop:'<path d="M15 4l5 5-9 9H6v-5z"/><path d="M13 6l5 5"/>',
     rect:'<rect x="4" y="5" width="16" height="14"/>',
