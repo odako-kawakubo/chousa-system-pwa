@@ -83,7 +83,7 @@
 .survey-map-polygon-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:10px;font-size:12px;color:#475569}
 .survey-map-polygon-draft{z-index:25}
 .survey-map-shift-button{
- position:absolute;z-index:190;left:16px;bottom:18px;min-width:76px;min-height:50px;
+ position:absolute;z-index:190;right:16px;bottom:18px;min-width:76px;min-height:50px;
  border:2px solid #64748b;border-radius:14px;background:#fff;color:#334155;
  font-size:16px;font-weight:800;touch-action:none;user-select:none;
  box-shadow:0 4px 16px #0f172a30;
@@ -134,44 +134,35 @@
 
 
 
-.survey-map-overlay-panel{
-  position:absolute;
-  top:60px;
-  bottom:8px;
-  z-index:130;
-  width:240px;
-  max-width:calc(100% - 20px);
-  background:#fff;
-  border:1px solid #d6dce5;
-  border-radius:12px;
-  box-shadow:0 10px 30px #0f172a30;
-  display:flex;
-  flex-direction:column;
-  opacity:0;
-  pointer-events:none;
-  transition:transform .18s ease,opacity .18s ease;
+.survey-map-workbar{
+  flex:0 0 auto;display:grid;grid-template-columns:minmax(0,54fr) minmax(0,46fr);
+  gap:8px;margin-top:6px;padding:6px;background:#fff;border:1px solid #d6dce5;border-radius:10px;
+  min-height:112px;max-height:205px;overflow:hidden;
 }
-.survey-map-tools-panel{left:8px;transform:translateX(calc(-100% - 16px))}
-.survey-map-edit-panel{right:8px;transform:translateX(calc(100% + 16px))}
-.survey-map-overlay-panel.open{transform:translateX(0);opacity:1;pointer-events:auto}
-.survey-map-overlay-head{
-  min-height:44px;
-  flex:0 0 44px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  padding:0 10px;
-  border-bottom:1px solid #d6dce5;
-  background:#f8fafc;
-}
-.survey-map-overlay-body{
-  flex:1 1 auto;
-  min-height:0;
-  overflow:auto;
-  padding:10px;
-}
-.survey-map-overlay-page-actions{display:flex;gap:6px}
+.survey-map-tools-inline,.survey-map-edit-inline{min-width:0;min-height:0;display:flex;flex-direction:column;gap:5px}
+.survey-map-edit-inline{border-left:1px solid #d6dce5;padding-left:8px}
+.survey-map-category-row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;overflow-x:auto;flex:0 0 auto}
+.survey-map-category-row .btn{flex:0 0 auto}
+.survey-map-category-row .survey-map-icon-btn{width:30px;min-width:30px;height:30px}
+.survey-map-category-row .survey-map-icon-btn svg{width:17px;height:17px}
+.survey-map-toolbar-tools{display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;overflow-y:auto;min-height:0;align-content:start}
+.survey-map-toolbar-tools .survey-map-tool-cell{flex:0 0 34px}
+.survey-map-toolbar-tools .survey-map-icon-btn{width:32px;min-width:32px;height:32px;border-radius:7px}
+.survey-map-toolbar-tools .survey-map-icon-btn svg{width:19px;height:19px}
+.survey-map-toolbar-option,.survey-map-toolbar-tools .survey-map-room-picker{display:flex;align-items:center;gap:4px;margin:0;font-size:11px}
+.survey-map-toolbar-option select,.survey-map-toolbar-tools .survey-map-room-picker select{min-height:28px;max-width:165px;font-size:11px;padding:3px}
+.survey-map-inline-heading{font-size:12px;font-weight:700;flex:0 0 auto}
+.survey-map-inline-fields{display:flex;flex-direction:column;gap:4px;overflow:auto;min-height:0;padding-right:3px}
+.survey-map-inline-fields .survey-map-editor-row{display:flex;flex-direction:row;align-items:center;gap:5px;margin:0}
+.survey-map-inline-fields .survey-map-editor-row label{flex:0 0 auto;font-size:11px}
+.survey-map-inline-fields .survey-map-editor-row input{width:auto;min-width:50px;max-width:120px;min-height:28px;padding:3px}
+.survey-map-inline-fields .survey-map-editor-row input[type="color"]{min-width:42px;width:48px;height:30px}
+.survey-map-inline-fields .survey-map-hint{padding:4px 6px;font-size:10px}
+.survey-map-inline-fields .survey-map-divider{margin:3px 0}
+.survey-map-inline-fields .survey-map-edit-mode-row{flex-wrap:wrap}
+.survey-map-inline-fields .survey-map-label-edit{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.survey-map-inline-fields .survey-map-label-edit .survey-map-editor-row{margin:0}
+.survey-map-inline-fields .survey-map-label-edit textarea{max-width:200px;min-height:32px}
 .survey-map-pages-popover{
   position:absolute;
   left:8px;
@@ -209,13 +200,13 @@ body.survey-map-focus-mode .survey-map-topbar{border-radius:9px;min-height:42px;
 body.survey-map-focus-mode .survey-map-stage{margin-top:6px;border-radius:9px;padding:8px}
 body.survey-map-focus-mode .survey-map-sheet{
   min-width:0;
-  width:min(100%,calc((100dvh - 68px) * 297 / 210));
+  width:min(100%,calc((100dvh - 195px) * 297 / 210));
   max-width:100%;
 }
-body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
+
 
 @media(max-width:1180px){
-  .survey-map-overlay-panel{width:220px}
+  .survey-map-workbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .survey-map-stage{padding:8px}
 }
 @media(max-width:900px){
@@ -224,9 +215,8 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
   .survey-map-text-btn{padding:5px 8px;font-size:11px}
   .survey-map-stage{margin-top:5px;padding:5px}
   .survey-map-sheet{min-width:0}
-  .survey-map-overlay-panel{top:54px;bottom:5px;width:210px}
-  .survey-map-tools-panel{left:5px}
-  .survey-map-edit-panel{right:5px}
+  .survey-map-workbar{gap:4px;padding:4px;max-height:192px}
+  .survey-map-edit-inline{padding-left:4px}
 }
 
 
@@ -406,3 +396,11 @@ body.survey-map-focus-mode .survey-map-overlay-panel{top:54px;bottom:6px}
 
 /* Connection target is held while the second endpoint is chosen. */
 .survey-map-connect-pending{outline:3px solid #2563eb;outline-offset:3px}
+
+/* iPad: prevent long-press text selection while holding Shift or drawing. */
+.survey-map-root{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.survey-map-root input,.survey-map-root textarea,.survey-map-root select{
+  -webkit-user-select:text;user-select:text;-webkit-touch-callout:default
+}
+.survey-map-shift-button{-webkit-user-select:none;-webkit-touch-callout:none}
+.survey-map-room-area .survey-map-shape-svg polygon{stroke-dasharray:9 6}
