@@ -98,13 +98,18 @@ function refreshShiftButton(){
   btn.classList.toggle('active',shiftActive());
   btn.classList.toggle('moving',shiftMoveMode);
   btn.setAttribute('aria-pressed',String(shiftLatched));
-  btn.textContent=shiftMoveMode?'移動中':shiftActive()?'Shift ON':'Shift';
+  btn.textContent=shiftMoveMode?'完了':shiftActive()?'Shift ON':'Shift';
 }
 const DEFAULT_STROKE_WIDTH=80;
 const GRID_SPACINGS=[250,500];
 let gridSpacing=250;
 let gridSnap=true;
 let strokeEditMode='shape';
+let roomAreaDash='fine';
+const ROOM_DASH_OPTIONS=[['fine','細かい点線'],['normal','標準'],['dash','粗い点線'],['solid','実線']];
+function roomDashSelect(value,attribute){
+  return `<label class="survey-map-toolbar-option">線種 <select ${attribute}>${ROOM_DASH_OPTIONS.map(([key,label])=>`<option value="${key}" ${key===value?'selected':''}>${label}</option>`).join('')}</select></label>`;
+}
 function shiftActive(){return shiftLatched||shiftPointerId!==null||physicalShift;}
 function syncShiftButton(){refreshShiftButton();}
 function snapGridValue(value){return gridSnap?Math.round(value/gridSpacing)*gridSpacing:value;}
@@ -393,7 +398,7 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
     fillOpacity:0,
     lineEnabled:true,
     strokeColor:roomArea?'#dc2626':'#334155',
-    strokeDash:roomArea?'dash':'solid',
+    strokeDash:roomArea?roomAreaDash:'solid',
     strokeWidth:DEFAULT_STROKE_WIDTH,
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
@@ -907,7 +912,7 @@ function toolsHtml(){
   const options=toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
     availableMaterials().map(m=>`<option value="${escapeHtml(m.materialId)}" ${m.materialId===selectedMaterial()?.materialId?'selected':''}>${escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))}</option>`).join('')+
     '</select></label>':toolCategory==='調査'?roomPickerHtml()+
-    `<label class="survey-map-toolbar-option">部屋表示 <select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></label>`:'';
+    `<label class="survey-map-toolbar-option">部屋表示 <select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></label>`+roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
   return `<div class="survey-map-toolbar-tools">${entries.map(([icon,label])=>toolIconCell(icon,label,icon,false)).join('')}
     ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>${polygonDraft.points.length}点</span><button class="btn small" data-survey-polygon-finish>確定</button><button class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
     ${options}</div>`;
@@ -986,6 +991,8 @@ function editorHtml(drawing){
           <button type="button" class="btn small ${strokeEditMode==='points'?'active':''}"
             data-survey-stroke-edit-mode="points">頂点編集</button>
         </div></div>`:'';
+    const dashControls=object.type==='shape'&&['fine','normal','dash','solid'].includes(object.strokeDash)
+      ? roomDashSelect(object.strokeDash,'data-survey-object-dash'):'';
     const styleControls=object.type==='shape'&&object.materialId
       ? '<div class="survey-map-hint">建材の色は分析結果・判定から自動反映されます。</div>'
       : object.type==='line'||object.type==='shape'
@@ -1030,6 +1037,7 @@ function editorHtml(drawing){
         <input type="number" step="1" data-survey-angle value="${Math.round(Number(object.rotation)||0)}">
       </div>` : ''}
       ${styleControls}
+      ${dashControls}
       ${(isLabelType(object.type)||(object.type==='shape'&&object.shapeType==='rect'))?labelEditorHtml(object):''}
       <div class="survey-map-divider"></div>
       <button type="button" class="btn danger" data-survey-object-delete style="width:100%">選択オブジェクトを削除</button>
@@ -1124,7 +1132,7 @@ export function renderSurveyMap(){
         <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
       </div>
     </main>
-    <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''} ${shiftMoveMode?'moving':''}" style="${shiftButtonPositionStyle()}" data-survey-shift aria-pressed="${shiftLatched}" aria-label="Shift: タップで固定、長押しで一時、ダブルタップで移動">${shiftMoveMode?'移動中':shiftActive()?'Shift ON':'Shift'}</button>
+    <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''} ${shiftMoveMode?'moving':''}" style="${shiftButtonPositionStyle()}" data-survey-shift aria-pressed="${shiftLatched}" aria-label="Shift: タップで固定、長押しで一時、ダブルタップで移動">${shiftMoveMode?'完了':shiftActive()?'Shift ON':'Shift'}</button>
     </div>`;
   const stage=mount.querySelector('.survey-map-stage');
   if(stage&&scroll&&scroll.drawingId===(drawing?.drawingId||'')){
@@ -1328,6 +1336,17 @@ function bindEvents(){
     const sheet=event.target.closest('.survey-map-sheet');
     if(!drawing || !sheet) return;
 
+    if(activeTool==='range'){
+      const sheetRect=sheet.getBoundingClientRect();
+      const start=pagePointer(event.clientX,event.clientY,sheetRect,drawing,{snap:false});
+      const overlay=document.createElement('div');
+      overlay.className='survey-map-range-preview';
+      sheet.appendChild(overlay);
+      pointerInteraction={pointerId:event.pointerId,mode:'range-select',startPoint:start,sheetRect,previewEl:overlay};
+      sheet.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      return;
+    }
     const groupHandle=event.target.closest('[data-survey-group-corner]');
     if(groupHandle && activeTool==='select' && selectedObjectIds.size>1){
       const originals=Array.from(selectedObjectIds).map(id=>drawingObjectStore.get(id)).filter(o=>o&&!o.deleted);
@@ -1504,6 +1523,17 @@ function bindEvents(){
     const currentPoint=['create-shape','create-line','create-elbow','create-polygon-edge']
       .includes(interaction.mode)?snapCreationPoint(rawPoint,drawing,true):rawPoint;
 
+    if(interaction.mode==='range-select'){
+      const a=interaction.startPoint,b=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{snap:false});
+      const size=pageSize(drawing);
+      Object.assign(interaction.previewEl.style,{
+        left:(Math.min(a.x,b.x)/size.width*100)+'%',
+        top:(Math.min(a.y,b.y)/size.height*100)+'%',
+        width:(Math.abs(b.x-a.x)/size.width*100)+'%',
+        height:(Math.abs(b.y-a.y)/size.height*100)+'%'
+      });
+      event.preventDefault();return;
+    }
     if(interaction.mode==='create-polygon-edge'){
       const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
       updateLineDraftPreview(interaction.previewEl,point);
@@ -1818,6 +1848,26 @@ function bindEvents(){
     pointerInteraction=null;
     clearSmartGuides();
 
+    if(interaction.mode==='range-select'){
+      interaction.previewEl?.remove();
+      if(event.type==='pointercancel'){renderSurveyMap();return;}
+      const drawing=selectedDrawing();
+      if(!drawing)return;
+      const a=interaction.startPoint,b=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{snap:false});
+      const area={x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),right:Math.max(a.x,b.x),bottom:Math.max(a.y,b.y)};
+      if(area.right-area.x>15&&area.bottom-area.y>15){
+        const matches=drawingObjectStore.getByDrawingId(drawing.drawingId).filter(o=>{
+          if(o.deleted||o.locked||o.visible===false)return false;
+          const x=Number(o.x)||0,y=Number(o.y)||0,w=Math.max(0,Number(o.width)||0),h=Math.max(0,Number(o.height)||0);
+          return x<=area.right&&x+w>=area.x&&y<=area.bottom&&y+h>=area.y;
+        }).map(o=>o.objectId);
+        if(!shiftActive()&&!event.shiftKey)selectedObjectIds.clear();
+        for(const id of matches)selectedObjectIds.add(id);
+        selectedObjectId=Array.from(selectedObjectIds).at(-1)||'';
+      }
+      activeTool='select';
+      renderSurveyMap();return;
+    }
     if(interaction.mode==='create-polygon-edge'){
       interaction.previewEl?.remove();
       if(event.type==='pointercancel'){renderSurveyMap();return;}
@@ -1957,6 +2007,7 @@ function bindEvents(){
     if(shiftPointerId===event.pointerId)shiftPointerId=null;
     if(gesture.move){
       if(gesture.moved)placeShiftButton(shiftPosition?.left??16,shiftPosition?.bottom??18,true);
+      else if(event.type!=='pointercancel')shiftMoveMode=false;
     }else if(event.type!=='pointercancel'&&!gesture.long&&!gesture.moved){
       if(shiftTapTimer!==null){
         cancelShiftTap();
@@ -1992,6 +2043,21 @@ function bindEvents(){
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
   mount.addEventListener('change',(event)=>{
+    if(event.target.matches('[data-survey-room-dash]')){
+      const value=String(event.target.value);
+      if(ROOM_DASH_OPTIONS.some(([key])=>key===value))roomAreaDash=value;
+      return;
+    }
+    if(event.target.matches('[data-survey-object-dash]')){
+      const record=selectedObject();
+      const value=String(event.target.value);
+      if(record?.type==='shape'&&['fine','normal','dash','solid'].includes(record.strokeDash)&&ROOM_DASH_OPTIONS.some(([key])=>key===value)){
+        const now=Date.now();
+        void commitDrawingObject(createDrawingObject({...record,strokeDash:value,
+          fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['strokeDash'],now)}),'survey-map-room-dash-change').then(()=>renderSurveyMap());
+      }
+      return;
+    }
     if(event.target.matches('[data-survey-grid-spacing]')){
       gridSpacing=GRID_SPACINGS.includes(Number(event.target.value))?Number(event.target.value):250;
       renderSurveyMap();return;
