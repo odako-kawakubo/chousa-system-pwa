@@ -314,6 +314,8 @@ async function createFreeTextAt(clientX,clientY){
   return createLabelAt('text',clientX,clientY,{text:'テキスト'});
 }
 async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=false){
+  const roomArea=kind==='room-area';
+  if(roomArea)kind='rect';
   const drawing=selectedDrawing();
   const sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing || !sheet) return;
@@ -354,7 +356,8 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
     fillColor:'#ffffff',
     fillOpacity:0,
     lineEnabled:true,
-    strokeColor:'#334155',
+    strokeColor:roomArea?'#dc2626':'#334155',
+    strokeDash:roomArea?'dash':'solid',
     strokeWidth:DEFAULT_STROKE_WIDTH,
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
@@ -363,7 +366,7 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
     ],now)
   });
   selectOnly(record.objectId);
-  if(continuousTool!==kind) activeTool='select';
+  if(continuousTool!==(roomArea?'room-area':kind)) activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
 }
@@ -1099,6 +1102,9 @@ function bindEvents(){
   const mount=root();
   if(!mount) return;
 
+  mount.addEventListener('contextmenu',(event)=>{
+    if(event.target.closest('.survey-map-shift-button,.survey-map-sheet'))event.preventDefault();
+  });
   mount.addEventListener('click',(event)=>{
     if(event.target.closest('[data-survey-region-cancel]')){regionPreview=null;renderSurveyMap();return;}
     if(event.target.closest('[data-survey-region-confirm]')){void confirmRegionOperation();return;}
@@ -1163,7 +1169,7 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && (['line','correct','elbow','room','hand','polygon'].includes(requested) || isShapeTool(requested))){
+      if(repeatedTap && (['line','correct','elbow','room','hand','polygon','room-area'].includes(requested) || isShapeTool(requested))){
         continuousTool=continuousTool===requested?'':requested;
       }else if(requested!==continuousTool){
         continuousTool='';
