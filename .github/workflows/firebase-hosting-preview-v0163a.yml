@@ -998,7 +998,11 @@ jobs:
           grep -q "create-polygon-edge" src/js/survey-map/survey-map-controller.js
           grep -q "create-shape" src/js/survey-map/survey-map-controller.js
           grep -q "event.ctrlKey" src/js/survey-map/survey-map-controller.js
-          grep -Fq "icon!=='polygon'&&!isShapeTool(icon)" src/js/survey-map/survey-map-controller.js
+          # v0.1.10.23: 図形一覧はカテゴリーツールバーの定義で検証する。
+          grep -Fq "'作図':[['rect','四角']" src/js/survey-map/survey-map-controller.js
+          grep -Fq "'採取':[['sample','マーカー']" src/js/survey-map/survey-map-controller.js
+          grep -Fq "'調査':[['room','部屋No.']" src/js/survey-map/survey-map-controller.js
+          grep -Fq "'テキスト':[['text','テキスト']]" src/js/survey-map/survey-map-controller.js
           grep -q "resizeRectFromDrag" src/js/survey-map/survey-map-controller.js
           node --input-type=module <<'CENTEREDSHIFT'
           import {resizeRectFromDrag} from './src/js/survey-map/survey-map-geometry.js';
