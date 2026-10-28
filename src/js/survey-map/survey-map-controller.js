@@ -31,8 +31,7 @@ let selectedDrawingId='';
 let boundProjectId='';
 let gridVisible=true;
 let focusMode=false;
-let toolPanelOpen=false;
-let editPanelOpen=false;
+let toolCategory='採取';
 let pagesOpen=false;
 let selectedObjectId='';
 let selectedObjectIds=new Set();
@@ -369,26 +368,26 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
   renderSurveyMap();
 }
 
-async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=false){
-  if(traceLength(rawPoints)<200) return null;
+async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=false,pen=false){
+  if(traceLength(rawPoints)<(pen?12:200)) return null;
   const corrected=(freehand||polygon)?rawPoints:correctStroke(rawPoints,drawing);
   if(corrected.length<2) return null;
   const now=Date.now();
   const objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
-  const closed=polygon || (corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120);
+  const closed=polygon || (!pen && corrected.length>3 && Math.hypot(corrected[0].x-corrected.at(-1).x,corrected[0].y-corrected.at(-1).y)<120);
   const record=createDrawingObject(strokeRecordWithPoints({
     objectId:newObjectId(),drawingId:drawing.drawingId,type:'line',
-    layer:freehand?DRAWING_LAYERS.NOTE:DRAWING_LAYERS.SHAPE,
+    layer:(freehand||pen)?DRAWING_LAYERS.NOTE:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
-    rotation:0,closed,freehand,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
+    rotation:0,closed,freehand:freehand||pen,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','layer','order','x','y','width','height','rotation',
       'points','closed','freehand','lineColor','lineWidth','lineStyle','visible','locked','deleted'
     ],now)
   },corrected));
-  selectOnly(record.objectId);
-  if(continuousTool!==(polygon?'polygon':freehand?'hand':'correct')) activeTool='select';
+  if(!pen)selectOnly(record.objectId);
+  if(!pen && continuousTool!==(polygon?'polygon':freehand?'hand':'correct')) activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
 }
@@ -773,8 +772,6 @@ async function deleteDrawing(){
 function setFocusMode(next){
   focusMode=Boolean(next);
   pagesOpen=false;
-  toolPanelOpen=false;
-  editPanelOpen=false;
   applyLayoutClasses();
   renderSurveyMap();
 }
@@ -858,43 +855,21 @@ function roomPickerHtml(){
     ${rooms.length?'':'<span class="survey-map-hint">仕上表に部屋がありません。</span>'}
   </div>`;
 }
+const TOOL_CATEGORIES={
+  '作図':[['rect','四角'],['circle','丸'],['triangle','直角三角'],['lshape','L字'],['tshape','T字'],['cross','十字'],['concave','凹字'],['polygon','多角形'],['line','直線'],['correct','手書き線']],
+  '採取':[['sample','マーカー'],['elbow','カギ線'],['material','建材ボックス'],['pen','ペン']],
+  '調査':[['room','部屋No.'],['room-area','部屋分け'],['pen','ペン']],
+  'テキスト':[['text','テキスト']]
+};
 function toolsHtml(){
-  const primary=[
-    ['select','選択'],
-    ['range','範囲選択'],
-    ['line','直線'],
-    ['correct','手描き補正'],
-    ['hand','手描きメモ'],
-    ['elbow','カギ線'],
-    ['room','部屋'],
-    ['material','建材'],
-    ['sample','採取位置'],
-    ['text','テキスト'],
-    ['eyedrop','色コピー']
-  ];
-  const shapes=[
-    ['rect','四角'],
-    ['circle','丸'],
-    ['triangle','直角三角'],
-    ['lshape','L字'],
-    ['tshape','T字'],
-    ['cross','十字'],
-    ['concave','凹字'],
-    ['polygon','多角形']
-  ];
-  return `
-    <div class="survey-map-tool-section">
-      <div class="survey-map-tool-grid">${primary.map(([icon,label])=>
-        toolIconCell(icon,label,icon,!['select','line','correct','elbow','room','hand','material','sample','text'].includes(icon))
-      ).join('')}</div>
-      <div class="survey-map-divider"></div>
-      <div class="survey-map-tool-grid">${shapes.map(([icon,label])=>toolIconCell(icon,label,icon,icon!=='polygon'&&!isShapeTool(icon))).join('')}</div>
-      ${roomPickerHtml()}
-      <div class="survey-map-room-picker"><label>部屋の表示</label><select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></div>
-      <div class="survey-map-room-picker"><label>建材ツールの対象</label><select data-survey-material-choice>${availableMaterials().map(m=>`<option value="${escapeHtml(m.materialId)}" ${m.materialId===selectedMaterial()?.materialId?'selected':''}>${escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))}</option>`).join('')}</select></div>
-      ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>多角形：${polygonDraft.points.length}点</span><button type="button" class="btn small" data-survey-polygon-finish ${polygonDraft.points.length<3?'disabled':''}>確定</button><button type="button" class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
-    </div>
-  `;
+  const entries=TOOL_CATEGORIES[toolCategory]||TOOL_CATEGORIES['採取'];
+  const options=toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
+    availableMaterials().map(m=>`<option value="${escapeHtml(m.materialId)}" ${m.materialId===selectedMaterial()?.materialId?'selected':''}>${escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))}</option>`).join('')+
+    '</select></label>':toolCategory==='調査'?roomPickerHtml()+
+    `<label class="survey-map-toolbar-option">部屋表示 <select data-survey-room-display><option value="number" ${roomDisplay==='number'?'selected':''}>部屋No.</option><option value="name" ${roomDisplay==='name'?'selected':''}>部屋名</option></select></label>`:'';
+  return `<div class="survey-map-toolbar-tools">${entries.map(([icon,label])=>toolIconCell(icon,label,icon,false)).join('')}
+    ${polygonDraft?.points?.length?`<div class="survey-map-polygon-actions"><span>${polygonDraft.points.length}点</span><button class="btn small" data-survey-polygon-finish>確定</button><button class="btn small" data-survey-polygon-cancel>取消</button></div>`:''}
+    ${options}</div>`;
 }
 
 function sheetHtml(drawing){
@@ -1057,8 +1032,7 @@ export function renderSurveyMap(){
   const scroll=oldStage?{drawingId:oldStage.dataset.drawingId,x:oldStage.scrollLeft,y:oldStage.scrollTop,width:oldStage.scrollWidth,height:oldStage.scrollHeight}:null;
 
   mount.innerHTML=`
-    <div class="survey-map-root">
-      <main class="survey-map-center">
+    <div class="survey-map-root"><main class="survey-map-center">
         <div class="survey-map-topbar">
           <button type="button" class="btn small survey-map-text-btn ${focusMode?'active':''}" data-survey-focus-toggle>${focusMode?'全画面終了':'全画面'}</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-undo ${history.undo?'':'disabled'}>戻る</button>
@@ -1078,44 +1052,34 @@ export function renderSurveyMap(){
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-in>＋</button>
           <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-fit>Fit</button>
-          <button type="button" class="btn small survey-map-text-btn ${toolPanelOpen?'active':''}" data-survey-tool-toggle>ツール</button>
-          <button type="button" class="btn small survey-map-text-btn ${editPanelOpen?'active':''}" data-survey-edit-toggle>編集</button>
           <span class="spacer"></span>
           <span class="survey-map-status">${drawing?escapeHtml(drawing.name):'ページ未選択'}</span>
         </div>
 
-        <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
-          ${pagesPopoverHtml()}
-          <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
-        </div>
-      </main>
-      <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}"
-        data-survey-shift aria-label="押している間Shift補助操作">Shift</button>
 
-      <aside class="survey-map-overlay-panel survey-map-tools-panel ${toolPanelOpen?'open':''}" aria-hidden="${toolPanelOpen?'false':'true'}">
-        <div class="survey-map-overlay-head">
-          <b>ツール</b>
-          <button type="button" class="btn small" data-survey-tool-close>閉じる</button>
-        </div>
-        <div class="survey-map-overlay-body">
-          <div class="survey-map-overlay-page-actions">
-            ${iconButton({icon:'pages',label:'図面一覧',attr:'data-survey-pages-toggle'})}
+      <section class="survey-map-workbar" aria-label="作図と編集">
+        <div class="survey-map-tools-inline">
+          <div class="survey-map-category-row">
+            ${Object.keys(TOOL_CATEGORIES).map(category=>`<button type="button" class="btn small survey-map-text-btn ${toolCategory===category?'active':''}" data-survey-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}
+            ${iconButton({icon:'select',label:'選択',attr:'data-survey-draw-tool="select"',active:activeTool==='select'})}
+            ${iconButton({icon:'range',label:'範囲選択',attr:'data-survey-draw-tool="range"',active:activeTool==='range'})}
+            ${iconButton({icon:'eyedrop',label:'色コピー',attr:'data-survey-draw-tool="eyedrop"',active:activeTool==='eyedrop'})}
             ${iconButton({icon:'plus',label:'新規調査図',attr:'data-survey-new'})}
           </div>
-          <div class="survey-map-divider"></div>
           ${toolsHtml()}
         </div>
-      </aside>
-
-      <aside class="survey-map-overlay-panel survey-map-edit-panel ${editPanelOpen?'open':''}" aria-hidden="${editPanelOpen?'false':'true'}">
-        <div class="survey-map-overlay-head">
-          <b>編集</b>
-          <button type="button" class="btn small" data-survey-edit-close>閉じる</button>
+        <div class="survey-map-edit-inline">
+          <div class="survey-map-inline-heading">編集</div>
+          <div class="survey-map-inline-fields">${editorHtml(drawing)}</div>
         </div>
-        <div class="survey-map-overlay-body">${editorHtml(drawing)}</div>
-      </aside>
-    </div>
-  `;
+      </section>
+      <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
+        ${pagesPopoverHtml()}
+        <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
+      </div>
+    </main>
+    <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''}" data-survey-shift aria-label="押している間Shift補助操作">Shift</button>
+    </div>`;
   const stage=mount.querySelector('.survey-map-stage');
   if(stage&&scroll&&scroll.drawingId===(drawing?.drawingId||'')){
     stage.scrollLeft=scroll.x;
@@ -1181,26 +1145,9 @@ function bindEvents(){
       return;
     }
 
-    if(event.target.closest('[data-survey-tool-toggle]')){
-      toolPanelOpen=!toolPanelOpen;
-      renderSurveyMap();
-      return;
-    }
-
-    if(event.target.closest('[data-survey-edit-toggle]')){
-      editPanelOpen=!editPanelOpen;
-      renderSurveyMap();
-      return;
-    }
-
-    if(event.target.closest('[data-survey-tool-close]')){
-      toolPanelOpen=false;
-      renderSurveyMap();
-      return;
-    }
-
-    if(event.target.closest('[data-survey-edit-close]')){
-      editPanelOpen=false;
+    const categoryButton=event.target.closest('[data-survey-category]');
+    if(categoryButton){
+      toolCategory=categoryButton.dataset.surveyCategory;
       renderSurveyMap();
       return;
     }
@@ -1412,7 +1359,7 @@ function bindEvents(){
       event.preventDefault();
       return;
     }
-    if(isShapeTool(activeTool)){
+    if(isShapeTool(activeTool)||activeTool==='room-area'){
       const sheetRect=sheet.getBoundingClientRect();
       const startPoint=snapCreationPoint(pagePointer(event.clientX,event.clientY,sheetRect,drawing),drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
@@ -1427,17 +1374,18 @@ function bindEvents(){
       return;
     }
 
-    if(activeTool==='line' || activeTool==='correct' || activeTool==='elbow' || activeTool==='hand'){
+    if(['line','correct','elbow','hand','pen'].includes(activeTool)){
       if(activeTool==='elbow')pendingConnectionStart=null;
       const sheetRect=sheet.getBoundingClientRect();
       const rawStart=pagePointer(event.clientX,event.clientY,sheetRect,drawing,
-        {snap:activeTool!=='correct'&&activeTool!=='hand'});
-      const startPoint=(activeTool==='correct'||activeTool==='hand')?rawStart:snapCreationPoint(rawStart,drawing);
+        {snap:!['correct','hand','pen'].includes(activeTool)});
+      const startPoint=(['correct','hand','pen'].includes(activeTool))?rawStart:snapCreationPoint(rawStart,drawing);
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
         objectId:'',
-        mode:activeTool==='correct'?'create-corrected':activeTool==='hand'?'create-hand':activeTool==='elbow'?'create-elbow':'create-line',
+        mode:activeTool==='correct'?'create-corrected':(['hand','pen'].includes(activeTool))?'create-hand':activeTool==='elbow'?'create-elbow':'create-line',
+        pen:activeTool==='pen',
         original:null,
         draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
         startPoint,
@@ -1514,7 +1462,7 @@ function bindEvents(){
     }
     if(interaction.mode==='create-corrected' || interaction.mode==='create-hand'){
       const previous=interaction.rawPoints.at(-1);
-      if(Math.hypot(currentPoint.x-previous.x,currentPoint.y-previous.y)>=45){
+      if(Math.hypot(currentPoint.x-previous.x,currentPoint.y-previous.y)>=(interaction.pen?5:45)){
         interaction.rawPoints.push(currentPoint);
         previewCorrectedStroke(interaction.previewEl,interaction.rawPoints);
       }
@@ -1861,8 +1809,8 @@ function bindEvents(){
       if(!drawing)return;
       const end=pagePointer(event.clientX,event.clientY,interaction.sheetRect,drawing,{snap:false});
       const last=interaction.rawPoints.at(-1);
-      if(Math.hypot(end.x-last.x,end.y-last.y)>20)interaction.rawPoints.push(end);
-      void createCorrectedStroke(drawing,interaction.rawPoints,interaction.mode==='create-hand').then(()=>renderSurveyMap());
+      if(Math.hypot(end.x-last.x,end.y-last.y)>(interaction.pen?3:20))interaction.rawPoints.push(end);
+      void createCorrectedStroke(drawing,interaction.rawPoints,interaction.mode==='create-hand',false,Boolean(interaction.pen)).then(()=>renderSurveyMap());
       return;
     }
 
@@ -1972,9 +1920,10 @@ function bindEvents(){
         patch[isLine?'lineWidth':'strokeWidth']=clamp(Number(styleInput.value)||80,20,500);
       }else if(field==='fill'){
         patch.fillEnabled=Boolean(styleInput.checked);
-        patch.fillOpacity=patch.fillEnabled?.2:0;
+        patch.fillOpacity=patch.fillEnabled?1:0;
       }else if(field==='fillColor'){
         patch.fillColor=String(styleInput.value||'#93c5fd');
+        if(record.fillEnabled)patch.fillOpacity=1;
       }else return;
       const now=Date.now();
       const next=createDrawingObject({...record,...patch,
@@ -2075,9 +2024,7 @@ function bindEvents(){
     if(focusMode){
       focusMode=false;
       pagesOpen=false;
-      toolPanelOpen=false;
-      editPanelOpen=false;
-      applyLayoutClasses();
+              applyLayoutClasses();
     }
   });
 }
