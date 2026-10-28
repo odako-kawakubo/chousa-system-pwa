@@ -83,12 +83,14 @@
 .survey-map-polygon-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:10px;font-size:12px;color:#475569}
 .survey-map-polygon-draft{z-index:25}
 .survey-map-shift-button{
- position:absolute;z-index:190;right:16px;bottom:18px;min-width:76px;min-height:50px;
+ position:absolute;z-index:190;left:16px;bottom:18px;min-width:76px;min-height:50px;
  border:2px solid #64748b;border-radius:14px;background:#fff;color:#334155;
  font-size:16px;font-weight:800;touch-action:none;user-select:none;
  box-shadow:0 4px 16px #0f172a30;
 }
 .survey-map-shift-button.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.survey-map-shift-button.moving{border-style:dashed;border-color:#d97706;background:#fffbeb;color:#92400e;cursor:move}
+.survey-map-shift-button.moving.active{background:#fffbeb;color:#92400e}
 .survey-map-edit-mode-row{display:flex;gap:6px}
 .survey-map-edit-mode-row .btn{flex:1}
 .survey-map-edit-mode-row .btn.active{background:#2563eb;color:#fff;border-color:#2563eb}
