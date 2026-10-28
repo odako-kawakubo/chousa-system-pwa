@@ -32,6 +32,9 @@ let boundProjectId='';
 let gridVisible=true;
 let focusMode=false;
 let toolCategory='採取';
+let toolbarMode='採取';
+let returnTool='select';
+let drawingSettingsOpen=false;
 let pagesOpen=false;
 let selectedObjectId='';
 let selectedObjectIds=new Set();
@@ -1015,6 +1018,32 @@ function editorHtml(drawing){
   `;
 }
 
+function editToolbarHtml(drawing){
+  if(!drawing)return '<span class="survey-map-hint">図面を選択してください</span>';
+  if(!selectedObjectIds.size){
+    return `<label>間隔 <select data-survey-grid-spacing>
+      ${GRID_SPACINGS.map(v=>`<option value="${v}" ${gridSpacing===v?'selected':''}>${(v/1000).toFixed(2).replace(/0$/,'')}m</option>`).join('')}
+    </select></label>
+    <label><input type="checkbox" data-survey-grid-snap ${gridSnap?'checked':''}>スナップ</label>
+    <label><input type="checkbox" data-survey-smart-guide ${smartGuideEnabled?'checked':''}>スマートガイド</label>
+    <button type="button" class="btn small" data-survey-drawing-settings>図面設定</button>`;
+  }
+  return editorHtml(drawing);
+}
+function drawingSettingsHtml(drawing){
+  if(!drawingSettingsOpen||toolbarMode!=='編集'||selectedObjectIds.size)return '';
+  return `<div class="survey-map-settings-popover">
+    <div class="survey-map-settings-heading"><strong>図面設定</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div>
+    <div class="survey-map-settings-fields">${editorHtml(drawing)}</div>
+    <div class="survey-map-settings-zoom">
+      <button type="button" class="btn small" data-survey-zoom-out>縮小</button>
+      <button type="button" class="btn small" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
+      <button type="button" class="btn small" data-survey-zoom-in>拡大</button>
+      <button type="button" class="btn small" data-survey-zoom-fit>Fit</button>
+    </div>
+  </div>`;
+}
+
 function pagesPopoverHtml(){
   return `
     <div class="survey-map-pages-popover" ${pagesOpen?'':'hidden'}>
@@ -1038,47 +1067,26 @@ export function renderSurveyMap(){
 
   mount.innerHTML=`
     <div class="survey-map-root"><main class="survey-map-center">
-        <div class="survey-map-topbar">
-          <button type="button" class="btn small survey-map-text-btn ${focusMode?'active':''}" data-survey-focus-toggle>${focusMode?'全画面終了':'全画面'}</button>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-undo ${history.undo?'':'disabled'}>戻る</button>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-redo ${history.redo?'':'disabled'}>進む</button>
-          <button type="button" class="btn small survey-map-text-btn ${pagesOpen?'active':''}" data-survey-pages-toggle>図面</button>
-          <button type="button" class="btn small survey-map-text-btn ${gridVisible?'active':''}" data-survey-grid>グリッド</button>
-          <div class="survey-map-grid-setting">
-            <label>間隔
-              <select data-survey-grid-spacing>
-                ${GRID_SPACINGS.map(v=>`<option value="${v}" ${gridSpacing===v?'selected':''}>${(v/1000).toFixed(2).replace(/0$/,'')}m</option>`).join('')}
-              </select>
-            </label>
-            <label><input type="checkbox" data-survey-grid-snap ${gridSnap?'checked':''}>スナップ</label>
-            <label><input type="checkbox" data-survey-smart-guide ${smartGuideEnabled?'checked':''}>スマートガイド</label>
-          </div>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-out>−</button>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-reset>${Math.round(zoomLevel*100)}%</button>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-in>＋</button>
-          <button type="button" class="btn small survey-map-text-btn" data-survey-zoom-fit>Fit</button>
-          <span class="spacer"></span>
-          <span class="survey-map-status">${drawing?escapeHtml(drawing.name):'ページ未選択'}</span>
+        <div class="survey-map-topbar" aria-label="調査図操作">
+          ${iconButton({icon:'focus',label:focusMode?'全画面終了':'全画面',attr:'data-survey-focus-toggle',active:focusMode})}
+          ${iconButton({icon:'undo',label:'戻る',attr:'data-survey-undo',disabled:!history.undo})}
+          ${iconButton({icon:'redo',label:'進む',attr:'data-survey-redo',disabled:!history.redo})}
+          ${iconButton({icon:'plus',label:'図面一覧・追加',attr:'data-survey-pages-toggle',active:pagesOpen})}
+          ${iconButton({icon:'grid',label:'グリッド',attr:'data-survey-grid',active:gridVisible})}
+          <span class="survey-map-topbar-separator"></span>
+          ${[...Object.keys(TOOL_CATEGORIES),'編集'].map(category=>`<button type="button" class="btn small survey-map-text-btn ${toolbarMode===category?'active':''}" data-survey-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}
+          <span class="survey-map-topbar-separator"></span>
+          ${iconButton({icon:'select',label:'選択',attr:'data-survey-draw-tool="select"',active:activeTool==='select'})}
+          ${iconButton({icon:'range',label:'範囲選択',attr:'data-survey-draw-tool="range"',active:activeTool==='range'})}
+          ${iconButton({icon:'eyedrop',label:'色コピー',attr:'data-survey-draw-tool="eyedrop"',active:activeTool==='eyedrop'})}
         </div>
-
-
-      <section class="survey-map-workbar" aria-label="作図と編集">
-        <div class="survey-map-tools-inline">
-          <div class="survey-map-category-row">
-            ${Object.keys(TOOL_CATEGORIES).map(category=>`<button type="button" class="btn small survey-map-text-btn ${toolCategory===category?'active':''}" data-survey-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}
-            ${iconButton({icon:'select',label:'選択',attr:'data-survey-draw-tool="select"',active:activeTool==='select'})}
-            ${iconButton({icon:'range',label:'範囲選択',attr:'data-survey-draw-tool="range"',active:activeTool==='range'})}
-            ${iconButton({icon:'eyedrop',label:'色コピー',attr:'data-survey-draw-tool="eyedrop"',active:activeTool==='eyedrop'})}
-            ${iconButton({icon:'plus',label:'新規調査図',attr:'data-survey-new'})}
-          </div>
-          ${toolsHtml()}
-        </div>
-        <div class="survey-map-edit-inline">
-          <div class="survey-map-inline-heading">編集</div>
-          <div class="survey-map-inline-fields">${editorHtml(drawing)}</div>
-        </div>
-      </section>
-      <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
+        <section class="survey-map-workbar" aria-label="ツールと編集">
+          ${toolbarMode==='編集'
+            ?`<div class="survey-map-inline-fields">${editToolbarHtml(drawing)}</div>`
+            :toolsHtml()}
+          ${drawingSettingsHtml(drawing)}
+        </section>
+        <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
         ${pagesPopoverHtml()}
         <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
       </div>
@@ -1155,11 +1163,26 @@ function bindEvents(){
 
     const categoryButton=event.target.closest('[data-survey-category]');
     if(categoryButton){
-      toolCategory=categoryButton.dataset.surveyCategory;
+      const requestedCategory=categoryButton.dataset.surveyCategory;
+      if(requestedCategory==='編集'){
+        if(toolbarMode!=='編集')returnTool=activeTool;
+        toolbarMode='編集';
+        activeTool='select';
+      }else{
+        if(toolbarMode==='編集')activeTool=returnTool;
+        toolCategory=requestedCategory;
+        toolbarMode=requestedCategory;
+        drawingSettingsOpen=false;
+      }
       renderSurveyMap();
       return;
     }
 
+    if(event.target.closest('[data-survey-drawing-settings]')){
+      drawingSettingsOpen=!drawingSettingsOpen;
+      renderSurveyMap();
+      return;
+    }
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
       const requested=String(drawTool.dataset.surveyDrawTool||'select');
@@ -1179,6 +1202,7 @@ function bindEvents(){
         continuousTool='';
       }
       activeTool=requested;
+      if(toolbarMode==='編集')returnTool=requested;
       mount.querySelector('.survey-map-sheet')?.classList.toggle('drawing-mode',activeTool!=='select');
       mount.querySelectorAll('[data-survey-draw-tool]').forEach((button)=>{
         const tool=button.dataset.surveyDrawTool;
