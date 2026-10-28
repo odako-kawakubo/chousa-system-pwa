@@ -139,7 +139,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
           `--survey-label-background:${cfg.backgroundEnabled?escapeHtml(cfg.backgroundColor):'transparent'}`
         ].join(';');
         return `
-          <div class="survey-map-object survey-map-object-label survey-map-object-${escapeHtml(record.type)} ${record.strokeDash==='dash'?'survey-map-room-area':''} ${selected?'selected':''}"
+          <div class="survey-map-object survey-map-object-label survey-map-object-${escapeHtml(record.type)} ${selected?'selected':''}"
             data-survey-object-id="${escapeHtml(record.objectId)}"
             style="${style};${decoration}" role="button" aria-label="ラベル">
             <div class="survey-map-label-contents">${textMarkup}</div>
@@ -162,7 +162,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
       const label = record.type === 'shape' ? '図形' : String(record.type || 'オブジェクト');
       return `
         <div
-          class="survey-map-object survey-map-object-${escapeHtml(record.type)} ${selected?'selected':''}"
+          class="survey-map-object survey-map-object-${escapeHtml(record.type)} ${record.strokeDash==='dash'?'survey-map-room-area':''} ${selected?'selected':''}"
           data-survey-object-id="${escapeHtml(record.objectId)}"
           style="${style};${textStyle}"
           role="button"
