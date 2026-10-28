@@ -151,6 +151,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
       const textHtml=isTextRect?labelText(record).split('\n').map(line=>`<span class="survey-map-label-line">${escapeLabel(line)}</span>`).join(''):'';
       const textStyle=isTextRect?[
         `--survey-label-font:${Math.max(1,Number(textCfg.fontSize)||6)}pt`,
+        `--survey-text-direction:${record.textDirection==='vertical'?'vertical-rl':'horizontal-tb'}`,
         `--survey-label-color:${escapeHtml(textCfg.textColor||'#111111')}`,
         `--survey-padding-top:${Math.max(0,Number(textCfg.paddingTop??textCfg.padding??0))/100}mm`,
         `--survey-padding-right:${Math.max(0,Number(textCfg.paddingRight??textCfg.padding??0))/100}mm`,
