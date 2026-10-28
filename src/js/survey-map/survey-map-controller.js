@@ -180,6 +180,7 @@ function selectedDrawing(){
   if(boundProjectId!==projectId){
     boundProjectId=projectId;
     selectedDrawingId='';
+    selectedRoomKey='';
     clearSelection();
     polygonDraft=null;
     pendingConnectionStart=null;
@@ -201,7 +202,7 @@ function normalizeRoomNumber(value){
   return String(value||'').trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/－/g,'-');
 }
 function nextRoomNumber(current,used){
-  const m=normalizeRoomNumber(current).match(/^(\\d+)-(\\d+)$/);
+  const m=normalizeRoomNumber(current).match(/^(\d+)-(\d+)$/);
   const floor=m?Number(m[1]):1;
   let room=m?Number(m[2]):0;
   for(let i=0;i<10000;i++){
@@ -1207,6 +1208,7 @@ function bindEvents(){
     const pageButton=event.target.closest('[data-survey-page]');
     if(pageButton){
       selectedDrawingId=String(pageButton.dataset.surveyPage||'');
+      selectedRoomKey='';
       clearSelection();
       selectedObjectId='';
       pagesOpen=false;
