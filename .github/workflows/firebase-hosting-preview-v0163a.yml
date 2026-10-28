@@ -920,7 +920,10 @@ jobs:
           grep -q "stroke-point" src/js/survey-map/survey-map-controller.js
           grep -q "data-survey-point-index" src/js/survey-map/survey-map-object-view.js
           grep -q "polylineHandleHtml" src/js/survey-map/survey-map-object-view.js
-          grep -q "function availableRooms" src/js/survey-map/survey-map-controller.js
+          grep -q "function nextRoomNumber" src/js/survey-map/survey-map-controller.js
+          grep -q "function placedRoomNumbers" src/js/survey-map/survey-map-controller.js
+          grep -q "textDirection" src/js/survey-map/survey-map-object-view.js
+          grep -q "sampleSetId" src/js/survey-map/survey-map-controller.js
           grep -q "createRoomLabelAt" src/js/survey-map/survey-map-controller.js
           grep -q "createMaterialLabelAt" src/js/survey-map/survey-map-controller.js
           grep -q "ensurePaperLayout" src/js/survey-map/survey-map-controller.js
