@@ -403,4 +403,4 @@ body.survey-map-focus-mode .survey-map-sheet{
   -webkit-user-select:text;user-select:text;-webkit-touch-callout:default
 }
 .survey-map-shift-button{-webkit-user-select:none;-webkit-touch-callout:none}
-.survey-map-room-area .survey-map-shape-svg polygon{stroke-dasharray:9 6}
+.survey-map-room-area .survey-map-shape-svg polygon{stroke-dasharray:32 18}
