@@ -198,17 +198,23 @@ function placedRoomNumbers(drawing=selectedDrawing()){
     .map(o=>String(o.roomNoSnapshot||o.text||'').trim()).filter(Boolean));
 }
 function normalizeRoomNumber(value){
-  return String(value||'').trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/－/g,'-');
+  return String(value||'').trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[－ー]/g,'-');
+}
+const ROOM_AREAS=['東面','西面','南面','北面','B2','B1','1','2','3','4','5','6','7','8','9','10','S','R'];
+function roomAreaOf(value){
+  const v=normalizeRoomNumber(value);
+  if(ROOM_AREAS.slice(0,4).includes(v))return v;
+  const m=v.match(/^(B\d+|\d+|R|S)-\d+$/);
+  return m?m[1]:'';
 }
 function nextRoomNumber(current,used){
-  const m=normalizeRoomNumber(current).match(/^(\d+)-(\d+)$/);
-  const floor=m?Number(m[1]):1;
-  let room=m?Number(m[2]):0;
-  for(let i=0;i<10000;i++){
-    const value=`${floor}-${++room}`;
-    if(!used.has(value))return value;
+  const v=normalizeRoomNumber(current),m=v.match(/^(B\d+|\d+|R|S)-(\d+)$/);
+  if(!m)return v;
+  for(let n=Number(m[2])+1;n<10000;n++){
+    const next=m[1]+'-'+n;
+    if(!used.has(next))return next;
   }
-  return `${floor}-${room+1}`;
+  return v;
 }
 function selectedRoomNumber(){
   if(!selectedRoomKey)selectedRoomKey=nextRoomNumber('1-0',placedRoomNumbers());
@@ -216,6 +222,20 @@ function selectedRoomNumber(){
 }
 function advanceRoomSelection(){
   selectedRoomKey=nextRoomNumber(selectedRoomNumber(),placedRoomNumbers());
+}
+function stepRoomArea(delta){
+  const current=roomAreaOf(selectedRoomNumber());
+  const index=ROOM_AREAS.indexOf(current);
+  const next=ROOM_AREAS[Math.max(0,Math.min(ROOM_AREAS.length-1,(index<0?6:index)+delta))];
+  selectedRoomKey=ROOM_AREAS.slice(0,4).includes(next)?next:nextRoomNumber(next+'-0',placedRoomNumbers());
+}
+function stepRoomNumber(delta){
+  const current=selectedRoomNumber(),match=current.match(/^(B\d+|\d+|R|S)-(\d+)$/);
+  if(match)selectedRoomKey=match[1]+'-'+Math.max(1,Number(match[2])+delta);
+  else if(ROOM_AREAS.slice(0,4).includes(current)){
+    const areas=ROOM_AREAS.slice(0,4);
+    selectedRoomKey=areas[(areas.indexOf(current)+delta+areas.length)%areas.length];
+  }
 }
 function selectedObject(){
   if(!selectedObjectId) return null;
@@ -460,6 +480,7 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
     layer:(freehand||pen)?DRAWING_LAYERS.NOTE:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
     rotation:0,closed,freehand:freehand||pen,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
+    fillEnabled:false,fillColor:'#93c5fd',fillOpacity:1,
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','layer','order','x','y','width','height','rotation',
@@ -929,9 +950,13 @@ function toolIconCell(icon,label,toolName,disabled=true){
 }
 
 function roomPickerHtml(){
-  return `<div class="survey-map-room-picker">
-    <label for="survey-map-room-choice">部屋No.</label>
-    <input id="survey-map-room-choice" data-survey-room-choice type="text" value="${escapeHtml(selectedRoomNumber())}" aria-label="部屋No.">
+  return `<div class="survey-map-room-picker survey-map-room-controls">
+    <button type="button" class="btn small" data-survey-room-area-step="-1" aria-label="前の階・エリア">◀</button>
+    <span class="survey-map-room-area-label">${escapeHtml(roomAreaOf(selectedRoomNumber())||'自由')}</span>
+    <button type="button" class="btn small" data-survey-room-area-step="1" aria-label="次の階・エリア">▶</button>
+    <button type="button" class="btn small" data-survey-room-number-step="-1" aria-label="前の番号">−</button>
+    <input id="survey-map-room-choice" data-survey-room-choice type="text" value="${escapeHtml(selectedRoomNumber())}" aria-label="部屋No.を自由入力">
+    <button type="button" class="btn small" data-survey-room-number-step="1" aria-label="次の番号">＋</button>
   </div>`;
 }
 const TOOL_CATEGORIES={
@@ -1042,7 +1067,7 @@ function editorHtml(drawing){
         <div class="survey-map-editor-row"><label>線の太さ</label>
           <input type="number" min="20" max="500" step="20" data-survey-style-field="width"
             value="${Number(object.type==='line'?object.lineWidth||80:object.strokeWidth||80)}"></div>
-        ${object.type==='shape'?`
+        ${(object.type==='shape'||(object.type==='line'&&object.closed))?`
           <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-style-field="fill"
             ${object.fillEnabled?'checked':''}> 塗りつぶし</label>
           <div class="survey-map-editor-row"><label>塗りの色</label>
@@ -1119,6 +1144,7 @@ function compactEditHtml(drawing){
       const options=isLine?[['solid','━━━━'],['dash','┄┄┄'],['dot','····']]:[['solid','━━━━'],['fine','····'],['normal','┄┄┄'],['dash','━ ━']];
       html+='<label class="survey-map-compact-dash"><span>線種</span><select data-survey-compact-dash="'+(isLine?'line':'shape')+'">'+options.map(([v,label])=>'<option value="'+v+'" '+(dash===v?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
       html+=color(isText?'枠色':'線色','data-survey-style-field="color"',isLine?object.lineColor||'#334155':object.strokeColor||'#334155');
+      if(isLine&&object.closed){html+=color('塗色','data-survey-style-field="fillColor"',object.fillColor||'#93c5fd');html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="fill" '+(object.fillEnabled?'checked':'')+'>塗</label>';}
       if(isShape){
         html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="lineEnabled" '+(object.lineEnabled!==false?'checked':'')+'>枠</label>';
         html+=color(isText?'背景色':'塗色','data-survey-style-field="fillColor"',object.fillColor||'#ffffff');
@@ -1298,6 +1324,10 @@ function bindEvents(){
       return;
     }
 
+    const areaStep=event.target.closest('[data-survey-room-area-step]');
+    if(areaStep){stepRoomArea(Number(areaStep.dataset.surveyRoomAreaStep));renderSurveyMap();return;}
+    const roomStep=event.target.closest('[data-survey-room-number-step]');
+    if(roomStep){stepRoomNumber(Number(roomStep.dataset.surveyRoomNumberStep));renderSurveyMap();return;}
     if(event.target.closest('[data-survey-polygon-finish]')){
       void finishPolygon();
       return;
@@ -2151,10 +2181,10 @@ function bindEvents(){
         patch[isLine?'lineWidth':'strokeWidth']=clamp(Number(styleInput.value)||80,20,500);
       }else if(field==='lineEnabled'&&!isLine){
         patch.lineEnabled=Boolean(styleInput.checked);
-      }else if(field==='fill'){
+      }else if(field==='fill'&&(record.type==='shape'||record.closed)){
         patch.fillEnabled=Boolean(styleInput.checked);
         patch.fillOpacity=patch.fillEnabled?1:0;
-      }else if(field==='fillColor'){
+      }else if(field==='fillColor'&&(record.type==='shape'||record.closed)){
         patch.fillColor=String(styleInput.value||'#93c5fd');
         if(record.fillEnabled)patch.fillOpacity=1;
       }else return;
