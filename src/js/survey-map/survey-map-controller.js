@@ -54,8 +54,6 @@ function showSmartGuides(guides,drawing){
   const layer=root()?.querySelector('.survey-map-sheet');
   if(layer)layer.insertAdjacentHTML('beforeend',guideSvg(guides,pageSize(drawing)));
 }
-let continuousTool='';
-let lastToolTap=null;
 let zoomLevel=1;
 const touchPoints=new Map();
 let pinchGesture=null;
@@ -345,7 +343,6 @@ async function createLabelAt(type,clientX,clientY,extra={}){
     fieldEditedAt:touchFieldEditedAt({},Object.keys(rectFields).concat(['drawingId','type','layer','order','rotation']),now)
   });
   selectOnly(record.objectId);
-  if(continuousTool!==({roomLabel:'room',materialLabel:'material',sampleMarker:'sample',text:'text'}[type]))activeTool='select';
   await commitDrawingObject(record,'survey-map-label-create');
   renderSurveyMap();
   return record;
@@ -384,6 +381,7 @@ function startInlineTextEdit(id){
   if(!record||record.type!=='shape'||record.shapeType!=='rect'||record.materialId)return;
   if(inlineTextEdit&&inlineTextEdit.objectId!==id)void finishInlineTextEdit();
   selectOnly(id);
+  const resumeTool=activeTool==='text'?'text':'';
   activeTool='select';
   renderSurveyMap();
   const target=root()?.querySelector('[data-survey-object-id="'+CSS.escape(id)+'"] .survey-map-rect-text');
@@ -393,7 +391,7 @@ function startInlineTextEdit(id){
   input.setAttribute('aria-label','図面上でテキスト入力');
   input.value=String(record.text||'');
   target.replaceChildren(input);
-  inlineTextEdit={objectId:id,input,original:input.value,composing:false};
+  inlineTextEdit={objectId:id,input,original:input.value,composing:false,resumeTool};
   input.addEventListener('compositionstart',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=true;});
   input.addEventListener('compositionend',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=false;});
   input.addEventListener('blur',()=>{if(inlineTextEdit?.input===input)void finishInlineTextEdit();});
@@ -414,6 +412,7 @@ async function finishInlineTextEdit(){
       fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['text'],Date.now())});
     await commitDrawingObject(next,'survey-map-text-direct-edit');
   }
+  if(session.resumeTool && activeTool==='select')activeTool=session.resumeTool;
   renderSurveyMap();
 }
 async function createFreeTextAt(clientX,clientY){
@@ -446,7 +445,6 @@ async function createSampleSetAt(clientX,clientY){
     selectedObjectIds=new Set([marker.objectId,box.objectId]);
     selectedObjectId=box.objectId;
   }
-  activeTool='select';
   renderSurveyMap();
 }
 async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=false){
@@ -502,7 +500,6 @@ async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=fals
     ],now)
   });
   selectOnly(record.objectId);
-  if(continuousTool!==(roomArea?'room-area':kind)) activeTool='select';
   await commitDrawingObject(record,'survey-map-object-create');
   renderSurveyMap();
 }
@@ -528,7 +525,6 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
     ],now)
   },corrected));
   if(!pen)selectOnly(record.objectId);
-  if(!pen && continuousTool!==(polygon?'polygon':freehand?'hand':'correct')) activeTool='select';
   await commitDrawingObject(record,'survey-map-corrected-stroke-create');
   return record;
 }
@@ -570,7 +566,6 @@ async function createElbowFromPoints(drawing,start,end,connections={},options={}
     'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle','startConnection','endConnection','sampleSetId'
   ],now)});
   selectOnly(record.objectId);
-  if(continuousTool!=='elbow')activeTool='select';
   await commitDrawingObject(record,'survey-map-elbow-create');
   return record;
 }
@@ -604,7 +599,6 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
     ],now)
   });
   selectOnly(record.objectId);
-  if(continuousTool!=='line') activeTool='select';
   await commitDrawingObject(record,'survey-map-line-create');
   return record;
 }
@@ -984,7 +978,6 @@ function toolIconCell(icon,label,toolName,disabled=true){
     label,
     disabled,
     active:activeTool===toolName,
-    className:continuousTool===toolName?'survey-map-tool-continuous':'',
     attr:disabled?'':`data-survey-draw-tool="${escapeHtml(toolName)}" aria-pressed="${activeTool===toolName}"`
   })}</div>`;
 }
@@ -1009,8 +1002,9 @@ function toolsHtml(){
   const entries=TOOL_CATEGORIES[toolCategory]||TOOL_CATEGORIES['採取'];
   const figureTools=['rect','circle','triangle','lshape','tshape','cross','concave','polygon'];
   const visible=toolCategory==='作図'?entries.filter(([name])=>!figureTools.includes(name)):entries;
+  const selectedShape=figureTools.includes(activeTool)?activeTool:null;
   const shapesButton=toolCategory==='作図'?'<div class="survey-map-tool-cell">'+
-    iconButton({icon:'rect',label:'図形を選択',attr:'data-survey-shapes-toggle',active:shapeMenuOpen||figureTools.includes(activeTool)})+'</div>':'';
+    iconButton({icon:selectedShape||'rect',label:'図形を選択',attr:'data-survey-shapes-toggle',active:Boolean(selectedShape)})+'</div>':'';
   const options=toolCategory==='作図'?roomDashSelect(roomAreaDash,'data-survey-room-dash'):toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
     availableMaterials().map(m=>'<option value="'+escapeHtml(m.materialId)+'" '+(m.materialId===selectedMaterial()?.materialId?'selected':'')+'>'+escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))+'</option>').join('')+
     '</select></label>':toolCategory==='調査'?roomPickerHtml()+roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
@@ -1418,7 +1412,6 @@ function bindEvents(){
     if(categoryButton){
       toolCategory=categoryButton.dataset.surveyCategory;
       shapeMenuOpen=false;drawingSettingsOpen=false;
-      if(toolCategory==='テキスト')activeTool='text';
       renderSurveyMap();return;
     }
     if(event.target.closest('[data-survey-shapes-toggle]')){
@@ -1435,32 +1428,11 @@ function bindEvents(){
       pendingConnectionStart=null;
       const hadPolygonDraft=requested!=='polygon'&&polygonDraft!==null;
       if(hadPolygonDraft)polygonDraft=null;
-      const now=Date.now();
-      const repeatedTap=(event.detail>=2 || (
-        lastToolTap?.tool===requested && now-lastToolTap.at<380
-      ));
-      lastToolTap={tool:requested,at:now};
-      const shapeCreationTool=isShapeTool(requested)||requested==='polygon';
-      if(shapeCreationTool){
-        // 図形ポップアップは一度の選択で閉じるため、ダブルタップを要求しない。
-        // 上段「選択」へ切り替えるまで同じ図形を連続配置する。
-        continuousTool=requested;
-      }else if(repeatedTap && ['line','correct','elbow','room','hand','room-area'].includes(requested)){
-        continuousTool=continuousTool===requested?'':requested;
-      }else{
-        continuousTool='';
-      }
+      // A single selected tool controls placement; all creation tools remain active.
+      if(inlineTextEdit)inlineTextEdit.resumeTool='';
       activeTool=requested;
-      const wasShapeMenu=shapeMenuOpen;
       shapeMenuOpen=false;
-      mount.querySelector('.survey-map-sheet')?.classList.toggle('drawing-mode',activeTool!=='select');
-      mount.querySelectorAll('[data-survey-draw-tool]').forEach((button)=>{
-        const tool=button.dataset.surveyDrawTool;
-        button.classList.toggle('active',tool===activeTool);
-        button.classList.toggle('survey-map-tool-continuous',tool===continuousTool);
-        button.setAttribute('aria-pressed',String(tool===activeTool));
-      });
-      if(hadPolygonDraft||wasShapeMenu)renderSurveyMap();
+      renderSurveyMap();
       return;
     }
 
