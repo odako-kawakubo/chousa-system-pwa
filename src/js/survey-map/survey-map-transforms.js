@@ -99,5 +99,10 @@ export function scaleObjectInGroup(record,bounds,nextBounds){
   }
   if(record.type==='line')return transformPoints(record,map);
   const topLeft=map({x:record.x,y:record.y});
+  if(record.type==='shape'&&record.shapeType==='circle'&&record.sampleRole==='marker'){
+    const center=map({x:record.x+record.width/2,y:record.y+record.height/2});
+    const side=Math.max(120,Math.min(Math.abs(record.width*sx),Math.abs(record.height*sy)));
+    return {...record,x:center.x-side/2,y:center.y-side/2,width:side,height:side};
+  }
   return {...record,x:topLeft.x,y:topLeft.y,width:(Number(record.width)||0)*sx,height:(Number(record.height)||0)*sy};
 }
