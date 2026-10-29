@@ -44,6 +44,7 @@ function selectOnly(id){
 function clearSelection(){selectOnly('');}
 let activeTool='select';
 let lastShapeTool='rect';
+let toolSelectionRevision=0;
 let selectedRoomKey='';
 let roomDisplay='number';
 let selectedMaterialId='';
@@ -374,7 +375,6 @@ async function createRoomLabelAt(clientX,clientY){
   });
   if(record){
     advanceRoomSelection();
-    activeTool='room';
     renderSurveyMap();
   }
   return record;
@@ -440,7 +440,8 @@ function startInlineTextEdit(id){
   input.setAttribute('aria-label','図面上でテキスト入力');
   input.value=String(record.text||'');
   target.replaceChildren(input);
-  inlineTextEdit={objectId:id,input,original:input.value,composing:false,resumeTool};
+  inlineTextEdit={objectId:id,input,original:input.value,composing:false,resumeTool,
+    resumeRevision:toolSelectionRevision};
   input.addEventListener('compositionstart',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=true;});
   input.addEventListener('compositionend',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=false;});
   input.addEventListener('blur',()=>{if(inlineTextEdit?.input===input)void finishInlineTextEdit();});
@@ -461,7 +462,8 @@ async function finishInlineTextEdit(){
       fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['text'],Date.now())});
     await commitDrawingObject(next,'survey-map-text-direct-edit');
   }
-  if(session.resumeTool && activeTool==='select')activeTool=session.resumeTool;
+  if(session.resumeTool && activeTool==='select' &&
+    session.resumeRevision===toolSelectionRevision)activeTool=session.resumeTool;
   renderSurveyMap();
 }
 async function createFreeTextAt(clientX,clientY){
@@ -1550,6 +1552,7 @@ function bindEvents(){
       const hadPolygonDraft=requested!=='polygon'&&polygonDraft!==null;
       if(hadPolygonDraft)polygonDraft=null;
       // A single selected tool controls placement; all creation tools remain active.
+      toolSelectionRevision++;
       if(inlineTextEdit)inlineTextEdit.resumeTool='';
       activeTool=requested;
       if(isShapeTool(requested)||requested==='polygon')lastShapeTool=requested;
