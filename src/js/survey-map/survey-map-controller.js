@@ -915,7 +915,7 @@ async function createDrawing(){
     name,
     order:active.length?Math.max(...active.map((item)=>Number(item.order)||0))+1:1,
     titleSettings:{text:'調査図'},
-    nameSettings:{text:project.projectName||name},
+    nameSettings:{text:'建物名'},
     legendSettings:{visible:true,items:[]},
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
