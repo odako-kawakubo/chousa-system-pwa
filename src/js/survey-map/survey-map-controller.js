@@ -1502,7 +1502,7 @@ function bindEvents(){
     if(event.pointerType!=='touch'||!touchPoints.has(event.pointerId))return;
     touchPoints.delete(event.pointerId);
     if(pinchGesture){
-      if(!touchPoints.size){pinchGesture=null;renderSurveyMap();}
+      if(touchPoints.size<2){pinchGesture=null;renderSurveyMap();}
       pendingTouchCreate=null;
       return;
     }
