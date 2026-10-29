@@ -2,7 +2,7 @@
  * 調査図上の1オブジェクトRecord定義。
  */
 export const DRAWING_OBJECT_TYPES = Object.freeze([
-  'roomLabel','sampleMarker','line','shape','underlay'
+  'roomLabel','line','shape','underlay'
 ]);
 
 export const DRAWING_LAYERS = Object.freeze({
