@@ -25,7 +25,6 @@
 .survey-map-zoom-bar{display:flex;align-items:center;gap:3px;flex:0 0 auto;white-space:nowrap}
 .survey-map-zoom-bar .btn{min-width:28px;height:30px;padding:3px 6px;font-size:11px}
 .survey-map-zoom-readout{min-width:50px!important;font-variant-numeric:tabular-nums;font-weight:700}
-.survey-map-sheet{touch-action:none}
 
 .survey-map-text-btn{white-space:nowrap;font-weight:700}
 .survey-map-text-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
@@ -48,7 +47,7 @@
   aspect-ratio:297/210;
   width:min(100%,1180px);
   min-width:620px;
-  touch-action:pan-x pan-y;
+  touch-action:none;
   transform-origin:top left;
 }
 .survey-map-grid-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
