@@ -135,5 +135,7 @@ else {
   const geometry=document.createElement('div');
   geometry.setAttribute('style',objectPercentStyle(draft,drawing));
   for(const key of ['left','top','width','height','transform'])objectEl.style[key]=geometry.style[key];
+  if(Number.isFinite(Number(draft.fontSize))&&Number(draft.fontSize)>0)
+    objectEl.style.setProperty('--survey-label-font',`${Math.max(1,Number(draft.fontSize))}pt`);
 }
 }
