@@ -43,6 +43,7 @@ function selectOnly(id){
 }
 function clearSelection(){selectOnly('');}
 let activeTool='select';
+let lastShapeTool='rect';
 let selectedRoomKey='';
 let roomDisplay='number';
 let selectedMaterialId='';
@@ -1004,7 +1005,7 @@ function toolsHtml(){
   const visible=toolCategory==='作図'?entries.filter(([name])=>!figureTools.includes(name)):entries;
   const selectedShape=figureTools.includes(activeTool)?activeTool:null;
   const shapesButton=toolCategory==='作図'?'<div class="survey-map-tool-cell">'+
-    iconButton({icon:selectedShape||'rect',label:'図形を選択',attr:'data-survey-shapes-toggle',active:Boolean(selectedShape)})+'</div>':'';
+    iconButton({icon:selectedShape||lastShapeTool,label:'図形を選択',attr:'data-survey-shapes-toggle',active:Boolean(selectedShape)})+'</div>':'';
   const options=toolCategory==='作図'?roomDashSelect(roomAreaDash,'data-survey-room-dash'):toolCategory==='採取'?'<label class="survey-map-toolbar-option">建材 <select data-survey-material-choice>'+
     availableMaterials().map(m=>'<option value="'+escapeHtml(m.materialId)+'" '+(m.materialId===selectedMaterial()?.materialId?'selected':'')+'>'+escapeHtml(String(m.materialNo||m.inputId||'')+' '+String(m.name||''))+'</option>').join('')+
     '</select></label>':toolCategory==='調査'?roomPickerHtml()+roomDashSelect(roomAreaDash,'data-survey-room-dash'):'';
@@ -1431,6 +1432,7 @@ function bindEvents(){
       // A single selected tool controls placement; all creation tools remain active.
       if(inlineTextEdit)inlineTextEdit.resumeTool='';
       activeTool=requested;
+      if(isShapeTool(requested)||requested==='polygon')lastShapeTool=requested;
       shapeMenuOpen=false;
       renderSurveyMap();
       return;
