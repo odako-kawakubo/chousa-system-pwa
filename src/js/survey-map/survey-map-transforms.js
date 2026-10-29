@@ -99,9 +99,10 @@ export function scaleTextWithBox(record,rect){
     (Math.max(1,Number(rect.width)||1)/oldWidth)*
     (Math.max(1,Number(rect.height)||1)/oldHeight)
   );
+  const fallback=record.type==='roomLabel'?6:record.materialId?4:11;
   const base=Number(record.fontSize);
   return {...record,...rect,
-    fontSize:Math.max(1,Math.round((Number.isFinite(base)&&base>0?base:6)*factor*100)/100)};
+    fontSize:Math.max(.5,Math.round((Number.isFinite(base)&&base>0?base:fallback)*factor*100)/100)};
 }
 export function scaleObjectInGroup(record,bounds,nextBounds){
   const sx=nextBounds.width/Math.max(1,bounds.width),sy=nextBounds.height/Math.max(1,bounds.height);
