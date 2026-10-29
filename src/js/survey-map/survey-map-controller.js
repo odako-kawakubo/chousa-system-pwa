@@ -306,6 +306,19 @@ async function commitDrawingObject(record,source,{trackHistory=true}={}){
   }
 }
 
+/** Commit a logical multi-object operation with one local snapshot and history entry. */
+async function commitDrawingObjects(records,source){
+  const project=getCurrentProject();
+  const changes=records.map(after=>({
+    type:'drawingObject',before:drawingObjectStore.get(after.objectId)||null,after
+  }));
+  drawingObjectStore.batch(()=>records.forEach(record=>drawingObjectStore.set(record)));
+  persistSnapshot(source);
+  rememberSurveyOperation(project?.projectId,source,changes);
+  if(project?.projectId&&!project.isSample){
+    for(const record of records)await persistDrawingObjectForProject(project,record,source);
+  }
+}
 function availableMaterials(){
   return materialRecordStore.getAll().filter(m=>m.status==='active')
     .sort((a,b)=>(Number(a.materialNo)||0)-(Number(b.materialNo)||0));
@@ -321,7 +334,7 @@ function newLabelFields(type,point,drawing,extra={}){
     width:settings.width,height:settings.height},drawing),drawing);
   return {...settings,...rect,...extra};
 }
-async function createLabelAt(type,clientX,clientY,extra={}){
+function buildLabelRecordAt(type,clientX,clientY,extra={}){
   const drawing=selectedDrawing(),sheet=root()?.querySelector('.survey-map-sheet');
   if(!drawing||!sheet)return;
   const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing,{snap:false});
@@ -343,6 +356,11 @@ async function createLabelAt(type,clientX,clientY,extra={}){
     createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},Object.keys(rectFields).concat(['drawingId','type','layer','order','rotation']),now)
   });
+  return record;
+}
+async function createLabelAt(type,clientX,clientY,extra={}){
+  const record=buildLabelRecordAt(type,clientX,clientY,extra);
+  if(!record)return;
   selectOnly(record.objectId);
   await commitDrawingObject(record,'survey-map-label-create');
   renderSurveyMap();
@@ -361,21 +379,51 @@ async function createRoomLabelAt(clientX,clientY){
   }
   return record;
 }
-async function createMaterialLabelAt(clientX,clientY){
-  const material=selectedMaterial();
-  if(!material)return;
+function materialLabelFields(material){
   const no=material.materialNo||material.inputId||'';
   const part=material.part||'';
   const kind=/みなし/.test(material.analysisRequired||'')?'assumed':
     /含有/.test(material.analysisResult||'')&&!/なし|不検出/.test(material.analysisResult||'')?'positive':'none';
-  return createLabelAt('materialLabel',clientX,clientY,{
+  return {
     materialId:material.materialId,materialKind:kind,
     text:`建材No.${no}${kind==='assumed'?'':'-①'}\n${part} ${material.name||''}`,
     ...materialPalette(kind)
+  };
+}
+async function createMaterialLabelAt(clientX,clientY){
+  const material=selectedMaterial();
+  return material?createLabelAt('materialLabel',clientX,clientY,materialLabelFields(material)):null;
+}
+function buildSampleMarkerAt(clientX,clientY){
+  const drawing=selectedDrawing(),sheet=root()?.querySelector('.survey-map-sheet');
+  if(!drawing||!sheet)return null;
+  const point=pagePointer(clientX,clientY,sheet.getBoundingClientRect(),drawing,{snap:false});
+  const rect=alignPositionToGrid(clampObjectRect({
+    x:point.x-200,y:point.y-200,width:400,height:400
+  },drawing),drawing);
+  const objects=drawingObjectStore.getByDrawingId(drawing.drawingId),now=Date.now();
+  const fields={
+    ...rect,shapeType:'circle',shapeParams:defaultShapeParams('circle'),sampleRole:'marker',
+    fillEnabled:true,fillColor:'#dc2626',fillOpacity:1,
+    lineEnabled:false,strokeColor:'#dc2626',strokeWidth:DEFAULT_STROKE_WIDTH
+  };
+  return createDrawingObject({
+    objectId:newObjectId(),drawingId:drawing.drawingId,type:'shape',
+    layer:DRAWING_LAYERS.TEXT,order:Math.max(0,...objects.map(o=>Number(o.order)||0))+1,
+    rotation:0,visible:true,locked:false,deleted:false,...fields,
+    createdAt:new Date(now).toISOString(),
+    fieldEditedAt:touchFieldEditedAt({},Object.keys(fields).concat([
+      'drawingId','type','layer','order','rotation'
+    ]),now)
   });
 }
 async function createSampleMarkerAt(clientX,clientY){
-  return createLabelAt('sampleMarker',clientX,clientY,{text:'',backgroundEnabled:true,backgroundColor:'#dc2626'});
+  const marker=buildSampleMarkerAt(clientX,clientY);
+  if(!marker)return null;
+  selectOnly(marker.objectId);
+  await commitDrawingObject(marker,'survey-map-sample-create');
+  renderSurveyMap();
+  return marker;
 }
 function startInlineTextEdit(id){
   const record=drawingObjectStore.get(id);
@@ -421,31 +469,31 @@ async function createFreeTextAt(clientX,clientY){
   if(created)startInlineTextEdit(created.objectId);
   return created;
 }
-/** Three independently editable records connected through the existing elbow anchors. */
+/** One logical sample-set operation; each member remains independently editable. */
 async function createSampleSetAt(clientX,clientY){
   const drawing=selectedDrawing(),sheet=root()?.querySelector('.survey-map-sheet');
-  if(!drawing||!sheet||!selectedMaterial())return;
+  const material=selectedMaterial();
+  if(!drawing||!sheet||!material)return;
   const rect=sheet.getBoundingClientRect();
   const dx=Math.min(170,rect.width*.22),dy=Math.min(65,rect.height*.12);
-  const marker=await createSampleMarkerAt(clientX,clientY);
-  const box=await createMaterialLabelAt(clientX+dx,clientY+dy);
+  const marker=buildSampleMarkerAt(clientX,clientY);
+  const box=buildLabelRecordAt('materialLabel',clientX+dx,clientY+dy,materialLabelFields(material));
   if(!marker||!box)return;
-  const sampleSetId=newObjectId();
-  const nextMarker=createDrawingObject({...marker,sampleSetId,fieldEditedAt:touchFieldEditedAt(marker.fieldEditedAt,['sampleSetId'])});
-  const nextBox=createDrawingObject({...box,sampleSetId,fieldEditedAt:touchFieldEditedAt(box.fieldEditedAt,['sampleSetId'])});
-  await commitDrawingObject(nextMarker,'survey-map-sample-set-link');
-  await commitDrawingObject(nextBox,'survey-map-sample-set-link');
-  const link=bestConnectionPair(nextMarker,nextBox);
-  if(link){
-    const elbow=await createElbowFromPoints(drawing,link.start,link.end,{
-      startConnection:link.startConnection,endConnection:link.endConnection,sampleSetId
-    },{allowShort:true});
-    selectedObjectIds=new Set([marker.objectId,box.objectId,...(elbow?[elbow.objectId]:[])]);
-    selectedObjectId=box.objectId;
-  }else{
-    selectedObjectIds=new Set([marker.objectId,box.objectId]);
-    selectedObjectId=box.objectId;
-  }
+  const sampleSetId=newObjectId(),now=Date.now();
+  const withSet=record=>createDrawingObject({
+    ...record,sampleSetId,
+    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['sampleSetId'],now)
+  });
+  const linkedMarker=withSet(marker),linkedBox=withSet(box);
+  const pair=bestConnectionPair(linkedMarker,linkedBox);
+  if(!pair)return;
+  const elbow=buildElbowRecord(drawing,pair.start,pair.end,{
+    ...pair,sampleSetId
+  },{allowShort:true,lineColor:'#dc2626'});
+  const records=[linkedMarker,linkedBox,elbow];
+  await commitDrawingObjects(records,'survey-map-sample-set-create');
+  selectedObjectIds=new Set(records.map(record=>record.objectId));
+  selectedObjectId=linkedBox.objectId;
   renderSurveyMap();
 }
 async function createShapeAt(kind,clientX,clientY,otherPoint=null,constrain=false){
@@ -551,7 +599,7 @@ async function finishPolygon(drawing=selectedDrawing()){
   await createCorrectedStroke(drawing,[...points,{...points[0]}],false,true);
   renderSurveyMap();
 }
-async function createElbowFromPoints(drawing,start,end,connections={},options={}){
+function buildElbowRecord(drawing,start,end,connections={},options={}){
   if(!options.allowShort&&Math.hypot(end.x-start.x,end.y-start.y)<200)return null;
   const now=Date.now(),objects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const base=elbowRecordWithPoints({
@@ -559,13 +607,18 @@ async function createElbowFromPoints(drawing,start,end,connections={},options={}
     startConnection:connections.startConnection||null,endConnection:connections.endConnection||null,
     ...(connections.sampleSetId?{sampleSetId:connections.sampleSetId}:{}),
     layer:DRAWING_LAYERS.SHAPE,order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
-    visible:true,locked:false,deleted:false,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
+    visible:true,locked:false,deleted:false,lineColor:options.lineColor||'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
     createdAt:new Date(now).toISOString()
   },start.x,start.y,end.x,end.y,(start.x+end.x)/2);
   const record=createDrawingObject({...base,fieldEditedAt:touchFieldEditedAt({},[
     'drawingId','type','elbow','points','startX','startY','endX','endY','bendX',
     'x','y','width','height','layer','order','visible','locked','deleted','lineColor','lineWidth','lineStyle','startConnection','endConnection','sampleSetId'
   ],now)});
+  return record;
+}
+async function createElbowFromPoints(drawing,start,end,connections={},options={}){
+  const record=buildElbowRecord(drawing,start,end,connections,options);
+  if(!record)return null;
   selectOnly(record.objectId);
   await commitDrawingObject(record,'survey-map-elbow-create');
   return record;
@@ -1188,7 +1241,6 @@ function compactEditHtml(drawing){
       }
     }
   }
-  if(object.type==='sampleMarker')html+=color('色','data-survey-label-field="strokeColor"',object.strokeColor||'#dc2626');
   return '<div class="survey-map-compact-edit">'+html+'</div><button class="btn small survey-map-detail-button" data-survey-drawing-settings>詳細</button>';
 }
 function drawingSettingsHtml(drawing){
