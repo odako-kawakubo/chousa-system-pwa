@@ -623,7 +623,7 @@ async function createElbowFromPoints(drawing,start,end,connections={},options={}
   await commitDrawingObject(record,'survey-map-elbow-create');
   return record;
 }
-async function createLineFromPoints(drawing,startPoint,endPoint){
+async function createLineFromPoints(drawing,startPoint,endPoint,connections={}){
   const dx=endPoint.x-startPoint.x;
   const dy=endPoint.y-startPoint.y;
   if(Math.hypot(dx,dy)<200) return null;
@@ -634,6 +634,8 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
     objectId:newObjectId(),
     drawingId:drawing.drawingId,
     type:'line',
+    startConnection:connections.startConnection||null,
+    endConnection:connections.endConnection||null,
     layer:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map((item)=>Number(item.order)||0))+1:1,
     visible:true,
@@ -649,7 +651,7 @@ async function createLineFromPoints(drawing,startPoint,endPoint){
     ...withPoints,
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','x','y','width','height','rotation','layer','order','visible','locked','deleted',
-      'startX','startY','endX','endY','lineColor','lineWidth','lineStyle'
+      'startX','startY','endX','endY','lineColor','lineWidth','lineStyle','startConnection','endConnection'
     ],now)
   });
   selectOnly(record.objectId);
@@ -1138,6 +1140,17 @@ function connectionOverlayHtml(drawing,objects){
   })).join('');
   return `<svg class="survey-map-connection-overlay" viewBox="0 0 ${size.width} ${size.height}"
     preserveAspectRatio="none" aria-hidden="true">${circles}</svg>`;
+}
+function paintConnectedLinesForDrafts(drawing,drafts){
+  const records=drawingConnectionObjects(drawing);
+  const byId=new Map(records.map(record=>[record.objectId,record]));
+  for(const draft of drafts)byId.set(draft.objectId,draft);
+  const moving=new Set(drafts.map(record=>record.objectId));
+  for(const line of records){
+    if(line.type!=='line'||!['startConnection','endConnection'].some(key=>moving.has(line[key]?.targetObjectId)))continue;
+    const node=root()?.querySelector('[data-survey-object-id="'+CSS.escape(line.objectId)+'"]');
+    if(node)paintObjectDraft(node,resolveConnectedLine(line,byId),drawing);
+  }
 }
 function highlightConnectionAnchor(hit){
   const layer=root()?.querySelector('.survey-map-connection-overlay');
@@ -1770,7 +1783,8 @@ function bindEvents(){
       const sheetRect=sheet.getBoundingClientRect();
       const rawStart=pagePointer(event.clientX,event.clientY,sheetRect,drawing,
         {snap:!['correct','hand','pen'].includes(activeTool)});
-      const startPoint=(['correct','hand','pen'].includes(activeTool))?rawStart:snapCreationPoint(rawStart,drawing);
+      const startHit=['line','elbow'].includes(activeTool)?connectionPoint(event,drawing,sheetRect):null;
+      const startPoint=startHit?.point||((['correct','hand','pen'].includes(activeTool))?rawStart:snapCreationPoint(rawStart,drawing));
       const previewEl=createLineDraftPreview(sheet,drawing,startPoint);
       pointerInteraction={
         pointerId:event.pointerId,
@@ -1780,6 +1794,7 @@ function bindEvents(){
         original:null,
         draft:{startX:startPoint.x,startY:startPoint.y,endX:startPoint.x,endY:startPoint.y},
         startPoint,
+        startConnection:startHit?{targetObjectId:startHit.targetObjectId,anchor:startHit.anchor}:null,
         rawPoints:[startPoint],
         sheetRect,
         previewEl
@@ -1881,7 +1896,9 @@ function bindEvents(){
     }
 
     if(interaction.mode==='create-line'){
-      const point=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint;
+      const hit=connectionPoint(event,drawing,interaction.sheetRect);
+      highlightConnectionAnchor(hit);
+      const point=hit?.point||((shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,currentPoint):currentPoint);
       interaction.draft={...interaction.draft,endX:point.x,endY:point.y};
       updateLineDraftPreview(interaction.previewEl,point);
       event.preventDefault();
@@ -1896,6 +1913,7 @@ function bindEvents(){
       });
       const next=alignResizeToGrid(resized,bounds,'resize-corner',interaction.corner,drawing,shifted);
       interaction.groupDrafts=interaction.groupOriginals.map(o=>scaleObjectInGroup(o,bounds,next));
+      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       if(smartGuideEnabled){
         showSmartGuides(alignmentGuides(next,drawingObjectStore.getByDrawingId(drawing.drawingId),
           pageSize(drawing),interaction.groupOriginals.map(o=>o.objectId)),drawing);
@@ -1930,6 +1948,7 @@ function bindEvents(){
           size,originals.map(o=>o.objectId)),drawing);
       }else clearSmartGuides();
       interaction.groupDrafts=originals.map(o=>translateObject(o,dx,dy));
+      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       for(const draft of interaction.groupDrafts){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
         if(element)paintObjectDraft(element,draft,drawing);
@@ -1948,6 +1967,7 @@ function bindEvents(){
       const startX=Number(original.startX)||0,startY=Number(original.startY)||0;
       const endX=Number(original.endX)||0,endY=Number(original.endY)||0;
       const bendX=Number(original.bendX??(startX+endX)/2);
+      if(['elbow-start','elbow-end'].includes(interaction.mode))highlightConnectionAnchor(connectionPoint(event,drawing,interaction.sheetRect,original.objectId));
       if(interaction.mode==='elbow-start'){
         const hit=connectionPoint(event,drawing,interaction.sheetRect,original.objectId);
         const p=hit?.point||currentPoint;
@@ -2027,12 +2047,14 @@ function bindEvents(){
       draft=rotateSingleObject(original,(shiftActive()||event.shiftKey)?Math.round(delta/15)*15:delta);
     }else if(interaction.mode==='line-start'){
       const hit=connectionPoint(event,drawing,interaction.sheetRect,interaction.original.objectId);
+      highlightConnectionAnchor(hit);
       const p=hit?.point||currentPoint;
       draft=lineRecordWithPoints({...interaction.original,
         startConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null},
         p.x,p.y,Number(interaction.original.endX)||0,Number(interaction.original.endY)||0);
     }else if(interaction.mode==='line-end'){
       const hit=connectionPoint(event,drawing,interaction.sheetRect,interaction.original.objectId);
+      highlightConnectionAnchor(hit);
       const p=hit?.point||currentPoint;
       draft=lineRecordWithPoints({...interaction.original,
         endConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null},
@@ -2228,9 +2250,13 @@ function bindEvents(){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
       const drawing=selectedDrawing();
       if(!drawing)return;
-      const end=snapCreationPoint(pagePointer(event.clientX,event.clientY,
+      const hit=connectionPoint(event,drawing,interaction.sheetRect);
+      const end=hit?.point||snapCreationPoint(pagePointer(event.clientX,event.clientY,
         interaction.sheetRect,drawing),drawing);
-      void createElbowFromPoints(drawing,interaction.startPoint,end).then(()=>renderSurveyMap());
+      void createElbowFromPoints(drawing,interaction.startPoint,end,{
+        startConnection:interaction.startConnection,
+        endConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null
+      }).then(()=>renderSurveyMap());
       return;
     }
     if(interaction.mode==='create-corrected' || interaction.mode==='create-hand'){
@@ -2255,8 +2281,12 @@ function bindEvents(){
       if(!drawing) return;
       const rawEnd=snapCreationPoint(pagePointer(event.clientX,event.clientY,
         interaction.sheetRect,drawing),drawing);
-      const endPoint=(shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,rawEnd):rawEnd;
-      void createLineFromPoints(drawing,interaction.startPoint,endPoint).then(()=>renderSurveyMap());
+      const hit=connectionPoint(event,drawing,interaction.sheetRect);
+      const endPoint=hit?.point||((shiftActive()||event.shiftKey)?snapLinePoint(interaction.startPoint,rawEnd):rawEnd);
+      void createLineFromPoints(drawing,interaction.startPoint,endPoint,{
+        startConnection:interaction.startConnection,
+        endConnection:hit?{targetObjectId:hit.targetObjectId,anchor:hit.anchor}:null
+      }).then(()=>renderSurveyMap());
       return;
     }
 
