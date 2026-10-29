@@ -1131,7 +1131,7 @@ function compactEditHtml(drawing){
 }
 function drawingSettingsHtml(drawing){
   if(!drawingSettingsOpen)return '';
-  return '<div class="survey-map-settings-popover"><div class="survey-map-settings-heading"><strong>'+(selectedObjectIds.size?'詳細設定':'図面設定')+'</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div><div class="survey-map-settings-fields">'+editorHtml(drawing)+'</div></div>';
+  return '<div class="survey-map-settings-popover"><div class="survey-map-settings-heading"><strong>'+(selectedObjectIds.size?'詳細設定':'図面設定')+'</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div><div class="survey-map-settings-fields">'+editorHtml(drawing)+'</div><div class="survey-map-settings-zoom"><button type="button" class="btn small" data-survey-zoom-out>縮小</button><button type="button" class="btn small" data-survey-zoom-reset>'+Math.round(zoomLevel*100)+'%</button><button type="button" class="btn small" data-survey-zoom-in>拡大</button><button type="button" class="btn small" data-survey-zoom-fit>Fit</button></div></div>';
 }
 function pagesPopoverHtml(){
   return `
