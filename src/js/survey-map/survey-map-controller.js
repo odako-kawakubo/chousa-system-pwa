@@ -1120,8 +1120,11 @@ function sheetHtml(drawing){
 function connectionOverlayHtml(drawing,objects){
   const connecting=activeTool==='elbow'||activeTool==='line'||
     ['elbow-start','elbow-end','line-start','line-end'].includes(pointerInteraction?.mode);
+  const selectedLinks=new Set(objects.filter(o=>o.type==='line'&&selectedObjectIds.has(o.objectId))
+    .flatMap(line=>[line.startConnection?.targetObjectId,line.endConnection?.targetObjectId].filter(Boolean)));
   const selected=objects.filter(o=>canAnchor(o) && (
-    connecting||selectedObjectIds.has(o.objectId)||pendingConnectionStart?.objectId===o.objectId
+    connecting||selectedObjectIds.has(o.objectId)||selectedLinks.has(o.objectId)||
+    pendingConnectionStart?.objectId===o.objectId
   ));
   if(!selected.length)return '';
   const size=pageSize(drawing);
@@ -1916,7 +1919,6 @@ function bindEvents(){
       });
       const next=alignResizeToGrid(resized,bounds,'resize-corner',interaction.corner,drawing,shifted);
       interaction.groupDrafts=interaction.groupOriginals.map(o=>scaleObjectInGroup(o,bounds,next));
-      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       if(smartGuideEnabled){
         showSmartGuides(alignmentGuides(next,drawingObjectStore.getByDrawingId(drawing.drawingId),
           pageSize(drawing),interaction.groupOriginals.map(o=>o.objectId)),drawing);
@@ -1925,6 +1927,7 @@ function bindEvents(){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
         if(element)paintObjectDraft(element,draft,drawing);
       }
+      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       const outline=mount.querySelector('.survey-map-group-bounds');
       if(outline){
         const size=pageSize(drawing);
@@ -1951,11 +1954,11 @@ function bindEvents(){
           size,originals.map(o=>o.objectId)),drawing);
       }else clearSmartGuides();
       interaction.groupDrafts=originals.map(o=>translateObject(o,dx,dy));
-      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       for(const draft of interaction.groupDrafts){
         const element=mount.querySelector(`[data-survey-object-id="${CSS.escape(draft.objectId)}"]`);
         if(element)paintObjectDraft(element,draft,drawing);
       }
+      paintConnectedLinesForDrafts(drawing,interaction.groupDrafts);
       event.preventDefault();
       return;
     }
