@@ -1,4 +1,4 @@
-name: Deploy v0.1.10.29 Review
+name: Deploy v0.1.10.30 Review
 
 on:
   push:
@@ -26,9 +26,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.10.29'" src/config/app-config.js
-          grep -q '"version": "0.1.10.29"' src/version.json
-          grep -q "chousa-app-v0.1.10.29" src/service-worker.js
+          grep -q "version: '0.1.10.30'" src/config/app-config.js
+          grep -q '"version": "0.1.10.30"' src/version.json
+          grep -q "chousa-app-v0.1.10.30" src/service-worker.js
           grep -q 'data-survey-room-area-step' src/js/survey-map/survey-map-controller.js
           grep -q 'data-survey-zoom-reset' src/js/survey-map/survey-map-controller.js
           grep -q 'startInlineTextEdit' src/js/survey-map/survey-map-controller.js
