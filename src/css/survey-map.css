@@ -22,6 +22,12 @@
   box-shadow:0 1px 3px #0f172a14;
 }
 .survey-map-topbar .spacer{flex:1}
+.survey-map-zoom-bar{display:flex;align-items:center;gap:3px;flex:0 0 auto;white-space:nowrap}
+.survey-map-zoom-bar .btn{min-width:28px;height:30px;padding:3px 6px;font-size:11px}
+.survey-map-zoom-readout{min-width:50px!important;font-variant-numeric:tabular-nums;font-weight:700}
+.survey-map-sheet{touch-action:none}
+.survey-map-stroke-fill-hit{pointer-events:visiblePainted;stroke:none}
+
 .survey-map-text-btn{white-space:nowrap;font-weight:700}
 .survey-map-text-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
 .survey-map-stage{
