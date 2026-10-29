@@ -1125,7 +1125,8 @@ function connectionOverlayHtml(drawing,objects){
   const selectedLinks=new Set(objects.filter(o=>o.type==='line'&&selectedObjectIds.has(o.objectId))
     .flatMap(line=>[line.startConnection?.targetObjectId,line.endConnection?.targetObjectId].filter(Boolean)));
   const selected=objects.filter(o=>canAnchor(o) && (
-    connecting||selectedObjectIds.has(o.objectId)||selectedLinks.has(o.objectId)||
+    (connecting && Boolean(pointerInteraction))||
+    (activeTool==='select' && (selectedObjectIds.has(o.objectId)||selectedLinks.has(o.objectId)))||
     pendingConnectionStart?.objectId===o.objectId
   ));
   if(!selected.length)return '';
@@ -1546,7 +1547,16 @@ function bindEvents(){
       renderSurveyMap();return;
     }
     if(event.target.closest('[data-survey-shapes-toggle]')){
-      shapeMenuOpen=!shapeMenuOpen;renderSurveyMap();return;
+      if(['rect','circle','triangle','lshape','tshape','cross','concave','polygon'].includes(activeTool)){
+        activeTool='select';
+        toolSelectionRevision++;
+        polygonDraft=null;
+        pendingConnectionStart=null;
+        shapeMenuOpen=false;
+      }else{
+        shapeMenuOpen=!shapeMenuOpen;
+      }
+      renderSurveyMap();return;
     }
     if(event.target.closest('[data-survey-drawing-settings]')){
       drawingSettingsOpen=!drawingSettingsOpen;
@@ -1556,13 +1566,13 @@ function bindEvents(){
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
       const requested=String(drawTool.dataset.surveyDrawTool||'select');
+      const nextTool=requested===activeTool?'select':requested;
       pendingConnectionStart=null;
-      const hadPolygonDraft=requested!=='polygon'&&polygonDraft!==null;
-      if(hadPolygonDraft)polygonDraft=null;
-      // A single selected tool controls placement; all creation tools remain active.
+      if(nextTool!=='polygon')polygonDraft=null;
+      // Tapping the active tool again returns to selection mode.
       toolSelectionRevision++;
       if(inlineTextEdit)inlineTextEdit.resumeTool='';
-      activeTool=requested;
+      activeTool=nextTool;
       if(isShapeTool(requested)||requested==='polygon')lastShapeTool=requested;
       shapeMenuOpen=false;
       renderSurveyMap();
