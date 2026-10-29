@@ -222,8 +222,7 @@ body.survey-map-focus-mode .survey-map-topbar{border-radius:9px;min-height:42px;
 body.survey-map-focus-mode .survey-map-stage{margin-top:6px;border-radius:9px;padding:8px}
 body.survey-map-focus-mode .survey-map-sheet{
   min-width:0;
-  width:min(100%,calc((100dvh - 195px) * 297 / 210));
-  max-width:100%;
+  max-width:none;
 }
 
 
