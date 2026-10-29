@@ -858,13 +858,14 @@ function paperObjects(drawing){
 async function ensurePaperLayout(drawing=selectedDrawing(),reset=false){
   if(!drawing)return;
   const existing=paperObjects(drawing);
-  if(existing.length&&!reset)return;
   const defaults=paperLayoutFields(drawing);
+  const missing=reset?defaults:defaults.filter(fields=>!existing.some(o=>o.paperRole===fields.paperRole));
+  if(!missing.length)return;
   const now=Date.now(),source=reset?'survey-map-paper-reset':'survey-map-paper-layout';
   const all=drawingObjectStore.getByDrawingId(drawing.drawingId);
   let order=Math.max(0,...all.map(o=>Number(o.order)||0));
   const changes=[];
-  const updates=defaults.map(fields=>{
+  const updates=missing.map(fields=>{
     const previous=existing.find(o=>o.paperRole===fields.paperRole);
     const updatedFields=reset&&previous?{x:fields.x,y:fields.y}:fields;
     const next=createDrawingObject({
@@ -1090,8 +1091,6 @@ function sheetHtml(drawing){
   if(!drawing){
     return '<div class="survey-map-empty">図面ボタンから<br>新規調査図を作成してください</div>';
   }
-  const title=escapeHtml(drawing.titleSettings?.text||'調査図');
-  const name=escapeHtml(drawing.nameSettings?.text||drawing.name||'');
   const rawObjects=drawingObjectStore.getByDrawingId(drawing.drawingId);
   const byId=new Map(rawObjects.filter(o=>!o.deleted).map(o=>[o.objectId,o]));
   const objects=rawObjects.map(o=>{
@@ -1105,8 +1104,7 @@ function sheetHtml(drawing){
     return {...o,materialKind:kind,textColor:palette.textColor,strokeColor:palette.strokeColor,
       fillEnabled:Boolean(palette.backgroundEnabled),fillColor:palette.backgroundColor,fillOpacity:1};
   });
-  const hasPaper=objects.some(o=>o.paperRole&&!o.deleted);
-  const connectionOverlay=connectionOverlayHtml(drawing,objects);
+  const connectionOverlay=connectionOverlayHtml(drawing);
   const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
   const size=pageSize(drawing);
   const gridHtml=gridVisible?`<svg class="survey-map-grid-lines" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
@@ -1120,55 +1118,21 @@ function sheetHtml(drawing){
   </svg>`:'';
   return `
     ${gridHtml}
-    ${hasPaper?'':`<div class="survey-map-fixed-title">${title}</div>`}
     <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${connectionOverlay}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
     ${regionPreviewMarkup(drawing)}
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
-    ${hasPaper?'':`<div class="survey-map-fixed-name">${name}</div><div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>`}
   `;
 }
 
-function connectionOverlayHtml(drawing,objects){
-  const connecting=activeTool==='elbow'||activeTool==='line'||
-    ['elbow-start','elbow-end','line-start','line-end'].includes(pointerInteraction?.mode);
-  const selectedLinks=new Set(objects.filter(o=>o.type==='line'&&selectedObjectIds.has(o.objectId))
-    .flatMap(line=>[line.startConnection?.targetObjectId,line.endConnection?.targetObjectId].filter(Boolean)));
-  const selected=objects.filter(o=>canAnchor(o) && (
-    (activeTool==='select' && (selectedObjectIds.has(o.objectId)||selectedLinks.has(o.objectId)))||
-    pendingConnectionStart?.objectId===o.objectId
-  ));
-  if(!selected.length&&!connecting)return '';
+function connectionOverlayHtml(drawing){
+  const connecting=activeTool==='line'||activeTool==='elbow'||
+    ['create-line','create-elbow','line-start','line-end','elbow-start','elbow-end'].includes(pointerInteraction?.mode);
+  if(!connecting)return '';
   const size=pageSize(drawing);
-  const connected=new Set();
-  for(const line of objects){
-    if(line.type!=='line')continue;
-    for(const conn of [line.startConnection,line.endConnection]){
-      if(conn?.targetObjectId)connected.add(conn.targetObjectId+'|'+conn.anchor);
-    }
-  }
-  const circles=selected.flatMap(o=>ANCHORS.map(anchor=>{
-    const point=anchorPoint(o,anchor);
-    if(!point)return '';
-    const bound=connected.has(o.objectId+'|'+anchor);
-    return `<circle class="survey-map-connection-anchor ${bound?'connected':''}"
-      data-survey-anchor-object="${escapeHtml(o.objectId)}"
-      data-survey-anchor-name="${anchor}"
-      cx="${point.x}" cy="${point.y}" r="95"></circle>`;
-  })).join('');
   return `<svg class="survey-map-connection-overlay" viewBox="0 0 ${size.width} ${size.height}"
-    preserveAspectRatio="none" aria-hidden="true">${circles}</svg>`;
-}
-function paintAnchorsForDrafts(drafts){
-  const byId=new Map(drafts.map(o=>[o.objectId,o]));
-  root()?.querySelectorAll('.survey-map-connection-anchor').forEach(node=>{
-    const object=byId.get(node.dataset.surveyAnchorObject);
-    if(!object)return;
-    const point=anchorPoint(object,node.dataset.surveyAnchorName);
-    if(point){node.setAttribute('cx',String(point.x));node.setAttribute('cy',String(point.y));}
-  });
+    preserveAspectRatio="none" aria-hidden="true"></svg>`;
 }
 function paintConnectedLinesForDrafts(drawing,drafts){
-  paintAnchorsForDrafts(drafts);
   const records=drawingConnectionObjects(drawing);
   const byId=new Map(records.map(record=>[record.objectId,record]));
   for(const draft of drafts)byId.set(draft.objectId,draft);
@@ -1182,18 +1146,13 @@ function paintConnectedLinesForDrafts(drawing,drafts){
 function highlightConnectionAnchor(hit){
   const layer=root()?.querySelector('.survey-map-connection-overlay');
   if(!layer)return;
-  layer.querySelectorAll('.survey-map-connection-anchor.ephemeral').forEach(el=>el.remove());
-  layer.querySelectorAll('.survey-map-connection-anchor.snapped').forEach(el=>el.classList.remove('snapped'));
+  layer.replaceChildren();
   if(!hit)return;
-  const target=Array.from(layer.querySelectorAll('.survey-map-connection-anchor')).find(el=>
-    el.dataset.surveyAnchorObject===hit.targetObjectId &&
-    el.dataset.surveyAnchorName===hit.anchor);
-  if(target){target.classList.add('snapped');return;}
   const marker=document.createElementNS('http://www.w3.org/2000/svg','circle');
-  marker.setAttribute('class','survey-map-connection-anchor snapped ephemeral');
+  marker.setAttribute('class','survey-map-connection-anchor');
   marker.setAttribute('cx',String(hit.point.x));
   marker.setAttribute('cy',String(hit.point.y));
-  marker.setAttribute('r','95');
+  marker.setAttribute('r','42');
   layer.appendChild(marker);
 }
 function multiSelectionHandles(drawing,objects){
@@ -1448,8 +1407,10 @@ function bindEvents(){
     const pts=Array.from(touchPoints.values());
     const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
     pinchGesture={initialDistance:Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y)),
-      startCenter:{x,y},initialScrollX:stage?.scrollLeft||0,initialScrollY:stage?.scrollTop||0,
-      zooming:false};
+      startCenter:{x,y},initialZoom:zoomLevel,initialScrollX:stage?.scrollLeft||0,initialScrollY:stage?.scrollTop||0,
+      initialWidth:sheet?.getBoundingClientRect().width||1,initialHeight:sheet?.getBoundingClientRect().height||1,
+      sheetLeft:sheet?.getBoundingClientRect().left||0,sheetTop:sheet?.getBoundingClientRect().top||0,
+      stageLeft:stage?.getBoundingClientRect().left||0,stageTop:stage?.getBoundingClientRect().top||0};
     event.preventDefault();
   },true);
   window.addEventListener('pointermove',(event)=>{
@@ -1460,41 +1421,21 @@ function bindEvents(){
     const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
     const distance=Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y));
     const gesture=pinchGesture;
+    const desired=Math.max(.5,Math.min(3,Math.round(gesture.initialZoom*distance/gesture.initialDistance*100)/100));
+    if(desired!==zoomLevel){
+      zoomLevel=desired;
+      const liveSheet=mount.querySelector('.survey-map-sheet');
+      if(liveSheet)liveSheet.style.width=surveySheetWidth();
+      const readout=mount.querySelector('.survey-map-zoom-readout');
+      if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
+    }
     const stage=mount.querySelector('.survey-map-stage');
     const sheet=stage?.querySelector('.survey-map-sheet');
     if(stage&&sheet){
-      if(!gesture.zooming&&Math.abs(distance-gesture.initialDistance)>=Math.max(10,gesture.initialDistance*.05)){
-        // Preserve the current pan position when intentional pinch zoom begins.
-        gesture.zooming=true;
-        gesture.zoomDistance=distance;
-        gesture.zoomBase=zoomLevel;
-        gesture.zoomCenter={x,y};
-        gesture.zoomScrollX=stage.scrollLeft;
-        gesture.zoomScrollY=stage.scrollTop;
-        const rect=sheet.getBoundingClientRect();
-        gesture.zoomWidth=rect.width;
-        gesture.zoomHeight=rect.height;
-        gesture.zoomSheetLeft=rect.left;
-        gesture.zoomSheetTop=rect.top;
-      }
-      if(gesture.zooming){
-        const desired=Math.max(.5,Math.min(3,Math.round(gesture.zoomBase*distance/gesture.zoomDistance*100)/100));
-        if(desired!==zoomLevel){
-          zoomLevel=desired;
-          sheet.style.width=surveySheetWidth();
-          const readout=mount.querySelector('.survey-map-zoom-readout');
-          if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
-        }
-        const rect=sheet.getBoundingClientRect();
-        const scaleX=rect.width/Math.max(1,gesture.zoomWidth);
-        const scaleY=rect.height/Math.max(1,gesture.zoomHeight);
-        stage.scrollLeft=gesture.zoomScrollX+(gesture.zoomCenter.x-gesture.zoomSheetLeft)*(scaleX-1)-(x-gesture.zoomCenter.x);
-        stage.scrollTop=gesture.zoomScrollY+(gesture.zoomCenter.y-gesture.zoomSheetTop)*(scaleY-1)-(y-gesture.zoomCenter.y);
-      }else{
-        // Two-finger pan can move vertically, horizontally, or diagonally.
-        stage.scrollLeft=gesture.initialScrollX-(x-gesture.startCenter.x);
-        stage.scrollTop=gesture.initialScrollY-(y-gesture.startCenter.y);
-      }
+      const width=sheet.getBoundingClientRect().width,height=sheet.getBoundingClientRect().height;
+      const scaleX=width/gesture.initialWidth,scaleY=height/gesture.initialHeight;
+      stage.scrollLeft=gesture.initialScrollX+(gesture.startCenter.x-gesture.sheetLeft)*(scaleX-1)-(x-gesture.startCenter.x);
+      stage.scrollTop=gesture.initialScrollY+(gesture.startCenter.y-gesture.sheetTop)*(scaleY-1)-(y-gesture.startCenter.y);
     }
     event.preventDefault();
   },{capture:true,passive:false});
@@ -1502,7 +1443,7 @@ function bindEvents(){
     if(event.pointerType!=='touch'||!touchPoints.has(event.pointerId))return;
     touchPoints.delete(event.pointerId);
     if(pinchGesture){
-      if(touchPoints.size<2){pinchGesture=null;renderSurveyMap();}
+      if(!touchPoints.size){pinchGesture=null;renderSurveyMap();}
       pendingTouchCreate=null;
       return;
     }
@@ -2217,7 +2158,6 @@ function bindEvents(){
       }
     }
     paintObjectDraft(objectEl,draft,drawing);
-    if(draft.type!=='line')paintAnchorsForDrafts([draft]);
     // Connected lines derive their endpoints from the draft geometry while dragging.
     if(draft.type!=='line'){
       const records=drawingConnectionObjects(drawing);
