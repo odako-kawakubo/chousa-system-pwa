@@ -1101,9 +1101,33 @@ function editorHtml(drawing){
 function compactEditHtml(drawing){
   if(!drawing)return '';
   if(!selectedObjectIds.size)return '<button class="btn small survey-map-detail-button" data-survey-drawing-settings>図面設定</button>';
-  const object=selectedObject();
-  if(!object)return '';
-  return '<div class="survey-map-compact-edit">'+editorHtml(drawing)+'</div><button class="btn small survey-map-detail-button" data-survey-drawing-settings>詳細</button>';
+  const object=selectedObject();if(!object)return '';
+  const isLine=object.type==='line',isShape=object.type==='shape';
+  const isMaterial=isShape&&Boolean(object.materialId);
+  const isText=isShape&&object.shapeType==='rect'&&object.text!==undefined&&!isMaterial;
+  const color=(label,field,value)=>'<label class="survey-map-compact-color" title="'+label+'"><span>'+label+'</span><input type="color" '+field+' value="'+escapeHtml(value)+'"></label>';
+  const number=(label,field,value)=>'<label class="survey-map-compact-number"><span>'+label+'</span><input type="number" '+field+' value="'+Number(value||0)+'"></label>';
+  let html='';
+  if(isText||isMaterial||object.type==='roomLabel'){
+    html+=number('文字pt','data-survey-label-field="fontSize" min="1" step=".5"',object.fontSize||6);
+    if(!isMaterial)html+=color('文字色','data-survey-label-field="textColor"',object.textColor||'#111111');
+  }
+  if(isLine||isShape){
+    if(!isMaterial){
+      html+=number(isText?'枠太さ':'線幅','data-survey-style-field="width" min="20" max="500" step="20"',isLine?object.lineWidth||80:object.strokeWidth||80);
+      const dash=isLine?object.lineStyle||'solid':object.strokeDash||'solid';
+      const options=isLine?[['solid','━━━━'],['dash','┄┄┄'],['dot','····']]:[['solid','━━━━'],['fine','····'],['normal','┄┄┄'],['dash','━ ━']];
+      html+='<label class="survey-map-compact-dash"><span>線種</span><select data-survey-compact-dash="'+(isLine?'line':'shape')+'">'+options.map(([v,label])=>'<option value="'+v+'" '+(dash===v?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
+      html+=color(isText?'枠色':'線色','data-survey-style-field="color"',isLine?object.lineColor||'#334155':object.strokeColor||'#334155');
+      if(isShape){
+        html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="lineEnabled" '+(object.lineEnabled!==false?'checked':'')+'>枠</label>';
+        html+=color(isText?'背景色':'塗色','data-survey-style-field="fillColor"',object.fillColor||'#ffffff');
+        html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="fill" '+(object.fillEnabled?'checked':'')+'>塗</label>';
+      }
+    }
+  }
+  if(object.type==='sampleMarker')html+=color('色','data-survey-label-field="strokeColor"',object.strokeColor||'#dc2626');
+  return '<div class="survey-map-compact-edit">'+html+'</div><button class="btn small survey-map-detail-button" data-survey-drawing-settings>詳細</button>';
 }
 function drawingSettingsHtml(drawing){
   if(!drawingSettingsOpen)return '';
@@ -2067,6 +2091,17 @@ function bindEvents(){
   mount.addEventListener('pointercancel',finishPointerInteraction);
 
   mount.addEventListener('change',(event)=>{
+    const compactDash=event.target.closest('[data-survey-compact-dash]');
+    if(compactDash){
+      const object=selectedObject(),kind=compactDash.dataset.surveyCompactDash,value=compactDash.value;
+      const valid=kind==='line'?['solid','dash','dot']:['solid','fine','normal','dash'];
+      if(object&&valid.includes(value)&&((kind==='line'&&object.type==='line')||(kind==='shape'&&object.type==='shape'))){
+        const key=kind==='line'?'lineStyle':'strokeDash';
+        const next=createDrawingObject({...object,[key]:value,fieldEditedAt:touchFieldEditedAt(object.fieldEditedAt,[key],Date.now())});
+        void commitDrawingObject(next,'survey-map-line-style').then(()=>renderSurveyMap());
+      }
+      return;
+    }
     if(event.target.matches('[data-survey-room-dash]')){
       const value=String(event.target.value);
       if(ROOM_DASH_OPTIONS.some(([key])=>key===value))roomAreaDash=value;
@@ -2114,6 +2149,8 @@ function bindEvents(){
         patch[isLine?'lineColor':'strokeColor']=String(styleInput.value||'#334155');
       }else if(field==='width'){
         patch[isLine?'lineWidth':'strokeWidth']=clamp(Number(styleInput.value)||80,20,500);
+      }else if(field==='lineEnabled'&&!isLine){
+        patch.lineEnabled=Boolean(styleInput.checked);
       }else if(field==='fill'){
         patch.fillEnabled=Boolean(styleInput.checked);
         patch.fillOpacity=patch.fillEnabled?1:0;
