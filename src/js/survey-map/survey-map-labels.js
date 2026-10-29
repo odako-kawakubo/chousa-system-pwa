@@ -5,11 +5,10 @@
 export const LABEL_DEFAULTS = Object.freeze({
   roomLabel:{width:500,height:300,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderWidth:1,borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
   materialLabel:{width:2000,height:600,fontSize:4,textColor:'#111111',strokeColor:'#111111',borderWidth:1,borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:50},
-  text:{width:2500,height:500,fontSize:11,textColor:'#111111',strokeColor:'#111111',borderWidth:1,borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0},
-  sampleMarker:{width:400,height:400,fontSize:6,textColor:'#dc2626',strokeColor:'#dc2626',borderWidth:1,borderEnabled:true,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0}
+  text:{width:2500,height:500,fontSize:11,textColor:'#111111',strokeColor:'#111111',borderWidth:1,borderEnabled:false,backgroundEnabled:false,backgroundColor:'#ffffff',padding:0}
 });
-// Only standalone room and sample labels retain the legacy label renderer.
-export const LABEL_TYPES=new Set(['roomLabel','sampleMarker']);
+// Room labels use the dedicated label renderer.
+export const LABEL_TYPES=new Set(['roomLabel']);
 export function isLabelType(type){return LABEL_TYPES.has(type);}
 export function materialPalette(kind='none'){
   if(kind==='positive')return {textColor:'#dc2626',strokeColor:'#dc2626',backgroundEnabled:true,backgroundColor:'#fef08a'};
