@@ -1431,10 +1431,13 @@ function bindEvents(){
         lastToolTap?.tool===requested && now-lastToolTap.at<380
       ));
       lastToolTap={tool:requested,at:now};
-      if(repeatedTap && (['line','correct','elbow','room','hand','polygon','room-area'].includes(requested) || isShapeTool(requested))){
+      const shapeCreationTool=isShapeTool(requested)||requested==='polygon';
+      if(shapeCreationTool){
+        // 図形ポップアップは一度の選択で閉じるため、ダブルタップを要求しない。
+        // 上段「選択」へ切り替えるまで同じ図形を連続配置する。
+        continuousTool=requested;
+      }else if(repeatedTap && ['line','correct','elbow','room','hand','room-area'].includes(requested)){
         continuousTool=continuousTool===requested?'':requested;
-      }else if(requested!==continuousTool){
-        continuousTool='';
       }else{
         continuousTool='';
       }
