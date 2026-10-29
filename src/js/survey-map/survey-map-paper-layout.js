@@ -1,5 +1,5 @@
 /** v0.1.10.21 新規調査図の編集可能な初期オブジェクト。内部座標100=1mm。 */
-import {LABEL_DEFAULTS,materialPalette} from './survey-map-labels.js';
+import {materialPalette} from './survey-map-labels.js';
 import {defaultShapeParams} from './survey-map-shapes.js';
 
 export function paperLayoutFields(drawing){
@@ -22,9 +22,13 @@ export function paperLayoutFields(drawing){
       fillEnabled:false,fillColor:'#ffffff',fillOpacity:0,
       lineEnabled:true,strokeColor:'#111111',strokeWidth:35
     },
-    { ...LABEL_DEFAULTS.sampleMarker,type:'sampleMarker',paperRole:'legendSample',legendGroupId:group,
-      x:26000,y:17317,width:400,height:400,rotation:0,text:'',
-      backgroundEnabled:true,backgroundColor:'#dc2626',borderEnabled:true },
+    {
+      type:'shape',shapeType:'circle',shapeParams:defaultShapeParams('circle'),
+      sampleRole:'marker',paperRole:'legendSample',legendGroupId:group,
+      x:26000,y:17317,width:400,height:400,rotation:0,
+      fillEnabled:true,fillColor:'#dc2626',fillOpacity:1,
+      lineEnabled:false,strokeColor:'#dc2626',strokeWidth:40
+    },
     rect('legendSampleCaption',27000,17250,2000,500,'採取位置',{legendGroupId:group})
   ];
   const rows=[
