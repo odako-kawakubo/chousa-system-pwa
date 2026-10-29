@@ -915,7 +915,7 @@ jobs:
           grep -q "create-corrected" src/js/survey-map/survey-map-controller.js
           grep -q "create-elbow" src/js/survey-map/survey-map-controller.js
           grep -q "elbowRecordWithPoints" src/js/survey-map/survey-map-controller.js
-          grep -q "survey-map-tool-continuous" src/css/survey-map.css
+          if grep -q "survey-map-tool-continuous" src/css/survey-map.css; then echo "obsolete continuous-tool CSS remains"; exit 1; fi
           grep -q "elbow-bend" src/js/survey-map/survey-map-object-view.js
           grep -q "stroke-point" src/js/survey-map/survey-map-controller.js
           grep -q "data-survey-point-index" src/js/survey-map/survey-map-object-view.js
@@ -945,11 +945,11 @@ jobs:
           check(layout.find(o=>o.paperRole==='title')?.y===1500,'title top 15mm');
           check(layout.find(o=>o.paperRole==='legendFrame')?.type==='shape','legend must use shape');
           check(layout.filter(o=>o.paperRole?.startsWith('legendMaterial') && !o.paperRole.endsWith('Caption') && o.type==='shape' && o.shapeType==='rect').length===3,'legend must use text-bearing rect materials');
-          check(layout.some(o=>o.type==='sampleMarker'),'legend must reuse sample marker');
+          check(layout.some(o=>o.paperRole==='legendSample' && o.type==='shape' && o.shapeType==='circle' && o.sampleRole==='marker'),'legend sample must use circle shape');
           check(layout.find(o=>o.paperRole==='legendMaterialNone')?.x===25250,'legend material location');
           check(layout.find(o=>o.paperRole==='title')?.type==='shape','title must be text-bearing rect');
           check(layout.find(o=>o.paperRole==='name')?.x===500,'building name location');
-          check(layout.find(o=>o.paperRole==='legendSample')?.text==='','sample should have no default number');
+          check(layout.find(o=>o.paperRole==='legendSample')?.fillColor==='#dc2626','sample marker must be filled red');
           const draft={x:990,y:60,width:500,height:300};
           const frozen=JSON.stringify(draft);
           const guides=alignmentGuides(draft,[],{width:29700,height:21000});
