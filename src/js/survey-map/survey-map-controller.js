@@ -23,7 +23,7 @@ import { correctStroke, traceLength } from './survey-map-stroke.js';
 import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeSvgMarkup,shapeVertices,initialGridShapeParams } from './survey-map-shapes.js';
 import { rememberSurveyEdit,rememberSurveyOperation,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 import { joinRegions,splitRegion,polygonRecordGeometry } from './survey-map-region-operations.js';
-import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup } from './survey-map-transforms.js';
+import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup,scaleTextWithBox } from './survey-map-transforms.js';
 import {ANCHORS,canAnchor,anchorPoint,nearestAnchor,bestConnectionPair,resolveConnectedLine} from './survey-map-connections.js';
 
 let initialized=false;
@@ -45,6 +45,15 @@ function clearSelection(){selectOnly('');}
 let activeTool='select';
 let lastShapeTool='rect';
 let toolSelectionRevision=0;
+function chooseTool(requested){
+  activeTool=requested===activeTool?'select':requested;
+  toolSelectionRevision++;
+  pendingConnectionStart=null;
+  polygonDraft=null;
+  if(inlineTextEdit)inlineTextEdit.resumeTool='';
+  shapeMenuOpen=false;
+  return activeTool;
+}
 let selectedRoomKey='';
 let roomDisplay='number';
 let selectedMaterialId='';
@@ -1125,11 +1134,10 @@ function connectionOverlayHtml(drawing,objects){
   const selectedLinks=new Set(objects.filter(o=>o.type==='line'&&selectedObjectIds.has(o.objectId))
     .flatMap(line=>[line.startConnection?.targetObjectId,line.endConnection?.targetObjectId].filter(Boolean)));
   const selected=objects.filter(o=>canAnchor(o) && (
-    (connecting && Boolean(pointerInteraction))||
     (activeTool==='select' && (selectedObjectIds.has(o.objectId)||selectedLinks.has(o.objectId)))||
     pendingConnectionStart?.objectId===o.objectId
   ));
-  if(!selected.length)return '';
+  if(!selected.length&&!connecting)return '';
   const size=pageSize(drawing);
   const connected=new Set();
   for(const line of objects){
@@ -1174,13 +1182,19 @@ function paintConnectedLinesForDrafts(drawing,drafts){
 function highlightConnectionAnchor(hit){
   const layer=root()?.querySelector('.survey-map-connection-overlay');
   if(!layer)return;
+  layer.querySelectorAll('.survey-map-connection-anchor.ephemeral').forEach(el=>el.remove());
   layer.querySelectorAll('.survey-map-connection-anchor.snapped').forEach(el=>el.classList.remove('snapped'));
-  if(hit){
-    const target=Array.from(layer.querySelectorAll('.survey-map-connection-anchor')).find(el=>
-      el.dataset.surveyAnchorObject===hit.targetObjectId &&
-      el.dataset.surveyAnchorName===hit.anchor);
-    target?.classList.add('snapped');
-  }
+  if(!hit)return;
+  const target=Array.from(layer.querySelectorAll('.survey-map-connection-anchor')).find(el=>
+    el.dataset.surveyAnchorObject===hit.targetObjectId &&
+    el.dataset.surveyAnchorName===hit.anchor);
+  if(target){target.classList.add('snapped');return;}
+  const marker=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  marker.setAttribute('class','survey-map-connection-anchor snapped ephemeral');
+  marker.setAttribute('cx',String(hit.point.x));
+  marker.setAttribute('cy',String(hit.point.y));
+  marker.setAttribute('r','95');
+  layer.appendChild(marker);
 }
 function multiSelectionHandles(drawing,objects){
   if(selectedObjectIds.size<2)return '';
@@ -1409,7 +1423,7 @@ export function renderSurveyMap(){
 
 async function commitChangedObject(current,draft,source){
   if(!current)return;
-  const keys=['x','y','width','height','rotation','points','startX','startY','endX','endY','bendX','elbow','flipX','flipY'];
+  const keys=['x','y','width','height','fontSize','rotation','points','startX','startY','endX','endY','bendX','elbow','flipX','flipY'];
   const changed=keys.filter(key=>JSON.stringify(current[key])!==JSON.stringify(draft[key]));
   if(!changed.length)return;
   const next=createDrawingObject({...current,...draft,fieldEditedAt:touchFieldEditedAt(current.fieldEditedAt,changed,Date.now())});
@@ -1537,22 +1551,15 @@ function bindEvents(){
       const nextCategory=categoryButton.dataset.surveyCategory;
       if(toolCategory!==nextCategory){
         toolCategory=nextCategory;
-        activeTool='select';
-        toolSelectionRevision++;
-        pendingConnectionStart=null;
-        polygonDraft=null;
-        if(inlineTextEdit)inlineTextEdit.resumeTool='';
+        if(activeTool!=='select')chooseTool('select');
+        else {polygonDraft=null;pendingConnectionStart=null;}
       }
       shapeMenuOpen=false;drawingSettingsOpen=false;
       renderSurveyMap();return;
     }
     if(event.target.closest('[data-survey-shapes-toggle]')){
       if(['rect','circle','triangle','lshape','tshape','cross','concave','polygon'].includes(activeTool)){
-        activeTool='select';
-        toolSelectionRevision++;
-        polygonDraft=null;
-        pendingConnectionStart=null;
-        shapeMenuOpen=false;
+        chooseTool(activeTool);
       }else{
         shapeMenuOpen=!shapeMenuOpen;
       }
@@ -1566,13 +1573,7 @@ function bindEvents(){
     const drawTool=event.target.closest('[data-survey-draw-tool]');
     if(drawTool){
       const requested=String(drawTool.dataset.surveyDrawTool||'select');
-      const nextTool=requested===activeTool?'select':requested;
-      pendingConnectionStart=null;
-      if(nextTool!=='polygon')polygonDraft=null;
-      // Tapping the active tool again returns to selection mode.
-      toolSelectionRevision++;
-      if(inlineTextEdit)inlineTextEdit.resumeTool='';
-      activeTool=nextTool;
+      chooseTool(requested);
       if(isShapeTool(requested)||requested==='polygon')lastShapeTool=requested;
       shapeMenuOpen=false;
       renderSurveyMap();
@@ -2142,8 +2143,9 @@ function bindEvents(){
       const resized=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
         centerFixed:shifted,ratioFixed:interaction.original.sampleRole==='marker'
       });
-      draft=interaction.original.sampleRole==='marker'?resized:
+      const bounds=interaction.original.sampleRole==='marker'?resized:
         alignResizeToGrid(resized,interaction.original,'resize-corner',interaction.corner,drawing,shifted);
+      draft=scaleTextWithBox(interaction.original,bounds);
     }else if(interaction.mode==='resize'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0),
@@ -2151,7 +2153,7 @@ function bindEvents(){
         width:Number(interaction.original.width||0)+dx,
         height:Number(interaction.original.height||0)+dy
       },drawing);
-      draft={...draft,...alignResizeToGrid(rect,interaction.original,'resize','se',drawing)};
+      draft=scaleTextWithBox(interaction.original,alignResizeToGrid(rect,interaction.original,'resize','se',drawing));
     }else if(interaction.mode==='rotate'){
       const angle=rotationFromPointer(interaction.original,event,interaction.sheetRect,drawing);
       draft.rotation=(shiftActive()||event.shiftKey)?Math.round(angle/15)*15:angle;
@@ -2267,10 +2269,16 @@ function bindEvents(){
     }
     if(interaction.mode==='group-resize'){
       if(event.type==='pointercancel'){renderSurveyMap();return;}
-      void Promise.all(interaction.groupDrafts.map(draft=>{
+      const updates=interaction.groupDrafts.map(draft=>{
         const old=drawingObjectStore.get(draft.objectId);
-        return commitChangedObject(old,draft,'survey-map-group-resize');
-      })).then(()=>renderSurveyMap());
+        if(!old)return null;
+        const fields=['x','y','width','height','fontSize','points','startX','startY','endX','endY','bendX'];
+        const changed=fields.filter(key=>JSON.stringify(old[key])!==JSON.stringify(draft[key]));
+        return changed.length?createDrawingObject({...old,...draft,
+          fieldEditedAt:touchFieldEditedAt(old.fieldEditedAt,changed,Date.now())}):null;
+      }).filter(Boolean);
+      if(updates.length)void commitDrawingObjects(updates,'survey-map-group-resize').then(()=>renderSurveyMap());
+      else renderSurveyMap();
       return;
     }
     if(interaction.mode==='group-move'){
@@ -2343,7 +2351,7 @@ function bindEvents(){
       :interaction.mode==='move'?['x','y']
       :interaction.mode==='shape-adjust'?['shapeParams']
       :interaction.mode==='shape-vertex'?['customVertices']
-      :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height']
+      :['resize','resize-corner'].includes(interaction.mode)?['x','y','width','height','fontSize']
       :interaction.mode==='rotate'?['rotation']
       :['startX','startY','endX','endY','x','y','width','height'];
     if(!fields.some(field=>JSON.stringify(current[field])!==JSON.stringify(draft[field]))){
