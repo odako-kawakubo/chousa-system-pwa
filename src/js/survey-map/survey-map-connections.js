@@ -35,6 +35,7 @@ export function anchorPoint(o,anchor){
   const vertices=(o.type==='roomLabel'
     ?[{x:num(o.x),y:num(o.y)},{x:num(o.x)+num(o.width),y:num(o.y)},
        {x:num(o.x)+num(o.width),y:num(o.y)+num(o.height)},{x:num(o.x),y:num(o.y)+num(o.height)}]
+       .map(point=>rotate(point,c,num(o.rotation)*Math.PI/180))
     :polygonPoints(o));
   if(vertices.length<2)return c;
   // Intersect the ray with actual outline, not the shape's bounding rectangle.
