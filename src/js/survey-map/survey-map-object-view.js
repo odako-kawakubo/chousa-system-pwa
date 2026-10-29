@@ -74,7 +74,7 @@ function lineObjectHtml(record,drawing,selected,editMode,showHandles){
         <svg class="survey-map-line-svg" viewBox="0 0 ${size.width} ${size.height}"
           preserveAspectRatio="none" aria-hidden="true">
           ${record.closed && record.points.length>=4?
-            `<polygon class="survey-map-stroke-fill-hit" points="${points}"></polygon>`:''}
+            `<polygon class="survey-map-stroke-fill-hit" points="${points}" fill="${record.fillEnabled?escapeHtml(record.fillColor||'#93c5fd'):'transparent'}" fill-opacity="${record.fillEnabled?Math.max(0,Math.min(1,finite(record.fillOpacity,1))):0}"></polygon>`:''}
           <polyline class="survey-map-stroke-hit" points="${points}"></polyline>
           <polyline class="survey-map-stroke-main" points="${points}" stroke="${color}"
             style="stroke-width:${pixelWidth}px" ${dash?`stroke-dasharray="${dash}"`:''}></polyline>
