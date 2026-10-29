@@ -57,6 +57,9 @@ function showSmartGuides(guides,drawing){
 let continuousTool='';
 let lastToolTap=null;
 let zoomLevel=1;
+const touchPoints=new Map();
+let pinchGesture=null;
+let pendingTouchCreate=null;
 let inlineTextEdit=null;
 let lastTextTouch=null;
 let pointerInteraction=null;
@@ -1193,7 +1196,32 @@ function compactEditHtml(drawing){
 }
 function drawingSettingsHtml(drawing){
   if(!drawingSettingsOpen)return '';
-  return '<div class="survey-map-settings-popover"><div class="survey-map-settings-heading"><strong>'+(selectedObjectIds.size?'詳細設定':'図面設定')+'</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div><div class="survey-map-settings-fields">'+editorHtml(drawing)+'</div><div class="survey-map-settings-zoom"><button type="button" class="btn small" data-survey-zoom-out>縮小</button><button type="button" class="btn small" data-survey-zoom-reset>'+Math.round(zoomLevel*100)+'%</button><button type="button" class="btn small" data-survey-zoom-in>拡大</button><button type="button" class="btn small" data-survey-zoom-fit>Fit</button></div></div>';
+  return '<div class="survey-map-settings-popover"><div class="survey-map-settings-heading"><strong>'+(selectedObjectIds.size?'詳細設定':'図面設定')+'</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div><div class="survey-map-settings-fields">'+editorHtml(drawing)+'</div></div>';
+}
+function updateSurveyZoom(value,center=null){
+  const stage=root()?.querySelector('.survey-map-stage');
+  const sheet=stage?.querySelector('.survey-map-sheet');
+  const before=sheet?.getBoundingClientRect();
+  const stageRect=stage?.getBoundingClientRect();
+  const oldScrollX=stage?.scrollLeft||0,oldScrollY=stage?.scrollTop||0;
+  const focus=center||(stageRect?{x:stageRect.left+stageRect.width/2,y:stageRect.top+stageRect.height/2}:null);
+  const beforeX=before&&focus?(focus.x-before.left)/Math.max(1,before.width):.5;
+  const beforeY=before&&focus?(focus.y-before.top)/Math.max(1,before.height):.5;
+  const desired=Math.max(.5,Math.min(3,Math.round(value*100)/100));
+  if(Math.abs(desired-zoomLevel)<.005)return;
+  zoomLevel=desired;
+  renderSurveyMap();
+  const updated=root()?.querySelector('.survey-map-stage');
+  const updatedSheet=updated?.querySelector('.survey-map-sheet');
+  const nextRect=updatedSheet?.getBoundingClientRect();
+  if(updated&&updatedSheet&&nextRect&&focus){
+    const rect=updated.getBoundingClientRect();
+    const padX=focus.x-rect.left,padY=focus.y-rect.top;
+    updated.scrollLeft+=beforeX*nextRect.width+nextRect.left-focus.x;
+    updated.scrollTop+=beforeY*nextRect.height+nextRect.top-focus.y;
+    if(!Number.isFinite(updated.scrollLeft))updated.scrollLeft=oldScrollX;
+    if(!Number.isFinite(updated.scrollTop))updated.scrollTop=oldScrollY;
+  }
 }
 function pagesPopoverHtml(){
   return `
@@ -1224,6 +1252,7 @@ export function renderSurveyMap(){
           ${iconButton({icon:'redo',label:'進む',attr:'data-survey-redo',disabled:!history.redo})}
           ${iconButton({icon:'plus',label:'図面一覧・追加',attr:'data-survey-pages-toggle',active:pagesOpen})}
           ${iconButton({icon:'grid',label:'グリッド',attr:'data-survey-grid',active:gridVisible})}
+          <div class="survey-map-zoom-bar"><button type="button" class="btn small" data-survey-zoom-out aria-label="縮小">−</button><button type="button" class="btn small survey-map-zoom-readout" data-survey-zoom-reset title="100%に戻す">${Math.round(zoomLevel*100)}%</button><button type="button" class="btn small" data-survey-zoom-in aria-label="拡大">＋</button><button type="button" class="btn small" data-survey-zoom-fit>Fit</button></div>
           <span class="survey-map-topbar-separator"></span>
           ${Object.keys(TOOL_CATEGORIES).map(category=>`<button type="button" class="btn small survey-map-text-btn ${toolCategory===category?'active':''}" data-survey-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}
           <span class="survey-map-topbar-separator"></span>
@@ -1263,6 +1292,63 @@ function bindEvents(){
   const mount=root();
   if(!mount) return;
 
+  // Two-finger viewport manipulation, independent from object geometry.
+  mount.addEventListener('pointerdown',(event)=>{
+    if(event.pointerType!=='touch'||!event.target.closest('.survey-map-sheet'))return;
+    touchPoints.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(touchPoints.size!==2)return;
+    pendingTouchCreate=null;
+    const interaction=pointerInteraction;
+    if(interaction?.previewEl)interaction.previewEl.remove();
+    pointerInteraction=null;
+    clearSmartGuides();
+    const stage=mount.querySelector('.survey-map-stage');
+    const sheet=stage?.querySelector('.survey-map-sheet');
+    const pts=Array.from(touchPoints.values());
+    const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
+    pinchGesture={initialDistance:Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y)),
+      startCenter:{x,y},initialZoom:zoomLevel,initialScrollX:stage?.scrollLeft||0,initialScrollY:stage?.scrollTop||0,
+      initialWidth:sheet?.getBoundingClientRect().width||1,initialHeight:sheet?.getBoundingClientRect().height||1,
+      sheetLeft:sheet?.getBoundingClientRect().left||0,sheetTop:sheet?.getBoundingClientRect().top||0,
+      stageLeft:stage?.getBoundingClientRect().left||0,stageTop:stage?.getBoundingClientRect().top||0};
+    event.preventDefault();
+  },true);
+  window.addEventListener('pointermove',(event)=>{
+    if(event.pointerType!=='touch'||!touchPoints.has(event.pointerId))return;
+    touchPoints.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(!pinchGesture||touchPoints.size<2)return;
+    const pts=Array.from(touchPoints.values());
+    const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
+    const distance=Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y));
+    const gesture=pinchGesture;
+    const desired=Math.max(.5,Math.min(3,Math.round(gesture.initialZoom*distance/gesture.initialDistance*100)/100));
+    if(desired!==zoomLevel){zoomLevel=desired;renderSurveyMap();}
+    const stage=mount.querySelector('.survey-map-stage');
+    const sheet=stage?.querySelector('.survey-map-sheet');
+    if(stage&&sheet){
+      const width=sheet.getBoundingClientRect().width,height=sheet.getBoundingClientRect().height;
+      const scaleX=width/gesture.initialWidth,scaleY=height/gesture.initialHeight;
+      stage.scrollLeft=gesture.initialScrollX+(gesture.startCenter.x-gesture.sheetLeft)*(scaleX-1)-(x-gesture.startCenter.x);
+      stage.scrollTop=gesture.initialScrollY+(gesture.startCenter.y-gesture.sheetTop)*(scaleY-1)-(y-gesture.startCenter.y);
+    }
+    event.preventDefault();
+  },{capture:true,passive:false});
+  const endTouchGesture=(event)=>{
+    if(event.pointerType!=='touch'||!touchPoints.has(event.pointerId))return;
+    touchPoints.delete(event.pointerId);
+    if(pinchGesture){
+      if(!touchPoints.size){pinchGesture=null;renderSurveyMap();}
+      pendingTouchCreate=null;
+      return;
+    }
+    const pending=pendingTouchCreate;
+    if(pending?.pointerId===event.pointerId){
+      pendingTouchCreate=null;
+      if(event.type==='pointerup')void pending.create(event.clientX,event.clientY);
+    }
+  };
+  window.addEventListener('pointerup',endTouchGesture,true);
+  window.addEventListener('pointercancel',endTouchGesture,true);
   mount.addEventListener('contextmenu',(event)=>{
     if(event.target.closest('.survey-map-shift-button,.survey-map-sheet'))event.preventDefault();
   });
@@ -1399,18 +1485,15 @@ function bindEvents(){
     }
 
     if(event.target.closest('[data-survey-zoom-out]')){
-      zoomLevel=Math.max(.5,Math.round((zoomLevel-.25)*100)/100);
-      renderSurveyMap();
+      updateSurveyZoom(zoomLevel-.25);
       return;
     }
     if(event.target.closest('[data-survey-zoom-in]')){
-      zoomLevel=Math.min(3,Math.round((zoomLevel+.25)*100)/100);
-      renderSurveyMap();
+      updateSurveyZoom(zoomLevel+.25);
       return;
     }
     if(event.target.closest('[data-survey-zoom-reset]') || event.target.closest('[data-survey-zoom-fit]')){
-      zoomLevel=1;
-      renderSurveyMap();
+      updateSurveyZoom(1);
       return;
     }
 
@@ -1422,6 +1505,7 @@ function bindEvents(){
   });
 
   mount.addEventListener('pointerdown',(event)=>{
+    if(event.pointerType==='touch'&&(pinchGesture||touchPoints.size>=2)){event.preventDefault();return;}
     if(inlineTextEdit){
       if(event.target.closest('.survey-map-inline-textarea'))return;
       inlineTextEdit.input.blur();
@@ -1540,13 +1624,15 @@ function bindEvents(){
     }
 
     if(activeTool==='sample-set'){
-      void createSampleSetAt(event.clientX,event.clientY);
+      if(event.pointerType==='touch')pendingTouchCreate={pointerId:event.pointerId,x:event.clientX,y:event.clientY,create:createSampleSetAt};
+      else void createSampleSetAt(event.clientX,event.clientY);
       event.preventDefault();
       return;
     }
     if(['room','material','sample','text'].includes(activeTool)){
       const create={room:createRoomLabelAt,material:createMaterialLabelAt,sample:createSampleMarkerAt,text:createFreeTextAt}[activeTool];
-      void create(event.clientX,event.clientY);
+      if(event.pointerType==='touch')pendingTouchCreate={pointerId:event.pointerId,x:event.clientX,y:event.clientY,create};
+      else void create(event.clientX,event.clientY);
       event.preventDefault();
       return;
     }
@@ -1636,6 +1722,7 @@ function bindEvents(){
     }
   });
   mount.addEventListener('pointermove',(event)=>{
+    if(pinchGesture&&event.pointerType==='touch')return;
     const interaction=pointerInteraction;
     if(!interaction && activeTool==='polygon' && polygonDraft?.points?.length){
       const drawing=selectedDrawing();
@@ -1978,6 +2065,7 @@ function bindEvents(){
   });
 
   const finishPointerInteraction=(event)=>{
+    if(pinchGesture&&event.pointerType==='touch')return;
     const interaction=pointerInteraction;
     if(!interaction || interaction.pointerId!==event.pointerId) return;
     pointerInteraction=null;
