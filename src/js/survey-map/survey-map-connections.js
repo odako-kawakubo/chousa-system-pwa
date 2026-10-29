@@ -84,8 +84,14 @@ export function resolveConnectedLine(line,byId){
   const x=start?.x??num(line.startX),y=start?.y??num(line.startY);
   const ex=end?.x??num(line.endX),ey=end?.y??num(line.endY);
   if(line.elbow){
-    const midpoint=num(line.bendX??(x+ex)/2);
-    return elbowRecordWithPoints(line,x,y,ex,ey,midpoint);
+    // Preserve the stored bend position relative to the original endpoints.
+    // This makes attached elbows move and resize with their target objects.
+    const oldStart=num(line.startX),oldEnd=num(line.endX);
+    const originalBend=num(line.bendX??(oldStart+oldEnd)/2);
+    const span=oldEnd-oldStart;
+    const fraction=Math.abs(span)>1e-6?(originalBend-oldStart)/span:.5;
+    const bend=x+(ex-x)*fraction;
+    return elbowRecordWithPoints(line,x,y,ex,ey,bend);
   }
   if(!Array.isArray(line.points)||line.points.length<2)return lineRecordWithPoints(line,x,y,ex,ey);
   return line;
