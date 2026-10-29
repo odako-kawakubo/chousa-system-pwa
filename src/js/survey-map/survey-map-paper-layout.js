@@ -14,7 +14,7 @@ export function paperLayoutFields(drawing){
   const group='legend';
   const objects=[
     rect('title',500,1500,3500,750,drawing.titleSettings?.text||'調査図',{fontSize:14}),
-    rect('name',500,19500,8000,600,drawing.nameSettings?.text||drawing.name||'',{fontSize:9}),
+    rect('name',500,19500,8000,600,drawing.nameSettings?.text??'建物名',{fontSize:9}),
     {
       type:'shape',paperRole:'legendFrame',legendGroupId:group,
       x:24750,y:17000,width:4500,height:3500,rotation:0,
