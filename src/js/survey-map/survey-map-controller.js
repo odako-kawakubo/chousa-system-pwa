@@ -1448,10 +1448,8 @@ function bindEvents(){
     const pts=Array.from(touchPoints.values());
     const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
     pinchGesture={initialDistance:Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y)),
-      startCenter:{x,y},initialZoom:zoomLevel,initialScrollX:stage?.scrollLeft||0,initialScrollY:stage?.scrollTop||0,
-      initialWidth:sheet?.getBoundingClientRect().width||1,initialHeight:sheet?.getBoundingClientRect().height||1,
-      sheetLeft:sheet?.getBoundingClientRect().left||0,sheetTop:sheet?.getBoundingClientRect().top||0,
-      stageLeft:stage?.getBoundingClientRect().left||0,stageTop:stage?.getBoundingClientRect().top||0};
+      startCenter:{x,y},initialScrollX:stage?.scrollLeft||0,initialScrollY:stage?.scrollTop||0,
+      zooming:false};
     event.preventDefault();
   },true);
   window.addEventListener('pointermove',(event)=>{
@@ -1462,21 +1460,41 @@ function bindEvents(){
     const x=(pts[0].x+pts[1].x)/2,y=(pts[0].y+pts[1].y)/2;
     const distance=Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y));
     const gesture=pinchGesture;
-    const desired=Math.max(.5,Math.min(3,Math.round(gesture.initialZoom*distance/gesture.initialDistance*100)/100));
-    if(desired!==zoomLevel){
-      zoomLevel=desired;
-      const liveSheet=mount.querySelector('.survey-map-sheet');
-      if(liveSheet)liveSheet.style.width=surveySheetWidth();
-      const readout=mount.querySelector('.survey-map-zoom-readout');
-      if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
-    }
     const stage=mount.querySelector('.survey-map-stage');
     const sheet=stage?.querySelector('.survey-map-sheet');
     if(stage&&sheet){
-      const width=sheet.getBoundingClientRect().width,height=sheet.getBoundingClientRect().height;
-      const scaleX=width/gesture.initialWidth,scaleY=height/gesture.initialHeight;
-      stage.scrollLeft=gesture.initialScrollX+(gesture.startCenter.x-gesture.sheetLeft)*(scaleX-1)-(x-gesture.startCenter.x);
-      stage.scrollTop=gesture.initialScrollY+(gesture.startCenter.y-gesture.sheetTop)*(scaleY-1)-(y-gesture.startCenter.y);
+      if(!gesture.zooming&&Math.abs(distance-gesture.initialDistance)>=Math.max(10,gesture.initialDistance*.05)){
+        // Preserve the current pan position when intentional pinch zoom begins.
+        gesture.zooming=true;
+        gesture.zoomDistance=distance;
+        gesture.zoomBase=zoomLevel;
+        gesture.zoomCenter={x,y};
+        gesture.zoomScrollX=stage.scrollLeft;
+        gesture.zoomScrollY=stage.scrollTop;
+        const rect=sheet.getBoundingClientRect();
+        gesture.zoomWidth=rect.width;
+        gesture.zoomHeight=rect.height;
+        gesture.zoomSheetLeft=rect.left;
+        gesture.zoomSheetTop=rect.top;
+      }
+      if(gesture.zooming){
+        const desired=Math.max(.5,Math.min(3,Math.round(gesture.zoomBase*distance/gesture.zoomDistance*100)/100));
+        if(desired!==zoomLevel){
+          zoomLevel=desired;
+          sheet.style.width=surveySheetWidth();
+          const readout=mount.querySelector('.survey-map-zoom-readout');
+          if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
+        }
+        const rect=sheet.getBoundingClientRect();
+        const scaleX=rect.width/Math.max(1,gesture.zoomWidth);
+        const scaleY=rect.height/Math.max(1,gesture.zoomHeight);
+        stage.scrollLeft=gesture.zoomScrollX+(gesture.zoomCenter.x-gesture.zoomSheetLeft)*(scaleX-1)-(x-gesture.zoomCenter.x);
+        stage.scrollTop=gesture.zoomScrollY+(gesture.zoomCenter.y-gesture.zoomSheetTop)*(scaleY-1)-(y-gesture.zoomCenter.y);
+      }else{
+        // Two-finger pan can move vertically, horizontally, or diagonally.
+        stage.scrollLeft=gesture.initialScrollX-(x-gesture.startCenter.x);
+        stage.scrollTop=gesture.initialScrollY-(y-gesture.startCenter.y);
+      }
     }
     event.preventDefault();
   },{capture:true,passive:false});
