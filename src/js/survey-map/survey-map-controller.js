@@ -480,17 +480,20 @@ async function createSampleSetAt(clientX,clientY){
   const box=buildLabelRecordAt('materialLabel',clientX+dx,clientY+dy,materialLabelFields(material));
   if(!marker||!box)return;
   const sampleSetId=newObjectId(),now=Date.now();
-  const withSet=record=>createDrawingObject({
-    ...record,sampleSetId,
-    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['sampleSetId'],now)
+  const nextOrder=Math.max(marker.order,box.order);
+  const withSet=(record,order)=>createDrawingObject({
+    ...record,sampleSetId,order,
+    fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['sampleSetId','order'],now)
   });
-  const linkedMarker=withSet(marker),linkedBox=withSet(box);
+  const linkedMarker=withSet(marker,nextOrder),linkedBox=withSet(box,nextOrder+1);
   const pair=bestConnectionPair(linkedMarker,linkedBox);
   if(!pair)return;
   const elbow=buildElbowRecord(drawing,pair.start,pair.end,{
     ...pair,sampleSetId
   },{allowShort:true,lineColor:'#dc2626'});
-  const records=[linkedMarker,linkedBox,elbow];
+  const linkedElbow=createDrawingObject({...elbow,order:nextOrder+2,
+    fieldEditedAt:touchFieldEditedAt(elbow.fieldEditedAt,['order'],now)});
+  const records=[linkedMarker,linkedBox,linkedElbow];
   await commitDrawingObjects(records,'survey-map-sample-set-create');
   selectedObjectIds=new Set(records.map(record=>record.objectId));
   selectedObjectId=linkedBox.objectId;
@@ -2102,7 +2105,8 @@ function bindEvents(){
       const resized=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
         centerFixed:shifted,ratioFixed:interaction.original.sampleRole==='marker'
       });
-      draft=alignResizeToGrid(resized,interaction.original,'resize-corner',interaction.corner,drawing,shifted);
+      draft=interaction.original.sampleRole==='marker'?resized:
+        alignResizeToGrid(resized,interaction.original,'resize-corner',interaction.corner,drawing,shifted);
     }else if(interaction.mode==='resize'){
       const rect=clampObjectRect({
         x:Number(interaction.original.x||0),
