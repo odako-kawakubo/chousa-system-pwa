@@ -519,11 +519,12 @@ async function createCorrectedStroke(drawing,rawPoints,freehand=false,polygon=fa
     layer:(freehand||pen)?DRAWING_LAYERS.NOTE:DRAWING_LAYERS.SHAPE,
     order:objects.length?Math.max(...objects.map(o=>Number(o.order)||0))+1:1,
     rotation:0,closed,freehand:freehand||pen,lineColor:'#334155',lineWidth:DEFAULT_STROKE_WIDTH,lineStyle:'solid',
-    fillEnabled:false,fillColor:'#93c5fd',fillOpacity:1,
+    lineEnabled:true,fillEnabled:false,fillColor:'#93c5fd',fillOpacity:1,
     visible:true,locked:false,deleted:false,createdAt:new Date(now).toISOString(),
     fieldEditedAt:touchFieldEditedAt({},[
       'drawingId','type','layer','order','x','y','width','height','rotation',
-      'points','closed','freehand','lineColor','lineWidth','lineStyle','visible','locked','deleted'
+      'points','closed','freehand','lineColor','lineWidth','lineStyle','lineEnabled',
+      'fillEnabled','fillColor','fillOpacity','visible','locked','deleted'
     ],now)
   },corrected));
   if(!pen)selectOnly(record.objectId);
@@ -1106,6 +1107,7 @@ function editorHtml(drawing){
         <div class="survey-map-editor-row"><label>線の太さ</label>
           <input type="number" min="20" max="500" step="20" data-survey-style-field="width"
             value="${Number(object.type==='line'?object.lineWidth||80:object.strokeWidth||80)}"></div>
+        ${object.type==='line'&&object.closed?`<label class="survey-map-fill-toggle"><input type="checkbox" data-survey-style-field="lineEnabled" ${object.lineEnabled!==false?'checked':''}> 枠線を表示</label>`:''}
         ${(object.type==='shape'||(object.type==='line'&&object.closed))?`
           <label class="survey-map-fill-toggle"><input type="checkbox" data-survey-style-field="fill"
             ${object.fillEnabled?'checked':''}> 塗りつぶし</label>
@@ -1183,7 +1185,7 @@ function compactEditHtml(drawing){
       const options=isLine?[['solid','━━━━'],['dash','┄┄┄'],['dot','····']]:[['solid','━━━━'],['fine','····'],['normal','┄┄┄'],['dash','━ ━']];
       html+='<label class="survey-map-compact-dash"><span>線種</span><select data-survey-compact-dash="'+(isLine?'line':'shape')+'">'+options.map(([v,label])=>'<option value="'+v+'" '+(dash===v?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
       html+=color(isText?'枠色':'線色','data-survey-style-field="color"',isLine?object.lineColor||'#334155':object.strokeColor||'#334155');
-      if(isLine&&object.closed){html+=color('塗色','data-survey-style-field="fillColor"',object.fillColor||'#93c5fd');html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="fill" '+(object.fillEnabled?'checked':'')+'>塗</label>';}
+      if(isLine&&object.closed){html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="lineEnabled" '+(object.lineEnabled!==false?'checked':'')+'>枠</label>';html+=color('塗色','data-survey-style-field="fillColor"',object.fillColor||'#93c5fd');html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="fill" '+(object.fillEnabled?'checked':'')+'>塗</label>';}
       if(isShape){
         html+='<label class="survey-map-compact-check"><input type="checkbox" data-survey-style-field="lineEnabled" '+(object.lineEnabled!==false?'checked':'')+'>枠</label>';
         html+=color(isText?'背景色':'塗色','data-survey-style-field="fillColor"',object.fillColor||'#ffffff');
@@ -1197,6 +1199,13 @@ function compactEditHtml(drawing){
 function drawingSettingsHtml(drawing){
   if(!drawingSettingsOpen)return '';
   return '<div class="survey-map-settings-popover"><div class="survey-map-settings-heading"><strong>'+(selectedObjectIds.size?'詳細設定':'図面設定')+'</strong><button type="button" class="btn small" data-survey-drawing-settings>閉じる</button></div><div class="survey-map-settings-fields">'+editorHtml(drawing)+'</div></div>';
+}
+function surveySheetWidth(){
+  const percent=Math.round(zoomLevel*100);
+  if(!focusMode)return 'min('+percent+'%,'+Math.round(1180*zoomLevel)+'px)';
+  // At 100%, fit the sheet to the fullscreen viewport; above 100%, allow overflow.
+  const heightRatio=Number((zoomLevel*297/210).toFixed(5));
+  return 'min('+percent+'%,calc((100dvh - 195px) * '+heightRatio+'))';
 }
 function updateSurveyZoom(value,center=null){
   const stage=root()?.querySelector('.survey-map-stage');
@@ -1268,7 +1277,7 @@ export function renderSurveyMap(){
         </section>
         <div class="survey-map-stage" data-drawing-id="${escapeHtml(drawing?.drawingId||'')}">
         ${pagesPopoverHtml()}
-        <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:min(${Math.round(zoomLevel*100)}%,${Math.round(1180*zoomLevel)}px);--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
+        <div class="survey-map-sheet ${gridVisible?'grid-on':''} ${activeTool!=='select'?'drawing-mode':''}" style="width:${surveySheetWidth()};--survey-grid-x:${gridSpacing/pageSize(drawing).width*100}%;--survey-grid-y:${gridSpacing/pageSize(drawing).height*100}%">${sheetHtml(drawing)}</div>
       </div>
     </main>
     <button type="button" class="survey-map-shift-button ${shiftActive()?'active':''} ${shiftMoveMode?'moving':''}" style="${shiftButtonPositionStyle()}" data-survey-shift aria-pressed="${shiftLatched}" aria-label="Shift: タップで固定、長押しで一時、ダブルタップで移動">${shiftMoveMode?'完了':shiftActive()?'Shift ON':'Shift'}</button>
@@ -1325,7 +1334,7 @@ function bindEvents(){
     if(desired!==zoomLevel){
       zoomLevel=desired;
       const liveSheet=mount.querySelector('.survey-map-sheet');
-      if(liveSheet)liveSheet.style.width='min('+Math.round(zoomLevel*100)+'%,'+Math.round(1180*zoomLevel)+'px)';
+      if(liveSheet)liveSheet.style.width=surveySheetWidth();
       const readout=mount.querySelector('.survey-map-zoom-readout');
       if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
     }
@@ -2333,7 +2342,7 @@ function bindEvents(){
         patch[isLine?'lineColor':'strokeColor']=String(styleInput.value||'#334155');
       }else if(field==='width'){
         patch[isLine?'lineWidth':'strokeWidth']=clamp(Number(styleInput.value)||80,20,500);
-      }else if(field==='lineEnabled'&&!isLine){
+      }else if(field==='lineEnabled'&&(!isLine||record.closed)){
         patch.lineEnabled=Boolean(styleInput.checked);
       }else if(field==='fill'&&(record.type==='shape'||record.closed)){
         patch.fillEnabled=Boolean(styleInput.checked);
