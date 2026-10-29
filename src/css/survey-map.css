@@ -52,9 +52,6 @@
 }
 .survey-map-grid-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
 .survey-map-grid-lines path{fill:none;stroke:#94a3b844;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
-.survey-map-fixed-title{position:absolute;left:2.5%;top:2.5%;font-size:22px;font-weight:800;pointer-events:none}
-.survey-map-fixed-name{position:absolute;left:2.5%;bottom:2.5%;font-size:14px;font-weight:700;pointer-events:none}
-.survey-map-fixed-legend{position:absolute;right:2.5%;bottom:2.5%;font-size:12px;line-height:1.6;text-align:left;pointer-events:none}
 .survey-map-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:14px;pointer-events:none;text-align:center}
 .survey-map-hint{font-size:12px;color:#64748b;line-height:1.55;background:#f8fafc;border:1px solid #d6dce5;border-radius:9px;padding:8px}
 .survey-map-editor-row{display:grid;gap:5px;margin-bottom:10px}
@@ -136,9 +133,7 @@
 .survey-map-rect-text{writing-mode:var(--survey-text-direction,horizontal-tb)}
 .survey-map-inline-textarea{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;box-sizing:border-box;resize:none;outline:2px solid #2563eb;outline-offset:-2px;border:0;padding:inherit;margin:0;background:transparent;color:inherit;font:inherit;line-height:inherit;text-align:var(--survey-text-align,center);writing-mode:inherit;white-space:pre-wrap;overflow:auto;touch-action:auto;pointer-events:auto;z-index:10}
 .survey-map-rect-text[style*="vertical-rl"]{text-orientation:mixed}
-.survey-map-object-shape .survey-map-rect-text{z-index:2;pointer-events:auto}
-
-/* Keep free-text rectangles visible and touch-selectable above their SVG outline. */
+/* Text remains selectable over the SVG outline. */
 .survey-map-object-shape .survey-map-rect-text{z-index:2;pointer-events:auto;min-height:100%;}
 
 
@@ -314,9 +309,6 @@ body.survey-map-focus-mode .survey-map-sheet{
 .survey-map-object-shape .survey-map-shape-svg ellipse{pointer-events:all;cursor:move}
 .survey-map-object-shape .survey-map-object-handle{pointer-events:auto}
 .survey-map-object-layer + .survey-map-empty{z-index:2}
-.survey-map-fixed-title,
-.survey-map-fixed-name,
-.survey-map-fixed-legend{z-index:30}
 
 
 /* 直線・ポリライン */
@@ -406,9 +398,8 @@ body.survey-map-focus-mode .survey-map-sheet{
 .survey-map-region-confirm strong{font-size:12px;color:#1e40af}
 
 .survey-map-connection-overlay{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:16;pointer-events:none}
-.survey-map-connection-anchor{fill:#fff;stroke:#2563eb;stroke-width:1.5px;vector-effect:non-scaling-stroke;pointer-events:none}
-.survey-map-connection-anchor.connected{fill:#16a34a;stroke:#15803d}
-.survey-map-connection-anchor.snapped{fill:#f59e0b;stroke:#b45309;stroke-width:2.5px}
+/* Only the nearest snap target is drawn while connecting a line. */
+.survey-map-connection-anchor{fill:#a855f7;stroke:#7e22ce;stroke-width:1px;vector-effect:non-scaling-stroke;pointer-events:none}
 
 /* Connection target is held while the second endpoint is chosen. */
 .survey-map-connect-pending{outline:3px solid #2563eb;outline-offset:3px}
