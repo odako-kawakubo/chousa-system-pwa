@@ -57,6 +57,8 @@ function showSmartGuides(guides,drawing){
 let continuousTool='';
 let lastToolTap=null;
 let zoomLevel=1;
+let inlineTextEdit=null;
+let lastTextTouch=null;
 let pointerInteraction=null;
 let polygonDraft=null;
 let pendingConnectionStart=null;
@@ -374,12 +376,46 @@ async function createMaterialLabelAt(clientX,clientY){
 async function createSampleMarkerAt(clientX,clientY){
   return createLabelAt('sampleMarker',clientX,clientY,{text:'',backgroundEnabled:true,backgroundColor:'#dc2626'});
 }
-async function createFreeTextAt(clientX,clientY){
-  const created=await createLabelAt('text',clientX,clientY,{text:'テキスト',textDirection:'horizontal'});
-  if(created){
-    activeTool='select';
-    renderSurveyMap();
+function startInlineTextEdit(id){
+  const record=drawingObjectStore.get(id);
+  if(!record||record.type!=='shape'||record.shapeType!=='rect'||record.materialId)return;
+  if(inlineTextEdit&&inlineTextEdit.objectId!==id)void finishInlineTextEdit();
+  selectOnly(id);
+  activeTool='select';
+  renderSurveyMap();
+  const target=root()?.querySelector('[data-survey-object-id="'+CSS.escape(id)+'"] .survey-map-rect-text');
+  if(!target)return;
+  const input=document.createElement('textarea');
+  input.className='survey-map-inline-textarea';
+  input.setAttribute('aria-label','図面上でテキスト入力');
+  input.value=String(record.text||'');
+  target.replaceChildren(input);
+  inlineTextEdit={objectId:id,input,original:input.value,composing:false};
+  input.addEventListener('compositionstart',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=true;});
+  input.addEventListener('compositionend',()=>{if(inlineTextEdit?.input===input)inlineTextEdit.composing=false;});
+  input.addEventListener('blur',()=>{if(inlineTextEdit?.input===input)void finishInlineTextEdit();});
+  input.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!event.isComposing){input.value=inlineTextEdit?.original||'';input.blur();}
+    event.stopPropagation();
+  });
+  input.focus();
+  input.setSelectionRange(input.value.length,input.value.length);
+}
+async function finishInlineTextEdit(){
+  const session=inlineTextEdit;
+  if(!session)return;
+  inlineTextEdit=null;
+  const record=drawingObjectStore.get(session.objectId);
+  if(record&&record.text!==session.input.value){
+    const next=createDrawingObject({...record,text:session.input.value,
+      fieldEditedAt:touchFieldEditedAt(record.fieldEditedAt,['text'],Date.now())});
+    await commitDrawingObject(next,'survey-map-text-direct-edit');
   }
+  renderSurveyMap();
+}
+async function createFreeTextAt(clientX,clientY){
+  const created=await createLabelAt('text',clientX,clientY,{text:'',textDirection:'horizontal'});
+  if(created)startInlineTextEdit(created.objectId);
   return created;
 }
 /** Three independently editable records connected through the existing elbow anchors. */
@@ -1173,7 +1209,7 @@ function pagesPopoverHtml(){
 
 export function renderSurveyMap(){
   const mount=root();
-  if(!mount) return;
+  if(!mount||inlineTextEdit)return;
   applyLayoutClasses();
   const drawing=selectedDrawing();
   const history=historyStatus(getCurrentProject()?.projectId);
@@ -1386,6 +1422,11 @@ function bindEvents(){
   });
 
   mount.addEventListener('pointerdown',(event)=>{
+    if(inlineTextEdit){
+      if(event.target.closest('.survey-map-inline-textarea'))return;
+      inlineTextEdit.input.blur();
+      return;
+    }
     const shiftButton=event.target.closest('[data-survey-shift]');
     if(shiftButton){
       if(shiftGesture)return;
@@ -1432,6 +1473,15 @@ function bindEvents(){
     }
     const objectEl=event.target.closest('[data-survey-object-id]');
     if(objectEl && activeTool==='select'){
+      const targetRecord=drawingObjectStore.get(String(objectEl.dataset.surveyObjectId||''));
+      const isFreeText=targetRecord?.type==='shape'&&targetRecord.shapeType==='rect'&&targetRecord.text!==undefined&&!targetRecord.materialId;
+      if(isFreeText&&!event.target.closest('[data-survey-handle]')){
+        const now=Date.now();
+        const doubleTouch=event.pointerType==='touch'&&lastTextTouch?.id===targetRecord.objectId&&now-lastTextTouch.at<420;
+        lastTextTouch={id:targetRecord.objectId,at:now};
+        if(doubleTouch){startInlineTextEdit(targetRecord.objectId);event.preventDefault();return;}
+      }
+
       const objectId=String(objectEl.dataset.surveyObjectId||'');
       const rawObject=drawingObjectStore.get(objectId);
       const object=rawObject?.type==='line'?resolveConnectedLine(rawObject,new Map(drawingConnectionObjects(drawing).map(o=>[o.objectId,o]))):rawObject;
@@ -1578,6 +1628,13 @@ function bindEvents(){
     }
   });
 
+  mount.addEventListener('dblclick',(event)=>{
+    const item=event.target.closest('[data-survey-object-id]');
+    const record=item&&drawingObjectStore.get(item.dataset.surveyObjectId);
+    if(record?.type==='shape'&&record.shapeType==='rect'&&record.text!==undefined&&!record.materialId){
+      startInlineTextEdit(record.objectId);event.preventDefault();
+    }
+  });
   mount.addEventListener('pointermove',(event)=>{
     const interaction=pointerInteraction;
     if(!interaction && activeTool==='polygon' && polygonDraft?.points?.length){
@@ -2259,6 +2316,7 @@ function bindEvents(){
   window.addEventListener('keydown',(event)=>{
     if(event.key==='Shift'){physicalShift=true;syncShiftButton();}
     if(root()?.style.display==='none') return;
+    if(inlineTextEdit||event.isComposing||event.target.closest('input,textarea,[contenteditable]'))return;
     if((event.ctrlKey||event.metaKey) && !event.target.matches('input,textarea')){
       const k=event.key.toLowerCase();
       if(k==='z' || k==='y'){
