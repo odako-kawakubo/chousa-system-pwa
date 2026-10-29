@@ -88,6 +88,21 @@ export function flipSingleObject(record,axis){
   const angle=Number(record.rotation)||0;
   return {...transformed,rotation:axis==='horizontal'?180-angle:-angle};
 }
+/** Resize type with its box, without distorting glyph proportions. */
+export function scaleTextWithBox(record,rect){
+  const textBearing=record.type==='roomLabel'||
+    (record.type==='shape'&&typeof record.text==='string'&&record.sampleRole!=='marker');
+  if(!textBearing)return {...record,...rect};
+  const oldWidth=Math.max(1,Number(record.width)||1);
+  const oldHeight=Math.max(1,Number(record.height)||1);
+  const factor=Math.sqrt(
+    (Math.max(1,Number(rect.width)||1)/oldWidth)*
+    (Math.max(1,Number(rect.height)||1)/oldHeight)
+  );
+  const base=Number(record.fontSize);
+  return {...record,...rect,
+    fontSize:Math.max(1,Math.round((Number.isFinite(base)&&base>0?base:6)*factor*100)/100)};
+}
 export function scaleObjectInGroup(record,bounds,nextBounds){
   const sx=nextBounds.width/Math.max(1,bounds.width),sy=nextBounds.height/Math.max(1,bounds.height);
   const map=p=>({x:nextBounds.x+(p.x-bounds.x)*sx,y:nextBounds.y+(p.y-bounds.y)*sy});
@@ -104,5 +119,5 @@ export function scaleObjectInGroup(record,bounds,nextBounds){
     const side=Math.max(120,Math.min(Math.abs(record.width*sx),Math.abs(record.height*sy)));
     return {...record,x:center.x-side/2,y:center.y-side/2,width:side,height:side};
   }
-  return {...record,x:topLeft.x,y:topLeft.y,width:(Number(record.width)||0)*sx,height:(Number(record.height)||0)*sy};
+  return scaleTextWithBox(record,{x:topLeft.x,y:topLeft.y,width:(Number(record.width)||0)*sx,height:(Number(record.height)||0)*sy});
 }
