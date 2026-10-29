@@ -132,7 +132,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
         const cfg=labelSettings(record.type,record);
         const textMarkup=labelText(record).split('\n').map(line=>`<span class="survey-map-label-line">${escapeLabel(line)}</span>`).join('');
         const decoration=[
-          `--survey-label-font:${Math.max(1,Number(cfg.fontSize)||6)}pt`,
+          `--survey-label-font:${Math.max(.5,Number(cfg.fontSize)||6)}pt`,
           `--survey-label-color:${escapeHtml(cfg.textColor)}`,
           `--survey-label-padding:${Math.max(0,Number(cfg.padding)||0)/100}mm`,
           `--survey-label-border:${cfg.borderEnabled?Math.max(.25,Number(cfg.borderWidth)||1)+'px solid '+escapeHtml(cfg.strokeColor):'none'}`,
@@ -150,7 +150,7 @@ export function drawingObjectsHtml(records = [], drawing, selection = '',editMod
       const textCfg=isTextRect?labelSettings('text',record):null;
       const textHtml=isTextRect?labelText(record).split('\n').map(line=>`<span class="survey-map-label-line">${escapeLabel(line)}</span>`).join(''):'';
       const textStyle=isTextRect?[
-        `--survey-label-font:${Math.max(1,Number(textCfg.fontSize)||6)}pt`,
+        `--survey-label-font:${Math.max(.5,Number(textCfg.fontSize)||6)}pt`,
         `--survey-text-direction:${record.textDirection==='vertical'?'vertical-rl':'horizontal-tb'}`,
         `--survey-label-color:${escapeHtml(textCfg.textColor||'#111111')}`,
         `--survey-padding-top:${Math.max(0,Number(textCfg.paddingTop??textCfg.padding??0))/100}mm`,
