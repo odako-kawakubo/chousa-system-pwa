@@ -1147,7 +1147,17 @@ function connectionOverlayHtml(drawing,objects){
   return `<svg class="survey-map-connection-overlay" viewBox="0 0 ${size.width} ${size.height}"
     preserveAspectRatio="none" aria-hidden="true">${circles}</svg>`;
 }
+function paintAnchorsForDrafts(drafts){
+  const byId=new Map(drafts.map(o=>[o.objectId,o]));
+  root()?.querySelectorAll('.survey-map-connection-anchor').forEach(node=>{
+    const object=byId.get(node.dataset.surveyAnchorObject);
+    if(!object)return;
+    const point=anchorPoint(object,node.dataset.surveyAnchorName);
+    if(point){node.setAttribute('cx',String(point.x));node.setAttribute('cy',String(point.y));}
+  });
+}
 function paintConnectedLinesForDrafts(drawing,drafts){
+  paintAnchorsForDrafts(drafts);
   const records=drawingConnectionObjects(drawing);
   const byId=new Map(records.map(record=>[record.objectId,record]));
   for(const draft of drafts)byId.set(draft.objectId,draft);
@@ -1886,8 +1896,11 @@ function bindEvents(){
       return;
     }
     if(interaction.mode==='create-elbow'){
+      const hit=connectionPoint(event,drawing,interaction.sheetRect);
+      highlightConnectionAnchor(hit);
+      const end=hit?.point||currentPoint;
       updatePolylinePreview(interaction.previewEl,elbowPath(
-        interaction.startPoint.x,interaction.startPoint.y,currentPoint.x,currentPoint.y));
+        interaction.startPoint.x,interaction.startPoint.y,end.x,end.y));
       event.preventDefault();
       return;
     }
@@ -2163,6 +2176,7 @@ function bindEvents(){
       }
     }
     paintObjectDraft(objectEl,draft,drawing);
+    if(draft.type!=='line')paintAnchorsForDrafts([draft]);
     // Connected lines derive their endpoints from the draft geometry while dragging.
     if(draft.type!=='line'){
       const records=drawingConnectionObjects(drawing);
