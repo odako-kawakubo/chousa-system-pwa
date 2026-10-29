@@ -1533,7 +1533,15 @@ function bindEvents(){
 
     const categoryButton=event.target.closest('[data-survey-category]');
     if(categoryButton){
-      toolCategory=categoryButton.dataset.surveyCategory;
+      const nextCategory=categoryButton.dataset.surveyCategory;
+      if(toolCategory!==nextCategory){
+        toolCategory=nextCategory;
+        activeTool='select';
+        toolSelectionRevision++;
+        pendingConnectionStart=null;
+        polygonDraft=null;
+        if(inlineTextEdit)inlineTextEdit.resumeTool='';
+      }
       shapeMenuOpen=false;drawingSettingsOpen=false;
       renderSurveyMap();return;
     }
