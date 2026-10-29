@@ -1322,7 +1322,13 @@ function bindEvents(){
     const distance=Math.max(1,Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y));
     const gesture=pinchGesture;
     const desired=Math.max(.5,Math.min(3,Math.round(gesture.initialZoom*distance/gesture.initialDistance*100)/100));
-    if(desired!==zoomLevel){zoomLevel=desired;renderSurveyMap();}
+    if(desired!==zoomLevel){
+      zoomLevel=desired;
+      const liveSheet=mount.querySelector('.survey-map-sheet');
+      if(liveSheet)liveSheet.style.width='min('+Math.round(zoomLevel*100)+'%,'+Math.round(1180*zoomLevel)+'px)';
+      const readout=mount.querySelector('.survey-map-zoom-readout');
+      if(readout)readout.textContent=Math.round(zoomLevel*100)+'%';
+    }
     const stage=mount.querySelector('.survey-map-stage');
     const sheet=stage?.querySelector('.survey-map-sheet');
     if(stage&&sheet){
