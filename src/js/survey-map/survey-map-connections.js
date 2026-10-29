@@ -17,7 +17,7 @@ const polygonPoints=o=>{
 };
 export function canAnchor(o){
   return Boolean(o&&!o.deleted&&o.visible!==false&&(
-    o.type==='shape'||o.type==='sampleMarker'||o.type==='roomLabel'||
+    o.type==='shape'||o.type==='roomLabel'||
     (o.type==='line'&&o.closed&&Array.isArray(o.points)&&o.points.length>=4)
   ));
 }
@@ -26,7 +26,7 @@ export function anchorPoint(o,anchor){
   const i=ANCHORS.indexOf(anchor);
   if(i<0)return null;
   const [dx,dy]=directions[i],c=center(o);
-  if(o.type==='sampleMarker'||o.shapeType==='circle'&&o.type==='shape'&&!o.customVertices){
+  if(o.shapeType==='circle'&&o.type==='shape'&&!o.customVertices){
     const rx=Math.max(1,num(o.width)/2),ry=Math.max(1,num(o.height)/2),theta=num(o.rotation)*Math.PI/180;
     const ux=dx*Math.cos(theta)+dy*Math.sin(theta),uy=-dx*Math.sin(theta)+dy*Math.cos(theta);
     const scale=1/Math.sqrt(ux*ux/(rx*rx)+uy*uy/(ry*ry));
