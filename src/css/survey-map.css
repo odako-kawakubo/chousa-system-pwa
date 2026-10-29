@@ -101,6 +101,10 @@
 .survey-map-corner-sw{left:0;top:100%}
 .survey-map-corner-se{left:100%;top:100%}
 .survey-map-room-picker{display:grid;gap:5px;margin-top:10px;font-size:12px}
+.survey-map-room-controls{display:flex;align-items:center;gap:4px;margin-top:0;white-space:nowrap}
+.survey-map-room-controls .btn{flex:0 0 auto;min-width:27px;padding:4px}
+.survey-map-room-controls input{width:72px;min-width:65px;min-height:28px;padding:3px}
+.survey-map-room-area-label{font-size:11px;min-width:24px;text-align:center;font-weight:700}
 .survey-map-room-picker label{color:#64748b;font-weight:600}
 .survey-map-room-picker select{width:100%;min-height:38px;border:1px solid #d6dce5;border-radius:8px;background:#fff;padding:6px;color:#334155}
 /* 共通テキスト・部屋・建材・採取位置ラベル */
