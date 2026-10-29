@@ -24,7 +24,7 @@ import { isShapeTool,defaultShapeParams,shapeAdjusters,updatedShapeParams,shapeS
 import { rememberSurveyEdit,rememberSurveyOperation,historyStatus,takeUndo,takeRedo } from './survey-map-history.js';
 import { joinRegions,splitRegion,polygonRecordGeometry } from './survey-map-region-operations.js';
 import { lineRecordWithPoints,elbowPath,strokeRecordWithPoints,elbowRecordWithPoints,translateObject,rotateSingleObject,flipSingleObject,scaleObjectInGroup } from './survey-map-transforms.js';
-import {canAnchor,anchorPoint,nearestAnchor,bestConnectionPair,resolveConnectedLine} from './survey-map-connections.js';
+import {ANCHORS,canAnchor,anchorPoint,nearestAnchor,bestConnectionPair,resolveConnectedLine} from './survey-map-connections.js';
 
 let initialized=false;
 let selectedDrawingId='';
@@ -1090,6 +1090,7 @@ function sheetHtml(drawing){
       fillEnabled:Boolean(palette.backgroundEnabled),fillColor:palette.backgroundColor,fillOpacity:1};
   });
   const hasPaper=objects.some(o=>o.paperRole&&!o.deleted);
+  const connectionOverlay=connectionOverlayHtml(drawing,objects);
   const draft=polygonDraft?.drawingId===drawing.drawingId?polygonDraft.points:[];
   const size=pageSize(drawing);
   const gridHtml=gridVisible?`<svg class="survey-map-grid-lines" viewBox="0 0 ${size.width} ${size.height}" preserveAspectRatio="none" aria-hidden="true">
@@ -1104,13 +1105,51 @@ function sheetHtml(drawing){
   return `
     ${gridHtml}
     ${hasPaper?'':`<div class="survey-map-fixed-title">${title}</div>`}
-    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
+    <div class="survey-map-object-layer">${drawingObjectsHtml(objects,drawing,selectedObjectIds,strokeEditMode)}${connectionOverlay}${draftHtml}${multiSelectionHandles(drawing,objects)}</div>
     ${regionPreviewMarkup(drawing)}
     ${objects.length?'':'<div class="survey-map-empty">ツール → 四角 を選んで<br>A4上をタップすると配置できます</div>'}
     ${hasPaper?'':`<div class="survey-map-fixed-name">${name}</div><div class="survey-map-fixed-legend"><b>凡例</b><br>採取位置<br>含有 / 含有なし<br>みなし / 対象外</div>`}
   `;
 }
 
+function connectionOverlayHtml(drawing,objects){
+  const connecting=activeTool==='elbow'||activeTool==='line'||
+    ['elbow-start','elbow-end','line-start','line-end'].includes(pointerInteraction?.mode);
+  const selected=objects.filter(o=>canAnchor(o) && (
+    connecting||selectedObjectIds.has(o.objectId)||pendingConnectionStart?.objectId===o.objectId
+  ));
+  if(!selected.length)return '';
+  const size=pageSize(drawing);
+  const connected=new Set();
+  for(const line of objects){
+    if(line.type!=='line')continue;
+    for(const conn of [line.startConnection,line.endConnection]){
+      if(conn?.targetObjectId)connected.add(conn.targetObjectId+'|'+conn.anchor);
+    }
+  }
+  const circles=selected.flatMap(o=>ANCHORS.map(anchor=>{
+    const point=anchorPoint(o,anchor);
+    if(!point)return '';
+    const bound=connected.has(o.objectId+'|'+anchor);
+    return `<circle class="survey-map-connection-anchor ${bound?'connected':''}"
+      data-survey-anchor-object="${escapeHtml(o.objectId)}"
+      data-survey-anchor-name="${anchor}"
+      cx="${point.x}" cy="${point.y}" r="95"></circle>`;
+  })).join('');
+  return `<svg class="survey-map-connection-overlay" viewBox="0 0 ${size.width} ${size.height}"
+    preserveAspectRatio="none" aria-hidden="true">${circles}</svg>`;
+}
+function highlightConnectionAnchor(hit){
+  const layer=root()?.querySelector('.survey-map-connection-overlay');
+  if(!layer)return;
+  layer.querySelectorAll('.survey-map-connection-anchor.snapped').forEach(el=>el.classList.remove('snapped'));
+  if(hit){
+    const target=Array.from(layer.querySelectorAll('.survey-map-connection-anchor')).find(el=>
+      el.dataset.surveyAnchorObject===hit.targetObjectId &&
+      el.dataset.surveyAnchorName===hit.anchor);
+    target?.classList.add('snapped');
+  }
+}
 function multiSelectionHandles(drawing,objects){
   if(selectedObjectIds.size<2)return '';
   const chosen=objects.filter(o=>selectedObjectIds.has(o.objectId)&&!o.deleted);
@@ -2039,7 +2078,7 @@ function bindEvents(){
     }else if(interaction.mode==='resize-corner'){
       const shifted=shiftActive()||event.shiftKey;
       const resized=resizeRectFromDrag(interaction.original,interaction.corner,interaction.startPoint,currentPoint,{
-        centerFixed:shifted,ratioFixed:false
+        centerFixed:shifted,ratioFixed:interaction.original.sampleRole==='marker'
       });
       draft=alignResizeToGrid(resized,interaction.original,'resize-corner',interaction.corner,drawing,shifted);
     }else if(interaction.mode==='resize'){
