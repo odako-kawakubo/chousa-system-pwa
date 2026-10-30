@@ -7,12 +7,25 @@ import { getOutputSettings, normalizeOutputSettings } from './output-settings-st
 import { formatSamplingCode, formatPartDisplay } from './output-format.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
-const FONT_CACHE = 'chousa-pdf-fonts-bizudp-v1';
-const FONT_FAMILY = 'BIZUDPGothic';
-const FONT_FILES = Object.freeze({
-  normal:{ name:'BIZUDPGothic-Regular.ttf', url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDPGothic-Regular.ttf' },
-  bold:{ name:'BIZUDPGothic-Bold.ttf', url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDPGothic-Bold.ttf' }
+const FONT_CACHE = 'chousa-pdf-fonts-bizud-v2';
+const FONT_DEFINITIONS = Object.freeze({
+  udp: {
+    family: 'BIZUDPGothic',
+    files: {
+      normal: {name:'BIZUDPGothic-Regular.ttf',url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDPGothic-Regular.ttf'},
+      bold: {name:'BIZUDPGothic-Bold.ttf',url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDPGothic-Bold.ttf'}
+    }
+  },
+  ud: {
+    family: 'BIZUDGothic',
+    files: {
+      normal: {name:'BIZUDGothic-Regular.ttf',url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDGothic-Regular.ttf'},
+      bold: {name:'BIZUDGothic-Bold.ttf',url:'https://raw.githubusercontent.com/googlefonts/morisawa-biz-ud-gothic/main/fonts/ttf/BIZUDGothic-Bold.ttf'}
+    }
+  }
 });
+const PDF_FONT_FAMILY = new WeakMap();
+function activeFontFamily(pdf){return PDF_FONT_FAMILY.get(pdf)||FONT_DEFINITIONS.udp.family;}
 
 const PAGE_W = 210;
 const PAGE_H = 297;
@@ -29,7 +42,7 @@ const FOOTNOTE_BOTTOM = 8;
 const MATERIAL_WIDTHS = Object.freeze([6,33,12,42,6,19,19,53]);
 const ROOM_WIDTHS = Object.freeze([10,12,22,12,6,38,35,6,19,30]);
 
-let fontBase64Promise = null;
+const fontBase64Promises = new Map();
 
 function loadScript(src, globalName) {
   if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
@@ -70,21 +83,28 @@ function arrayBufferToBase64(buffer) {
   for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunk, bytes.length)));
   return btoa(binary);
 }
-async function fontBase64Files() {
-  if (!fontBase64Promise) {
-    fontBase64Promise = Promise.all(Object.entries(FONT_FILES).map(async ([style,file]) => {
-      const response = await fetchFontResponse(file.url);
+async function fontBase64Files(fontKey='udp') {
+  const key=fontKey==='ud'?'ud':'udp';
+  if(!fontBase64Promises.has(key)){
+    const files=FONT_DEFINITIONS[key].files;
+    const promise=Promise.all(Object.entries(files).map(async ([style,file])=>{
+      const response=await fetchFontResponse(file.url);
       return [style,file,arrayBufferToBase64(await response.arrayBuffer())];
     }));
+    fontBase64Promises.set(key,promise);
+    promise.catch(()=>fontBase64Promises.delete(key));
   }
-  return fontBase64Promise;
+  return fontBase64Promises.get(key);
 }
-async function registerFonts(pdf) {
-  const files = await fontBase64Files();
-  files.forEach(([style,file,base64]) => {
+async function registerFonts(pdf,fontKey='udp') {
+  const key=fontKey==='ud'?'ud':'udp';
+  const definition=FONT_DEFINITIONS[key];
+  const files=await fontBase64Files(key);
+  files.forEach(([style,file,base64])=>{
     pdf.addFileToVFS(file.name,base64);
-    pdf.addFont(file.name,FONT_FAMILY,style);
+    pdf.addFont(file.name,definition.family,style);
   });
+  PDF_FONT_FAMILY.set(pdf,definition.family);
 }
 
 function chunkRows(rows,size) {
@@ -101,7 +121,7 @@ function isPositive(value) {
   return text.includes('石綿含有');
 }
 function setFont(pdf,size,style='normal',color=BLACK) {
-  pdf.setFont(FONT_FAMILY,style);
+  pdf.setFont(activeFontFamily(pdf),style);
   pdf.setFontSize(size);
   pdf.setTextColor(...color);
 }
@@ -115,15 +135,21 @@ function roomNoTokens(value) {
 function wrapRoomNoLines(pdf,value,width,size) {
   const tokens=roomNoTokens(value);
   if(!tokens.length)return [];
-  pdf.setFont(FONT_FAMILY,'normal');
-  pdf.setFontSize(size);
+  setFont(pdf,size,'normal');
+  // Split a single overlong token as well as comma-separated room numbers.
   const lines=[];
   let current='';
-  tokens.forEach((token)=>{
-    const next=current?`${current}、${token}`:token;
-    if(!current||pdf.getTextWidth(next)<=width)current=next;
-    else{lines.push(current);current=token;}
-  });
+  for(const token of tokens){
+    for(const character of [...(current? '、'+token : token)]){
+      const next=current+character;
+      if(current && pdf.getTextWidth(next)>width){
+        lines.push(current);
+        current=character;
+      }else{
+        current=next;
+      }
+    }
+  }
   if(current)lines.push(current);
   return lines;
 }
@@ -242,7 +268,7 @@ function materialRowHeight(pdf,row,widths,settings) {
     if(index===6)return;
     height=Math.max(height,requiredTextHeight(pdf,value,widths[index],{size:settings.materialBodySize,roomTokens:index===3,paddingX:.8,paddingY:.9}));
   });
-  return Math.min(30,height);
+  return height;
 }
 function paginateRows(rows,heights,availableHeight) {
   const pages=[];let currentRows=[];let currentHeights=[];let used=0;
@@ -295,7 +321,7 @@ function roomRowBaseHeight(pdf,row,widths,settings) {
     if(col===8)return;
     height=Math.max(height,requiredTextHeight(pdf,value,widths[col],{size:settings.roomBodySize,paddingX:.8,paddingY:.9}));
   });
-  return Math.min(30,height);
+  return height;
 }
 function groupRanges(rows,keyFn) {
   const ranges=[];let start=0;
@@ -460,7 +486,7 @@ async function buildVectorPdf({targets,vm,photoSources,onProgress=null,settings=
   const outputSettings=normalizeOutputSettings(settings||getOutputSettings());
   onProgress?.('PDFフォントを準備しています…',.05);
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true,putOnlyUsedFonts:true});
-  await registerFonts(pdf);
+  await registerFonts(pdf,outputSettings.pdfFont);
   const state={pageCount:0};const list=Array.isArray(targets)?targets:[];
   list.forEach((target,index)=>{onProgress?.(`PDFを作成中 ${index+1} / ${list.length}`,(index+1)/Math.max(1,list.length));renderTarget(pdf,target,vm,photoSources,state,outputSettings);});
   if(!state.pageCount){addPage(pdf,state);setFont(pdf,10,'normal');pdf.text('出力対象がありません。',10,20);}
