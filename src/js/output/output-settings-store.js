@@ -8,6 +8,7 @@ import { getCurrentProject } from '../projects/project-store.js';
 const STORAGE_KEY = 'chousa-output-settings-v0176';
 
 export const DEFAULT_OUTPUT_SETTINGS = Object.freeze({
+  pdfFont: 'udp',
   titleSize: 18,
   materialBodySize: 7.5,
   materialHeaderSize: 7.5,
@@ -52,6 +53,7 @@ function clamp(value, min, max, fallback) {
 export function normalizeOutputSettings(value = {}) {
   const base = { ...DEFAULT_OUTPUT_SETTINGS, ...(value || {}) };
   return {
+    pdfFont: base.pdfFont === 'ud' ? 'ud' : 'udp',
     titleSize: clamp(base.titleSize, 14, 24, DEFAULT_OUTPUT_SETTINGS.titleSize),
     materialBodySize: clamp(base.materialBodySize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.materialBodySize),
     materialHeaderSize: clamp(base.materialHeaderSize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.materialHeaderSize),
@@ -84,6 +86,7 @@ export function saveOutputSettings(settings) {
   const stored = readStore();
   const id = projectId();
   stored.common = {
+    pdfFont: next.pdfFont,
     titleSize: next.titleSize,
     materialBodySize: next.materialBodySize,
     materialHeaderSize: next.materialHeaderSize,
