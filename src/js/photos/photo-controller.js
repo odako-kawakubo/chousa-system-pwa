@@ -423,9 +423,10 @@ async function confirmSamplingLocationEdit(key, nextLocation) {
  * 選択写真をPhoto Board Editorへ順番付きで渡す。編集session作成はphoto-record-actions側へ委譲する。
  */
 async function startEditSequence(photoIds) {
+  const selectedIds = [...(photoIds || [])];
   clearSelectionMode();
   try {
-    await startPhotoEditSequence(photoIds);
+    await startPhotoEditSequence(selectedIds);
   } catch (error) {
     console.error(error);
     window.alert(`看板編集を開始できませんでした。\n${error.message || error}`);
