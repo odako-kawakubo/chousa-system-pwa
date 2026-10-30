@@ -135,7 +135,8 @@ function roomNoTokens(value) {
 function wrapRoomNoLines(pdf,value,width,size) {
   const tokens=roomNoTokens(value);
   if(!tokens.length)return [];
-  setFont(pdf,size,'normal');
+  pdf.setFont(activeFontFamily(pdf),'normal');
+  pdf.setFontSize(size);
   // Split a single overlong token as well as comma-separated room numbers.
   const lines=[];
   let current='';
