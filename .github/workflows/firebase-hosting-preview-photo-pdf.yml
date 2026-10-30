@@ -1457,11 +1457,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
-          projectId: odako-chousa-system-pwa
-          channelId: review-photo-pdf
-          expires: 30d
+      # Use the same pinned CLI deployment method as the survey-map review.
+      - name: Deploy to Firebase Hosting preview channel (Firebase CLI 15.34.0)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT}" ]; then
+            echo "Firebase service account secret is missing"
+            exit 1
+          fi
+          credentials="${RUNNER_TEMP}/firebase-preview-service-account.json"
+          trap 'rm -f "${credentials}"' EXIT
+          printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
+          chmod 600 "${credentials}"
+          export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
