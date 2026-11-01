@@ -158,7 +158,7 @@ function computeColumnLayout() {
   const longestRoomNo = rooms.reduce((max, room) => Math.max(max, String(room.roomNo || '').length), 0);
   const roomNoWidth = Math.max(54, Math.min(160, 22 + longestRoomNo * 8));
 
-  const fixedRegionWidth = FLOOR_COL_WIDTH + roomNoWidth + COPY_COL_WIDTH + ROOM_NAME_COL_WIDTH + ROOM_NOTE_COL_WIDTH;
+  const fixedRegionWidth = (areaCode === 'E' ? 0 : FLOOR_COL_WIDTH) + roomNoWidth + COPY_COL_WIDTH + ROOM_NAME_COL_WIDTH + ROOM_NOTE_COL_WIDTH;
 
   const groups = parts.map((label, index) => {
     const item = widths[index];
@@ -175,7 +175,7 @@ function computeColumnLayout() {
   return {
     parts,
     roomNoWidth,
-    floorWidth: FLOOR_COL_WIDTH,
+    floorWidth: areaCode === 'E' ? 0 : FLOOR_COL_WIDTH,
     copyWidth: COPY_COL_WIDTH,
     roomNameWidth: ROOM_NAME_COL_WIDTH,
     roomNoteWidth: ROOM_NOTE_COL_WIDTH,
@@ -210,7 +210,7 @@ export function renderRooms() {
 }
 
 function fixedColumns(layout) {
-  return `${layout.floorWidth}px ${layout.roomNoWidth}px ${layout.copyWidth}px ${layout.roomNameWidth}px ${layout.roomNoteWidth}px`;
+  return [layout.floorWidth ? `${layout.floorWidth}px` : '', `${layout.roomNoWidth}px`, `${layout.copyWidth}px`, `${layout.roomNameWidth}px`, `${layout.roomNoteWidth}px`].filter(Boolean).join(' ');
 }
 
 function renderTableHeader(layout) {
@@ -219,7 +219,7 @@ function renderTableHeader(layout) {
   return `
     <div class="finish-sheet-header" style="grid-template-columns:${layout.fixedRegionWidth}px ${layout.materialRegionWidth}px">
       <div class="finish-header-fixed" style="grid-template-columns:${fixedColumns(layout)}">
-        <div class="finish-header-fixed-cell">階</div>
+        ${layout.floorWidth ? '<div class="finish-header-fixed-cell">階</div>' : ''}
         <div class="finish-header-fixed-cell">部屋No.</div>
         <div class="finish-header-fixed-cell">コピー</div>
         <div class="finish-header-fixed-cell">部屋名</div>
@@ -326,13 +326,13 @@ function renderRoomFixedPane(room, group, ctx) {
   const { key, floorText, fixedColumns: columns, roomIsLast, isLastNormalFloor } = ctx;
   return `
     <div class="finish-room-fixed" data-room-key="${escapeHtml(key)}" style="grid-template-columns:${columns}">
-      <div class="finish-meta floor-cell">
+      ${group.areaCode === 'E' ? '' : `<div class="finish-meta floor-cell">
         <div class="room-control">
           <strong>${escapeHtml(floorText)}</strong>
           ${renderFloorAddButton(group, isLastNormalFloor, roomIsLast)}
           ${renderBasementShortcutButton(room, group)}
         </div>
-      </div>
+      </div>`}
       <div class="finish-meta room-no-cell">
         <div class="room-control">
           ${renderRoomFieldControl(room, 'room-no')}
