@@ -408,7 +408,8 @@ async function confirmSamplingLocationEdit(key, nextLocation) {
     const result = await requestSamplingLocationChange({
       materialId:material.materialId,
       samplingBranch:point.branch,
-      nextLocation:String(nextLocation || '')
+      nextLocation:String(nextLocation || ''),
+      nextRoomKey: String(nextLocation || '').includes('|') ? String(nextLocation) : ''
     });
     if (result?.changed || result?.decision === 'unchanged' || result?.decision === 'no-photo') {
       state.samplingLocationEditKey = '';
