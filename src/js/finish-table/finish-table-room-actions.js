@@ -6,6 +6,8 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { roomCarrierRecord, persistSparseFinishRecord } from './finish-table-persistence.js';
 import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
+import { roomLocationKey } from './room-location.js';
+import { refreshSamplingLocationsForRoom } from '../photos/sampling-location-change.js';
 
 export function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
@@ -61,5 +63,6 @@ export function commitRoomField(roomKey, field, rawValue) {
 
   if (dataField === 'roomNo' || dataField === 'roomName') {
     refreshMaterialUsageDerivedFields('room-common-edit');
+    void refreshSamplingLocationsForRoom(roomLocationKey(carrier || currentRoomRecords[0]));
   }
 }
