@@ -12,7 +12,6 @@ import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
 import { getMaterialUsageRoomLabels, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
-import { roomLocationDisplay } from '../finish-table/room-location.js';
 import {
   getVisualOutputPhotoId,
   getSamplingOutputPhotoId,
