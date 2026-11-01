@@ -415,7 +415,8 @@ async function updateMaterialControl(control) {
       const result = await requestSamplingLocationChange({
         materialId,
         samplingBranch:Number(locationMatch[1]),
-        nextLocation:String(control.value || '')
+        nextLocation:String(control.selectedOptions?.[0]?.dataset?.locationLabel || ''),
+         nextRoomKey:String(control.value || '')
       });
 
       // 採取場所は対象行だけ正本から描き直し、一覧全体の再生成を避ける。
