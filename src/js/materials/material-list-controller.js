@@ -123,7 +123,10 @@ function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) 
     return {
       ...row,
       usageLocationDisplay: roomOptions.map((item) => item.display).join('、') || row.usageLocation,
-      sampleLocationOptions: roomOptions
+      sampleLocationOptions: roomOptions.map((option) => ({
+        ...option,
+        display: option.areaCode === 'E' ? (option.roomName || option.roomNo) : option.display
+      }))
     };
   });
 }
@@ -416,7 +419,7 @@ async function updateMaterialControl(control) {
         materialId,
         samplingBranch:Number(locationMatch[1]),
         nextLocation:String(control.selectedOptions?.[0]?.dataset?.locationLabel || ''),
-         nextRoomKey:String(control.value || '')
+        nextRoomKey:String(control.value || '')
       });
 
       // 採取場所は対象行だけ正本から描き直し、一覧全体の再生成を避ける。
