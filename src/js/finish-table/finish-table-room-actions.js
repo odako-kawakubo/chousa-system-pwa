@@ -8,6 +8,7 @@ import { roomCarrierRecord, persistSparseFinishRecord } from './finish-table-per
 import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
 import { roomLocationKey } from './room-location.js';
 import { refreshSamplingLocationsForRoom } from '../photos/sampling-location-change.js';
+import { refreshVisualPhotoBoardsForRoom } from '../photos/room-photo-regeneration.js';
 
 export function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
@@ -63,6 +64,8 @@ export function commitRoomField(roomKey, field, rawValue) {
 
   if (dataField === 'roomNo' || dataField === 'roomName') {
     refreshMaterialUsageDerivedFields('room-common-edit');
-    void refreshSamplingLocationsForRoom(roomLocationKey(carrier || currentRoomRecords[0]));
+    const locationKey = roomLocationKey(carrier || currentRoomRecords[0]);
+    void refreshSamplingLocationsForRoom(locationKey);
+    void refreshVisualPhotoBoardsForRoom(locationKey);
   }
 }
