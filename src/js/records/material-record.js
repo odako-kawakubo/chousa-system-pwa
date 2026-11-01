@@ -24,8 +24,11 @@
  * @property {string} analysisRequired
  * @property {number} sampleCount
  * @property {string} sampleLocation1
+ * @property {string} sampleRoomKey1 areaCode|roomPosition
  * @property {string} sampleLocation2
+ * @property {string} sampleRoomKey2 areaCode|roomPosition
  * @property {string} sampleLocation3
+ * @property {string} sampleRoomKey3 areaCode|roomPosition
  * @property {string[]} samplePart 複数選択された採取部位。旧string入力もcreate時に配列へ正規化する。
  * @property {boolean} sampleDone
  * @property {string} sampleDate
@@ -191,8 +194,11 @@ export function createMaterialRecord(fields) {
     analysisRequired,
     sampleCount,
     sampleLocation1: String(fields.sampleLocation1 ?? ''),
+    sampleRoomKey1: String(fields.sampleRoomKey1 ?? ''),
     sampleLocation2: String(fields.sampleLocation2 ?? ''),
+    sampleRoomKey2: String(fields.sampleRoomKey2 ?? ''),
     sampleLocation3: String(fields.sampleLocation3 ?? ''),
+    sampleRoomKey3: String(fields.sampleRoomKey3 ?? ''),
     samplePart: normalizeSampleParts(fields.samplePart),
     sampleDone: Boolean(fields.sampleDone),
     sampleDate: String(fields.sampleDate ?? ''),
