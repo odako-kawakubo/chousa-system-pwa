@@ -40,7 +40,7 @@ function defaultPartName(areaCode, partIndex) {
   return partIndex >= 5 ? '' : name;
 }
 
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo }) {
+function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName = '' }) {
   const roomUid = nextRoomUid();
   const records = [];
 
@@ -51,7 +51,7 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo }) {
         roomPosition,
         floor,
         roomNo,
-        roomName: '',
+        roomName,
         position: computeCellPosition(partIndex, row),
         part: defaultPartName(areaCode, partIndex),
         roomUid
@@ -95,12 +95,13 @@ export function createDefaultFinishRecords() {
     }));
   }
 
-  DEFAULT_FINISH_STRUCTURE.externalRoomNos.forEach((roomNo, index) => {
+  DEFAULT_FINISH_STRUCTURE.externalRoomNos.forEach((roomName, index) => {
     records.push(...createRoomRecords({
       areaCode: 'E',
       floor: null,
       roomPosition: pad(index + 1, 3),
-      roomNo
+      roomNo: `E-${index + 1}`,
+      roomName
     }));
   });
 
