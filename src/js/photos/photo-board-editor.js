@@ -191,6 +191,7 @@ function snapshotSamplingFromRecord_(record) {
     sampleBaseNo: record.sampleBaseNo || String(record.sampleNo || '').split('-')[0] || material?.sampleBaseNo || '',
     samplingBranch: Number(record.samplingBranch || 0),
     samplingPlace: record.samplingPlace || target?.samplingPlace || '',
+    samplingRoomKey: target?.roomKey || '',
     part: record.part || target?.part || '',
     shootingType: record.shootingType || '',
     boardDate: boardDateFromRecord(record),
@@ -435,7 +436,8 @@ async function reflectSamplingPlace_() {
   const result = await requestSamplingLocationChange({
     materialId,
     samplingBranch,
-    nextLocation
+    nextLocation,
+    nextRoomKey:String(active.draft.samplingRoomKey || '')
   });
 
   if (result?.decision === 'retake') {
