@@ -437,6 +437,8 @@ function handleAction(button) {
     case 'add-room': {
       if (button.dataset.floorKey && !button.dataset.floorKey.includes('group')) {
         withHistory(() => addRoomToFloor(button.dataset.floorKey));
+      } else if (button.dataset.floorKey === 'external-group') {
+        withHistory(() => addExternalRoom());
       } else {
         withHistory(() => addRoomAfter(button.dataset.roomKey));
       }
