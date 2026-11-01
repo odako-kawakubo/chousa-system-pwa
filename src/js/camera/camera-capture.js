@@ -29,6 +29,7 @@ export function buildCameraBoardData(state, boardSettings = {}) {
       subjectFontSize: boardSettings.subjectFontSize,
       addressFontSize: boardSettings.addressFontSize,
       samplingPlace: target.samplingPlace || '',
+      areaCode: target.areaCode || '',
       sampleNo: samplingDisplayNo(target),
       statusCode: currentStatusCode(state),
       date: todayText()
@@ -43,6 +44,8 @@ export function buildCameraBoardData(state, boardSettings = {}) {
     subjectFontSize: boardSettings.subjectFontSize,
     addressFontSize: boardSettings.addressFontSize,
     roomNo: room.roomNo || '',
+    roomName: room.roomName || '',
+    areaCode: room.areaCode || '',
     part: target.part || '',
     statusCode: '5',
     date: todayText()
