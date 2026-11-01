@@ -19,6 +19,7 @@ function esc(value) {
 function roomTitle(room) {
   const no = String(room?.roomNo || '-').trim();
   const name = String(room?.roomName || '').trim();
+  if (room?.areaCode === 'E') return name || no;
   return name && name !== no ? `${no}　${name}` : no;
 }
 
@@ -208,7 +209,7 @@ export function renderVisualView(container, view, state) {
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
         <h4>${esc(roomTitle(room))}</h4>
-        <span class="hint">部屋No. ${esc(room.roomNo || '-')}</span>
+        <span class="hint">${room.areaCode === 'E' ? '外部' : `部屋No. ${esc(room.roomNo || '-')}`}</span>
       </div>
       <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}${renderUnorganizedBlock(view.unorganizedPhotos, 'visual')}</div>
     </section>
