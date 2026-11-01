@@ -226,7 +226,7 @@ function renderAnalysisSelect(row) {
 
 function renderSamplePlaceCell(row, index) {
   const field = `sampleLocation${index}`;
-  const current = row[field];
+  const current = row[`sampleRoomKey${index}`] || row[field];
   const enabled = row.sampleLocationEnabled[index - 1];
   return `
     <td class="col-sample-place material-control-cell${enabled ? '' : ' disabled-cell'}">
@@ -283,14 +283,14 @@ function renderPartLines(value) {
 function renderCandidateSelect(row, field, candidates, current, disabled = false) {
   const options = [];
   (candidates || []).forEach((candidate) => {
-    const value = String(candidate && typeof candidate === 'object' ? candidate.value : candidate || '').trim();
+    const value = String(candidate && typeof candidate === 'object' ? (candidate.key || candidate.value) : candidate || '').trim();
     if (!value || options.some((item) => item.value === value)) return;
     const label = String(candidate && typeof candidate === 'object' ? candidate.display : candidate || value).trim() || value;
-    options.push({ value, label });
+    options.push({ value, label, location: String(candidate && typeof candidate === 'object' ? (candidate.areaCode === 'E' ? (candidate.roomName || candidate.roomNo) : (candidate.value || candidate.display)) : value) });
   });
   const currentValue = String(current || '').trim();
   if (currentValue && !options.some((item) => item.value === currentValue)) {
-    options.push({ value: currentValue, label: currentValue });
+    options.push({ value: currentValue, label: currentValue, location: currentValue });
   }
   return `
     <select
@@ -301,7 +301,7 @@ function renderCandidateSelect(row, field, candidates, current, disabled = false
       ${disabled ? 'disabled' : ''}
     >
       <option value=""></option>
-      ${options.map((item) => `<option value="${escapeAttr(item.value)}" ${currentValue === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
+      ${options.map((item) => `<option value="${escapeAttr(item.value)}" data-location-label="${escapeAttr(item.location)}" ${currentValue === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>
   `;
 }
