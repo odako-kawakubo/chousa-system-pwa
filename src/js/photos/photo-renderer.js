@@ -251,8 +251,8 @@ export function renderSamplingPointBlock(point, openKeys, editKey = '') {
   const extraCount = point.stages.reduce((sum, stage) => sum + Math.max(0, stage.count - (stage.representative ? 1 : 0)), 0);
   const locationControl = isEditingLocation
     ? `<span class="sample-location-edit"><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span><select data-photo-sampling-location-select="${esc(point.key)}">${(point.samplingPlaceOptions || []).map((option) => {
-      const selected = [option.value, option.roomNo, option.roomName].some((value) => String(value || '') === String(point.rawSamplingPlace || ''));
-      const optionValue = selected && point.rawSamplingPlace ? point.rawSamplingPlace : option.value;
+      const selected = point.roomKey ? option.key === point.roomKey : [option.value, option.roomNo, option.roomName].some((value) => String(value || '') === String(point.rawSamplingPlace || ''));
+      const optionValue = option.key || option.value;
       return `<option value="${esc(optionValue)}" ${selected ? 'selected' : ''}>${esc(option.display || option.value)}</option>`;
     }).join('')}${point.rawSamplingPlace && !(point.samplingPlaceOptions || []).some((option) => [option.value, option.roomNo, option.roomName].some((value) => String(value || '') === String(point.rawSamplingPlace))) ? `<option value="${esc(point.rawSamplingPlace)}" selected>${esc(point.samplingPlace)}</option>` : ''}</select><button class="btn small" type="button" data-photo-sampling-location-confirm="${esc(point.key)}">確定</button></span>`
     : `<span class="sample-location-view"><span class="label">${esc(point.samplingPlaceLabel || '部屋No.')}：</span>${esc(point.samplingPlace || '-')} <button class="btn small" type="button" data-photo-sampling-location-edit="${esc(point.key)}">変更</button></span>`;
