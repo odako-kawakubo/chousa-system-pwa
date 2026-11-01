@@ -1,9 +1,9 @@
-name: Review v0.1.9.10A Photo PDF
+name: Review v0.1.9.10B Exterior Room
 
 on:
   push:
     branches:
-      - review/v0.1.9.10-photo-pdf
+      - review/v0.1.9.10B-exterior-room
 
 permissions:
   contents: read
@@ -1473,4 +1473,4 @@ jobs:
           printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
           chmod 600 "${credentials}"
           export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
-          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-exterior-room --expires 30d --project odako-chousa-system-pwa
