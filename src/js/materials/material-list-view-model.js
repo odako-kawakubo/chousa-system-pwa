@@ -55,6 +55,9 @@ export function buildMaterialListRows(records) {
         sampleLocation1: String(record.sampleLocation1 || ''),
         sampleLocation2: String(record.sampleLocation2 || ''),
         sampleLocation3: String(record.sampleLocation3 || ''),
+        sampleRoomKey1: String(record.sampleRoomKey1 || ''),
+        sampleRoomKey2: String(record.sampleRoomKey2 || ''),
+        sampleRoomKey3: String(record.sampleRoomKey3 || ''),
         sampleLocationEnabled: [
           String(record.analysisRequired || '採取・分析') === '採取・分析' && sampleCount >= 1,
           String(record.analysisRequired || '採取・分析') === '採取・分析' && sampleCount >= 2,
