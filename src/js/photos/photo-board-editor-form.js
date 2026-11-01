@@ -118,11 +118,24 @@ function samplingFields(entry, optionsProvider) {
   const branches = [...new Set(targets.map((target) => Number(target.branch)).filter(Boolean))];
   const hasMaterial = materials.some((item) => item.materialId === selectedMaterialId);
   const activeTarget = targets.find((target) => Number(target.branch) === Number(entry.draft.samplingBranch || 0)) || null;
-  const placeCandidates = uniqueEditorOptions([
-    ...(activeTarget?.placeOptions || []).map((item) => item?.value || item),
-    ...targets.flatMap((target) => (target.placeOptions || []).map((item) => item?.value || item)),
-    entry.draft.samplingPlace
-  ]);
+  const placeCandidates = new Map();
+  [...(activeTarget?.placeOptions || []), ...targets.flatMap((target) => target.placeOptions || [])].forEach((item) => {
+    const key = String(item?.key || item?.value || item || '');
+    if (!key || placeCandidates.has(key)) return;
+    placeCandidates.set(key, {
+      key,
+      label: String(item?.areaCode === 'E' ? (item.roomName || item.roomNo) : (item?.display || item?.value || item)),
+      place: String(item?.areaCode === 'E' ? (item.roomName || item.roomNo) : (item?.value || item))
+    });
+  });
+  const draftKey = String(entry.draft.samplingRoomKey || '');
+  const draftPlaceValue = String(entry.draft.samplingPlace || '');
+  const selectedPlaceOption = [...placeCandidates.values()].find((item) =>
+    draftKey ? item.key === draftKey : item.place === draftPlaceValue
+  );
+  if (draftPlaceValue && !selectedPlaceOption) placeCandidates.set(draftPlaceValue, {
+    key: draftPlaceValue, label: draftPlaceValue, place: draftPlaceValue
+  });
   const partCandidates = uniqueEditorOptions([
     ...(activeTarget?.partOptions || []),
     ...targets.flatMap((target) => target.partOptions || []),
@@ -149,7 +162,7 @@ function samplingFields(entry, optionsProvider) {
     </select></label>
     <label>部屋No.<select data-editor-sampling-place>
       <option value="" ${!entry.draft.samplingPlace ? 'selected' : ''}>未整理</option>
-      ${placeCandidates.map((place) => `<option value="${esc(place)}" ${place === String(entry.draft.samplingPlace || '') ? 'selected' : ''}>${esc(place)}</option>`).join('')}
+      ${[...placeCandidates.values()].map((place) => `<option value="${esc(place.key)}" data-place-label="${esc(place.place)}" ${(draftKey ? place.key === draftKey : place.key === (selectedPlaceOption?.key || draftPlaceValue)) ? 'selected' : ''}>${esc(place.label)}</option>`).join('')}
     </select></label>
     <label>採取部位<select data-editor-sampling-part>
       <option value="" ${!entry.draft.part ? 'selected' : ''}>未整理</option>
@@ -188,6 +201,7 @@ function syncSamplingPlace(entry, optionsProvider) {
 
   if (!target) return;
   entry.draft.samplingPlace = target.samplingPlace || '';
+  entry.draft.samplingRoomKey = target.roomKey || '';
   entry.draft.part = target.part || entry.draft.part;
 }
 
@@ -219,6 +233,7 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
     entry.draft.sampleBaseNo = material?.sampleBaseNo || '';
     entry.draft.samplingBranch = 0;
     entry.draft.samplingPlace = '';
+    entry.draft.samplingRoomKey = '';
     entry.draft.part = '';
     rerenderControls = true;
   } else if (target.matches('[data-editor-branch]')) {
@@ -226,11 +241,13 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
     if (entry.draft.samplingBranch) syncSamplingPlace(entry, optionsProvider);
     else {
       entry.draft.samplingPlace = '';
+      entry.draft.samplingRoomKey = '';
       entry.draft.part = '';
     }
     rerenderControls = true;
   } else if (target.matches('[data-editor-sampling-place]')) {
-    entry.draft.samplingPlace = String(target.value || '');
+    entry.draft.samplingPlace = String(target.selectedOptions?.[0]?.dataset?.placeLabel || target.value || '');
+    entry.draft.samplingRoomKey = String(target.value || '').includes('|') ? String(target.value) : '';
   } else if (target.matches('[data-editor-sampling-part]')) {
     entry.draft.part = String(target.value || '');
   } else if (target.matches('[data-editor-stage]')) {
