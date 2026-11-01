@@ -232,7 +232,8 @@ export function buildVisualPhotoView(selectedRoomUid = '') {
 function samplingPlaceAt(material, branch) {
   const raw = String(material[`sampleLocation${branch}`] || '').trim();
   return getMaterialSampleLocationDisplay(material.inputId, raw, {
-    preferRoomName: getMaterialRoomNameMode()
+    preferRoomName: getMaterialRoomNameMode(),
+    roomKey: material[`sampleRoomKey${branch}`]
   });
 }
 
