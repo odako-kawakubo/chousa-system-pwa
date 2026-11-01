@@ -13,7 +13,7 @@
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { getShootingTypeLabel, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, isVisualPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
+import { getShootingTypeLabel, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
 import { samplePartsToText } from '../records/material-record.js';
 import { getMaterialSampleLocationDisplay, getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
@@ -211,19 +211,23 @@ export function buildVisualPhotoView(selectedRoomUid = '') {
     };
   }
 
+  // 写真を全件から「部位別」または「未整理」に一度だけ分類する。
+  // 写真が有効な部位キーを持っていても、現在の仕上表にその枠がなければ未整理へ。
+  const targets = activeRoom ? buildVisualTargets(activeRoom) : [];
+  const assignedPhotoIds = new Set(targets.flatMap((target) => target.photos.map((photo) => photo.photoId)));
   const unorganizedPhotos = activeRoom
     ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
         photo.photoType === 'visual'
         && photo.areaCode === activeRoom.areaCode
         && photo.roomPosition === activeRoom.roomPosition
-        && isVisualPhotoUnorganized(photo)
+        && !assignedPhotoIds.has(photo.photoId)
       )))
     : [];
   return {
     mode: 'visual',
     rooms,
     activeRoom,
-    targets: activeRoom ? buildVisualTargets(activeRoom) : [],
+    targets,
     unorganizedPhotos
   };
 }
