@@ -278,6 +278,8 @@ function buildSamplePoint(material, branch, sampleNo) {
     samplingPlace,
     rawSamplingPlace,
     samplingPlaceLabel: samplingPlaceDisplay.label,
+    areaCode: samplingPlaceDisplay.areaCode || '',
+    roomKey: samplingPlaceDisplay.key || '',
     samplingPlaceOptions,
     part: samplePartsToText(material.samplePart),
     // 試料No.は「採取対象建材の連番-枝番」で表示用に組み立てる。
@@ -319,6 +321,9 @@ export function buildSamplingPhotoView(selectedMaterialId = '') {
       sampleLocation1: material.sampleLocation1,
       sampleLocation2: material.sampleLocation2,
       sampleLocation3: material.sampleLocation3,
+      sampleRoomKey1: material.sampleRoomKey1,
+      sampleRoomKey2: material.sampleRoomKey2,
+      sampleRoomKey3: material.sampleRoomKey3,
       color: material.color,
       points,
       photoCount: points.reduce((sum, point) => sum + point.totalCount, 0)
