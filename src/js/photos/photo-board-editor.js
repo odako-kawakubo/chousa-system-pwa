@@ -120,6 +120,8 @@ function boardData(entry = active) {
     subjectFontSize: settings.subjectFontSize,
     addressFontSize: settings.addressFontSize,
     roomNo: entry.draft.roomNo,
+    roomName: entry.record.photoType === PHOTO_TYPES.VISUAL ? (visualRoomByIdentity(entry.draft)?.roomName || '') : '',
+    areaCode: entry.record.photoType === PHOTO_TYPES.VISUAL ? entry.draft.areaCode : (samplingMaterialTargets(entry.draft.materialId || entry.record.materialId).find((item) => Number(item.branch) === Number(entry.draft.samplingBranch))?.areaCode || ''),
     part: entry.draft.part,
     samplingPlace: entry.draft.samplingPlace,
     sampleNo: sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
