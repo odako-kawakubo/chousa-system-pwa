@@ -10,7 +10,8 @@ export const RECORD_MERGE_FIELDS = Object.freeze({
   ]),
   material: Object.freeze([
     'status','materialNo','name','part','usageLocation','level','note','analysisRequired',
-    'sampleCount','sampleLocation1','sampleLocation2','sampleLocation3','samplePart',
+    'sampleCount','sampleLocation1','sampleLocation2','sampleLocation3',
+    'sampleRoomKey1','sampleRoomKey2','sampleRoomKey3','samplePart',
     'sampleDone','sampleDate','sampleName','analysisResult','remarks','systemMemo'
   ]),
   photo: Object.freeze([
