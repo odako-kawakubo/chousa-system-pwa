@@ -235,10 +235,10 @@ function paintBoardBase(ctx, data) {
   drawWrappedCenterText(ctx, data.address || '', tableX + leftW + 5, tableY + rowSubject, rightW - 10, rowAddress, Number(data.addressFontSize) || 17, 2);
 
   // 部屋No.はラベルと値を分けるが、v64同様ラベル/値間の縦罫線は描かない。
-  drawLeftMiddleText(ctx, '　部屋No.', tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
+  drawLeftMiddleText(ctx, data.areaCode === 'E' ? '　外部' : '　部屋No.', tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
   drawLeftMiddleText(
     ctx,
-    data.photoType === 'sampling' ? (data.samplingPlace || '-') : (data.roomNo || '-'),
+    data.photoType === 'sampling' ? (data.samplingPlace || '-') : (data.areaCode === 'E' ? (data.roomName || data.roomNo || '-') : (data.roomNo || '-')),
     tableX + leftW + innerLabelW,
     contentY,
     rightW - innerLabelW,
