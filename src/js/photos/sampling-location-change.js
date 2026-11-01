@@ -14,6 +14,7 @@
  */
 
 import * as materialRecordStore from '../store/material-record-store.js';
+import { resolveRoomLocation, roomLocationDisplay } from '../finish-table/room-location.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
@@ -160,13 +161,14 @@ function askDecision({ material, branch, currentLocation, nextLocation }) {
   });
 }
 
-function updatedMaterialForLocation(material, branch, nextLocation) {
+function updatedMaterialForLocation(material, branch, nextLocation, nextRoomKey = '') {
   const field = sampleLocationField(branch);
   if (!field) throw new Error('採取箇所を確認できません。');
 
   return {
     ...material,
     [field]:nextLocation,
+    [`sampleRoomKey${branch}`]:nextRoomKey,
     updatedAt:new Date().toISOString(),
     updatedDevice:getDeviceCode(),
     systemMemo:appendMaterialSystemMemo(
@@ -270,14 +272,14 @@ async function persistRetakePhotos(photos, currentLocation, nextLocation) {
   return saved;
 }
 
-async function commitDecision({ material, branch, nextLocation, photos, decision }) {
+async function commitDecision({ material, branch, nextLocation, nextRoomKey, photos, decision }) {
   const field = sampleLocationField(branch);
   const currentLocation = text(material[field]);
 
   if (decision === 'reflect') {
     // 画像再生成可能性を先に確認し、失敗時はmaterialRecordを変更しない。
     const prepared = await prepareReflectedPhotos(photos, nextLocation);
-    const nextMaterial = updatedMaterialForLocation(material, branch, nextLocation);
+    const nextMaterial = updatedMaterialForLocation(material, branch, nextLocation, nextRoomKey);
     const savedMaterial = setAndPersistMaterialRecord(
       material,
       nextMaterial,
@@ -288,7 +290,7 @@ async function commitDecision({ material, branch, nextLocation, photos, decision
   }
 
   if (decision === 'retake') {
-    const nextMaterial = updatedMaterialForLocation(material, branch, nextLocation);
+    const nextMaterial = updatedMaterialForLocation(material, branch, nextLocation, nextRoomKey);
     const savedMaterial = setAndPersistMaterialRecord(
       material,
       nextMaterial,
@@ -309,7 +311,8 @@ async function commitDecision({ material, branch, nextLocation, photos, decision
 export async function requestSamplingLocationChange({
   materialId,
   samplingBranch,
-  nextLocation
+  nextLocation,
+  nextRoomKey = ''
 } = {}) {
   const material = materialRecordStore.get(String(materialId || ''));
   const branch = Number(samplingBranch || 0);
@@ -318,9 +321,11 @@ export async function requestSamplingLocationChange({
     return { changed:false, decision:'cancel', reason:'invalid-target' };
   }
 
-  const next = text(nextLocation);
+  const resolved = nextRoomKey ? resolveRoomLocation(nextRoomKey, { context:'photo' }) : null;
+  const next = resolved ? resolved.display : text(nextLocation);
+  const stableKey = resolved?.key || '';
   const current = text(material[field]);
-  if (next === current) {
+  if (next === current && stableKey === String(material[`sampleRoomKey${branch}`] || '')) {
     return { changed:false, decision:'unchanged', material, photos:[] };
   }
 
@@ -328,7 +333,7 @@ export async function requestSamplingLocationChange({
   if (!photos.length) {
     const savedMaterial = setAndPersistMaterialRecord(
       material,
-      updatedMaterialForLocation(material, branch, next),
+      updatedMaterialForLocation(material, branch, next, stableKey),
       'sampling-location-no-photo'
     );
     return { changed:savedMaterial !== material, decision:'no-photo', material:savedMaterial, photos:[] };
@@ -361,6 +366,7 @@ export async function requestSamplingLocationChange({
         material,
         branch,
         nextLocation:next,
+        nextRoomKey:stableKey,
         photos,
         decision
       });
