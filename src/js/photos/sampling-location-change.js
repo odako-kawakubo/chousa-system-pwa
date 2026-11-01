@@ -14,7 +14,7 @@
  */
 
 import * as materialRecordStore from '../store/material-record-store.js';
-import { resolveRoomLocation, roomLocationDisplay } from '../finish-table/room-location.js';
+import { resolveRoomLocation } from '../finish-table/room-location.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
@@ -85,7 +85,8 @@ function branchPhotos(materialId, branch) {
   });
 }
 
-function boardDataForPhoto(photo, samplingPlace) {
+function boardDataForPhoto(photo, samplingPlace, roomKey = '') {
+  const room = resolveRoomLocation(roomKey, { context:'photo' });
   const settings = boardSettingsStore.get();
   return {
     photoType:PHOTO_TYPES.SAMPLING,
@@ -94,6 +95,7 @@ function boardDataForPhoto(photo, samplingPlace) {
     subjectFontSize:settings.subjectFontSize,
     addressFontSize:settings.addressFontSize,
     samplingPlace,
+    areaCode:room?.areaCode || '',
     sampleNo:photo.sampleNo || '',
     statusCode:samplingStatusCode(photo.shootingType),
     date:formatDate(photo.boardDate || photo.capturedAt)
@@ -178,7 +180,7 @@ function updatedMaterialForLocation(material, branch, nextLocation, nextRoomKey 
   };
 }
 
-async function prepareReflectedPhotos(photos, nextLocation) {
+async function prepareReflectedPhotos(photos, nextLocation, roomKey = '') {
   const prepared = [];
 
   for (const photo of photos) {
@@ -193,7 +195,7 @@ async function prepareReflectedPhotos(photos, nextLocation) {
       shootingType:photo.shootingType,
       boardPosition:photo.boardPosition || 'bottom-left',
       boardSize:photo.boardSize || 'medium',
-      boardData:boardDataForPhoto(photo, nextLocation)
+      boardData:boardDataForPhoto(photo, nextLocation, roomKey)
     });
 
     prepared.push({ photo, completedBlob });
@@ -278,7 +280,7 @@ async function commitDecision({ material, branch, nextLocation, nextRoomKey, pho
 
   if (decision === 'reflect') {
     // 画像再生成可能性を先に確認し、失敗時はmaterialRecordを変更しない。
-    const prepared = await prepareReflectedPhotos(photos, nextLocation);
+    const prepared = await prepareReflectedPhotos(photos, nextLocation, nextRoomKey);
     const nextMaterial = updatedMaterialForLocation(material, branch, nextLocation, nextRoomKey);
     const savedMaterial = setAndPersistMaterialRecord(
       material,
@@ -374,4 +376,43 @@ export async function requestSamplingLocationChange({
 
     return { changed:false, decision:'cancel', material, photos:[] };
   }
+}
+
+/**
+ * 部屋名の変更で参照先の名称が変わったときだけ、採取場所の表示キャッシュを同期する。
+ * 同名の別室や手入力場所は触らない。写真がある場合は画像生成に成功した後に
+ * レコードを保存する。失敗した写真は既存画像のまま残し、エラーを通知する。
+ */
+export async function refreshSamplingLocationsForRoom(roomKey) {
+  const room = resolveRoomLocation(roomKey, { context:'photo' });
+  if (!room) return { changed:0, errors:[] };
+  const changes = [];
+  materialRecordStore.getAll().forEach((material) => {
+    if (material.status !== 'active') return;
+    for (let branch = 1; branch <= 3; branch += 1) {
+      if (String(material[`sampleRoomKey${branch}`] || '') !== room.key) continue;
+      if (text(material[`sampleLocation${branch}`]) === room.display) continue;
+      changes.push({ material, branch });
+    }
+  });
+  const errors = [];
+  for (const { material, branch } of changes) {
+    try {
+      const photos = branchPhotos(material.materialId, branch);
+      const prepared = await prepareReflectedPhotos(photos, room.display, room.key);
+      const current = materialRecordStore.get(material.materialId) || material;
+      setAndPersistMaterialRecord(current, {
+        ...current,
+        [`sampleLocation${branch}`]:room.display
+      }, 'room-name-sampling-location-refresh');
+      await persistReflectedPhotos(prepared, room.display);
+    } catch (error) {
+      errors.push({ materialId:material.materialId, branch, error:String(error?.message || error) });
+      console.error('採取場所の部屋名連動に失敗しました', material.materialId, branch, error);
+    }
+  }
+  if (errors.length && typeof window !== 'undefined') {
+    window.alert(`部屋名変更に伴う採取写真の看板更新に失敗した箇所が${errors.length}件あります。元の写真は保持されています。`);
+  }
+  return { changed:changes.length - errors.length, errors };
 }
