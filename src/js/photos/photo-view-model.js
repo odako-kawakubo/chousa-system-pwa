@@ -17,6 +17,7 @@ import { getShootingTypeLabel, getVisualPhotoRoomKey, getVisualPhotoTargetKey, i
 import { samplePartsToText } from '../records/material-record.js';
 import { getMaterialSampleLocationDisplay, getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
+import { classifyOrphanPhotos } from './photo-orphan-classifier.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
 const SAMPLE_BRANCH_LABELS = Object.freeze(['①', '②', '③']);
@@ -339,4 +340,17 @@ export function buildSamplingPhotoView(selectedMaterialId = '') {
       )))
     : [];
   return { mode: 'sampling', materials, activeMaterial, unorganizedPhotos };
+}
+
+/** 案件内で有効な所属先を失った写真だけをまとめる（表示用。Record更新なし）。 */
+export function buildOrphanPhotoView() {
+  const items = classifyOrphanPhotos(
+    photoRecordStore.getActive(),
+    finishRecordStore.getAll(),
+    materialRecordStore.getAll()
+  ).sort((a, b) =>
+    String(a.photo.capturedAt || '').localeCompare(String(b.photo.capturedAt || ''))
+      || String(a.photo.photoId).localeCompare(String(b.photo.photoId))
+  );
+  return { mode:'orphan', items, photoIds:items.map((item) => item.photo.photoId) };
 }
