@@ -101,7 +101,7 @@ jobs:
           assert(ids({...material,analysisRequired:'目視'}) === 'c,d,e,f,g,h', 'sampling cancellation recovery');
           assert(ids({...material,sampleCount:3}) === 'c,d,h', 'sampling branch recovery');
           assert(ids({...material,status:'deleted'}) === 'c,d,e,f,g,h', 'deleted material preservation');
-          assert(ids(material, []) === 'a,c,d,g,h', 'missing room preservation');
+          assert(ids(material, []) === 'a,b,c,d,g,h', 'missing room preservation');
           const fs = await import('node:fs');
           const source = fs.readFileSync('./src/js/photos/photo-controller.js','utf8');
           assert(source.includes("state.mode === 'orphan'") && source.includes('renderOrphanPhotoView'), 'orphan rendering path missing');
