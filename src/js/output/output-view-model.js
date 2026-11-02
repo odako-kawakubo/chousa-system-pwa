@@ -12,6 +12,7 @@ import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
 import { getMaterialUsageRoomLabels, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
+import { roomLocationDisplay } from '../finish-table/room-location.js';
 import {
   getVisualOutputPhotoId,
   getSamplingOutputPhotoId,
@@ -88,7 +89,7 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
       const partIndex=partIndexFromPosition(record.position);
       const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外', positive:false };
       return {
-        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? text(record.roomName || record.roomNo) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? `外部 ${text(record.roomName || record.roomNo)}` : text(record.roomName),roomNote:text(record.roomNote),
+        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?getMaterialDisplayNo(material):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
@@ -108,7 +109,7 @@ export function buildVisualPhotoOutput(){
       const partSlot=partIndexFromPosition(usage.position);
       photoRecordStore.findVisual({areaCode:usage.areaCode,roomPosition:usage.roomPosition,partSlot,part:usage.part}).slice().sort(photoSort).forEach((photo)=>{
         if(seen.has(photo.photoId))return;seen.add(photo.photoId);
-        candidates.push({photo,photoId:photo.photoId,roomNo:usage.areaCode === 'E' ? text(usage.roomName || usage.roomNo) : numberText(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
+        candidates.push({photo,photoId:photo.photoId,roomNo:usage.areaCode === 'E' ? roomLocationDisplay(usage, { context:'photo' }) : numberText(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
       });
     });
     const storedId=getVisualOutputPhotoId(material.materialId);
