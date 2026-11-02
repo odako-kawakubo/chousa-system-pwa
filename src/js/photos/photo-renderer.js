@@ -159,6 +159,7 @@ export function renderPhotoShell(container, mode) {
         <div class="left photo-mode-tabs">
           <button class="photo-mode-tab ${mode === 'visual' ? 'active' : ''}" type="button" data-photo-mode="visual">目視調査</button>
           <button class="photo-mode-tab ${mode === 'sampling' ? 'active' : ''}" type="button" data-photo-mode="sampling">建材採取</button>
+          <button class="photo-mode-tab ${mode === 'orphan' ? 'active' : ''}" type="button" data-photo-mode="orphan">未整理写真</button>
         </div>
         <div class="right photo-top-actions">
           <button class="btn small" type="button" data-photo-selection-mode="edit">編集</button>
@@ -311,5 +312,34 @@ export function renderSamplingView(container, view, state) {
       </div>
       <div class="photo-detail-body sample-points">${active.points.map((point) => renderSamplingPointBlock(point, state.openSamplingKeys, state.samplingLocationEditKey)).join('')}${renderUnorganizedBlock(view.unorganizedPhotos, 'sampling')}</div>
     </section>
+  </div>`;
+}
+
+/** 所属が無効な写真のみ表示する読み取り専用一覧。既存の部屋・建材内未整理は維持。 */
+export function renderOrphanPhotoView(container, view) {
+  const hint = document.getElementById('photoModeHint');
+  if (hint) hint.textContent = '所属先がなくなった写真を表示します。所属情報は保持され、対象が復帰すると元のタブに戻ります。';
+  if (!view.items.length) {
+    container.innerHTML = '<div class="photo-empty">所属先のない写真はありません。</div>';
+    return;
+  }
+  const cards = view.items.map(({ photo, reason }) => {
+    const type = photo.photoType === 'visual' ? '目視' : '採取';
+    const source = photo.photoType === 'visual'
+      ? `${photo.roomNo || photo.roomPosition || '-'}／${photo.part || '部位未設定'}`
+      : `${photo.materialId || '建材未設定'}／箇所${photo.samplingBranch || '-'}`;
+    return `<article class="photo-frame-card visual-compact">
+      <div class="visual-info-line">
+        <span><b>${esc(type)}　${esc(source)}</b></span>
+        <span class="hint">${esc(reason)}</span>
+      </div>
+      <div class="visual-compact-actions">
+        ${photoThumb(photo)}
+      </div>
+    </article>`;
+  }).join('');
+  container.innerHTML = `<div class="photo-review-panel photo-orphan-review">
+    <div class="photo-review-panel-head"><h4>未整理写真</h4><span class="hint">${view.items.length}枚</span></div>
+    <div class="photo-detail-body">${cards}</div>
   </div>`;
 }
