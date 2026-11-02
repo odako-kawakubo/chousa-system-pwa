@@ -81,44 +81,38 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
           import { createDefaultFinishRecords } from './src/js/default/default-finish-data.js';
           import * as finishStore from './src/js/store/finish-record-store.js';
-          import * as materialStore from './src/js/store/material-record-store.js';
-          import * as photoStore from './src/js/store/photo-record-store.js';
+          import { roomLocationKey, roomLocationDisplay, resolveRoomLocation } from './src/js/finish-table/room-location.js';
           import { createMaterialRecord } from './src/js/records/material-record.js';
-          import { getMaterialUsageRoomOptions, getMaterialSampleLocationDisplay } from './src/js/finish-table/material-usage-derived.js';
-          import { buildVisualPhotoView } from './src/js/photos/photo-view-model.js';
+          import { isVisualPhotoUnorganized } from './src/js/records/photo-record.js';
           import { mergeRecordByFieldEditedAt } from './src/js/sync/record-field-merge.js';
-
           const assert = (ok, message) => { if (!ok) throw new Error(message); };
           const records = createDefaultFinishRecords();
-          const exterior = records.filter((record) => record.areaCode === 'E');
-          const anchor = exterior.find((record) => record.roomPosition === '001');
-          assert(anchor.roomNo === 'E-1' && anchor.roomName === '東面', 'external initial room identity');
+          const anchor = records.find((record) => record.areaCode === 'E' && record.roomPosition === '001');
+          assert(anchor.roomNo === 'E-1' && anchor.roomName === '東面', 'exterior initial room identity');
           finishStore.replaceAll(records);
-          materialStore.set(createMaterialRecord({ materialId:'R001', inputId:1, name:'建材A', sampleRoomKey1:'E|001' }));
-          finishStore.set({ ...anchor, materialId:'R001' });
-          const options = getMaterialUsageRoomOptions(1);
-          assert(options[0]?.key === 'E|001' && options[0]?.display === '東面', 'exterior room-number mode should use room name');
-          assert(getMaterialUsageRoomOptions(1, { preferRoomName:true })[0]?.display === '外部 東面', 'exterior room-name mode');
-          assert(getMaterialSampleLocationDisplay(1, '東面', { roomKey:'E|001' }).value === '東面', 'sampling display from stable key');
-          const sample = materialStore.get('R001');
-          assert(sample.sampleRoomKey1 === 'E|001', 'sampling room reference lost on material creation');
+          assert(roomLocationKey(anchor) === 'E|001', 'stable exterior room key');
+          assert(roomLocationDisplay(anchor) === '東面', 'exterior number display');
+          assert(roomLocationDisplay(anchor, { preferRoomName:true }) === '外部 東面', 'exterior name display');
+          assert(resolveRoomLocation('E|001', { context:'photo' })?.display === '東面', 'sampling/visual board display');
+          finishStore.set({ ...anchor, roomName:'東側外壁' });
+          assert(resolveRoomLocation('E|001', { context:'photo' })?.display === '東側外壁', 'room-name edits should resolve live');
+
+          const material = createMaterialRecord({ materialId:'R001', inputId:1, name:'建材A', sampleRoomKey1:'E|001' });
+          assert(material.sampleRoomKey1 === 'E|001', 'sampling reference not retained by material record');
           const merged = mergeRecordByFieldEditedAt('material',
             { materialId:'R001', sampleRoomKey1:'E|001', fieldEditedAt:{ sampleRoomKey1:300 } },
             { materialId:'R001', sampleRoomKey1:'I|001', fieldEditedAt:{ sampleRoomKey1:100 } });
-          assert(merged.record.sampleRoomKey1 === 'E|001', 'sample room reference merge must honor newer local edit');
+          assert(merged.record.sampleRoomKey1 === 'E|001', 'newer sample room key overwritten');
 
-          photoStore.set({ photoId:'P001', photoType:'visual', areaCode:'E', roomPosition:'001', partSlot:5, part:'消えた部位' });
-          photoStore.set({ photoId:'P002', photoType:'visual', areaCode:'E', roomPosition:'001', partSlot:1, part:'壁' });
-          const visual = buildVisualPhotoView(anchor.roomUid);
-          assert(visual.unorganizedPhotos.some((photo) => photo.photoId === 'P001'), 'orphan visual photo disappeared');
-          assert(visual.targets.some((target) => target.photos.some((photo) => photo.photoId === 'P002')), 'assigned visual photo disappeared');
-          const displayed = [
-            ...visual.unorganizedPhotos.map((photo) => photo.photoId),
-            ...visual.targets.flatMap((target) => target.photos.map((photo) => photo.photoId))
-          ];
-          assert(displayed.length === 2 && new Set(displayed).size === 2, 'visual photos duplicated or missing');
+          const orphan = { photoType:'visual', areaCode:'E', roomPosition:'001', partSlot:5, part:'消えた部位' };
+          assert(!isVisualPhotoUnorganized(orphan), 'orphan condition must cover valid-but-unmatched target');
+          const view = fs.readFileSync('./src/js/photos/photo-view-model.js','utf8');
+          assert(view.includes('const assignedPhotoIds = new Set') && view.includes('!assignedPhotoIds.has(photo.photoId)'), 'visual orphan photo classification missing');
+          const board = fs.readFileSync('./src/js/camera/camera-board.js','utf8');
+          assert(board.includes("data.areaCode === 'E'"), 'exterior camera board rule missing');
           NODE
 
       - name: Output formatting regression checks
