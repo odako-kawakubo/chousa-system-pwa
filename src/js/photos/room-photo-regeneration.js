@@ -5,12 +5,8 @@
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { resolveRoomLocation } from '../finish-table/room-location.js';
-import { resolveEditorOriginalPhoto } from './photo-original-source.js';
-import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
-import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { prepareCompletedPhotoUpdate, persistCompletedPhotoUpdate } from './photo-completed-update.js';
 import { getDeviceCode } from '../device-code.js';
-import { getCurrentProject } from '../projects/project-store.js';
-import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 
 function formatBoardDate(photo) {
@@ -21,45 +17,29 @@ function formatBoardDate(photo) {
 }
 
 async function updateVisualCompletedPhoto(photo, room, settings) {
-  const originalBlob = await resolveEditorOriginalPhoto(photo);
-  if (!(originalBlob instanceof Blob)) throw new Error(`元画像を取得できません: ${photo.photoId}`);
-  const completedBlob = await composeCompletedPhotoBlob({
-    originalBlob,
+  const prepared = await prepareCompletedPhotoUpdate(photo, {
     photoType: 'visual',
-    boardPosition: photo.boardPosition || 'bottom-left',
-    boardSize: photo.boardSize || 'medium',
-    boardData: {
-      photoType: 'visual',
-      projectName: settings.subjectText || settings.projectName,
-      address: settings.addressText || settings.address,
-      subjectFontSize: settings.subjectFontSize,
-      addressFontSize: settings.addressFontSize,
-      areaCode: room.areaCode,
-      roomNo: room.roomNo,
-      roomName: room.roomName,
-      part: photo.part,
-      statusCode: '5',
-      date: formatBoardDate(photo)
-    }
+    projectName: settings.subjectText || settings.projectName,
+    address: settings.addressText || settings.address,
+    subjectFontSize: settings.subjectFontSize,
+    addressFontSize: settings.addressFontSize,
+    areaCode: room.areaCode,
+    roomNo: room.roomNo,
+    roomName: room.roomName,
+    part: photo.part,
+    statusCode: '5',
+    date: formatBoardDate(photo)
   });
   const now = new Date().toISOString();
-  await savePhotoBlob(photo.photoId, 'completed', completedBlob, {
-    createdAt: now, fileName: photo.fileName, uploadStatus: 'pending'
-  });
-  const next = photoRecordStore.set({
-    ...photo,
-    roomNo: room.roomNo,
-    isEdited: true,
-    lastEditedDevice: getDeviceCode(),
-    lastEditedAt: now,
-    localCompletedStatus: 'saved',
-    syncStatus: 'pending',
-    fieldEditedAt: touchFieldEditedAt(photo.fieldEditedAt, [
+  await persistCompletedPhotoUpdate(prepared, {
+    roomNo:room.roomNo,
+    isEdited:true,
+    lastEditedDevice:getDeviceCode(),
+    lastEditedAt:now,
+    fieldEditedAt:touchFieldEditedAt(photo.fieldEditedAt, [
       'roomNo', 'isEdited', 'lastEditedDevice', 'lastEditedAt'
     ])
-  });
-  await updateCameraPhotoRecord(next);
-  await persistPhotoForProject(getCurrentProject(), next, 'visual-room-board-refresh');
+  }, 'visual-room-board-refresh');
 }
 
 export async function refreshVisualPhotoBoardsForRoom(roomKey) {
