@@ -12,9 +12,9 @@
 
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
-import { buildVisualPhotoView, buildSamplingPhotoView } from './photo-view-model.js';
+import { buildVisualPhotoView, buildSamplingPhotoView, buildOrphanPhotoView } from './photo-view-model.js';
 import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
-import { renderPhotoShell, renderVisualView, renderSamplingView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
+import { renderPhotoShell, renderVisualView, renderSamplingView, renderOrphanPhotoView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, closePhotoViewer, openDirectPhotoCompare } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
 import {
@@ -45,8 +45,8 @@ const state = {
   openSamplingKeys: new Set(),
   collapsedLocationGroups: new Set(),
   pendingImportContext: null,
-  listScrollTop: { visual: 0, sampling: 0 },
-  reviewScrollTop: { visual: 0, sampling: 0 },
+  listScrollTop: { visual: 0, sampling: 0, orphan: 0 },
+  reviewScrollTop: { visual: 0, sampling: 0, orphan: 0 },
   selectionMode: null,
   selectedPhotoIds: new Set(),
   samplingLocationEditKey: ''
@@ -139,6 +139,21 @@ function render() {
     button.classList.toggle('active', button.dataset.photoMode === state.mode);
   });
 
+  root.querySelectorAll('.photo-top-actions [data-photo-selection-mode], .photo-top-actions [data-photo-picker], .photo-top-actions [data-photo-camera-global]').forEach((button) => {
+    button.hidden = state.mode === 'orphan';
+    button.style.display = state.mode === 'orphan' ? 'none' : '';
+  });
+
+  if (state.mode === 'orphan') {
+    renderOrphanPhotoView(body, buildOrphanPhotoView());
+    hydrateThumbnailImages(root);
+    applySelectionUi();
+    renderedMode = state.mode;
+    restorePhotoScroll();
+    notifyGuideLayoutChanged();
+    return;
+  }
+
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     state.selectedMaterialId = view.activeMaterial?.materialId || '';
@@ -183,6 +198,7 @@ function openFilePicker(context) {
  * 外部ファイルpickerで選択した画像に付与する目視/採取contextを保持・取得する。pickerを開いてからchange発火まで対象情報を失わないための一時状態。
  */
 function externalImportContext() {
+  if (state.mode === 'orphan') return null;
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     const material = view.activeMaterial;
@@ -313,6 +329,7 @@ async function registerCameraPreview(item, { renderAfter = true } = {}) {
  * 写真タブで個別対象を選ばずCameraを開く場合の案件共通contextを返す。
  */
 function globalCameraContext() {
+  if (state.mode === 'orphan') return null;
   if (state.mode === 'sampling') {
     const view = buildSamplingPhotoView(state.selectedMaterialId);
     const material = view.activeMaterial;
@@ -500,7 +517,7 @@ export function capturePhotoUiState() {
 
 export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
   if (!snapshot) return;
-  state.mode = snapshot.mode === 'sampling' ? 'sampling' : 'visual';
+  state.mode = ['visual', 'sampling', 'orphan'].includes(snapshot.mode) ? snapshot.mode : 'visual';
   state.selectedRoomUid = String(snapshot.selectedRoomUid || '');
   state.selectedMaterialId = String(snapshot.selectedMaterialId || '');
   state.openVisualKeys = new Set(snapshot.openVisualKeys || []);
@@ -508,11 +525,13 @@ export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
   state.collapsedLocationGroups = new Set(snapshot.collapsedLocationGroups || []);
   state.listScrollTop = {
     visual:Number(snapshot.listScrollTop?.visual || 0),
-    sampling:Number(snapshot.listScrollTop?.sampling || 0)
+    sampling:Number(snapshot.listScrollTop?.sampling || 0),
+    orphan:Number(snapshot.listScrollTop?.orphan || 0)
   };
   state.reviewScrollTop = {
     visual:Number(snapshot.reviewScrollTop?.visual || 0),
-    sampling:Number(snapshot.reviewScrollTop?.sampling || 0)
+    sampling:Number(snapshot.reviewScrollTop?.sampling || 0),
+    orphan:Number(snapshot.reviewScrollTop?.orphan || 0)
   };
   state.selectionMode = snapshot.selectionMode || null;
   state.selectedPhotoIds = new Set(snapshot.selectedPhotoIds || []);
@@ -530,8 +549,8 @@ export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
   state.openSamplingKeys = new Set();
   state.collapsedLocationGroups = new Set();
   state.pendingImportContext = null;
-  state.listScrollTop = { visual:0, sampling:0 };
-  state.reviewScrollTop = { visual:0, sampling:0 };
+  state.listScrollTop = { visual:0, sampling:0, orphan:0 };
+  state.reviewScrollTop = { visual:0, sampling:0, orphan:0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
   state.samplingLocationEditKey = '';
@@ -550,8 +569,8 @@ export function resetPhotoUiStateForProject() {
   state.openSamplingKeys = new Set();
   state.collapsedLocationGroups = new Set();
   state.pendingImportContext = null;
-  state.listScrollTop = { visual: 0, sampling: 0 };
-  state.reviewScrollTop = { visual: 0, sampling: 0 };
+  state.listScrollTop = { visual: 0, sampling: 0, orphan: 0 };
+  state.reviewScrollTop = { visual: 0, sampling: 0, orphan: 0 };
   state.selectionMode = null;
   state.selectedPhotoIds = new Set();
   state.samplingLocationEditKey = '';
@@ -615,7 +634,12 @@ export function initializePhotoTab() {
     globalCameraContext,
     externalImportContext,
     openFilePicker,
-    addPickedFiles
+    addPickedFiles,
+    openOrphanViewer: (photoId) => {
+      const view = buildOrphanPhotoView();
+      if (!view.photoIds.includes(photoId)) return;
+      openPhotoViewer(photoId, { photos:view.items.map((item) => item.photo), readOnly:true });
+    }
   });
 
   initializePhotoViewer({
