@@ -98,9 +98,9 @@ jobs:
           ];
           const ids = (m, f=finish) => classifyOrphanPhotos(photos, f, [m]).map(item => item.photo.photoId).sort().join(',');
           assert(ids(material) === 'c,d,g,h', 'normal orphan classification');
-          assert(ids({...material,analysisRequired:'目視'}) === 'c,d,e,g,h', 'sampling cancellation recovery');
+          assert(ids({...material,analysisRequired:'目視'}) === 'c,d,e,f,g,h', 'sampling cancellation recovery');
           assert(ids({...material,sampleCount:3}) === 'c,d,h', 'sampling branch recovery');
-          assert(ids({...material,status:'deleted'}) === 'c,d,e,g,h', 'deleted material preservation');
+          assert(ids({...material,status:'deleted'}) === 'c,d,e,f,g,h', 'deleted material preservation');
           assert(ids(material, []) === 'a,c,d,g,h', 'missing room preservation');
           const fs = await import('node:fs');
           const source = fs.readFileSync('./src/js/photos/photo-controller.js','utf8');
