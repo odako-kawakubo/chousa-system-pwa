@@ -352,5 +352,5 @@ export function buildOrphanPhotoView() {
     String(a.photo.capturedAt || '').localeCompare(String(b.photo.capturedAt || ''))
       || String(a.photo.photoId).localeCompare(String(b.photo.photoId))
   );
-  return { mode:'orphan', items, photoIds:items.map((item) => item.photo.photoId) };
+  return { mode:'orphan', items };
 }
