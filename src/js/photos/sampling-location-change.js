@@ -23,9 +23,8 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { setAndPersistMaterialRecord, appendMaterialSystemMemo } from '../materials/material-list-persistence.js';
-import { resolveEditorOriginalPhoto } from './photo-original-source.js';
-import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
-import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { prepareCompletedPhotoUpdate, persistCompletedPhotoUpdate } from './photo-completed-update.js';
+import { updateCameraPhotoRecord } from './photo-local-store.js';
 import { samplingLocationReviewPhotos } from './photo-viewer-data.js';
 import { openSamplingLocationReview } from './photo-viewer.js';
 
@@ -184,21 +183,9 @@ async function prepareReflectedPhotos(photos, nextLocation, roomKey = '') {
   const prepared = [];
 
   for (const photo of photos) {
-    const originalBlob = await resolveEditorOriginalPhoto(photo);
-    if (!(originalBlob instanceof Blob)) {
-      throw new Error(`元写真を取得できませんでした。 (${photo.photoId})`);
-    }
-
-    const completedBlob = await composeCompletedPhotoBlob({
-      originalBlob,
-      photoType:photo.photoType,
-      shootingType:photo.shootingType,
-      boardPosition:photo.boardPosition || 'bottom-left',
-      boardSize:photo.boardSize || 'medium',
-      boardData:boardDataForPhoto(photo, nextLocation, roomKey)
-    });
-
-    prepared.push({ photo, completedBlob });
+    prepared.push(await prepareCompletedPhotoUpdate(
+      photo, boardDataForPhoto(photo, nextLocation, roomKey)
+    ));
   }
 
   return prepared;
@@ -212,8 +199,7 @@ async function persistReflectedPhotos(prepared, nextLocation) {
 
   for (const item of prepared) {
     const previous = item.photo;
-    const next = photoRecordStore.set({
-      ...previous,
+    const next = await persistCompletedPhotoUpdate(item, {
       samplingPlace:nextLocation,
       systemMemo:appendPhotoMemo(
         previous.systemMemo,
@@ -222,18 +208,8 @@ async function persistReflectedPhotos(prepared, nextLocation) {
       isEdited:true,
       lastEditedDevice:device,
       lastEditedAt:now,
-      syncStatus:'pending',
-      localCompletedStatus:'saved',
       fieldEditedAt:touchFieldEditedAt(previous.fieldEditedAt, PHOTO_REFLECT_FIELDS)
-    });
-
-    await savePhotoBlob(next.photoId, 'completed', item.completedBlob, {
-      createdAt:now,
-      fileName:next.fileName,
-      uploadStatus:'pending'
-    });
-    await updateCameraPhotoRecord(next);
-    await persistPhotoForProject(project, next, 'sampling-location-reflect');
+    }, 'sampling-location-reflect');
     saved.push(next);
   }
 
