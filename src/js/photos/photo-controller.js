@@ -55,6 +55,7 @@ const state = {
 let root = null;
 let body = null;
 let renderedMode = 'visual';
+let renderedOrphanPhotos = [];
 let photoTabChangeBound = false;
 
 /**
@@ -143,7 +144,9 @@ function render() {
   if (actions) actions.style.display = state.mode === 'orphan' ? 'none' : '';
 
   if (state.mode === 'orphan') {
-    renderOrphanPhotoView(body, buildOrphanPhotoView());
+    const orphanView = buildOrphanPhotoView();
+    renderedOrphanPhotos = orphanView.items.map(({ photo }) => photo);
+    renderOrphanPhotoView(body, orphanView);
     hydrateThumbnailImages(root);
     applySelectionUi();
     renderedMode = state.mode;
@@ -541,6 +544,7 @@ export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
 
 export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
   state.mode = 'visual';
+  renderedOrphanPhotos = [];
   state.selectedRoomUid = '';
   state.selectedMaterialId = '';
   state.openVisualKeys = new Set();
@@ -561,6 +565,7 @@ export function resetPhotoUiStateForProject() {
   resetPhotoPreviewManager();
 
   state.mode = 'visual';
+  renderedOrphanPhotos = [];
   state.selectedRoomUid = '';
   state.selectedMaterialId = '';
   state.openVisualKeys = new Set();
@@ -633,11 +638,9 @@ export function initializePhotoTab() {
     externalImportContext,
     openFilePicker,
     addPickedFiles,
-    openOrphanViewer: (photoId) => {
-      const view = buildOrphanPhotoView();
-      if (!view.photoIds.includes(photoId)) return;
-      openPhotoViewer(photoId, { photos:view.items.map((item) => item.photo), readOnly:true });
-    }
+    viewerContext: () => state.mode === 'orphan'
+      ? { photos: renderedOrphanPhotos, readOnly: true }
+      : {}
   });
 
   initializePhotoViewer({
