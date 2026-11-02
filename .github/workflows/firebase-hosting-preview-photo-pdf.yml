@@ -869,7 +869,8 @@ jobs:
           grep -q ">確認する<" src/js/photos/sampling-location-change.js
           grep -q "samplingBranch:0" src/js/photos/sampling-location-change.js
           grep -q "shootingType:''" src/js/photos/sampling-location-change.js
-          grep -q "composeCompletedPhotoBlob" src/js/photos/sampling-location-change.js
+          grep -q "prepareCompletedPhotoUpdate" src/js/photos/sampling-location-change.js
+          grep -q "composeCompletedPhotoBlob" src/js/photos/photo-completed-update.js
           grep -q "sampling-location-change.js" src/service-worker.js
 
           # I/J/K: 写真タブ・建材リスト・看板編集から同じHへ接続
