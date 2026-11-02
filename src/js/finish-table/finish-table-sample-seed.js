@@ -77,6 +77,16 @@ function assignSampleMaterialsToFinishRecords(records) {
     records[index] = applySampleMaterial(record, material);
   });
 
+  // 外部サンプルで建材リスト・採取場所・写真のE|001連動を確認できるようにする。
+  const exteriorWall = records.findIndex((record) =>
+    record.areaCode === 'E' && record.roomPosition === '001'
+      && partIndexFromPosition(record.position) === 3
+  );
+  const exteriorSample = materials.find((material) => material.materialId === 'R002');
+  if (exteriorWall >= 0 && exteriorSample) {
+    records[exteriorWall] = applySampleMaterial(records[exteriorWall], exteriorSample);
+  }
+
   return records;
 }
 
