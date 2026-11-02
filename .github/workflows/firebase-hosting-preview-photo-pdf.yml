@@ -115,6 +115,25 @@ jobs:
           assert(board.includes("data.areaCode === 'E'"), 'exterior camera board rule missing');
           NODE
 
+      - name: B official sample exterior seed checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const read = (path) => fs.readFileSync(path, 'utf8');
+          const structure = read('./src/js/finish-table/finish-table-structure-actions.js');
+          const seed = read('./src/js/demo/sample-finish-data.js');
+          const materialSeed = read('./src/js/finish-table/finish-table-sample-seed.js');
+          const photos = read('./src/js/demo/sample-photos.js');
+          const assert = (value, label) => { if (!value) throw new Error(label); };
+          assert(structure.includes("if (areaCode === 'E') { roomNo = `E-${index}`; roomName = customName || ''; }"), 'sample exterior structure still stores name as roomNo');
+          assert(seed.includes("externalRoomNames: ['東面', '西面', '南面', '北面', '中庭']"), 'sample exterior room ordering');
+          assert(materialSeed.includes("sampleRoomKey1: 'E|001'"), 'sample sampling room reference');
+          assert(materialSeed.includes("record.areaCode === 'E' && record.roomPosition === '001'"), 'sample exterior material location');
+          assert(photos.includes("photoId: 'DEMO-PHOTO-E01'") && photos.includes("photoId: 'DEMO-PHOTO-E02'"), 'sample exterior photo coverage');
+          NODE
+
       - name: Output formatting regression checks
         shell: bash
         run: |
