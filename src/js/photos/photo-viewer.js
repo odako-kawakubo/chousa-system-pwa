@@ -193,11 +193,12 @@ function renderNormal() {
   resetPhotoViewerTransform(viewerState.normalTransform);
   title.textContent = photo.fileName || photo.photoId || '写真プレビュー';
   const hasMultiple = viewerState.photos.length > 1;
+  const isReadOnly = viewerState.context.readOnly === true;
   const canCompare = photo.photoType === 'visual' && Boolean(getVisualPhotoTargetKey(photo)) && getCompareTargets(viewerState.context).length >= 2;
   body.innerHTML = `<div class="photo-viewer-shell">
     <div class="photo-viewer-tools">
-      <button type="button" class="btn small" data-photo-edit>看板編集</button>
-      ${canCompare ? '<button type="button" class="btn small" data-photo-compare-open>比較</button>' : ''}
+      ${isReadOnly ? '' : '<button type="button" class="btn small" data-photo-edit>看板編集</button>'}
+      ${canCompare && !isReadOnly ? '<button type="button" class="btn small" data-photo-compare-open>比較</button>' : ''}
     </div>
     <div class="photo-viewer-stage" data-photo-viewer-stage>${renderImage(photo)}</div>
     <button class="photo-viewer-nav photo-viewer-prev" type="button" data-photo-viewer-prev ${hasMultiple ? '' : 'hidden'}>‹</button>
