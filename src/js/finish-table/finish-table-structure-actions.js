@@ -71,7 +71,7 @@ export function buildFlatRoomSeed(areaCode, index, customName = '') {
   let roomName = customName;
   if (!customName && areaCode === 'S') { roomNo = `S-${index}`; roomName = `階段${index}`; }
   if (!customName && areaCode === 'R') { roomNo = `R-${index}`; roomName = index === 1 ? '屋上' : `屋上${index}`; }
-  if (!customName && areaCode === 'E') { roomNo = `E-${index}`; roomName = ''; }
+  if (areaCode === 'E') { roomNo = `E-${index}`; roomName = customName || ''; }
   return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
 }
 
