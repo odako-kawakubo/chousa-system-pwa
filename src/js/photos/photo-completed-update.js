@@ -17,6 +17,7 @@ function projectId() {
 }
 
 export async function prepareCompletedPhotoUpdate(photo, boardData) {
+  const preparedProjectId = projectId();
   const originalBlob = await resolveEditorOriginalPhoto(photo);
   if (!(originalBlob instanceof Blob)) throw new Error(`元写真を取得できません。(${photo.photoId})`);
   const completedBlob = await composeCompletedPhotoBlob({
@@ -27,13 +28,17 @@ export async function prepareCompletedPhotoUpdate(photo, boardData) {
     boardSize: photo.boardSize || 'medium',
     boardData
   });
-  return { photo, completedBlob };
+  if (projectId() !== preparedProjectId) throw new Error('画像の再生成中に案件が切り替わりました。');
+  return { photo, completedBlob, projectId:preparedProjectId };
 }
 
 /** 同じ写真への連続更新は直列化する。案件切替後の誤保存も防ぐ。 */
 export function persistCompletedPhotoUpdate(prepared, nextFields, source) {
   const photoId = String(prepared.photo.photoId);
-  const startedProjectId = projectId();
+  const startedProjectId = String(prepared.projectId || '');
+  if (!startedProjectId || projectId() !== startedProjectId) {
+    return Promise.reject(new Error('画像の再生成後に案件が切り替わりました。'));
+  }
   const key = `${startedProjectId}|${photoId}`;
   const previousTask = running.get(key) || Promise.resolve();
   const task = previousTask.catch(() => {}).then(async () => {
