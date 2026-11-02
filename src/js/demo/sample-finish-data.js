@@ -19,5 +19,5 @@ export const INITIAL_STRUCTURE_SEED = {
   ],
   stairsCount: 2,
   roofCount: 1,
-  externalRoomNames: ['北面', '南面', '東面', '西面', '中庭']
+  externalRoomNames: ['東面', '西面', '南面', '北面', '中庭']
 };
