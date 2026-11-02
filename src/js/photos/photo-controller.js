@@ -139,10 +139,8 @@ function render() {
     button.classList.toggle('active', button.dataset.photoMode === state.mode);
   });
 
-  root.querySelectorAll('.photo-top-actions [data-photo-selection-mode], .photo-top-actions [data-photo-picker], .photo-top-actions [data-photo-camera-global]').forEach((button) => {
-    button.hidden = state.mode === 'orphan';
-    button.style.display = state.mode === 'orphan' ? 'none' : '';
-  });
+  const actions = root.querySelector('.photo-top-actions');
+  if (actions) actions.style.display = state.mode === 'orphan' ? 'none' : '';
 
   if (state.mode === 'orphan') {
     renderOrphanPhotoView(body, buildOrphanPhotoView());
