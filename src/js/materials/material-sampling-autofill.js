@@ -25,7 +25,7 @@ function splitDerivedList(value) {
  * @param {object} record 直接更新してよいRecordコピー
  * @returns {string[]} 実際に変更した業務フィールド名
  */
-export function applySingleRecordSamplingAutofill(record) {
+export function applySingleRecordSamplingAutofill(record, roomOptions = []) {
   const changedFields = [];
   const markChanged = (field) => {
     if (!changedFields.includes(field)) changedFields.push(field);
@@ -66,6 +66,21 @@ export function applySingleRecordSamplingAutofill(record) {
   } else if (!Array.isArray(record.samplePart)) {
     record.samplePart = selectedParts;
     markChanged('samplePart');
+  }
+
+  // 場所の表示文字列は補助情報。参照先の同一性は部屋キーで管理する。
+  // 同名の候補が複数ある場合は推測せず、選択操作まで空のまま残す。
+  for (let branch = 1; branch <= count; branch += 1) {
+    const field = `sampleRoomKey${branch}`;
+    if (record[field]) continue;
+    const raw = String(record[`sampleLocation${branch}`] || '').trim();
+    if (!raw) continue;
+    const matching = roomOptions.filter((item) =>
+      item.value === raw || item.roomNo === raw || item.roomName === raw
+    );
+    if (matching.length !== 1 || !matching[0].key) continue;
+    record[field] = matching[0].key;
+    markChanged(field);
   }
 
   return changedFields;
