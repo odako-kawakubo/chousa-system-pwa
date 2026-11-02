@@ -184,6 +184,32 @@ jobs:
           assert(photos.includes("photoId: 'DEMO-PHOTO-E01'") && photos.includes("photoId: 'DEMO-PHOTO-E02'"), 'sample exterior photo coverage');
           NODE
 
+      - name: Output page toolbar placement regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const source = fs.readFileSync('src/js/output/output-controller.js', 'utf8');
+          const toolbar = source.split('</div><div class="output-review-layout')[0];
+          const stage = source.split('</div><div class="output-review-layout')[1];
+          for (const key of ['data-output-page-prev', 'data-output-page-counter', 'data-output-page-next', 'data-output-zoom-out', 'data-output-zoom-in']) {
+            if (!toolbar.includes(key)) throw Error('missing toolbar control: ' + key);
+          }
+          if (!(toolbar.indexOf('data-output-page-prev') < toolbar.indexOf('data-output-page-counter') &&
+                toolbar.indexOf('data-output-page-counter') < toolbar.indexOf('data-output-page-next') &&
+                toolbar.indexOf('data-output-page-next') < toolbar.indexOf('data-output-zoom-out'))) {
+            throw Error('page navigation controls must precede zoom controls');
+          }
+          if (stage.includes('output-page-side') || stage.includes('output-page-floating-counter')) {
+            throw Error('obsolete PDF side navigation remains');
+          }
+          if ((source.match(/data-output-page-prev/g) || []).length !== 3) {
+            // selector permission, toolbar element, click handler
+            throw Error('unexpected previous-page control count');
+          }
+          NODE
+
       - name: Output formatting regression checks
         shell: bash
         run: |
