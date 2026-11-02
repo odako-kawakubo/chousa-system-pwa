@@ -65,7 +65,17 @@ export function commitRoomField(roomKey, field, rawValue) {
   if (dataField === 'roomNo' || dataField === 'roomName') {
     refreshMaterialUsageDerivedFields('room-common-edit');
     const locationKey = roomLocationKey(carrier || currentRoomRecords[0]);
-    void refreshSamplingLocationsForRoom(locationKey);
-    void refreshVisualPhotoBoardsForRoom(locationKey);
+    const previousRoom = previousCarrier || records[0];
+    const currentRoom = carrier || currentRoomRecords[0];
+    const oldBoardName = previousRoom.areaCode === 'E'
+      ? String(previousRoom.roomName || previousRoom.roomNo || '')
+      : String(previousRoom.roomNo || '');
+    const newBoardName = currentRoom.areaCode === 'E'
+      ? String(currentRoom.roomName || currentRoom.roomNo || '')
+      : String(currentRoom.roomNo || '');
+    if (oldBoardName !== newBoardName) {
+      void refreshSamplingLocationsForRoom(locationKey);
+      void refreshVisualPhotoBoardsForRoom(locationKey);
+    }
   }
 }
