@@ -5,6 +5,7 @@
 import { normalizeMaterialName, normalizeSampleParts, splitBaseNameAndSuffix } from '../records/material-record.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { applySingleRecordSamplingAutofill } from './material-sampling-autofill.js';
+import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import {
   setAndPersistMaterialRecord,
   appendMaterialSystemMemo,
@@ -29,12 +30,12 @@ export function updateMaterialControlValue(control) {
         const currentCount = Number(next.sampleCount);
         if (!Number.isFinite(currentCount) || currentCount < 1) next.sampleCount = 1;
         else next.sampleCount = Math.min(3, currentCount);
-        applySingleRecordSamplingAutofill(next);
+        applySingleRecordSamplingAutofill(next, getMaterialUsageRoomOptions(next.inputId));
       }
       break;
     case 'sampleCount':
       next.sampleCount = Math.max(1, Math.min(3, Number(control.value) || 1));
-      applySingleRecordSamplingAutofill(next);
+      applySingleRecordSamplingAutofill(next, getMaterialUsageRoomOptions(next.inputId));
       break;
     // 採取場所1〜3は既存写真との整合判断が必要なため、
     // material-list-controllerからsampling-location-change.jsの共通処理へ送る。
@@ -177,7 +178,7 @@ export function applyMaterialSamplingAutofill() {
   materialRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active') return;
     const next = { ...record };
-    if (applySingleRecordSamplingAutofill(next).length) {
+    if (applySingleRecordSamplingAutofill(next, getMaterialUsageRoomOptions(next.inputId)).length) {
       updates.push({ previous: record, next });
     }
   });
