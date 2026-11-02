@@ -234,17 +234,7 @@ export function registerMaterialForCell(roomKey, partIndex, row, rawName, runRec
 
     const derivedMaterial = materialRecordStore.get(material.materialId) || material;
     const finalMaterial = { ...derivedMaterial };
-    const autofillFields = applySingleRecordSamplingAutofill(finalMaterial);
-    const roomOptions = getMaterialUsageRoomOptions(finalMaterial.inputId);
-    for (let branch = 1; branch <= Number(finalMaterial.sampleCount || 0); branch += 1) {
-      const field = `sampleRoomKey${branch}`;
-      if (finalMaterial[field]) continue;
-      const raw = String(finalMaterial[`sampleLocation${branch}`] || '');
-      const matched = roomOptions.filter((item) => item.value === raw || item.roomName === raw || item.roomNo === raw);
-      if (matched.length !== 1) continue;
-      finalMaterial[field] = matched[0].key;
-      autofillFields.push(field);
-    }
+    const autofillFields = applySingleRecordSamplingAutofill(finalMaterial, getMaterialUsageRoomOptions(finalMaterial.inputId));
     if (autofillFields.length) {
       finalMaterial.fieldEditedAt = touchFieldEditedAt(derivedMaterial.fieldEditedAt, autofillFields);
       materialRecordStore.set(finalMaterial);
