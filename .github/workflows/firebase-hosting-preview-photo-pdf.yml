@@ -3,7 +3,7 @@ name: Review v0.1.9.10D Orphan Photos
 on:
   push:
     branches:
-      - review/v0.1.9.10D-room-safety
+      - review/v0.1.9.10D-orphan-photos
 
 permissions:
   contents: read
