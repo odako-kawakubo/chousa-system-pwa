@@ -192,7 +192,6 @@ async function prepareReflectedPhotos(photos, nextLocation, roomKey = '') {
 }
 
 async function persistReflectedPhotos(prepared, nextLocation) {
-  const project = getCurrentProject();
   const now = new Date().toISOString();
   const device = getDeviceCode();
   const saved = [];
