@@ -107,7 +107,7 @@ export function bindPhotoInteractions({
   externalImportContext,
   openFilePicker,
   addPickedFiles,
-  openOrphanViewer
+  viewerContext
 }) {
   if (!root || boundRoot === root) return;
   boundRoot = root;
@@ -164,8 +164,7 @@ export function bindPhotoInteractions({
 
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
-      if (state.mode === 'orphan') openOrphanViewer(expandButton.dataset.photoExpand || '');
-      else openPhotoViewer(expandButton.dataset.photoExpand || '');
+      openPhotoViewer(expandButton.dataset.photoExpand || '', viewerContext());
       return;
     }
 
