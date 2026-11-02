@@ -1532,4 +1532,4 @@ jobs:
           printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
           chmod 600 "${credentials}"
           export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
-          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-exterior-room --expires 30d --project odako-chousa-system-pwa
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
