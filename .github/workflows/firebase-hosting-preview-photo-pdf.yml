@@ -1,9 +1,9 @@
-name: Review v0.1.9.10C Exterior Room
+name: Review v0.1.9.10C Room Safety
 
 on:
   push:
     branches:
-      - review/v0.1.9.10C-exterior-room
+      - review/v0.1.9.10C-room-safety
 
 permissions:
   contents: read
