@@ -15,6 +15,33 @@ const BASE_TIME = '2026-08-13T08:00:00.000Z';
 export function seedInitialPhotoRecords() {
   const samples = [
     createPhotoRecord({
+      photoId: 'DEMO-PHOTO-E01',
+      photoType: 'visual',
+      fileName: 'visual_exterior_e1_wall_01.jpg',
+      areaCode: 'E',
+      roomPosition: '001',
+      partSlot: 2,
+      roomNo: 'E-1',
+      part: '外壁',
+      isRepresentative: true,
+      capturedDevice: 'iPad-demo',
+      capturedAt: '2026-08-13T08:09:00.000Z'
+    }),
+    createPhotoRecord({
+      photoId: 'DEMO-PHOTO-E02',
+      photoType: 'sampling',
+      fileName: 'sampling_R002_1_before.jpg',
+      materialId: 'R002',
+      samplingPlace: '東面',
+      samplingBranch: 1,
+      sampleNo: '2',
+      part: '外壁',
+      shootingType: 'before',
+      isRepresentative: true,
+      capturedDevice: 'iPad-demo',
+      capturedAt: '2026-08-13T08:10:00.000Z'
+    }),
+    createPhotoRecord({
       photoId: 'DEMO-PHOTO-001',
       photoType: 'visual',
       fileName: 'visual_101_wall_01.jpg',
