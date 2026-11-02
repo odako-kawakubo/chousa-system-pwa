@@ -3,6 +3,7 @@
  * セッション遷移、履歴確定、Canvas描画、保存処理は持たない。
  */
 import { PHOTO_TYPES, SHOOTING_TYPES, getVisualPhotoRoomKey } from '../records/photo-record.js';
+import { roomLocationDisplay } from '../finish-table/room-location.js';
 
 const STAGES = [SHOOTING_TYPES.BEFORE, SHOOTING_TYPES.DURING, SHOOTING_TYPES.AFTER];
 const MARKS = { 1: '①', 2: '②', 3: '③' };
@@ -64,6 +65,7 @@ export function boardEditorSamplingMaterials(optionsProvider) {
 function visualRoomLabel(room = {}) {
   const no = String(room.roomNo || room.roomPosition || '').trim();
   const name = String(room.roomName || '').trim();
+  if (room.areaCode === 'E') return roomLocationDisplay(room, { context:'photo' });
   return name && name !== no ? `${no}　${name}` : no;
 }
 
@@ -144,11 +146,16 @@ function samplingFields(entry, optionsProvider) {
   ]);
   const plannedPlace = String(activeTarget?.samplingPlace || '').trim();
   const draftPlace = String(entry.draft.samplingPlace || '').trim();
+  const plannedRoomKey = String(activeTarget?.roomKey || '');
+  const draftRoomKey = String(entry.draft.samplingRoomKey || '');
+  const locationChanged = plannedRoomKey && draftRoomKey
+    ? draftRoomKey !== plannedRoomKey
+    : draftPlace !== plannedPlace || Boolean(draftRoomKey && !plannedRoomKey);
   const canReflectPlace = Boolean(
     selectedMaterialId
     && Number(entry.draft.samplingBranch || 0)
     && draftPlace
-    && draftPlace !== plannedPlace
+    && locationChanged
   );
 
   return `<div class="photo-board-editor-fields">
