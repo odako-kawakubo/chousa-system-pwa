@@ -109,6 +109,23 @@ jobs:
           assert(renderer.includes('data-photo-mode="orphan"'), 'third tab missing');
           NODE
 
+      - name: D common viewer path regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const assert = (ok, message) => { if (!ok) throw Error(message); };
+          const controller = fs.readFileSync('src/js/photos/photo-controller.js', 'utf8');
+          const interactions = fs.readFileSync('src/js/photos/photo-interactions.js', 'utf8');
+          const view = fs.readFileSync('src/js/photos/photo-view-model.js', 'utf8');
+          assert(controller.includes('renderedOrphanPhotos = orphanView.items.map(({ photo }) => photo)'), 'visible orphan list must drive viewer');
+          assert(controller.includes('photos: renderedOrphanPhotos, readOnly: true'), 'viewer context must use displayed list');
+          assert(interactions.includes('openPhotoViewer(expandButton.dataset.photoExpand || \'\', viewerContext());'), 'shared viewer call missing');
+          assert(!controller.includes('openOrphanViewer') && !interactions.includes('openOrphanViewer'), 'obsolete orphan viewer wrapper remains');
+          assert(!view.includes('photoIds:items.map'), 'obsolete duplicate photo id list remains');
+          NODE
+
       - name: B exterior room identity and visual orphan regression
         shell: bash
         run: |
