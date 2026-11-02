@@ -108,11 +108,13 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   <button type="button" class="btn small output-view-btn ${activeView==='visual-photos'?'active':''}" data-output-view="visual-photos">建材写真帳</button>
   <button type="button" class="btn small output-view-btn ${activeView==='sampling-photos'?'active':''}" data-output-view="sampling-photos">採取写真帳</button>
   <span class="output-toolbar-separator"></span>${renderRoomUnregisteredSwitch()}
+  <button type="button" class="btn small" data-output-page-prev aria-label="前のページ">‹</button>
   <span class="output-page-counter" data-output-page-counter>${previewState.page} / ${previewState.pageCount}</span>
+  <button type="button" class="btn small" data-output-page-next aria-label="次のページ">›</button>
   <span class="output-toolbar-separator"></span>
   <button type="button" class="btn small" data-output-zoom-out>−</button><button type="button" class="btn small output-zoom-label" data-output-zoom-reset data-output-zoom-label>${previewState.zoom}%</button><button type="button" class="btn small" data-output-zoom-in>＋</button>
   <span class="output-toolbar-fill"></span><button type="button" class="btn small ${settingsOpen?'active':''}" data-output-settings-open>出力設定</button><button type="button" class="btn small" data-output-export="pdf">PDF</button><button type="button" class="btn small" data-output-export="print">印刷</button><button type="button" class="btn small" data-output-export="excel">Excel</button>
-  </div><div class="output-review-layout ${hasOutputSidePanel({activeView,settingsOpen})?'has-editor':''}"><section class="output-pdf-review"><div class="output-preview-status" data-output-preview-status>実PDFを生成しています…</div><div class="output-pdf-stage"><button type="button" class="output-page-side output-page-side-prev" data-output-page-prev aria-label="前のページ">‹</button><div class="output-pdf-host" data-output-pdf-host><div class="output-preview-loading">実PDFを生成しています…</div></div><button type="button" class="output-page-side output-page-side-next" data-output-page-next aria-label="次のページ">›</button><span class="output-page-floating-counter" data-output-page-counter>${previewState.page} / ${previewState.pageCount}</span></div></section>${renderOutputSidePanels({vm:currentVm,activeView,settingsOpen,settingsDraft,savedSettings:getOutputSettings()})}</div></div>`;void renderOutputPdfPreview({
+  </div><div class="output-review-layout ${hasOutputSidePanel({activeView,settingsOpen})?'has-editor':''}"><section class="output-pdf-review"><div class="output-preview-status" data-output-preview-status>実PDFを生成しています…</div><div class="output-pdf-host" data-output-pdf-host><div class="output-preview-loading">実PDFを生成しています…</div></div></section>${renderOutputSidePanels({vm:currentVm,activeView,settingsOpen,settingsDraft,savedSettings:getOutputSettings()})}</div></div>`;void renderOutputPdfPreview({
   serial,
   root,
   activeView,
