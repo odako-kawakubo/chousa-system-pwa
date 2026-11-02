@@ -191,7 +191,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const source = fs.readFileSync('src/js/output/output-controller.js', 'utf8');
-          const toolbar = source.split('</div><div class="output-review-layout')[0];
+          const toolbar = source.split('root.innerHTML=`<div class="output-root">')[1]?.split('</div><div class="output-review-layout')[0] || '';
           const stage = source.split('</div><div class="output-review-layout')[1];
           for (const key of ['data-output-page-prev', 'data-output-page-counter', 'data-output-page-next', 'data-output-zoom-out', 'data-output-zoom-in']) {
             if (!toolbar.includes(key)) throw Error('missing toolbar control: ' + key);
