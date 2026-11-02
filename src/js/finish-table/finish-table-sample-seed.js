@@ -18,7 +18,7 @@ export function seedInitialMaterials() {
     const samplingDemo = materialId === 'R001'
       ? { analysisRequired: '採取・分析', sampleCount: 2, sampleLocation1: '1-1', sampleLocation2: '1-2', samplePart: '壁' }
       : materialId === 'R002'
-        ? { analysisRequired: '採取・分析', sampleCount: 1, sampleLocation1: '北面', samplePart: '外壁' }
+        ? { analysisRequired: '採取・分析', sampleCount: 1, sampleLocation1: '東面', sampleRoomKey1: 'E|001', samplePart: '外壁' }
         : {};
 
     return createMaterialRecord({
