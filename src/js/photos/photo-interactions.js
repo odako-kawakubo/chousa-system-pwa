@@ -106,7 +106,8 @@ export function bindPhotoInteractions({
   globalCameraContext,
   externalImportContext,
   openFilePicker,
-  addPickedFiles
+  addPickedFiles,
+  openOrphanViewer
 }) {
   if (!root || boundRoot === root) return;
   boundRoot = root;
@@ -133,6 +134,8 @@ export function bindPhotoInteractions({
       void confirmSamplingLocationEdit(key, select?.value || '');
       return;
     }
+
+    if (state.mode === 'orphan' && event.target.closest('[data-photo-selection-mode], [data-photo-picker], [data-photo-camera-global]')) return;
 
     const selectionButton = event.target.closest('[data-photo-selection-mode]');
     if (selectionButton) {
@@ -161,7 +164,8 @@ export function bindPhotoInteractions({
 
     const expandButton = event.target.closest('[data-photo-expand]');
     if (expandButton) {
-      openPhotoViewer(expandButton.dataset.photoExpand || '');
+      if (state.mode === 'orphan') openOrphanViewer(expandButton.dataset.photoExpand || '');
+      else openPhotoViewer(expandButton.dataset.photoExpand || '');
       return;
     }
 
@@ -176,7 +180,8 @@ export function bindPhotoInteractions({
     const mode = event.target.closest('[data-photo-mode]');
     if (mode) {
       state.samplingLocationEditKey = '';
-      state.mode = mode.dataset.photoMode === 'sampling' ? 'sampling' : 'visual';
+      clearSelectionMode();
+      state.mode = ['visual', 'sampling', 'orphan'].includes(mode.dataset.photoMode) ? mode.dataset.photoMode : 'visual';
       state.reviewScrollTop[state.mode] = 0;
       render();
       notifyTutorialAction('photo.mode.change', { mode:state.mode });
