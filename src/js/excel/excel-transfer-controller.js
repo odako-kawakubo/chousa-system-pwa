@@ -128,7 +128,13 @@ function renderPreview() {
   }
 
   const labels = { 15:'採取数',16:'採取日',17:'試料名称',18:'採取場所',19:'',20:'',21:'採取部位',22:'',23:'',24:'',25:'採取者' };
-  const heading = data.samples.map((sample) => `<th>B+${sample.sampleNo - 1}（建材No.${escapeHtml(sample.materialNo)}）</th>`).join('');
+  const excelColumn = (index) => {
+    let n = index + 2;
+    let label = '';
+    while (n > 0) { n -= 1; label = String.fromCharCode(65 + n % 26) + label; n = Math.floor(n / 26); }
+    return label;
+  };
+  const heading = data.samples.map((sample, index) => `<th>${excelColumn(index)}列（建材No.${escapeHtml(sample.materialNo)}）</th>`).join('');
   const body = data.rows.map((row) => {
     const cells = row.values.map((cell, index) => {
       const materialId = data.samples[index].materialId;
