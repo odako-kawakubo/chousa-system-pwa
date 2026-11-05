@@ -55,7 +55,7 @@ export function getExcelMaterialWarnings(records = []) {
   return warnings;
 }
 
-function formatExcelDate(raw) {
+export function formatExcelDate(raw) {
   const text = value(raw);
   const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(text);
   return match ? `${match[1]}/${Number(match[2])}/${Number(match[3])}` : text;
@@ -83,7 +83,7 @@ export function formatExcelLocation(record, branch) {
 
   if (area === 'E') return `外部　${roomName || roomNo}`;
   if (area === 'I' || !area) return `部屋No.${roomNo}`;
-  if (['S', 'R', 'B'].includes(area)) return roomNo.startsWith(area) ? roomNo : `${area}${roomNo}`;
+  if (['S', 'R', 'B'].includes(area)) return `部屋No.${roomNo.startsWith(area) ? roomNo : `${area}${roomNo}`}`;
   return roomNo || raw;
 }
 
@@ -96,9 +96,11 @@ function makeSampleName(record) {
   ].filter(Boolean).join('　');
 }
 
-function clipboardSafe(raw) {
+export function clipboardSafe(raw) {
   return String(raw ?? '').replace(/[\t\r\n]+/g, ' ').trim();
 }
+
+export const formatExcelSampler = (company, person) => [value(company), value(person)].filter(Boolean).join('　');
 
 export function buildExcelTransferSnapshot(records = [], { company = '', person = '' } = {}) {
   const all = (records || []).filter(sampled)
@@ -114,7 +116,7 @@ export function buildExcelTransferSnapshot(records = [], { company = '', person 
   if (!value(company)) issues.push({ field:'company', label:'採取者の会社名' });
   if (!value(person)) issues.push({ field:'person', label:'採取者氏名' });
 
-  const sampler = [value(company), value(person)].filter(Boolean).join('　');
+  const sampler = formatExcelSampler(company, person);
   const samples = all.filter((record) => {
     const count = countOf(record);
     return Number.isInteger(count) && count >= 1 && count <= 3;
