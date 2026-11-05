@@ -31,7 +31,7 @@ export function renderMaterialList(root, rows, selectedMaterialId, options = {})
           style="--material-part-width:${partWidth}px"
         >
           <thead>${renderHeader(analysisColumnsOpen)}</thead>
-          <tbody>${renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen)}</tbody>
+          <tbody>${renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen, options.warningMap)}</tbody>
         </table>
       </div>
     </div>
@@ -92,13 +92,14 @@ function renderHeader(analysisColumnsOpen) {
   `;
 }
 
-function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
+function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen, warningMap = new Map()) {
   if (!rows.length) {
     return `<tr><td colspan="${analysisColumnsOpen ? 17 : 15}" class="material-list-empty">対象建材はまだありません</td></tr>`;
   }
   return rows.map((row) => renderMaterialListRow(row, selectedMaterialId, {
     colorMode,
-    analysisColumnsOpen
+    analysisColumnsOpen,
+    warningFields: warningMap?.get(String(row.materialId)) || []
   })).join('');
 }
 
@@ -106,6 +107,8 @@ function renderRows(rows, selectedMaterialId, colorMode, analysisColumnsOpen) {
 export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
   const colorMode = options.colorMode !== false;
   const analysisColumnsOpen = Boolean(options.analysisColumnsOpen);
+  const warningFields = options.warningFields || [];
+  const missing = (field) => warningFields.includes(field) ? ' excel-transfer-missing-cell' : '';
   const selected = String(row.materialId) === String(selectedMaterialId)
     ? ' selected-material-row'
     : '';
@@ -119,7 +122,7 @@ export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
       <td class="col-no material-color-cell">${escapeHtml(row.materialNo)}</td>
       <td class="col-id material-color-cell">${escapeHtml(row.inputId)}</td>
       <td class="col-part material-color-cell"><div class="material-part-lines">${renderPartLines(row.part)}</div></td>
-      <td class="col-name material-color-cell material-edit-cell">
+      <td class="col-name material-color-cell material-edit-cell${missing('name')}">
         ${renderTextDisplay(row, 'name', row.name, '建材名称')}
       </td>
       <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
@@ -140,13 +143,13 @@ export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
       <td class="col-note material-edit-cell">
         ${renderTextDisplay(row, 'note', row.note, '調査備考', '調査備考')}
       </td>
-      <td class="col-sample-count material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+      <td class="col-sample-count material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}${missing('sampleCount')}">
         ${renderSelect(row, 'sampleCount', row.samplingEnabled ? MATERIAL_SAMPLE_COUNT_OPTIONS : ['-', ...MATERIAL_SAMPLE_COUNT_OPTIONS], row.sampleCountLabel, !row.samplingEnabled)}
       </td>
-      ${renderSamplePlaceCell(row, 1)}
-      ${renderSamplePlaceCell(row, 2)}
-      ${renderSamplePlaceCell(row, 3)}
-      <td class="col-sample-part material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+      ${renderSamplePlaceCell(row, 1, warningFields)}
+      ${renderSamplePlaceCell(row, 2, warningFields)}
+      ${renderSamplePlaceCell(row, 3, warningFields)}
+      <td class="col-sample-part material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}${missing('samplePart')}">
         ${renderSamplePartMultiSelect(row, !row.samplingEnabled)}
       </td>
       <td class="col-sample-done material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
@@ -161,7 +164,7 @@ export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
           aria-label="採取 ${escapeAttr(row.inputId)}"
         />
       </td>
-      <td class="col-sample-date material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}">
+      <td class="col-sample-date material-control-cell${row.samplingEnabled ? '' : ' disabled-cell'}${missing('sampleDate')}">
         <input
           type="date"
           class="material-date-input"
@@ -224,12 +227,12 @@ function renderAnalysisSelect(row) {
   `;
 }
 
-function renderSamplePlaceCell(row, index) {
+function renderSamplePlaceCell(row, index, warningFields = []) {
   const field = `sampleLocation${index}`;
   const current = row[`sampleRoomKey${index}`] || row[field];
   const enabled = row.sampleLocationEnabled[index - 1];
   return `
-    <td class="col-sample-place material-control-cell${enabled ? '' : ' disabled-cell'}">
+    <td class="col-sample-place material-control-cell${enabled ? '' : ' disabled-cell'}${warningFields.includes(field) ? ' excel-transfer-missing-cell' : ''}">
       ${renderCandidateSelect(row, field, row.sampleLocationOptions || row.usagePlaces, current, !enabled)}
     </td>
   `;
