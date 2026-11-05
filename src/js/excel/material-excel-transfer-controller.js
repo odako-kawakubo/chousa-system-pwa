@@ -1,6 +1,6 @@
 /**
  * 建材リスト転記の読み取り専用プレビュー。
- * コピーはF5からAK列までの連続したTSV。空欄セルも意図した転記対象。
+ * コピーはF5からAE列までの連続したTSV。画面上は施工範囲を一欄にまとめて表示する。
  */
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
@@ -8,20 +8,17 @@ import { closeDrawer } from '../ui/drawer.js';
 import { showTab } from '../ui/tabs.js';
 import { activateExcelTransferWarnings, focusExcelTransferMissing } from '../materials/material-list-controller.js';
 import { buildMaterialExcelSnapshot } from './material-excel-transfer-data.js';
-import {
-  samplerValues, escapeExcelHtml, syncExcelSamplerControls,
-  updateExcelSamplerSelection, updateExcelSamplerInput,
-  ensureExcelTransferStyles, writeExcelClipboard
-} from './excel-transfer-shared.js';
+import { escapeExcelHtml, ensureExcelTransferStyles, writeExcelClipboard } from './excel-transfer-shared.js';
 
 let modal;
-const preview = () => buildMaterialExcelSnapshot(materialRecordStore.getAll(), samplerValues());
+const preview = () => buildMaterialExcelSnapshot(materialRecordStore.getAll());
 const labels = {
   F:'建材名称',G:'使用部位',H:'分析の要否',I:'含有結果',J:'調査備考',
-  K:'建材レベル',L:'施工範囲1',AE:'施工範囲20',
-  AF:'採取数',AG:'採取場所1',AH:'採取場所2',AI:'採取場所3',
-  AJ:'採取日',AK:'採取者'
+  K:'建材レベル'
 };
+const USAGE_START = 6;
+const USAGE_END = 26;
+
 
 function render() {
   const data = preview();
@@ -34,21 +31,24 @@ function render() {
         return `<li>${escapeExcelHtml(name + item.label + '：' + (item.detail || '未入力'))}</li>`;
       }).join('')}</ul>`;
 
-  const headings = data.columns.map((column) =>
-    `<th>${escapeExcelHtml(column)}列　${escapeExcelHtml(labels[column] || (column >= 'L' && column <= 'Z' || /A[A-E]/.test(column) ? '施工範囲' : ''))}</th>`).join('');
-  const body = data.rows.map((row, index) =>
-    `<tr><th>${index + 5}行（建材No.${escapeExcelHtml(row.materialNo)}）</th>${row.values.map((cell, col) => {
-      const column = data.columns[col];
+  const basicColumns = data.columns.slice(0, USAGE_START);
+  const headings = basicColumns.map((column) =>
+    `<th>${escapeExcelHtml(column)}列　${escapeExcelHtml(labels[column])}</th>`).join('')
+    + '<th>L～AE列　施工範囲（部屋No.）</th>';
+  const body = data.rows.map((row, index) => {
+    const basicCells = row.values.slice(0, USAGE_START).map((cell, col) => {
+      const column = basicColumns[col];
       const fieldsByColumn = {
-        F:['name'],H:['analysisRequired'],I:['analysisResult'],K:['level'],
-        AF:['sampleCount'],AG:['sampleLocation1'],AH:['sampleLocation2'],AI:['sampleLocation3'],
-        AJ:['sampleDate']
+        F:['name'],H:['analysisRequired'],I:['analysisResult'],K:['level']
       };
-      const fields = fieldsByColumn[column] || [];
-      const invalid = warnings.some((issue) => issue.materialId === row.materialId && fields.includes(issue.field));
-      const samplerMissing = column === 'AK' && data.issues.some((issue) => !issue.materialId);
-      return `<td${invalid || samplerMissing ? ' class="excel-transfer-missing"' : ''}>${escapeExcelHtml(cell)}</td>`;
-    }).join('')}</tr>`).join('');
+      const invalid = warnings.some((issue) =>
+        issue.materialId === row.materialId && (fieldsByColumn[column] || []).includes(issue.field));
+      return `<td${invalid ? ' class="excel-transfer-missing"' : ''}>${escapeExcelHtml(cell)}</td>`;
+    }).join('');
+    const usage = row.values.slice(USAGE_START, USAGE_END).filter(Boolean).join('、');
+    return `<tr><th>${index + 5}行（建材No.${escapeExcelHtml(row.materialNo)}）</th>${basicCells}<td>${escapeExcelHtml(usage)}</td></tr>`;
+  }).join('');
+
   modal.querySelector('[data-material-excel-table]').innerHTML =
     `<thead><tr><th>Excel行</th>${headings}</tr></thead><tbody>${body}</tbody>`;
   modal.querySelector('[data-material-excel-fix]').hidden = warnings.length === 0;
@@ -79,7 +79,7 @@ async function copy() {
   const message = modal.querySelector('[data-material-excel-message]');
   try {
     await writeExcelClipboard(data.tsv);
-    message.textContent = 'コピーしました。Excel「建材リスト」シートのF5へ値のみ貼り付けてください。';
+    message.textContent = 'コピーしました。Excel「建材入力」シートのF5へ値のみ貼り付けてください。';
   } catch (error) {
     message.textContent = `コピーできませんでした：${error?.message || error}`;
   }
@@ -100,15 +100,11 @@ function ensureModal() {
         <button type="button" class="btn small" data-material-excel-close>閉じる</button>
       </div>
       <div class="excel-transfer-main">
-        <p class="hint">貼り付け先：Excel「建材リスト」シートの F5（値のみ貼り付け）</p>
-        <div class="excel-transfer-sampler">
-          <label>会社名<select data-excel-company></select><input type="text" data-excel-custom-company placeholder="会社名を入力" hidden></label>
-          <label>採取者氏名<select data-excel-person></select><input type="text" data-excel-custom-person placeholder="氏名を入力" hidden></label>
-        </div>
+        <p class="hint">貼り付け先：Excel「建材入力」シートの F5（値のみ貼り付け）</p>
         <div class="excel-transfer-check" data-material-excel-check></div>
         <h4>コピー内容のプレビュー</h4>
         <div class="excel-transfer-table-wrap"><table class="excel-transfer-table" data-material-excel-table></table></div>
-        <p class="hint">建材No.順に1行ずつ転記します。施工範囲はL〜AEの20列で、20件目以降はAE列にまとめます。</p>
+        <p class="hint">建材No.順に1行ずつ転記します。画面上は施工範囲を1欄にまとめていますが、コピー時はL～AEの20列に分けて転記します。20件目以降はAE列にまとめます。</p>
         <div class="excel-transfer-message" data-material-excel-message role="status"></div>
       </div>
       <div class="excel-transfer-actions">
@@ -123,20 +119,11 @@ function ensureModal() {
     else if (event.target.closest('[data-material-excel-fix]')) moveToFirstIssue();
     else if (event.target.closest('[data-material-excel-copy]')) void copy();
   });
-  modal.addEventListener('change',(event) => {
-    if (!updateExcelSamplerSelection(event.target)) return;
-    syncExcelSamplerControls(modal);
-    render();
-  });
-  modal.addEventListener('input',(event) => {
-    if (!updateExcelSamplerInput(event.target)) return;
-    render();
-  });
+
 }
 
 export function openMaterialExcelTransfer() {
   ensureModal();
-  syncExcelSamplerControls(modal);
   render();
   closeDrawer('operation');
   modal.classList.add('open');
