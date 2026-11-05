@@ -30,6 +30,7 @@ import { configurePhotoLocalStore } from './photos/photo-local-store.js';
 import { initializePhotoOneDriveSync } from './photos/photo-onedrive-sync.js';
 import { initializeOutputTab } from './output/output-controller.js';
 import { initializeAnalysisImport } from './analysis/analysis-import-controller.js';
+import { initializeExcelIntegration } from './excel/excel-integration-controller.js';
 import { initializeSettingsTab } from './settings/settings-controller.js';
 import { initializeTheme, bindThemeControls } from './ui/theme.js';
 import { bindSyncStatusUi } from './ui/sync-ui.js';
@@ -101,6 +102,7 @@ async function initProjectApp() {
     initializePhotoOneDriveSync();
     initializeOutputTab();
     initializeAnalysisImport();
+    initializeExcelIntegration();
     initializeSettingsTab();
 
     ensureHomeReturnControl();
