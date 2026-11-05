@@ -1079,16 +1079,16 @@ jobs:
           grep -q "function comparePanePhotos" src/js/photos/photo-viewer.js || { echo "compare all-locations photo aggregation missing"; exit 1; }
           grep -q "pane.allLocations = true" src/js/photos/photo-viewer.js || { echo "compare all-locations selection handling missing"; exit 1; }
 
-      - name: v0.1.9.10E baseline consistency checks
+      - name: v0.1.9.10F baseline consistency checks
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "version: '0.1.9.10E'" src/config/app-config.js
+          grep -q "version: '0.1.9.10F'" src/config/app-config.js
           grep -q "revision: ''" src/config/app-config.js
           grep -q "mode: 'stable'" src/config/app-config.js
-          grep -q '"version": "0.1.9.10E"' src/version.json
+          grep -q '"version": "0.1.9.10F"' src/version.json
           grep -q '"revision": ""' src/version.json
-          grep -q "chousa-app-v0.1.9.10E" src/service-worker.js
+          grep -q "chousa-app-v0.1.9.10F" src/service-worker.js
           grep -q "chousa-output-libs-v0199" src/service-worker.js
           grep -q "function nextMaterialNoForMaterials" src/js/finish-table/finish-table-cell-actions.js || { echo "materialNo independent numbering helper missing"; exit 1; }
           grep -q "export function normalizeActiveMaterialNumbers" src/js/materials/material-list-persistence.js || { echo "materialNo normalization missing"; exit 1; }
