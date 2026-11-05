@@ -108,7 +108,7 @@ jobs:
           assert(result.samples[0].fields[17] === '建材No.1　壁　石こうボードA', 'sample name');
           assert(result.samples[0].fields[18] === '部屋No.1-1', 'room display');
           assert(result.samples[0].fields[25] === '小田原鉱石株式会社　濱舘　厚', 'sampler format');
-          assert(result.tsv.split('\\n').length === 11, '11 Excel rows');
+          assert(result.tsv.split(String.fromCharCode(10)).length === 11, '11 Excel rows');
           assert(result.issues.length === 0, 'unexpected validation warning');
           assert(getExcelMaterialIssues({...record,sampleDate:''}).includes('sampleDate'), 'missing date not flagged');
           assert(getExcelMaterialIssues({...record,samplePart:[]}).includes('samplePart'), 'missing part not flagged');
