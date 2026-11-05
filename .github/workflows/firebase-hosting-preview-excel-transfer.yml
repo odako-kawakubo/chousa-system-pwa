@@ -81,7 +81,21 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
-          import { buildExcelTransferSnapshot, getExcelMaterialIssues } from './src/js/excel/excel-transfer-data.js';
+          import fs from 'node:fs';
+          // Nodeにはブラウザ/CDN依存のStoreがないため、外部参照だけテスト用に差し替えて
+          // Excel転記の実装本体をそのまま実行する。
+          const source = fs.readFileSync('./src/js/excel/excel-transfer-data.js', 'utf8')
+            .replace(/^import .* from .*;$/gm, '');
+          const shims = `
+            const getMaterialDisplayNo = (r) => r.materialNo || r.inputId;
+            const samplePartsToText = (v) => Array.isArray(v) ? v.join('、') : String(v || '');
+            const getMaterialUsageRoomOptions = () => [];
+            const getMaterialSampleLocationDisplay = (id, raw) => ({
+              roomNo:raw, roomName:'', areaCode:'', value:raw
+            });
+          `;
+          const uri = 'data:text/javascript;base64,' + Buffer.from(shims + source).toString('base64');
+          const { buildExcelTransferSnapshot, getExcelMaterialIssues } = await import(uri);
           const assert = (ok, message) => { if (!ok) throw new Error(message); };
           const record = {
             status:'active', analysisRequired:'採取・分析', materialId:'R001', inputId:1,
