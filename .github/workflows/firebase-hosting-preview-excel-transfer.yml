@@ -1,9 +1,9 @@
-name: Review v0.1.9.10E Excel Transfer
+name: Review v0.1.9.10F Material Excel Transfer
 
 on:
   push:
     branches:
-      - review/v0.1.9.10E-excel-transfer
+      - review/v0.1.9.10F-material-excel-transfer
 
 permissions:
   contents: read
@@ -76,7 +76,7 @@ jobs:
           }
           NODE
 
-      - name: E Excel transfer data regression
+      - name: F analysis-request Excel transfer regression
         shell: bash
         run: |
           set -euo pipefail
@@ -112,6 +112,57 @@ jobs:
           assert(result.issues.length === 0, 'unexpected validation warning');
           assert(getExcelMaterialIssues({...record,sampleDate:''}).includes('sampleDate'), 'missing date not flagged');
           assert(getExcelMaterialIssues({...record,samplePart:[]}).includes('samplePart'), 'missing part not flagged');
+          NODE
+
+      - name: F material-list Excel transfer regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const source = fs.readFileSync('./src/js/excel/material-excel-transfer-data.js','utf8')
+            .replace(/^import .* from .*;$/gm,'');
+          const rooms = Array.from({length:25},(_,i) => ({
+            areaCode: i===24 ? 'E':'I',roomNo:'1-'+(i+1),roomName:i===24?'東面':''
+          }));
+          const shims = `
+            const getMaterialDisplayNo = (r) => r.materialNo;
+            const getMaterialUsageRoomOptions = () => ${JSON.stringify(rooms)};
+            const formatExcelLocation = (r,b) => '部屋No.' + r['sampleLocation'+b];
+            const formatExcelDate = () => '2026/11/5';
+            const clipboardSafe = (v) => String(v??'').replace(/[\\t\\r\\n]+/g,' ').trim();
+            const formatExcelSampler = (c,p) => [c,p].filter(Boolean).join('　');
+          `;
+          const mod = await import('data:text/javascript;base64,' + Buffer.from(shims+source).toString('base64'));
+          const assert = (ok,msg) => { if(!ok) throw Error(msg); };
+          const record = (id,required,result) => ({
+            materialId:id,inputId:id,materialNo:id,status:'active',
+            name:'建材'+id,part:'壁',level:'3',analysisRequired:required,analysisResult:result,
+            note:'調査備考',sampleCount:1,sampleDate:'2026-11-05',sampleLocation1:'1-1'
+          });
+          const result = mod.buildMaterialExcelSnapshot([
+            record(3,'目視',''),
+            record(1,'採取・分析',''),
+            record(2,'みなし',''),
+            record(4,'対象外','')
+          ],{company:'小田原鉱石株式会社',person:'濱舘　厚'});
+          assert(result.columns.length===32 && result.columns[0]==='F' && result.columns.at(-1)==='AK','column layout');
+          assert(result.rows.length===4 && result.rows[0].materialNo===1,'active sorted materials');
+          assert(result.rows[0].values[3]==='分析中','blank sampled analysis result');
+          assert(result.rows[1].values[3]==='石綿含有みなし','assumed positive');
+          assert(result.rows[2].values[3]==='未採取','blank visual result');
+          assert(result.rows[3].values[3]==='未採取','excluded result');
+          assert(result.rows[0].values[6]==='1-1' && result.rows[0].values[24]==='1-19','first 19 rooms');
+          assert(result.rows[0].values[25]==='1-20,1-21,1-22,1-23,1-24,東面','20th+ locations combined in AE');
+          assert(result.rows[0].values[26]==='1' && result.rows[0].values[27]==='部屋No.1-1','AF and AG mapping');
+          assert(result.rows[1].values.slice(26,31).every((value)=>value===''),'assumed sampling columns blank');
+          assert(result.rows[2].values.slice(26,31).every((value)=>value===''),'visual sampling columns blank');
+          assert(result.rows[3].values.slice(26,31).every((value)=>value===''),'excluded sampling columns blank');
+          assert(result.rows[0].values[31]==='小田原鉱石株式会社　濱舘　厚','shared sampler');
+          assert(result.tsv.split('\\n').length===4 && result.tsv.split('\\n')[0].split('\\t').length===32,'paste matrix shape');
+          assert(!result.issues.length,'unexpected validation warnings');
+          const invalid = mod.buildMaterialExcelSnapshot([record(1,'採取・分析','誤った結果')],{company:'c',person:'p'});
+          assert(invalid.issues.some((issue)=>issue.field==='analysisResult'),'invalid Excel result missing warning');
           NODE
 
       - name: D orphan-photo classification regression
