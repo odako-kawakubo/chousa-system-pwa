@@ -1,8 +1,8 @@
 /*
- * v0.1.9.10D Service Worker
+ * v0.1.9.10E Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.10D';
+const APP_CACHE = 'chousa-app-v0.1.9.10E';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0199';
 const APP_CACHE_PREFIX = 'chousa-app-';
@@ -16,7 +16,7 @@ const OUTPUT_LIB_URLS = new Set([
 
 const APP_SHELL = [
   './','./index.html','./app.html','./manifest.json','./version.json',
-  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/output.css','./css/room-note.css','./css/analysis-import.css',
+  './css/common.css','./css/layout.css','./css/home.css','./css/finish-table.css','./css/record-view.css','./css/material-list.css','./css/material-operations.css','./css/photos.css','./css/camera.css','./css/settings.css','./css/pwa-offline.css','./css/guide.css','./css/output.css','./css/room-note.css','./css/analysis-import.css','./css/excel-transfer.css',
   './assets/microsoft-symbol.svg','./assets/audio/camera1.mp3.gz','./assets/audio/camera2.mp3.gz','./assets/audio/click.mp3.gz','./assets/audio/chime.mp3.gz',
   './js/home/home-init.js','./js/home/home-controller.js','./js/home/home-return-control.js',
   './js/app-init.js','./js/app-update.js','./js/app-version.js','./js/device-code.js',
@@ -35,6 +35,7 @@ const APP_SHELL = [
   './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-pdf-preview-controller.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
+  './js/excel/excel-integration-controller.js','./js/excel/excel-transfer-controller.js','./js/excel/excel-transfer-data.js',
   './js/onedrive/onedrive-client.js','./js/onedrive/onedrive-root.js','./js/onedrive/onedrive-connection.js','./js/onedrive/onedrive-project.js','./js/onedrive/onedrive-project-file.js','./js/onedrive/openxml-workbook-reader.js','./js/onedrive/system-data-backup.js',
   './js/camera/camera-board.js','./js/camera/camera-preferences.js','./js/camera/camera-state.js','./js/camera/camera-session.js','./js/camera/camera-capture.js','./js/camera/camera-photo-id.js','./js/camera/camera-orientation.js','./js/camera/camera-shutter-sound.js','./js/camera/camera-controller.js',
   './js/debug/sync-diagnostic-log.js',
