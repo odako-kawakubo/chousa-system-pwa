@@ -881,7 +881,7 @@ jobs:
           grep -q "function numberText(value){return normalizeOutputDigits(value).trim();}" src/js/output/output-view-model.js || { echo "output number helper missing"; exit 1; }
           if grep -q "const text = normalizeOutputDigits(value)" src/js/output/output-format.js; then echo "output part text still normalizes all digits"; exit 1; fi
           grep -q "const materialNo = normalizeOutputDigits(item.materialNo)" src/js/output/output-format.js || { echo "sampling code must use current materialNo"; exit 1; }
-          grep -q "roomNo:numberText(record.roomNo)" src/js/output/output-view-model.js || { echo "room number normalization missing"; exit 1; }
+          grep -q "roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo)" src/js/output/output-view-model.js || { echo "room number normalization and exterior location display missing"; exit 1; }
           grep -q "projectNo:numberText" src/js/output/output-view-model.js || { echo "project number normalization missing"; exit 1; }
           if sed -n '/export function refreshMaterialList()/,/^}/p' src/js/materials/material-list-controller.js | grep -q "normalizeActiveMaterialNumbers\|applyMaterialSamplingAutofill"; then echo "material list refresh still mutates records"; exit 1; fi
           grep -q "export function prepareMaterialListProjectData" src/js/materials/material-list-controller.js || { echo "project-open material preparation missing"; exit 1; }
