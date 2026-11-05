@@ -266,24 +266,24 @@ async function handleFile(file) {
     setMessage(`PDF解析に失敗しました：${error?.message || error}`);
   }
 }
-function mountOperationButton() {
-  const mount = document.getElementById('analysisImportMount');
-  if (!mount || document.getElementById('analysisImportButton')) return;
-  mount.innerHTML = `<div class="drawer-box" id="analysisImportTools"><h4>分析</h4><div class="hint">定性速報PDFの試料名称を照合し、分析結果と備考を建材レコードへ反映します。</div><button type="button" class="btn" id="analysisImportButton">分析結果取込</button></div>`;
-  const box = document.getElementById('analysisImportTools');
-  fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = 'application/pdf,.pdf';
-  fileInput.hidden = true;
-  document.body.appendChild(fileInput);
-  box.querySelector('#analysisImportButton').addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
-  fileInput.addEventListener('change', () => void handleFile(fileInput.files?.[0]));
-}
-
 export function initializeAnalysisImport() {
   if (initialized) return;
   initialized = true;
   ensureStyles();
   ensureModal();
-  mountOperationButton();
+  if (!fileInput) {
+    fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'application/pdf,.pdf';
+    fileInput.hidden = true;
+    document.body.appendChild(fileInput);
+    fileInput.addEventListener('change', () => void handleFile(fileInput.files?.[0]));
+  }
+}
+
+/** 操作パネルの共通Excel連携セクションから起動する。 */
+export function openAnalysisImportPicker() {
+  initializeAnalysisImport();
+  fileInput.value = '';
+  fileInput.click();
 }
