@@ -83,7 +83,7 @@ export function formatExcelLocation(record, branch) {
 
   if (area === 'E') return `外部　${roomName || roomNo}`;
   if (area === 'I' || !area) return `部屋No.${roomNo}`;
-  if (['S', 'R', 'B'].includes(area)) return roomNo || area;
+  if (['S', 'R', 'B'].includes(area)) return roomNo.startsWith(area) ? roomNo : `${area}${roomNo}`;
   return roomNo || raw;
 }
 
