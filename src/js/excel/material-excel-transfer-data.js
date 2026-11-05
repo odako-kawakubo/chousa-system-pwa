@@ -7,7 +7,6 @@ import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-deri
 import { formatExcelLocation, formatExcelDate, clipboardSafe, formatExcelSampler } from './excel-transfer-data.js';
 
 const text = (value) => String(value ?? '').trim();
-const excelColumnIndex = (letters) => [...letters].reduce((sum, c) => sum * 26 + c.charCodeAt(0) - 64, 0);
 const COLUMNS = Object.freeze(['F','G','H','I','J','K','L',...'MNOPQRSTUVWXYZ','AA','AB','AC','AD','AE','AF','AG','AH','AI','AJ','AK']);
 const VALID_LEVELS = new Set(['-','3','2','1']);
 const VALID_RESULTS = new Set(['未採取','分析中','無','石綿含有','石綿含有みなし']);
