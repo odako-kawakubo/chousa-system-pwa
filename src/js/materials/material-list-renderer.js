@@ -126,14 +126,14 @@ export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
         ${renderTextDisplay(row, 'name', row.name, '建材名称')}
       </td>
       <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
-      <td class="col-level material-control-cell">
+      <td class="col-level material-control-cell${missing('level')}">
         ${renderSelect(row, 'level', MATERIAL_LEVEL_OPTIONS, row.level)}
       </td>
-      <td class="col-analysis material-control-cell">
+      <td class="col-analysis material-control-cell${missing('analysisRequired')}">
         ${renderAnalysisSelect(row)}
       </td>
       ${analysisColumnsOpen ? `
-        <td class="col-analysis-result material-edit-cell">
+        <td class="col-analysis-result material-edit-cell${missing('analysisResult')}">
           ${renderTextDisplay(row, 'analysisResult', row.analysisResult, '分析結果', '分析結果')}
         </td>
         <td class="col-analysis-remarks material-edit-cell">
