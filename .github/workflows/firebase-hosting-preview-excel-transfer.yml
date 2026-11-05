@@ -159,7 +159,7 @@ jobs:
           assert(result.rows[2].values.slice(26,31).every((value)=>value===''),'visual sampling columns blank');
           assert(result.rows[3].values.slice(26,31).every((value)=>value===''),'excluded sampling columns blank');
           assert(result.rows[0].values[31]==='小田原鉱石株式会社　濱舘　厚','shared sampler');
-          assert(result.tsv.split('\\n').length===4 && result.tsv.split('\\n')[0].split('\\t').length===32,'paste matrix shape');
+          assert(result.tsv.split(String.fromCharCode(10)).length===4 && result.tsv.split(String.fromCharCode(10))[0].split(String.fromCharCode(9)).length===32,'paste matrix shape');
           assert(!result.issues.length,'unexpected validation warnings');
           const invalid = mod.buildMaterialExcelSnapshot([record(1,'採取・分析','誤った結果')],{company:'c',person:'p'});
           assert(invalid.issues.some((issue)=>issue.field==='analysisResult'),'invalid Excel result missing warning');
