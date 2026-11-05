@@ -33,6 +33,7 @@ import { notifyTutorialAction } from '../guide/tutorial-action.js';
 import { requestSamplingLocationChange } from '../photos/sampling-location-change.js';
 import { refreshPhotoTab } from '../photos/photo-controller.js';
 import { normalizeActiveMaterialNumbers } from './material-list-persistence.js';
+import { getExcelMaterialWarnings, getExcelMaterialIssues } from '../excel/excel-transfer-data.js';
 
 let rootElement = null;
 let selectedMaterialId = null;
@@ -45,6 +46,8 @@ let materialListColorMode = false;
 // 部屋表示状態は共有stateへ集約し、出力・採取写真と共通利用する。
 // 調査中は横幅を圧迫しないよう、分析結果／分析備考は初期非表示。
 let materialListAnalysisColumnsOpen = false;
+// Excel転記から修正へ移動した場合だけ有効にする、案件ごとの一時表示状態。
+let excelWarningProjectId = '';
 
 
 /**
@@ -135,6 +138,12 @@ function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) 
  * 編集された建材1件だけDOM差し替えする。
  * 一覧全体のinnerHTML再生成を避け、select操作時のちらつきとフォーカス再生成を抑える。
  */
+function currentExcelWarningMap() {
+  const projectId = String(getCurrentProject()?.projectId || '');
+  return excelWarningProjectId && excelWarningProjectId === projectId
+    ? getExcelMaterialWarnings(materialRecordStore.getAll()) : new Map();
+}
+
 function refreshMaterialRow(materialId) {
   if (!rootElement) return false;
   const roomNameMode = getMaterialRoomNameMode();
@@ -148,7 +157,8 @@ function refreshMaterialRow(materialId) {
 
   currentRow.outerHTML = renderMaterialListRow(row, selectedMaterialId, {
     colorMode: materialListColorMode,
-    analysisColumnsOpen: materialListAnalysisColumnsOpen
+    analysisColumnsOpen: materialListAnalysisColumnsOpen,
+    warningFields: currentExcelWarningMap().get(String(materialId)) || []
   });
   return true;
 }
@@ -180,7 +190,8 @@ export function refreshMaterialList() {
   renderMaterialList(rootElement, rows, selectedMaterialId, {
     colorMode: materialListColorMode,
     roomNameMode,
-    analysisColumnsOpen: materialListAnalysisColumnsOpen
+    analysisColumnsOpen: materialListAnalysisColumnsOpen,
+    warningMap: currentExcelWarningMap()
   });
   renderedProjectId = projectId;
   restoreMaterialListScroll(projectId);
@@ -477,6 +488,12 @@ function updateSamplePartsFromChecklist(materialId) {
     summary.textContent = label;
     summary.title = label;
   }
+  // 採取部位チェックボックスは行再描画をしないため、警告表示だけ更新する。
+  const issueFields = getExcelMaterialIssues(materialRecordStore.get(materialId));
+  details?.closest('.col-sample-part')?.classList.toggle(
+    'excel-transfer-missing-cell',
+    Boolean(excelWarningProjectId && excelWarningProjectId === String(getCurrentProject()?.projectId || '') && issueFields.includes('samplePart'))
+  );
   refreshRecordView();
 }
 
@@ -580,4 +597,25 @@ export function getSelectedMaterialId() {
 export function selectMaterialInList(materialId) {
   selectedMaterialId = materialId || null;
   applySelectedRowState();
+}
+
+/** Excel転記から建材リストへの修正移動時だけ、記入漏れを一時表示する。 */
+export function activateExcelTransferWarnings(projectId) {
+  excelWarningProjectId = String(projectId || '');
+  refreshMaterialList();
+}
+
+/** 既存の選択・スクロール領域を用いて、最初の未入力セルへ一度だけ移動する。 */
+export function focusExcelTransferMissing(materialId, field) {
+  if (!rootElement) return;
+  selectMaterialInList(materialId);
+  const row = [...rootElement.querySelectorAll('[data-material-row]')]
+    .find((node) => String(node.dataset.materialId) === String(materialId));
+  if (!row) return;
+  const target = field === 'name'
+    ? row.querySelector('.col-name')
+    : field === 'samplePart'
+      ? row.querySelector('.col-sample-part')
+      : row.querySelector(`[data-field="${field}"]`)?.closest('td');
+  (target || row).scrollIntoView({ block:'center', inline:'nearest', behavior:'auto' });
 }
