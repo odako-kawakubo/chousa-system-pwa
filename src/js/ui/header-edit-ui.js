@@ -1,7 +1,7 @@
 /**
  * ヘッダーの案件名／端末名を既存の正本へ接続する。
  * 案件名はproject-storeを更新し、Firestoreの案件メタ情報も同じ値へ更新する。
- * 設定タブの案件名入力も同じ経路へ流す。
+ * 設定タブからの案件名更新は settings-controller.js が確定時に一括処理する。
  */
 import { getCurrentProject, updateProjectFields, subscribe } from '../projects/project-store.js';
 import { persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
@@ -107,10 +107,4 @@ export function bindHeaderEditUi() {
     });
   }
 
-  // 設定タブの案件名変更もproject-storeへ流し、ヘッダーを同時に更新する。
-  document.addEventListener('input', (event) => {
-    const input = event.target.closest('[data-setting-project-field="projectName"]');
-    if (!input) return;
-    updateCurrentProjectName(input.value);
-  });
 }
