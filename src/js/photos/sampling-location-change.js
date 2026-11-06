@@ -362,7 +362,9 @@ export async function requestSamplingLocationChange({
  * レコードを保存する。失敗した写真は既存画像のまま残し、エラーを通知する。
  */
 export async function refreshSamplingLocationsForRoom(roomKey) {
-  const room = resolveRoomLocation(roomKey, { context:'photo' });
+  const room = resolveRoomLocation(roomKey, {
+    preferRoomName:getMaterialRoomNameMode(), context:'photo'
+  });
   if (!room) return { changed:0, errors:[] };
   const changes = [];
   materialRecordStore.getAll().forEach((material) => {
