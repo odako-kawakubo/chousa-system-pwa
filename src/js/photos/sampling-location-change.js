@@ -15,6 +15,7 @@
 
 import * as materialRecordStore from '../store/material-record-store.js';
 import { resolveRoomLocation } from '../finish-table/room-location.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
@@ -298,7 +299,9 @@ export async function requestSamplingLocationChange({
     return { changed:false, decision:'cancel', reason:'invalid-target' };
   }
 
-  const resolved = nextRoomKey ? resolveRoomLocation(nextRoomKey, { context:'photo' }) : null;
+  const resolved = nextRoomKey ? resolveRoomLocation(nextRoomKey, {
+    preferRoomName:getMaterialRoomNameMode(), context:'photo'
+  }) : null;
   const next = resolved ? resolved.display : text(nextLocation);
   const stableKey = resolved?.key || '';
   const current = text(material[field]);
