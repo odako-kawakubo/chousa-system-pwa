@@ -6,7 +6,8 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { roomCarrierRecord, persistSparseFinishRecord } from './finish-table-persistence.js';
 import { refreshMaterialUsageDerivedFields } from './material-usage-derived.js';
-import { roomLocationKey } from './room-location.js';
+import { roomLocationKey, roomLocationDisplay } from './room-location.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { refreshSamplingLocationsForRoom } from '../photos/sampling-location-change.js';
 import { refreshVisualPhotoBoardsForRoom } from '../photos/room-photo-regeneration.js';
 
@@ -67,12 +68,9 @@ export function commitRoomField(roomKey, field, rawValue) {
     const locationKey = roomLocationKey(carrier || currentRoomRecords[0]);
     const previousRoom = previousCarrier || records[0];
     const currentRoom = carrier || currentRoomRecords[0];
-    const oldBoardName = previousRoom.areaCode === 'E'
-      ? String(previousRoom.roomName || previousRoom.roomNo || '')
-      : String(previousRoom.roomNo || '');
-    const newBoardName = currentRoom.areaCode === 'E'
-      ? String(currentRoom.roomName || currentRoom.roomNo || '')
-      : String(currentRoom.roomNo || '');
+    const preferRoomName = getMaterialRoomNameMode();
+    const oldBoardName = roomLocationDisplay(previousRoom, { preferRoomName, context:'photo' });
+    const newBoardName = roomLocationDisplay(currentRoom, { preferRoomName, context:'photo' });
     if (oldBoardName !== newBoardName) {
       void refreshSamplingLocationsForRoom(locationKey);
       void refreshVisualPhotoBoardsForRoom(locationKey);
