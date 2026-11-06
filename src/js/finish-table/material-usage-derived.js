@@ -106,10 +106,17 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
   const raw = String(location || '').trim();
   if (!raw) return { value:'', label: preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'' };
 
+  // A stored but unresolved key must not be silently re-bound to a different room.
+  if (roomKey) return { value:raw, label:preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'', key:'' };
+
   const options = getMaterialUsageRoomOptions(inputId, { preferRoomName });
-  const matched = options.find((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
-  if (matched) return { value: matched.areaCode === 'E' ? (matched.roomName || matched.roomNo) : matched.display, label: matched.label, roomNo: matched.roomNo, roomName: matched.roomName, areaCode: matched.areaCode, key: matched.key };
-  return { value: raw, label:'部屋No.', roomNo:raw, roomName:'' };
+  const matches = options.filter((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
+  if (matches.length === 1) {
+    const matched = matches[0];
+    return { value: matched.areaCode === 'E' ? (matched.roomName || matched.roomNo) : matched.display, label: matched.label, roomNo: matched.roomNo, roomName: matched.roomName, areaCode: matched.areaCode, key: matched.key };
+  }
+  // Keep an unknown or ambiguous original value instead of inventing a room number.
+  return { value:raw, label:preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'', key:'' };
 }
 
 export function getMaterialUsageRoomNos(inputId) {
