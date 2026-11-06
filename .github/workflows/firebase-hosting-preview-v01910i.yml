@@ -1,4 +1,4 @@
-name: Review v0.1.9.10I Room ID (v0163a)
+name: Review v0.1.9.10I Room ID (review-photo-pdf)
 
 on:
   push:
@@ -153,4 +153,4 @@ jobs:
           printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
           chmod 600 "${credentials}"
           export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
-          npx --yes firebase-tools@15.34.0 hosting:channel:deploy v0163a --expires 30d --project odako-chousa-system-pwa
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
