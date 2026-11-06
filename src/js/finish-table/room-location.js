@@ -1,19 +1,22 @@
 /**
- * 部屋参照・表示の単一入口。名前ではなく areaCode|roomPosition を正本として識別する。
- * finishRecordの内容から常に最新の表示名を取得する。
+ * 部屋共通IDの参照と表示。部屋の共通情報はfinishRecordの末尾602を優先する。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor, normalizeRoomId } from '../records/room-id.js';
+
+export { normalizeRoomId as normalizeRoomLocationKey };
 
 export function roomLocationKey(record = {}) {
-  const area = String(record.areaCode || '').trim();
-  const position = String(record.roomPosition || '').trim();
-  return area && position ? `${area}|${position}` : '';
+  return roomIdFor(record.areaCode, record.roomPosition);
 }
 
 export function findRoomByLocationKey(key) {
-  return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && roomLocationKey(record) === String(key || '')
-  ) || null;
+  const id = normalizeRoomId(key);
+  if (!id) return null;
+  const records = finishRecordStore.getAll().filter((record) =>
+    record.status === 'active' && roomLocationKey(record) === id
+  );
+  return records.find((record) => Number(record.position) === 602) || records[0] || null;
 }
 
 export function roomLocationDisplay(room = {}, { preferRoomName = false, context = 'list' } = {}) {
