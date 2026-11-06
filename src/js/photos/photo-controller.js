@@ -39,7 +39,7 @@ import { requestSamplingLocationChange } from './sampling-location-change.js';
 
 const state = {
   mode: 'visual',
-  selectedRoomUid: '',
+  selectedRoomKey: '',
   selectedMaterialId: '',
   openVisualKeys: new Set(),
   openSamplingKeys: new Set(),
@@ -167,8 +167,8 @@ function render() {
     return;
   }
 
-  const view = buildVisualPhotoView(state.selectedRoomUid);
-  state.selectedRoomUid = view.activeRoom?.roomUid || '';
+  const view = buildVisualPhotoView(state.selectedRoomKey);
+  state.selectedRoomKey = view.activeRoom?.roomKey || '';
   renderVisualView(body, view, state);
   hydrateThumbnailImages(root);
   applySelectionUi();
@@ -207,7 +207,7 @@ function externalImportContext() {
     return { photoType: PHOTO_TYPES.SAMPLING, materialId: material.materialId };
   }
 
-  const view = buildVisualPhotoView(state.selectedRoomUid);
+  const view = buildVisualPhotoView(state.selectedRoomKey);
   if (!view.activeRoom) return null;
   return {
     photoType: PHOTO_TYPES.VISUAL,
@@ -231,7 +231,7 @@ async function addPickedFiles(fileList) {
  * 目視写真のUIキーからroomPosition/part等のRecord作成contextを復元する。
  */
 function visualContextFromKey(key) {
-  const view = buildVisualPhotoView(state.selectedRoomUid);
+  const view = buildVisualPhotoView(state.selectedRoomKey);
   const target = view.targets.find((item) => item.key === key);
   if (!target) return null;
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: target.areaCode, roomPosition: target.roomPosition, partSlot: target.partSlot, roomNo: view.activeRoom?.roomNo || '', part: target.part };
@@ -273,9 +273,9 @@ function samplingDefaultContextFromKey(key) {
 function buildCameraOptions() {
   const visual = buildVisualPhotoView('');
   const visualRooms = visual.rooms.map((room) => {
-    const roomView = buildVisualPhotoView(room.roomUid);
+    const roomView = buildVisualPhotoView(room.roomKey);
     return {
-      roomUid: room.roomUid,
+      roomKey: room.roomKey,
       areaCode: room.areaCode,
       roomPosition: room.roomPosition,
       roomNo: room.roomNo,
@@ -344,7 +344,7 @@ function globalCameraContext() {
       shootingType: SHOOTING_TYPES.BEFORE
     };
   }
-  const view = buildVisualPhotoView(state.selectedRoomUid);
+  const view = buildVisualPhotoView(state.selectedRoomKey);
   const target = view.targets?.[0];
   if (!view.activeRoom || !target) return null;
   return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
@@ -365,7 +365,7 @@ function refreshCameraPhotoBlock(record) {
   if (!root || !record?.photoId) return false;
 
   if (record.photoType === PHOTO_TYPES.VISUAL) {
-    const view = buildVisualPhotoView(state.selectedRoomUid);
+    const view = buildVisualPhotoView(state.selectedRoomKey);
     if (!view.activeRoom
       || view.activeRoom.areaCode !== record.areaCode
       || view.activeRoom.roomPosition !== record.roomPosition) {
@@ -503,7 +503,7 @@ export function capturePhotoUiState() {
   rememberPhotoScroll(renderedMode);
   return {
     mode: state.mode,
-    selectedRoomUid: state.selectedRoomUid,
+    selectedRoomKey: state.selectedRoomKey,
     selectedMaterialId: state.selectedMaterialId,
     openVisualKeys: [...state.openVisualKeys],
     openSamplingKeys: [...state.openSamplingKeys],
@@ -519,7 +519,7 @@ export function capturePhotoUiState() {
 export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
   if (!snapshot) return;
   state.mode = ['visual', 'sampling', 'orphan'].includes(snapshot.mode) ? snapshot.mode : 'visual';
-  state.selectedRoomUid = String(snapshot.selectedRoomUid || '');
+  state.selectedRoomKey = String(snapshot.selectedRoomKey || '');
   state.selectedMaterialId = String(snapshot.selectedMaterialId || '');
   state.openVisualKeys = new Set(snapshot.openVisualKeys || []);
   state.openSamplingKeys = new Set(snapshot.openSamplingKeys || []);
@@ -545,7 +545,7 @@ export function restorePhotoUiState(snapshot, { renderNow = true } = {}) {
 export function resetPhotoUiStateForTutorial({ renderNow = true } = {}) {
   state.mode = 'visual';
   renderedOrphanPhotos = [];
-  state.selectedRoomUid = '';
+  state.selectedRoomKey = '';
   state.selectedMaterialId = '';
   state.openVisualKeys = new Set();
   state.openSamplingKeys = new Set();
@@ -566,7 +566,7 @@ export function resetPhotoUiStateForProject() {
 
   state.mode = 'visual';
   renderedOrphanPhotos = [];
-  state.selectedRoomUid = '';
+  state.selectedRoomKey = '';
   state.selectedMaterialId = '';
   state.openVisualKeys = new Set();
   state.openSamplingKeys = new Set();
@@ -580,8 +580,8 @@ export function resetPhotoUiStateForProject() {
   renderedMode = 'visual';
 
   const visual = buildVisualPhotoView('');
-  state.selectedRoomUid = visual.activeRoom?.roomUid || '';
-  if (state.selectedRoomUid) buildVisualPhotoView(state.selectedRoomUid);
+  state.selectedRoomKey = visual.activeRoom?.roomKey || '';
+  if (state.selectedRoomKey) buildVisualPhotoView(state.selectedRoomKey);
   const sampling = buildSamplingPhotoView('');
   state.selectedMaterialId = sampling.activeMaterial?.materialId || '';
 }
@@ -592,7 +592,7 @@ export function resetPhotoUiStateForProject() {
 export function refreshPhotoTab() {
   syncDiagnosticLog('PHOTO_REFRESH_TAB', {
     mode: state.mode,
-    selectedRoomUid: state.selectedRoomUid,
+    selectedRoomKey: state.selectedRoomKey,
     selectedMaterialId: state.selectedMaterialId,
     localPreviewCount: getLocalPreviewCount()
   });

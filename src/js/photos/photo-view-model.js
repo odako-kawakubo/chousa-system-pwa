@@ -6,25 +6,22 @@
  * - 採取側は materialRecordStore の採取数 / 採取場所1〜3 / 採取部位を正本として使う。
  * - photoRecordStore から各写真グループの代表写真・追加写真を解決する。
  * - 試料No.は採取対象建材の並びから表示用に付与する。
- * - 同期後にroomUidが変化しても areaCode + roomPosition の安定キーで同じ論理部屋へ復帰する。
+ * - 同期後にroomKeyが変化しても areaCode + roomPosition の安定キーで同じ論理部屋へ復帰する。
  * - DOM操作やRecord更新は行わない。
  */
 
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { getShootingTypeLabel, getVisualPhotoRoomKey, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
+import { getShootingTypeLabel, getVisualPhotoTargetKey, isSamplingPhotoUnorganized, SHOOTING_TYPES } from '../records/photo-record.js';
 import { samplePartsToText } from '../records/material-record.js';
 import { getMaterialSampleLocationDisplay, getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { classifyOrphanPhotos } from './photo-orphan-classifier.js';
+import { roomIdFor } from '../records/room-id.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
 const SAMPLE_BRANCH_LABELS = Object.freeze(['①', '②', '③']);
-
-// Controllerは従来どおりselectedRoomUidを渡す。
-// そのUIDが再構築で失効した時だけ、直前に同UIDが指していた安定部屋キーへ復帰する。
-let lastSelectedVisualRoom = { roomUid: '', roomKey: '' };
 
 export const SAMPLE_STAGE_ORDER = Object.freeze([
   SHOOTING_TYPES.BEFORE,
@@ -60,18 +57,18 @@ function representativeFirst(photos) {
   });
 }
 
-function getRoomRecords(roomUid) {
-  return finishRecordStore.getAll().filter((record) => record.status === 'active' && record.roomUid === roomUid);
+function getRoomRecords(roomKey) {
+  return finishRecordStore.getAll().filter((record) => record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition) === roomKey);
 }
 
 function buildRoomList() {
   const byRoom = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || !record.roomUid || byRoom.has(record.roomUid)) return;
-    byRoom.set(record.roomUid, {
-      roomUid: record.roomUid,
-      roomKey: getVisualPhotoRoomKey(record),
+    const id = roomIdFor(record.areaCode, record.roomPosition);
+    if (record.status !== 'active' || !id || byRoom.has(id)) return;
+    byRoom.set(id, {
+      roomKey: id,
       areaCode: record.areaCode,
       roomPosition: record.roomPosition,
       floor: record.floor,
@@ -118,7 +115,7 @@ function finishMaterialDisplay(record) {
 }
 
 function buildVisualTargets(room) {
-  const records = getRoomRecords(room.roomUid);
+  const records = getRoomRecords(room.roomKey);
   const targets = [];
 
   // 基本4部位は仕上表の物理枠に対応するため、入力の有無に関係なく必ず表示する。
@@ -190,27 +187,12 @@ function buildVisualTarget(room, partSlot, part, finishRecords) {
   };
 }
 
-export function buildVisualPhotoView(selectedRoomUid = '') {
+export function buildVisualPhotoView(selectedRoomKey = '') {
   const rooms = buildRoomList();
 
-  let activeRoom = rooms.find((room) => room.roomUid === selectedRoomUid) || null;
-
-  // 同期受信後にfinishRecordが再構築されるとroomUidだけが変わる場合がある。
-  // その時は、直前のUIDが指していた areaCode + roomPosition で同じ部屋を探す。
-  if (!activeRoom && selectedRoomUid && lastSelectedVisualRoom.roomUid === selectedRoomUid) {
-    activeRoom = rooms.find((room) => room.roomKey === lastSelectedVisualRoom.roomKey) || null;
-  }
+  let activeRoom = rooms.find((room) => room.roomKey === selectedRoomKey) || null;
 
   activeRoom ||= rooms[0] || null;
-
-  // buildCameraOptions()等の「選択を変えない一覧取得」は空UIDで呼ばれるため、
-  // 実際の選択UIDが渡された時だけ継続情報を更新する。
-  if (selectedRoomUid && activeRoom) {
-    lastSelectedVisualRoom = {
-      roomUid: activeRoom.roomUid,
-      roomKey: activeRoom.roomKey
-    };
-  }
 
   // 写真を全件から「部位別」または「未整理」に一度だけ分類する。
   // 写真が有効な部位キーを持っていても、現在の仕上表にその枠がなければ未整理へ。

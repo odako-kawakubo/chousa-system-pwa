@@ -94,15 +94,15 @@ export function renderVisualTargetBlock(target, openKeys) {
   </article>`;
 }
 
-function renderRoomItems(rooms, activeRoomUid) {
+function renderRoomItems(rooms, activeRoomKey) {
   return rooms.map((room) => `
-    <button class="photo-target-item grouped ${activeRoomUid === room.roomUid ? 'active' : ''}" type="button" data-photo-room="${esc(room.roomUid)}">
+    <button class="photo-target-item grouped ${activeRoomKey === room.roomKey ? 'active' : ''}" type="button" data-photo-room="${esc(room.roomKey)}">
       <b>${esc(roomTitle(room))}</b>
       <span class="meta">写真 ${room.photoCount}枚</span>
     </button>`).join('');
 }
 
-function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
+function renderVisualRoomList(rooms, activeRoomKey, collapsedGroups) {
   const external = rooms.filter((room) => room.areaCode === 'E');
   const internal = rooms.filter((room) => room.areaCode !== 'E');
   const sections = [];
@@ -115,7 +115,7 @@ function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
         <span><span class="mark">${collapsed ? '▶' : '▼'}</span> 外部</span>
         <span class="group-meta">${external.length}箇所</span>
       </button>
-      ${collapsed ? '' : renderRoomItems(external, activeRoomUid)}
+      ${collapsed ? '' : renderRoomItems(external, activeRoomKey)}
     </div>`);
   }
 
@@ -143,7 +143,7 @@ function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
             <span><span class="mark">${collapsed ? '▶' : '▼'}</span> ${esc(label)}</span>
             <span class="group-meta">${groupRooms.length}</span>
           </button>
-          ${collapsed ? '' : renderRoomItems(groupRooms, activeRoomUid)}
+          ${collapsed ? '' : renderRoomItems(groupRooms, activeRoomKey)}
         </div>`;
       }).join('')}
     </div>`);
@@ -205,7 +205,7 @@ export function renderVisualView(container, view, state) {
   container.innerHTML = `<div class="photo-target-layout">
     <aside class="photo-target-list">
       <div class="photo-target-list-head">調査場所</div>
-      ${renderVisualRoomList(view.rooms, room?.roomUid || '', state.collapsedLocationGroups)}
+      ${renderVisualRoomList(view.rooms, room?.roomKey || '', state.collapsedLocationGroups)}
     </aside>
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
