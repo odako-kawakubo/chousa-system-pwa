@@ -3,7 +3,7 @@
  * materialRecordを変更せず、プレビュー・検査・クリップボードを同一データから作る。
  */
 import { getMaterialDisplayNo, samplePartsToText } from '../records/material-record.js';
-import { getMaterialUsageRoomOptions, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { formatSamplingPlace } from '../finish-table/room-location.js';
 
@@ -73,23 +73,19 @@ export function formatExcelLocation(record, branch) {
   if (!key && !raw) return '';
 
   const preferRoomName = getMaterialRoomNameMode();
-  const options = getMaterialUsageRoomOptions(record.inputId, { preferRoomName });
-  const match = (key && options.find((item) => item.key === key))
-    || options.find((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
-  const fallback = getMaterialSampleLocationDisplay(record.inputId, raw, {
+  const resolved = getMaterialSampleLocationDisplay(record.inputId, raw, {
     roomKey:key, preferRoomName
   });
-  const area = match?.areaCode || fallback.areaCode || (key.includes('|') ? key.split('|')[0] : '');
-  const roomNo = value(match?.roomNo || fallback.roomNo || raw);
-  const roomName = value(match?.roomName || fallback.roomName);
+  // When no room can be identified, preserve the entered place exactly as recorded.
+  if (!resolved.key) return raw;
 
+  const roomNo = value(resolved.roomNo);
+  const roomName = value(resolved.roomName);
   // 外部は既存Excel仕様を維持（部屋名を優先し、部屋No.は付けない）。
-  if (area === 'E') return `外部　${roomName || roomNo}`;
+  if (resolved.areaCode === 'E') return `外部　${roomName || roomNo}`;
 
-  const displayNo = ['S', 'R', 'B'].includes(area) && roomNo && !roomNo.startsWith(area)
-    ? `${area}${roomNo}`
-    : roomNo;
-  return formatSamplingPlace({ roomNo:displayNo, roomName, fallback:raw }, { preferRoomName }).text;
+  // roomNo is user-editable; do not synthesize S/R/B prefixes or positional numbers.
+  return formatSamplingPlace({ roomNo, roomName, fallback:raw }, { preferRoomName }).text;
 }
 
 function makeSampleName(record) {
