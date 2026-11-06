@@ -13,10 +13,11 @@ export function roomLocationKey(record = {}) {
 export function findRoomByLocationKey(key) {
   const id = normalizeRoomId(key);
   if (!id) return null;
-  const records = finishRecordStore.getAll().filter((record) =>
+  const carrier = finishRecordStore.get(`${id}-602`);
+  if (carrier?.status === 'active' && roomLocationKey(carrier) === id) return carrier;
+  return finishRecordStore.getAll().find((record) =>
     record.status === 'active' && roomLocationKey(record) === id
-  );
-  return records.find((record) => Number(record.position) === 602) || records[0] || null;
+  ) || null;
 }
 
 export function roomLocationDisplay(room = {}, { preferRoomName = false, context = 'list' } = {}) {
