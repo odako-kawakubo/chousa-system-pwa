@@ -14,6 +14,7 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildVisualPhotoView, buildSamplingPhotoView, buildOrphanPhotoView } from './photo-view-model.js';
 import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
+import { resolveSamplingBoardPlace } from '../finish-table/room-location.js';
 import { renderPhotoShell, renderVisualView, renderSamplingView, renderOrphanPhotoView, renderVisualTargetBlock, renderSamplingPointBlock } from './photo-renderer.js';
 import { initializePhotoViewer, closePhotoViewer, openDirectPhotoCompare } from './photo-viewer.js';
 import { photosForViewer, compareTargetsForViewer } from './photo-viewer-data.js';
@@ -303,7 +304,7 @@ function buildCameraOptions() {
       materialNo: material.materialNo,
       sampleBaseNo: String(material.sampleNo || ''),
       sampleNo: point.sampleNo,
-      samplingPlace: point.samplingPlace || '',
+      samplingPlace: resolveSamplingBoardPlace(point.samplingPlace, point.roomKey).display,
       areaCode: point.areaCode || '',
       roomKey: point.roomKey || '',
       branch: point.branch,
