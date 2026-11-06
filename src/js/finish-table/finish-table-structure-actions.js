@@ -2,7 +2,6 @@
  * 仕上表の構造変更（階・部屋・入力行追加）。
  */
 import {
-  computeFinishId,
   computeCellPosition,
   buildFloorRoomPosition,
   roomIndexFromRoomPosition,
@@ -15,12 +14,11 @@ import { roomIdFor } from '../records/room-id.js';
 import { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from './finish-table-constants.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { persistFinishForProject } from '../sync/project-record-persistence.js';
-import { persistAddedStructureMarker, persistFinishStructureChange } from './finish-table-persistence.js';
+import { persistAddedStructureMarker } from './finish-table-persistence.js';
 
 const PART_COUNT = 6;
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
-function nowIso() { return new Date().toISOString(); }
 function partsForArea(areaCode) { return areaCode === 'E' ? EXTERNAL_PARTS : INTERNAL_PARTS; }
 
 export function defaultPartName(areaCode, partIndex) {
@@ -75,39 +73,11 @@ export function buildFlatRoomSeed(areaCode, index, customName = '') {
   return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
 }
 
-function rekeyRecordToRoomPosition(record, newRoomPosition) {
-  const nextId = computeFinishId(record.areaCode, newRoomPosition, record.position);
-  if (record.finishId === nextId) return record;
-  return { ...record, roomPosition: newRoomPosition, finishId: nextId, updatedAt: nowIso() };
-}
-
 function listFloorNumbers(areaCode) {
   return [...new Set(uniqueRoomAnchors(areaCode).map((record) => Number(record.floor)))];
 }
 function countRoomsInFloor(areaCode, floor) { return uniqueRoomAnchors(areaCode, floor).length; }
 function countFlatRooms(areaCode) { return uniqueRoomAnchors(areaCode).length; }
-
-function insertFloorRoomAt(areaCode, floor, insertIndex) {
-  const before = finishRecordStore.getAll();
-  const shifted = before.map((record) => {
-    if (record.areaCode !== areaCode || Number(record.floor) !== floor) return record;
-    const idx = roomIndexFromRoomPosition(record.roomPosition);
-    return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, buildFloorRoomPosition(floor, idx + 1));
-  });
-  finishRecordStore.replaceAll([...shifted, ...buildFloorRoomSeed(areaCode, floor, insertIndex)]);
-  persistFinishStructureChange(before, finishRecordStore.getAll());
-}
-
-function insertFlatRoomAt(areaCode, insertIndex) {
-  const before = finishRecordStore.getAll();
-  const shifted = before.map((record) => {
-    if (record.areaCode !== areaCode) return record;
-    const idx = Number(record.roomPosition);
-    return idx < insertIndex ? record : rekeyRecordToRoomPosition(record, pad(idx + 1, 3));
-  });
-  finishRecordStore.replaceAll([...shifted, ...buildFlatRoomSeed(areaCode, insertIndex)]);
-  persistFinishStructureChange(before, finishRecordStore.getAll());
-}
 
 function normalizeRoomCount(roomCount, fallback = 1) {
   const value = Number(roomCount);
@@ -179,16 +149,6 @@ export function addRoomToFloor(floorKey) {
   const records = buildFloorRoomSeed(parsed.areaCode, parsed.floor, index);
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
   persistAddedStructureMarker(records);
-}
-
-export function addRoomAfter(roomKey) {
-  const anchor = finishRecordStore.getAll().find((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active') || null;
-  if (!anchor) return;
-  if (anchor.areaCode === 'I' || anchor.areaCode === 'B') {
-    insertFloorRoomAt(anchor.areaCode, Number(anchor.floor), roomIndexFromRoomPosition(anchor.roomPosition) + 1);
-  } else {
-    insertFlatRoomAt(anchor.areaCode, Number(anchor.roomPosition) + 1);
-  }
 }
 
 export function addInputRow(roomKey) {
