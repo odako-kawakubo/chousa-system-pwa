@@ -40,3 +40,20 @@ export function resolveRoomLocation(key, options = {}) {
     display: roomLocationDisplay(record, options)
   };
 }
+
+/**
+ * 採取場所の帳票表示を共通化する。描画方法はPDF・Excelそれぞれに任せる。
+ * 主表示と部屋No.補足を分けることで、PDFは補足を小さく描画できる。
+ */
+export function formatSamplingPlace(room = {}, { preferRoomName = false } = {}) {
+  const roomNo = String(room.roomNo || '').trim();
+  const roomName = String(room.roomName || '').trim();
+  const fallback = String(room.fallback || '').trim();
+  if (preferRoomName && roomName) {
+    const supplement = roomNo ? `（部屋No.${roomNo}）` : '';
+    return { primary:roomName, supplement, text:roomName + supplement };
+  }
+  const no = roomNo || fallback;
+  const primary = no ? `部屋No.${no}` : '';
+  return { primary, supplement:'', text:primary };
+}
