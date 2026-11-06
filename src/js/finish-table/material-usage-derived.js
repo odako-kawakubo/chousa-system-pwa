@@ -7,6 +7,7 @@ import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
 import { roomLocationKey, roomLocationDisplay, resolveRoomLocation } from './room-location.js';
+import { normalizeRoomId } from '../records/room-id.js';
 
 export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
   const shouldPersist = options.persist !== false;
@@ -101,22 +102,44 @@ export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } =
 }
 
 export function getMaterialSampleLocationDisplay(inputId, location, { preferRoomName = false, roomKey = '' } = {}) {
-  const resolved = roomKey ? resolveRoomLocation(roomKey, { preferRoomName, context: 'photo' }) : null;
-  if (resolved) return { value: resolved.display, label: preferRoomName ? '部屋名' : '部屋No.', roomNo: resolved.roomNo, roomName: resolved.roomName, areaCode: resolved.areaCode, key: resolved.key };
   const raw = String(location || '').trim();
-  if (!raw) return { value:'', label: preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'' };
+  const normalizedKey = normalizeRoomId(roomKey) || normalizeRoomId(raw);
+  const resolved = normalizedKey
+    ? resolveRoomLocation(normalizedKey, { preferRoomName, context:'photo' })
+    : null;
+  if (resolved) {
+    const hasName = Boolean(preferRoomName && String(resolved.roomName || '').trim());
+    return {
+      value: resolved.display,
+      label: hasName ? '部屋名' : '部屋No.',
+      roomNo: resolved.roomNo,
+      roomName: resolved.roomName,
+      areaCode: resolved.areaCode,
+      key: resolved.key
+    };
+  }
 
-  // A stored but unresolved key must not be silently re-bound to a different room.
-  if (roomKey) return { value:raw, label:preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'', key:'' };
+  // The room identity is authoritative: never render a missing ID or
+  // guess a replacement from a possibly duplicate display label.
+  if (normalizedKey) {
+    const safeValue = normalizeRoomId(raw) ? '' : raw;
+    return { value:safeValue, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:normalizedKey };
+  }
+  if (!raw) return { value:'', label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
 
   const options = getMaterialUsageRoomOptions(inputId, { preferRoomName });
   const matches = options.filter((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
   if (matches.length === 1) {
     const matched = matches[0];
-    return { value: matched.areaCode === 'E' ? (matched.roomName || matched.roomNo) : matched.display, label: matched.label, roomNo: matched.roomNo, roomName: matched.roomName, areaCode: matched.areaCode, key: matched.key };
+    const display = matched.areaCode === 'E'
+      ? (matched.roomName || matched.roomNo)
+      : (preferRoomName && matched.roomName ? matched.roomName : matched.roomNo || matched.roomName);
+    return {
+      value:display, label:preferRoomName && matched.roomName ? '部屋名' : '部屋No.',
+      roomNo:matched.roomNo, roomName:matched.roomName, areaCode:matched.areaCode, key:matched.key
+    };
   }
-  // Keep an unknown or ambiguous original value instead of inventing a room number.
-  return { value:raw, label:preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'', key:'' };
+  return { value:raw, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
 }
 
 export function getMaterialUsageRoomNos(inputId) {
