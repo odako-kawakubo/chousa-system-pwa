@@ -11,8 +11,6 @@
  * - roomNo / roomName / roomNote は部屋共通情報として扱う
  * - materialName は登録前の建材名称だけを保持し、登録済み建材は materialId を正とする
  *
- * roomUid はUIが同一部屋を追跡するための内部補助ID。業務上の仕上表IDとは別物で、
- * 部屋挿入によって finishId / roomPosition が変わっても同じ部屋を追跡するためだけに使う。
  */
 
 /** @typedef {'I'|'E'|'S'|'R'|'B'} FinishAreaCode */
@@ -36,7 +34,6 @@
  * @property {string} updatedDevice
  * @property {string} updatedAt
  * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
- * @property {string} roomUid 内部補助ID
  */
 
 export const PART_POSITION = Object.freeze({
@@ -49,12 +46,6 @@ export const PART_POSITION = Object.freeze({
 });
 
 export const PART_KEYS = Object.freeze(['floor', 'baseboard', 'wall', 'ceiling', 'other1', 'other2']);
-
-let roomUidSeed = 0;
-export function nextRoomUid() {
-  roomUidSeed += 1;
-  return `room-${roomUidSeed}`;
-}
 
 function pad(value, length) {
   return String(value).padStart(length, '0');
@@ -105,7 +96,6 @@ export function createFinishRecord(fields) {
     systemMemo: String(fields.systemMemo ?? ''),
     updatedDevice: fields.updatedDevice || 'local',
     updatedAt: fields.updatedAt || new Date().toISOString(),
-    fieldEditedAt: { ...(fields.fieldEditedAt || {}) },
-    roomUid: fields.roomUid || nextRoomUid()
+    fieldEditedAt: { ...(fields.fieldEditedAt || {}) }
   };
 }

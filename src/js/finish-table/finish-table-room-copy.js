@@ -109,8 +109,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
         materialId: source.materialId,
         materialName: String(source.materialName || ''),
         inputId: source.inputId,
-        fieldEditedAt: touchFieldEditedAt({}, ['part', 'materialId', 'materialName'], confirmedAt),
-        roomUid: target.roomUid
+        fieldEditedAt: touchFieldEditedAt({}, ['part', 'materialId', 'materialName'], confirmedAt)
       }));
     });
   });

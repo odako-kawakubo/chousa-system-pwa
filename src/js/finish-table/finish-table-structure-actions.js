@@ -8,10 +8,10 @@ import {
   roomIndexFromRoomPosition,
   partIndexFromPosition,
   rowFromPosition,
-  createFinishRecord,
-  nextRoomUid
+  createFinishRecord
 } from '../records/finish-record.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from './finish-table-constants.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { persistFinishForProject } from '../sync/project-record-persistence.js';
@@ -38,20 +38,20 @@ function uniqueRoomAnchors(areaCode, floor = undefined) {
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || record.areaCode !== areaCode) return;
     if (floor !== undefined && Number(record.floor) !== Number(floor)) return;
-    if (!byRoom.has(record.roomUid)) byRoom.set(record.roomUid, record);
+    const id = roomIdFor(record.areaCode, record.roomPosition);
+    if (!byRoom.has(id)) byRoom.set(id, record);
   });
   return Array.from(byRoom.values());
 }
 
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT, roomUid = nextRoomUid() }) {
+function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT }) {
   const records = [];
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= rowCount; row += 1) {
       records.push(createFinishRecord({
         areaCode, roomPosition, floor, roomNo, roomName, roomNote,
         position: computeCellPosition(partIndex, row),
-        part: defaultPartName(areaCode, partIndex),
-        roomUid
+        part: defaultPartName(areaCode, partIndex)
       }));
     }
   }
@@ -182,7 +182,7 @@ export function addRoomToFloor(floorKey) {
 }
 
 export function addRoomAfter(roomKey) {
-  const anchor = finishRecordStore.getAll().find((record) => record.roomUid === roomKey && record.status === 'active') || null;
+  const anchor = finishRecordStore.getAll().find((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active') || null;
   if (!anchor) return;
   if (anchor.areaCode === 'I' || anchor.areaCode === 'B') {
     insertFloorRoomAt(anchor.areaCode, Number(anchor.floor), roomIndexFromRoomPosition(anchor.roomPosition) + 1);
@@ -193,7 +193,7 @@ export function addRoomAfter(roomKey) {
 
 export function addInputRow(roomKey) {
   const roomRecords = finishRecordStore.getAll()
-    .filter((record) => record.roomUid === roomKey && record.status === 'active')
+    .filter((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active')
     .sort((a, b) => a.position - b.position);
   const anchor = roomRecords[0];
   if (!anchor) return;
@@ -206,8 +206,7 @@ export function addInputRow(roomKey) {
       roomNo: anchor.roomNo, roomName: anchor.roomName, roomNote: anchor.roomNote,
       position: computeCellPosition(partIndex, nextRow),
       part: defaultPartName(anchor.areaCode, partIndex),
-      roomUid: anchor.roomUid
-    }));
+      }));
   }
   finishRecordStore.batch(() => records.forEach((record) => finishRecordStore.set(record)));
   const marker = records.find((record) => partIndexFromPosition(record.position) === PART_COUNT);

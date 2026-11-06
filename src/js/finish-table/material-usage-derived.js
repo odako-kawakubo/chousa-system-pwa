@@ -70,7 +70,7 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
   const byRoom = new Map();
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || record.materialId !== material.materialId) return;
-    const key = record.roomUid || `${record.areaCode}|${record.roomPosition}`;
+    const key = roomLocationKey(record);
     if (!byRoom.has(key)) byRoom.set(key, record);
   });
 
