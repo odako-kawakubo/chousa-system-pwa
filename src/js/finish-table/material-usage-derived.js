@@ -6,7 +6,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
-import { roomLocationKey, roomLocationDisplay, resolveRoomLocation } from './room-location.js';
+import { roomLocationKey, roomLocationDisplay, roomLocationFieldLabel, resolveRoomLocation } from './room-location.js';
 import { normalizeRoomId } from '../records/room-id.js';
 
 export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
@@ -80,13 +80,13 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
     .map((record) => {
       const roomNo = String(record.roomNo || '').trim();
       const roomName = String(record.roomName || '').trim();
-      const useRoomName = Boolean(preferRoomName && roomName);
       const value = record.areaCode === 'E' ? (roomName || roomNo) : (roomNo || roomName);
       if (!value) return null;
       return {
         value,
         display: roomLocationDisplay(record, { preferRoomName }),
-        label: useRoomName ? '部屋名' : '部屋No.',
+        selectDisplay: roomLocationDisplay(record, { preferRoomName, context:'photo' }),
+        label: roomLocationFieldLabel(record, { preferRoomName }),
         key: roomLocationKey(record),
         areaCode: record.areaCode,
         roomPosition: record.roomPosition,
@@ -108,10 +108,9 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
     ? resolveRoomLocation(normalizedKey, { preferRoomName, context:'photo' })
     : null;
   if (resolved) {
-    const hasName = Boolean(preferRoomName && String(resolved.roomName || '').trim());
     return {
       value: resolved.display,
-      label: hasName ? '部屋名' : '部屋No.',
+      label: roomLocationFieldLabel(resolved, { preferRoomName }),
       roomNo: resolved.roomNo,
       roomName: resolved.roomName,
       areaCode: resolved.areaCode,
@@ -131,11 +130,9 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
   const matches = options.filter((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
   if (matches.length === 1) {
     const matched = matches[0];
-    const display = matched.areaCode === 'E'
-      ? (matched.roomName || matched.roomNo)
-      : (preferRoomName && matched.roomName ? matched.roomName : matched.roomNo || matched.roomName);
+    const display = matched.selectDisplay;
     return {
-      value:display, label:preferRoomName && matched.roomName ? '部屋名' : '部屋No.',
+      value:display, label:roomLocationFieldLabel(matched, { preferRoomName }),
       roomNo:matched.roomNo, roomName:matched.roomName, areaCode:matched.areaCode, key:matched.key
     };
   }
