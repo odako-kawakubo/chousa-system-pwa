@@ -47,7 +47,6 @@ import {
   addRoof,
   addExternalRoom,
   addRoomToFloor,
-  addRoomAfter,
   addInputRow,
   getNextNormalFloorNumber,
   getNextBasementFloorNumber
@@ -439,8 +438,12 @@ function handleAction(button) {
         withHistory(() => addRoomToFloor(button.dataset.floorKey));
       } else if (button.dataset.floorKey === 'external-group') {
         withHistory(() => addExternalRoom());
+      } else if (button.dataset.floorKey === 'stairs-group') {
+        withHistory(() => addStairs());
+      } else if (button.dataset.floorKey === 'roof-group') {
+        withHistory(() => addRoof());
       } else {
-        withHistory(() => addRoomAfter(button.dataset.roomKey));
+        return false;
       }
       return true;
     }
