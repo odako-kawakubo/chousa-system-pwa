@@ -180,7 +180,7 @@ jobs:
             assert.match(structure, new RegExp('export function ' + name + '\\('));
             assert.match(controller, new RegExp('withHistory\\(\\(\\) => ' + name + '\\('));
           }
-          assert.match(renderer, /roomIsLast \\? .*data-action=/);
+          assert.ok(renderer.includes('roomIsLast ?') && renderer.includes('data-action="add-room"'));
           assert.match(structure, /const index = countRoomsInFloor\\(parsed.areaCode, parsed.floor\\) \\+ 1/);
           assert.match(structure, /const start = countFlatRooms\\(areaCode\\) \\+ 1/);
           console.log('Room append-only checks passed');
