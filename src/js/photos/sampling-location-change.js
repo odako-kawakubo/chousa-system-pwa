@@ -14,7 +14,7 @@
  */
 
 import * as materialRecordStore from '../store/material-record-store.js';
-import { resolveRoomLocation } from '../finish-table/room-location.js';
+import { resolveRoomLocation, resolveSamplingBoardPlace } from '../finish-table/room-location.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
@@ -86,7 +86,7 @@ function branchPhotos(materialId, branch) {
 }
 
 function boardDataForPhoto(photo, samplingPlace, roomKey = '') {
-  const room = resolveRoomLocation(roomKey, { context:'photo' });
+  const boardPlace = resolveSamplingBoardPlace(samplingPlace, roomKey);
   const settings = boardSettingsStore.get();
   return {
     photoType:PHOTO_TYPES.SAMPLING,
@@ -94,8 +94,8 @@ function boardDataForPhoto(photo, samplingPlace, roomKey = '') {
     address:settings.addressText || settings.address,
     subjectFontSize:settings.subjectFontSize,
     addressFontSize:settings.addressFontSize,
-    samplingPlace,
-    areaCode:room?.areaCode || '',
+    samplingPlace:boardPlace.display,
+    areaCode:boardPlace.areaCode,
     sampleNo:photo.sampleNo || '',
     statusCode:samplingStatusCode(photo.shootingType),
     date:formatDate(photo.boardDate || photo.capturedAt)
