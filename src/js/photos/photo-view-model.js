@@ -19,6 +19,7 @@ import { getMaterialSampleLocationDisplay, getMaterialUsageRoomOptions } from '.
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { classifyOrphanPhotos } from './photo-orphan-classifier.js';
 import { roomIdFor } from '../records/room-id.js';
+import { resolveRoomLocation, roomLocationDisplay } from '../finish-table/room-location.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
 const SAMPLE_BRANCH_LABELS = Object.freeze(['①', '②', '③']);
@@ -67,13 +68,18 @@ function buildRoomList() {
   finishRecordStore.getAll().forEach((record) => {
     const id = roomIdFor(record.areaCode, record.roomPosition);
     if (record.status !== 'active' || !id || byRoom.has(id)) return;
+    const sharedRoom = resolveRoomLocation(id) || record;
     byRoom.set(id, {
       roomKey: id,
       areaCode: record.areaCode,
       roomPosition: record.roomPosition,
       floor: record.floor,
-      roomNo: record.roomNo,
-      roomName: record.roomName
+      roomNo: sharedRoom.roomNo,
+      roomName: sharedRoom.roomName,
+      display: roomLocationDisplay(sharedRoom, {
+        preferRoomName: getMaterialRoomNameMode(),
+        context: 'photo'
+      })
     });
   });
 
@@ -237,7 +243,8 @@ function buildSamplePoint(material, branch, sampleNo) {
   const preferRoomName = getMaterialRoomNameMode();
   const samplingPlaceDisplay = samplingPlaceAt(material, branch);
   const samplingPlace = samplingPlaceDisplay.value;
-  const samplingPlaceOptions = getMaterialUsageRoomOptions(material.inputId, { preferRoomName });
+  const samplingPlaceOptions = getMaterialUsageRoomOptions(material.inputId, { preferRoomName })
+    .map((option) => ({ ...option, display:option.selectDisplay }));
   const stages = SAMPLE_STAGE_ORDER.map((shootingType) => {
     const photos = findSamplingStagePhotos(material.materialId, branch, shootingType);
     return {
