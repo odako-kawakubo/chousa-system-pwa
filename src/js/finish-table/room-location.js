@@ -32,6 +32,15 @@ export function roomLocationDisplay(room = {}, { preferRoomName = false, context
   return preferRoomName && name ? name : (no || name);
 }
 
+/**
+ * 建材リストと写真タブで共用する部屋の入力欄ラベル。
+ * 外部は部屋名／部屋No.ではなく場所名として扱う。
+ */
+export function roomLocationFieldLabel(room = {}, { preferRoomName = false } = {}) {
+  if (room.areaCode === 'E') return '外部';
+  return preferRoomName && String(room.roomName || '').trim() ? '部屋名' : '部屋No.';
+}
+
 export function resolveRoomLocation(key, options = {}) {
   const record = findRoomByLocationKey(key);
   if (!record) return null;
