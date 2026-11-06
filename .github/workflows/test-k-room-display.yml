@@ -1,0 +1,223 @@
+name: K Room Display and Append-Only Checks (no deploy)
+
+on:
+  push:
+    branches:
+      - work/v0.1.9.10K-room-display-cleanup
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax and module reference checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = [];
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, {withFileTypes:true})) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+            }
+          }
+          walk('src/js');
+          walk('src/config');
+          const missing = [];
+          for (const file of files) {
+            const content = fs.readFileSync(file, 'utf8');
+            for (const m of content.matchAll(/(?:from\s*|import\s*\()\s*['"]([.][^'"]+)['"]/g)) {
+              const resolved = path.resolve(path.dirname(file), m[1]);
+              if (![resolved, resolved+'.js', path.join(resolved, 'index.js')].some(fs.existsSync)) missing.push(file+' -> '+m[1]);
+            }
+          }
+          const sw = fs.readFileSync('src/service-worker.js','utf8');
+          const appShell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(m=>m[1]);
+          for (const rel of appShell) if (!fs.existsSync(path.join('src',rel))) missing.push('APP_SHELL -> '+rel);
+          const appSet = new Set(appShell);
+          for (const file of files.filter(p=>p.startsWith('src/js/'))) if (!appSet.has(file.slice(4))) missing.push('APP_SHELL missing JS -> '+file);
+          if (missing.length) { console.error(missing.join('\n')); process.exit(1); }
+          NODE
+
+      - name: Material Excel transfer regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const source = fs.readFileSync('src/js/excel/material-excel-transfer-data.js','utf8')
+            .replace(/^import .* from .*;$/gm, '');
+          const shims = `
+            const getMaterialDisplayNo = (r) => r.materialNo;
+            const getMaterialUsageRoomOptions = () => [
+              {areaCode:'I',roomNo:'1-1',roomName:'事務室'},
+              {areaCode:'E',roomNo:'E-1',roomName:'北面'}
+            ];
+            const clipboardSafe = v => String(v ?? '').replace(/[\\t\\r\\n]/g,' ');
+          `;
+          const moduleUrl = 'data:text/javascript;base64,'+Buffer.from(shims+source).toString('base64');
+          const {buildMaterialExcelSnapshot} = await import(moduleUrl);
+          const snapshot = buildMaterialExcelSnapshot([{
+            status:'active',materialId:'MAT-001',materialNo:1,inputId:'MAT-001',
+            name:'仕上塗材A',part:'壁',analysisRequired:'採取・分析',
+            analysisResult:'無',note:'確認済み',level:'3',
+            sampleCount:2,sampleDate:'2026-11-05'
+          }]);
+          assert.equal(snapshot.start,'F5');
+          assert.equal(snapshot.columns.length,26);
+          assert.equal(snapshot.columns[0],'F');
+          assert.equal(snapshot.columns.at(-1),'AE');
+          assert.equal(snapshot.rows.length,1);
+          assert.equal(snapshot.rows[0].values.length,26);
+          assert.equal(snapshot.rows[0].values[6],'1-1');
+          assert.equal(snapshot.rows[0].values[7],'北面');
+          assert.equal(snapshot.tsv.split('\t').length,26);
+          assert.ok(!snapshot.columns.includes('AF'));
+          const ui = fs.readFileSync('src/js/excel/material-excel-transfer-controller.js','utf8');
+          assert.match(ui,/施工範囲（部屋No\.）/);
+          assert.match(ui,/建材入力」シートのF5/);
+          assert.doesNotMatch(ui,/data-excel-company|data-excel-person/);
+          console.log('Material Excel transfer checks passed');
+          NODE
+
+      - name: Common room ID and sampling reference regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const src = fs.readFileSync('src/js/records/room-id.js', 'utf8');
+          const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+          assert.equal(mod.roomIdFor('I','101'), 'I-101');
+          assert.equal(mod.roomIdFor('E','001'), 'E-001');
+          assert.equal(mod.normalizeRoomId('I|101'), 'I-101');
+          assert.equal(mod.normalizeRoomId('I-101'), 'I-101');
+          assert.equal(mod.normalizeRoomId('101'), '');
+          const serial = fs.readFileSync('src/js/firestore/record-serializer.js', 'utf8');
+          for (let i = 1; i <= 3; i++) {
+            assert.match(serial, new RegExp('sampleRoomKey' + i + ': text\\(record\\.sampleRoomKey' + i + '\\)'));
+          }
+          const finish = fs.readFileSync('src/js/records/finish-record.js', 'utf8');
+          assert.doesNotMatch(finish, /nextRoomUid|roomUid/);
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          assert.ok(sw.includes("'./js/records/room-id.js'"));
+          console.log('Room ID and sampling key checks passed');
+          NODE
+
+
+      - name: Sampling location display regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const roomSource = fs.readFileSync('src/js/finish-table/room-location.js','utf8')
+            .replace(/^import .*;$/gm, '').replace(/^export \{.*\};$/gm, '');
+          const idSource = fs.readFileSync('src/js/records/room-id.js','utf8')
+            .replaceAll('export function ', 'function ');
+          const rooms = [
+            {status:'active',finishId:'I-101-602',areaCode:'I',roomPosition:'101',roomNo:'1-1',roomName:'会議室'},
+            {status:'active',finishId:'I-102-602',areaCode:'I',roomPosition:'102',roomNo:'1-2',roomName:''},
+            {status:'active',finishId:'E-001-602',areaCode:'E',roomPosition:'001',roomNo:'E-1',roomName:'東面'}
+          ];
+          const shim = `const rooms = ${JSON.stringify(rooms)};\nconst finishRecordStore = {
+            get: (id) => rooms.find(r => r.finishId === id),
+            getAll: () => rooms
+          };\n`;
+          const source = idSource + '\n' + shim + roomSource;
+          const room = await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+          assert.equal(room.resolveSamplingBoardPlace('I-101').display,'1-1');
+          assert.equal(room.resolveSamplingBoardPlace('I|101').display,'1-1');
+          assert.equal(room.resolveSamplingBoardPlace('旧ラベル','I-101').display,'1-1');
+          assert.equal(room.resolveSamplingBoardPlace('I-102').display,'1-2');
+          assert.equal(room.resolveSamplingBoardPlace('E-001').display,'東面');
+          assert.equal(room.resolveSamplingBoardPlace('I-999').display,'');
+          assert.equal(room.formatSamplingPlace({roomNo:'1-1',roomName:'会議室'},{preferRoomName:true}).text,'会議室（部屋No.1-1）');
+          assert.equal(room.formatSamplingPlace({roomNo:'1-1'},{}).text,'部屋No.1-1');
+          assert.equal(room.formatSamplingPlace({areaCode:'E',roomName:'東面'},{}).text,'外部 東面');
+          for (const path of [
+            'src/js/photos/photo-controller.js',
+            'src/js/photos/photo-board-editor.js',
+            'src/js/photos/sampling-location-change.js'
+          ]) assert.match(fs.readFileSync(path,'utf8'), /resolveSamplingBoardPlace/);
+          const output = fs.readFileSync('src/js/output/output-view-model.js','utf8');
+          const pdf = fs.readFileSync('src/js/output/output-pdf-renderer.js','utf8');
+          assert.match(output,/samplingPlaceAreaCode:text\(place\.areaCode\)/);
+          assert.match(pdf,/areaCode:item\.samplingPlaceAreaCode/);
+          console.log('Sampling location display regression checks passed');
+          NODE
+
+
+      - name: Room append-only regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const assert = require('node:assert/strict');
+          const structure = fs.readFileSync('src/js/finish-table/finish-table-structure-actions.js','utf8');
+          const controller = fs.readFileSync('src/js/finish-table/finish-table-controller.js','utf8');
+          const renderer = fs.readFileSync('src/js/finish-table/finish-table-renderer.js','utf8');
+          assert.doesNotMatch(structure, /function insertFloorRoomAt|function insertFlatRoomAt|function rekeyRecordToRoomPosition|export function addRoomAfter/);
+          assert.doesNotMatch(controller, /addRoomAfter/);
+          for (const name of ['addRoomToFloor','addExternalRoom','addStairs','addRoof']) {
+            assert.match(structure, new RegExp('export function ' + name + '\\('));
+            assert.match(controller, new RegExp('withHistory\\(\\(\\) => ' + name + '\\('));
+          }
+          assert.ok(renderer.includes('roomIsLast ?') && renderer.includes('data-action="add-room"'));
+          assert.ok(structure.includes('const index = countRoomsInFloor(parsed.areaCode, parsed.floor) + 1'));
+          assert.ok(structure.includes('const start = countFlatRooms(areaCode) + 1'));
+          console.log('Room append-only checks passed');
+          NODE
+
+
+      - name: Shared room display regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const assert = require('node:assert/strict');
+          const shared = fs.readFileSync('src/js/finish-table/room-location.js','utf8');
+          const derived = fs.readFileSync('src/js/finish-table/material-usage-derived.js','utf8');
+          const material = fs.readFileSync('src/js/materials/material-list-controller.js','utf8');
+          const photo = fs.readFileSync('src/js/photos/photo-view-model.js','utf8');
+          const renderer = fs.readFileSync('src/js/photos/photo-renderer.js','utf8');
+          assert.match(shared, /export function roomLocationFieldLabel/);
+          assert.match(derived, /selectDisplay: roomLocationDisplay/);
+          assert.match(derived, /roomLocationFieldLabel\\(resolved/);
+          assert.match(material, /display: option.selectDisplay/);
+          assert.match(photo, /display: roomLocationDisplay\\(sharedRoom/);
+          assert.match(photo, /display:option.selectDisplay/);
+          assert.doesNotMatch(renderer, /function roomTitle\\(/);
+          assert.match(renderer, /room.display \\|\\| room.roomNo/);
+          console.log('Shared room display checks passed');
+          NODE
+
+      - name: Version consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const config = fs.readFileSync('src/config/app-config.js','utf8');
+          const version = JSON.parse(fs.readFileSync('src/version.json','utf8'));
+          const sw = fs.readFileSync('src/service-worker.js','utf8');
+          if (version.version !== '0.1.9.10K' || !config.includes("version: '0.1.9.10K'") || !sw.includes('chousa-app-v0.1.9.10K')) process.exit(1);
+          NODE
