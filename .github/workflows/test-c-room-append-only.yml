@@ -181,8 +181,8 @@ jobs:
             assert.match(controller, new RegExp('withHistory\\(\\(\\) => ' + name + '\\('));
           }
           assert.ok(renderer.includes('roomIsLast ?') && renderer.includes('data-action="add-room"'));
-          assert.match(structure, /const index = countRoomsInFloor\\(parsed.areaCode, parsed.floor\\) \\+ 1/);
-          assert.match(structure, /const start = countFlatRooms\\(areaCode\\) \\+ 1/);
+          assert.ok(structure.includes('const index = countRoomsInFloor(parsed.areaCode, parsed.floor) + 1'));
+          assert.ok(structure.includes('const start = countFlatRooms(areaCode) + 1'));
           console.log('Room append-only checks passed');
           NODE
 
