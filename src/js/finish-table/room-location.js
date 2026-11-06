@@ -53,6 +53,11 @@ export function formatSamplingPlace(room = {}, { preferRoomName = false } = {}) 
   const roomNo = String(room.roomNo || '').trim();
   const roomName = String(room.roomName || '').trim();
   const fallback = String(room.fallback || '').trim();
+  if (room.areaCode === 'E') {
+    const location = roomName || roomNo || fallback;
+    const primary = location ? `外部 ${location}` : '外部';
+    return { primary, supplement:'', text:primary };
+  }
   if (preferRoomName && roomName) {
     const supplement = roomNo ? `（部屋No.${roomNo}）` : '';
     return { primary:roomName, supplement, text:roomName + supplement };
