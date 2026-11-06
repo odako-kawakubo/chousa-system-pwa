@@ -3,7 +3,7 @@
  * 部屋備考の小型ポップアップ編集。
  * roomNoteの保存自体は既存のcommitRoomField()へ一本化する。
  */
-import * as finishRecordStore from '../store/finish-record-store.js';
+import { findRoomByLocationKey } from './room-location.js';
 import { commitRoomField } from './finish-table-room-actions.js';
 import { refreshFinishTableFromStores } from './finish-table-controller.js';
 
@@ -20,9 +20,7 @@ function ensureStyles() {
 }
 
 function roomAnchor(roomKey) {
-  return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && String(record.roomUid || '') === String(roomKey || '')
-  ) || null;
+  return findRoomByLocationKey(roomKey);
 }
 
 function ensureModal() {

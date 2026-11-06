@@ -16,7 +16,7 @@ import {
 import { persistSparseFinishRecord } from './finish-table-persistence.js';
 
 const FINISH_META_FIELDS = new Set([
-  'updatedAt','updatedDevice','fieldEditedAt','roomUid','inputId','finishId'
+  'updatedAt','updatedDevice','fieldEditedAt','inputId','finishId'
 ]);
 const MATERIAL_META_FIELDS = new Set([
   'updatedAt','updatedDevice','fieldEditedAt','color','photoCount',
