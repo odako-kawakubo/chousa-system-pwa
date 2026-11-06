@@ -61,3 +61,16 @@ export function formatSamplingPlace(room = {}, { preferRoomName = false } = {}) 
   const primary = no ? `部屋No.${no}` : '';
   return { primary, supplement:'', text:primary };
 }
+
+/**
+ * 採取看板の表示場所は部屋IDから解決し、部屋名表示モードとは独立させる。
+ * 旧形式のIDが表示キャッシュに残っていても、そのID自体を描画しない。
+ * 参照不明のIDは別の部屋へ推測で紐付けず、空表示にする。
+ */
+export function resolveSamplingBoardPlace(location = '', roomKey = '') {
+  const raw = String(location || '').trim();
+  const key = normalizeRoomId(roomKey) || normalizeRoomId(raw);
+  if (!key) return { display:raw, areaCode:'', roomKey:'' };
+  const room = resolveRoomLocation(key, { preferRoomName:false, context:'photo' });
+  return { display:room?.display || '', areaCode:room?.areaCode || '', roomKey:key };
+}
