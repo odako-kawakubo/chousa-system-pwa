@@ -452,6 +452,7 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
     [['件名：',item.projectName],['試料：',item.sampleName]].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
     setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('場所：',leftX,metaY+2*lineH);
     const place=formatSamplingPlace({
+      areaCode:item.samplingPlaceAreaCode,
       roomNo:item.samplingPlaceRoomNo,
       roomName:item.samplingPlaceRoomName,
       fallback:item.samplingPlace
