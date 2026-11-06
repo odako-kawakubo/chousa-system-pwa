@@ -115,7 +115,7 @@ jobs:
           const finish = fs.readFileSync('src/js/records/finish-record.js', 'utf8');
           assert.doesNotMatch(finish, /nextRoomUid|roomUid/);
           const sw = fs.readFileSync('src/service-worker.js', 'utf8');
-          assert.match(sw, /'\\.\\/js\\/records\\/room-id\\.js'/);
+          assert.ok(sw.includes("'./js/records/room-id.js'"));
           console.log('Room ID and sampling key checks passed');
           NODE
 
