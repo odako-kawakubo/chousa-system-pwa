@@ -201,12 +201,12 @@ jobs:
           const renderer = fs.readFileSync('src/js/photos/photo-renderer.js','utf8');
           assert.match(shared, /export function roomLocationFieldLabel/);
           assert.match(derived, /selectDisplay: roomLocationDisplay/);
-          assert.match(derived, /roomLocationFieldLabel\\(resolved/);
+          assert.ok(derived.includes('roomLocationFieldLabel(resolved'));
           assert.match(material, /display: option.selectDisplay/);
-          assert.match(photo, /display: roomLocationDisplay\\(sharedRoom/);
+          assert.ok(photo.includes('display: roomLocationDisplay(sharedRoom'));
           assert.match(photo, /display:option.selectDisplay/);
-          assert.doesNotMatch(renderer, /function roomTitle\\(/);
-          assert.match(renderer, /room.display \\|\\| room.roomNo/);
+          assert.ok(!renderer.includes('function roomTitle('));
+          assert.ok(renderer.includes('room.display || room.roomNo'));
           console.log('Shared room display checks passed');
           NODE
 
