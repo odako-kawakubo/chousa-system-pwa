@@ -16,13 +16,6 @@ function esc(value) {
     .replaceAll("'", '&#039;');
 }
 
-function roomTitle(room) {
-  const no = String(room?.roomNo || '-').trim();
-  const name = String(room?.roomName || '').trim();
-  if (room?.areaCode === 'E') return name || no;
-  return name && name !== no ? `${no}　${name}` : no;
-}
-
 function floorLabel(room) {
   if (!room) return 'その他';
   if (room.areaCode === 'B') return `地下${room.floor || ''}階`;
@@ -97,7 +90,7 @@ export function renderVisualTargetBlock(target, openKeys) {
 function renderRoomItems(rooms, activeRoomKey) {
   return rooms.map((room) => `
     <button class="photo-target-item grouped ${activeRoomKey === room.roomKey ? 'active' : ''}" type="button" data-photo-room="${esc(room.roomKey)}">
-      <b>${esc(roomTitle(room))}</b>
+      <b>${esc(room.display || room.roomNo || '-')}</b>
       <span class="meta">写真 ${room.photoCount}枚</span>
     </button>`).join('');
 }
@@ -209,7 +202,7 @@ export function renderVisualView(container, view, state) {
     </aside>
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
-        <h4>${esc(roomTitle(room))}</h4>
+        <h4>${esc(room.display || room.roomNo || '-')}</h4>
         <span class="hint">${room.areaCode === 'E' ? '外部' : `部屋No. ${esc(room.roomNo || '-')}`}</span>
       </div>
       <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}${renderUnorganizedBlock(view.unorganizedPhotos, 'visual')}</div>
