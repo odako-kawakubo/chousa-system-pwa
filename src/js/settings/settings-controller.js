@@ -321,6 +321,11 @@ async function handleClick(event) {
 }
 
 function handleChange(event) {
+  // 入力中の部分値は保存せず、change（確定・フォーカス離脱）時にまとめて反映する。
+  if (event.target.matches('[data-board-setting], [data-setting-project-field]')) {
+    syncBoardFromInputs(event.target);
+    return;
+  }
   const materialRow=event.target.closest('[data-setting-material-row]');
   if(materialRow&&event.target.matches('[data-setting-material-field]')){
     const candidateId=materialRow.dataset.settingMaterialRow; const fields={};
@@ -344,8 +349,15 @@ export function initializeSettingsTab(){
   if(root.dataset.settingsEventsBound!=='1'){
     root.dataset.settingsEventsBound='1';
     root.addEventListener('click',(event)=>void handleClick(event));
-    root.addEventListener('input',(event)=>{if(event.target.matches('[data-board-setting], [data-setting-project-field]'))syncBoardFromInputs(event.target);});
     root.addEventListener('change',handleChange);
+    root.addEventListener('keydown',(event)=>{
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+      const input = event.target;
+      if (input?.tagName === 'INPUT' && input.matches('[data-board-setting], [data-setting-project-field]')) {
+        event.preventDefault();
+        input.blur(); // change が発火し、編集完了時に一度だけ保存される。
+      }
+    });
     window.addEventListener('resize',renderBoardPreview);
   }
   if(unsubscribe)unsubscribe(); unsubscribe=surveyCandidateStore.subscribe(render);
