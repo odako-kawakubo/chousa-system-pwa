@@ -136,7 +136,7 @@ jobs:
             {status:'active',finishId:'I-102-602',areaCode:'I',roomPosition:'102',roomNo:'1-2',roomName:''},
             {status:'active',finishId:'E-001-602',areaCode:'E',roomPosition:'001',roomNo:'E-1',roomName:'東面'}
           ];
-          const shim = `const finishRecordStore = {
+          const shim = `const rooms = ${JSON.stringify(rooms)};\nconst finishRecordStore = {
             get: (id) => rooms.find(r => r.finishId === id),
             getAll: () => rooms
           };\n`;
