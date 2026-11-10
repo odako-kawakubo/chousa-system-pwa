@@ -76,10 +76,7 @@ function buildRoomList() {
       floor: record.floor,
       roomNo: sharedRoom.roomNo,
       roomName: sharedRoom.roomName,
-      display: roomLocationDisplay(sharedRoom, {
-        preferRoomName: getMaterialRoomNameMode(),
-        context: 'photo'
-      })
+      display: roomLocationDisplay(sharedRoom, { context: 'visual-photo' })
     });
   });
 
