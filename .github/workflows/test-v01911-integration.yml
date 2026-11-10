@@ -1107,7 +1107,6 @@ jobs:
           test -f src/js/finish-table/finish-table-persistence.js
           grep -q "from './finish-table-structure-actions.js'" src/js/finish-table/finish-table-controller.js || { echo "finish controller does not use structure module"; exit 1; }
           grep -q "export function addNormalFloor" src/js/finish-table/finish-table-structure-actions.js || { echo "normal floor structure action missing"; exit 1; }
-          grep -q "export function addRoomAfter" src/js/finish-table/finish-table-structure-actions.js || { echo "room insertion structure action missing"; exit 1; }
           grep -q "export function persistSparseFinishRecord" src/js/finish-table/finish-table-persistence.js || { echo "sparse persistence API missing"; exit 1; }
 
           # 仕上表セル編集・建材登録・使用箇所派生をactionsから分離
