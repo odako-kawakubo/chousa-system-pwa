@@ -203,11 +203,34 @@ jobs:
           assert.match(derived, /selectDisplay: roomLocationDisplay/);
           assert.ok(derived.includes('roomLocationFieldLabel(resolved'));
           assert.match(material, /display: option.selectDisplay/);
-          assert.ok(photo.includes('display: roomLocationDisplay(sharedRoom'));
+          assert.ok(photo.includes("display: roomLocationDisplay(sharedRoom, { context: 'visual-photo' })"));
+          assert.ok(shared.includes("context === 'visual-photo'"));
+          assert.ok(!photo.includes("preferRoomName: getMaterialRoomNameMode(),\\n        context: 'photo'"));
           assert.match(photo, /display:option.selectDisplay/);
           assert.ok(!renderer.includes('function roomTitle('));
           assert.ok(renderer.includes('room.display || room.roomNo'));
           console.log('Shared room display checks passed');
+          NODE
+
+      - name: Visual photo room title behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const source = fs.readFileSync('src/js/finish-table/room-location.js', 'utf8');
+          const functionText = source.slice(source.indexOf('export function roomLocationDisplay('), source.indexOf('/**', source.indexOf('export function roomLocationDisplay(') + 1));
+          const mod = await import('data:text/javascript;base64,' + Buffer.from(functionText).toString('base64'));
+          const room = { areaCode:'I', roomNo:'1-1', roomName:'会議室' };
+          assert.equal(mod.roomLocationDisplay(room, { context:'visual-photo' }), '1-1　会議室');
+          assert.equal(mod.roomLocationDisplay(room, { context:'visual-photo', preferRoomName:true }), '1-1　会議室');
+          assert.equal(mod.roomLocationDisplay({ ...room, roomName:'' }, { context:'visual-photo' }), '1-1');
+          assert.equal(mod.roomLocationDisplay({ ...room, roomName:'1-1' }, { context:'visual-photo' }), '1-1');
+          assert.equal(mod.roomLocationDisplay({ areaCode:'E', roomNo:'E-1', roomName:'東面' }, { context:'visual-photo' }), '東面');
+          assert.equal(mod.roomLocationDisplay(room, { preferRoomName:true }), '会議室');
+          assert.equal(mod.roomLocationDisplay(room, { preferRoomName:false }), '1-1');
+          console.log('Visual photo room title checks passed');
           NODE
 
       - name: Version consistency
