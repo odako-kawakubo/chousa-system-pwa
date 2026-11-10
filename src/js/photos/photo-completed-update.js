@@ -9,6 +9,7 @@ import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
 import { getPhotoBlobEntry, savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+import { setLocalPhotoPreview } from './photo-preview-manager.js';
 
 const running = new Map();
 
@@ -62,6 +63,8 @@ export function persistCompletedPhotoUpdate(prepared, nextFields, source) {
       recordWritten = true;
       await updateCameraPhotoRecord(next);
       await persistPhotoForProject(getCurrentProject(), next, source);
+      // Only replace the visible preview once the regenerated image and record are persisted.
+      setLocalPhotoPreview(photoId, prepared.completedBlob);
       return next;
     } catch (error) {
       if (recordWritten && projectId() === startedProjectId) {

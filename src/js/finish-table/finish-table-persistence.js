@@ -3,6 +3,7 @@
  */
 import { computeCellPosition, partIndexFromPosition } from '../records/finish-record.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import { INITIAL_ROW_COUNT } from './finish-table-constants.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { deleteFinishForProject, persistFinishForProject, hasKnownFinishRecord } from '../sync/project-record-persistence.js';
@@ -40,7 +41,7 @@ function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.get
   if (!record?.finishId) return false;
   if (getRequiredStructureRecordIds(allRecords).has(record.finishId)) return true;
   if (!isFinishCellAtDefault(record)) return true;
-  const carrier = roomCarrierRecord(allRecords.filter((item) => item.roomUid === record.roomUid && item.status === 'active'));
+  const carrier = roomCarrierRecord(allRecords.filter((item) => roomIdFor(item.areaCode, item.roomPosition) === roomIdFor(record.areaCode, record.roomPosition) && item.status === 'active'));
   if (carrier?.finishId === record.finishId && hasRoomCommonDifference(record)) return true;
   if (String(record.systemMemo || '').trim()) return true;
   return false;

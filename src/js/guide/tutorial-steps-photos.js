@@ -4,6 +4,7 @@
  * 仕上表／建材リストからの反映を確認する。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import { getVisualPhotoTargetKey } from '../records/photo-record.js';
 
 function tutorialRoomRecord() {
@@ -17,17 +18,17 @@ function tutorialRoomRecord() {
     .sort((a, b) => Number(a.position || 0) - Number(b.position || 0))[0] || null;
 }
 
-function tutorialRoomUid() {
-  return String(tutorialRoomRecord()?.roomUid || '');
+function tutorialRoomKey() {
+  return String(roomIdFor(tutorialRoomRecord()?.areaCode, tutorialRoomRecord()?.roomPosition));
 }
 
 function tutorialFloorMaterialId() {
-  const roomUid = tutorialRoomUid();
-  if (!roomUid) return '';
+  const roomKey = tutorialRoomKey();
+  if (!roomKey) return '';
   return String(
     finishRecordStore.getAll().find((record) =>
       record.status === 'active'
-      && String(record.roomUid || '') === roomUid
+      && roomIdFor(record.areaCode, record.roomPosition) === roomKey
       && Math.floor(Number(record.position || 0) / 100) === 1
       && record.materialId
     )?.materialId || ''
@@ -35,9 +36,9 @@ function tutorialFloorMaterialId() {
 }
 
 function tutorialRoomButton() {
-  const roomUid = tutorialRoomUid();
-  return roomUid
-    ? document.querySelector(`#photos [data-photo-room="${CSS.escape(roomUid)}"]`)
+  const roomKey = tutorialRoomKey();
+  return roomKey
+    ? document.querySelector(`#photos [data-photo-room="${CSS.escape(roomKey)}"]`)
     : null;
 }
 
@@ -108,11 +109,11 @@ export const PHOTO_TUTORIAL_STEPS = [
     interactive: true,
     permissions: () => [{
       actionId: 'photo.room.select',
-      context: { roomUid: tutorialRoomUid() }
+      context: { roomKey: tutorialRoomKey() }
     }],
     completeWhen: ({ didAction }) =>
       tutorialRoomSelected()
-      && didAction('photo.room.select', { roomUid:tutorialRoomUid() })
+      && didAction('photo.room.select', { roomKey:tutorialRoomKey() })
   },
   {
     id: 'photos-visual-floor',

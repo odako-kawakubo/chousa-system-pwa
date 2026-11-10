@@ -524,6 +524,9 @@ export async function reregisterDeletedMaterial(sourceMaterialId, insertPosition
       sampleLocation1: source.sampleLocation1,
       sampleLocation2: source.sampleLocation2,
       sampleLocation3: source.sampleLocation3,
+    sampleRoomKey1: source.sampleRoomKey1,
+    sampleRoomKey2: source.sampleRoomKey2,
+    sampleRoomKey3: source.sampleRoomKey3,
       samplePart: source.samplePart,
       sampleDone: false,
       sampleDate: '',
@@ -533,7 +536,8 @@ export async function reregisterDeletedMaterial(sourceMaterialId, insertPosition
       systemMemo,
       fieldEditedAt: touchFieldEditedAt({}, [
         'status', 'materialNo', 'name', 'level', 'note', 'analysisRequired', 'sampleCount',
-        'sampleLocation1', 'sampleLocation2', 'sampleLocation3', 'samplePart', 'systemMemo'
+        'sampleLocation1', 'sampleLocation2', 'sampleLocation3',
+    'sampleRoomKey1', 'sampleRoomKey2', 'sampleRoomKey3', 'samplePart', 'systemMemo'
       ])
     });
     materialRecordStore.set(created);

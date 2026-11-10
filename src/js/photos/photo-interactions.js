@@ -18,7 +18,7 @@ function interactionRule(target) {
   if (mode) return { actionId:'photo.mode.change', context:{ mode:String(mode.dataset.photoMode || '') } };
 
   const room = target.closest('[data-photo-room]');
-  if (room) return { actionId:'photo.room.select', context:{ roomUid:String(room.dataset.photoRoom || '') } };
+  if (room) return { actionId:'photo.room.select', context:{ roomKey:String(room.dataset.photoRoom || '') } };
 
   const material = target.closest('[data-photo-material]');
   if (material) return { actionId:'photo.material.select', context:{ materialId:String(material.dataset.photoMaterial || '') } };
@@ -199,10 +199,10 @@ export function bindPhotoInteractions({
 
     const room = event.target.closest('[data-photo-room]');
     if (room) {
-      state.selectedRoomUid = room.dataset.photoRoom || '';
+      state.selectedRoomKey = room.dataset.photoRoom || '';
       state.reviewScrollTop.visual = 0;
       render();
-      notifyTutorialAction('photo.room.select', { roomUid:state.selectedRoomUid });
+      notifyTutorialAction('photo.room.select', { roomKey:state.selectedRoomKey });
       return;
     }
 

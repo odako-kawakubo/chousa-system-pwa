@@ -10,8 +10,7 @@ import {
   buildFloorRoomPosition,
   roomIndexFromRoomPosition,
   partIndexFromPosition,
-  rowFromPosition,
-  nextRoomUid
+  rowFromPosition
 } from '../records/finish-record.js';
 import { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from '../finish-table/finish-table-constants.js';
 
@@ -59,8 +58,6 @@ function roomPositionFor(areaCode, floor, index) {
 
 function addRoomToMap(map, { areaCode, floor = null, index, rowCount = INITIAL_ROW_COUNT }) {
   const roomPosition = roomPositionFor(areaCode, floor, index);
-  const existing = [...map.values()].find((record) => record.areaCode === areaCode && String(record.roomPosition) === roomPosition);
-  const roomUid = existing?.roomUid || nextRoomUid();
   const defaults = roomDefaults(areaCode, floor, index);
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= rowCount; row += 1) {
@@ -75,8 +72,7 @@ function addRoomToMap(map, { areaCode, floor = null, index, rowCount = INITIAL_R
         roomName: defaults.roomName,
         roomNote: defaults.roomNote,
         position,
-        part: defaultPartName(areaCode, partIndex),
-        roomUid
+        part: defaultPartName(areaCode, partIndex)
       }));
     }
   }
@@ -93,7 +89,7 @@ function roomDescriptor(record) {
 }
 
 function roomKey(record) {
-  return `${String(record?.areaCode || '')}|${String(record?.roomPosition || '')}`;
+  return `${String(record?.areaCode || '')}-${String(record?.roomPosition || '')}`;
 }
 
 function ensureStructureFromSparse(map, sparseRecords) {
@@ -169,8 +165,7 @@ export function restoreFinishRecordsFromSparse(rawSparseRecords = []) {
         roomName: base.roomName,
         roomNote: base.roomNote
       }),
-      finishId: raw.finishId,
-      roomUid: base.roomUid
+      finishId: raw.finishId
     });
   });
 

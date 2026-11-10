@@ -14,7 +14,8 @@
  */
 
 import * as materialRecordStore from '../store/material-record-store.js';
-import { resolveRoomLocation } from '../finish-table/room-location.js';
+import { resolveRoomLocation, resolveSamplingBoardPlace } from '../finish-table/room-location.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
@@ -85,7 +86,7 @@ function branchPhotos(materialId, branch) {
 }
 
 function boardDataForPhoto(photo, samplingPlace, roomKey = '') {
-  const room = resolveRoomLocation(roomKey, { context:'photo' });
+  const boardPlace = resolveSamplingBoardPlace(samplingPlace, roomKey);
   const settings = boardSettingsStore.get();
   return {
     photoType:PHOTO_TYPES.SAMPLING,
@@ -93,8 +94,8 @@ function boardDataForPhoto(photo, samplingPlace, roomKey = '') {
     address:settings.addressText || settings.address,
     subjectFontSize:settings.subjectFontSize,
     addressFontSize:settings.addressFontSize,
-    samplingPlace,
-    areaCode:room?.areaCode || '',
+    samplingPlace:boardPlace.display,
+    areaCode:boardPlace.areaCode,
     sampleNo:photo.sampleNo || '',
     statusCode:samplingStatusCode(photo.shootingType),
     date:formatDate(photo.boardDate || photo.capturedAt)
@@ -298,7 +299,9 @@ export async function requestSamplingLocationChange({
     return { changed:false, decision:'cancel', reason:'invalid-target' };
   }
 
-  const resolved = nextRoomKey ? resolveRoomLocation(nextRoomKey, { context:'photo' }) : null;
+  const resolved = nextRoomKey ? resolveRoomLocation(nextRoomKey, {
+    preferRoomName:getMaterialRoomNameMode(), context:'photo'
+  }) : null;
   const next = resolved ? resolved.display : text(nextLocation);
   const stableKey = resolved?.key || '';
   const current = text(material[field]);
@@ -359,7 +362,9 @@ export async function requestSamplingLocationChange({
  * レコードを保存する。失敗した写真は既存画像のまま残し、エラーを通知する。
  */
 export async function refreshSamplingLocationsForRoom(roomKey) {
-  const room = resolveRoomLocation(roomKey, { context:'photo' });
+  const room = resolveRoomLocation(roomKey, {
+    preferRoomName:getMaterialRoomNameMode(), context:'photo'
+  });
   if (!room) return { changed:0, errors:[] };
   const changes = [];
   materialRecordStore.getAll().forEach((material) => {

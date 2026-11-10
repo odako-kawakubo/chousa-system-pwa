@@ -30,7 +30,7 @@ import {
   BULK_SYNC_BATCH_SIZE
 } from '../firestore/firestore-repository.js';
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
-import { createFinishRecord, nextRoomUid } from '../records/finish-record.js';
+import { createFinishRecord } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
 import { listUnsent, putUnsent } from './unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
@@ -490,22 +490,18 @@ function hydrateMaterialRecords(rawRecords = []) {
  * finish配列を現行Record形式へ正規化し、案件内構造として扱える状態にする。
  */
 function hydrateFinishRecords(rawRecords = [], materialById = new Map()) {
-  const roomUidByKey = new Map();
   return rawRecords
     .filter((raw) => raw && (raw.finishId || raw.id))
     .slice()
     .sort((a, b) => String(a.finishId || a.id || '').localeCompare(String(b.finishId || b.id || ''), 'ja', { numeric: true }))
     .map((raw) => {
       const finishId = String(raw.finishId || raw.id || '');
-      const roomKey = `${String(raw.areaCode || '')}|${String(raw.roomPosition || '')}`;
-      if (!roomUidByKey.has(roomKey)) roomUidByKey.set(roomKey, nextRoomUid());
       const material = materialById.get(String(raw.materialId || ''));
       return createFinishRecord({
         ...raw,
         finishId,
         inputId: material ? String(material.inputId) : '',
         status: 'active',
-        roomUid: roomUidByKey.get(roomKey),
         updatedAt: raw.updatedAt || '',
         fieldEditedAt: raw.fieldEditedAt || {}
       });
@@ -938,22 +934,16 @@ export function hydrateIncomingMaterialRecord(rawRecord, currentRecords = []) {
   return hydrateMaterialRecords(raw);
 }
 
-/** 受信したfinishRecord 1件を現在案件のroomUidを維持して正規化する。 */
+/** 受信したfinishRecordを構造IDに基づいて正規化する。 */
 export function hydrateIncomingFinishRecord(rawRecord, currentFinishRecords = [], currentMaterialRecords = []) {
   if (!rawRecord) return null;
   const finishId = String(rawRecord.finishId || rawRecord.id || '');
-  const existing = currentFinishRecords.find((record) => String(record.finishId) === finishId);
-  const roomKey = `${String(rawRecord.areaCode || '')}|${String(rawRecord.roomPosition || '')}`;
-  const sameRoom = currentFinishRecords.find((record) =>
-    `${String(record.areaCode || '')}|${String(record.roomPosition || '')}` === roomKey
-  );
   const material = currentMaterialRecords.find((record) => String(record.materialId) === String(rawRecord.materialId || ''));
   return createFinishRecord({
     ...rawRecord,
     finishId,
     inputId: material ? String(material.inputId) : '',
     status: 'active',
-    roomUid: existing?.roomUid || sameRoom?.roomUid || nextRoomUid(),
     updatedAt: rawRecord.updatedAt || '',
     fieldEditedAt: rawRecord.fieldEditedAt || {}
   });

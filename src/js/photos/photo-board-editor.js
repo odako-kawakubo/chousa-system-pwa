@@ -14,7 +14,7 @@
  */
 
 import * as photoRecordStore from '../store/photo-record-store.js';
-import { resolveRoomLocation } from '../finish-table/room-location.js';
+import { resolveRoomLocation, resolveSamplingBoardPlace } from '../finish-table/room-location.js';
 import { PHOTO_TYPES, SHOOTING_TYPES, isSamplingPhotoUnorganized, isVisualPhotoUnorganized } from '../records/photo-record.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import {
@@ -124,7 +124,9 @@ function boardData(entry = active) {
     roomName: entry.record.photoType === PHOTO_TYPES.VISUAL ? (visualRoomByIdentity(entry.draft)?.roomName || '') : '',
     areaCode: entry.record.photoType === PHOTO_TYPES.VISUAL ? entry.draft.areaCode : (resolveRoomLocation(entry.draft.samplingRoomKey)?.areaCode || samplingMaterialTargets(entry.draft.materialId || entry.record.materialId).find((item) => Number(item.branch) === Number(entry.draft.samplingBranch))?.areaCode || ''),
     part: entry.draft.part,
-    samplingPlace: entry.draft.samplingPlace,
+    samplingPlace: entry.record.photoType === PHOTO_TYPES.SAMPLING
+      ? resolveSamplingBoardPlace(entry.draft.samplingPlace, entry.draft.samplingRoomKey).display
+      : entry.draft.samplingPlace,
     sampleNo: sampleDisplay(entry.draft.sampleBaseNo, entry.draft.samplingBranch),
     statusCode: currentStatusCode(entry),
     date: dateText(entry.draft.boardDate)

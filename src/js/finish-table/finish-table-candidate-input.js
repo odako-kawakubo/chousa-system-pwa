@@ -11,6 +11,7 @@
  */
 
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialPartOptions } from './finish-table-cell-actions.js';
 import {
@@ -33,7 +34,7 @@ function normalizeCandidateFilter(value) {
 function roomAnchorForInput(input) {
   const roomKeyValue = String(input?.dataset?.roomKey || '');
   return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && String(record.roomUid || '') === roomKeyValue
+    record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
   ) || null;
 }
 
@@ -76,7 +77,7 @@ function getCandidateOptionsForInput(input) {
     const position = partIndex * 100 + row;
     const finishRecord = finishRecordStore.getAll().find((record) =>
       record.status === 'active'
-      && String(record.roomUid || '') === roomKeyValue
+      && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
       && Number(record.position) === position
     ) || null;
     const material = finishRecord?.materialId ? materialRecordStore.get(finishRecord.materialId) : null;
@@ -186,7 +187,7 @@ export function syncDynamicRegisterButton(input) {
   const position = partIndex * 100 + row;
   const finishRecord = finishRecordStore.getAll().find((record) =>
     record.status === 'active'
-    && String(record.roomUid || '') === roomKeyValue
+    && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
     && Number(record.position) === position
   ) || null;
 

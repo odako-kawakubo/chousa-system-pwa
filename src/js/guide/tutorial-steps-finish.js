@@ -2,6 +2,7 @@
  * 仕上表セクションの基本チュートリアル。
  */
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 
 function roomBlock(index) {
   return document.querySelectorAll('#finish .finish-room-block')[index] || null;
@@ -69,21 +70,21 @@ function finishRecordFor(roomIndex, partIndex, row = 1) {
   const position = Number(partIndex) * 100 + Number(row);
   return finishRecordStore.getAll().find((record) =>
     record.status === 'active'
-    && String(record.roomUid || '') === roomKey
+    && roomIdFor(record.areaCode, record.roomPosition) === roomKey
     && Number(record.position) === position
   ) || null;
 }
 function firstRoomName() {
   const key = roomKeyAt(0);
   return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && String(record.roomUid || '') === key
+    record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition) === key
   )?.roomName || '';
 }
 function activeFinishRoomCount(areaCode, floor) {
   return new Set(
     finishRecordStore.getAll()
       .filter((record) => record.status === 'active' && record.areaCode === areaCode && Number(record.floor) === Number(floor))
-      .map((record) => record.roomUid)
+      .map((record) => roomIdFor(record.areaCode, record.roomPosition))
   ).size;
 }
 function normalFloorCount() {
@@ -97,7 +98,7 @@ function snapshotRoomCount(snapshot, areaCode, floor) {
   return new Set(
     (snapshot?.records?.finish || [])
       .filter((record) => record.status === 'active' && record.areaCode === areaCode && Number(record.floor) === Number(floor))
-      .map((record) => record.roomUid)
+      .map((record) => roomIdFor(record.areaCode, record.roomPosition))
   ).size;
 }
 function snapshotNormalFloorCount(snapshot) {
@@ -259,8 +260,8 @@ export const FINISH_TUTORIAL_STEPS = [
     }],
     completeWhen: ({ snapshot }) => {
       const key = roomKeyAt(1);
-      const before = (snapshot?.records?.finish || []).filter((record) => String(record.roomUid || '') === key).length;
-      const after = finishRecordStore.getAll().filter((record) => String(record.roomUid || '') === key).length;
+      const before = (snapshot?.records?.finish || []).filter((record) => roomIdFor(record.areaCode, record.roomPosition) === key).length;
+      const after = finishRecordStore.getAll().filter((record) => roomIdFor(record.areaCode, record.roomPosition) === key).length;
       return after > before;
     }
   },

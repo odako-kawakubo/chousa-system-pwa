@@ -5,6 +5,7 @@
  */
 import { getOutputSettings, normalizeOutputSettings } from './output-settings-store.js';
 import { formatSamplingCode, formatPartDisplay } from './output-format.js';
+import { formatSamplingPlace } from '../finish-table/room-location.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
 const FONT_CACHE = 'chousa-pdf-fonts-bizud-v2';
@@ -450,16 +451,19 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
     const leftX=10;const metaY=32;const lineH=8.5;const labelW=15;const rightEdge=190;
     [['件名：',item.projectName],['試料：',item.sampleName]].forEach(([label,value],index)=>{setFont(pdf,settings.samplingMetaSize,'bold');pdf.text(label,leftX,metaY+index*lineH);setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(value||''),leftX+labelW,metaY+index*lineH);});
     setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('場所：',leftX,metaY+2*lineH);
-    const roomNo=String(item.samplingPlaceRoomNo||'').trim();
-    const roomName=String(item.samplingPlaceRoomName||'').trim();
+    const place=formatSamplingPlace({
+      areaCode:item.samplingPlaceAreaCode,
+      roomNo:item.samplingPlaceRoomNo,
+      roomName:item.samplingPlaceRoomName,
+      fallback:item.samplingPlace
+    },{preferRoomName:item.samplingPlaceLabel==='部屋名'});
     const placeX=leftX+labelW;const placeY=metaY+2*lineH;
-    if(item.samplingPlaceLabel==='部屋名'&&roomName){
-      setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(roomName,placeX,placeY);
-      const mainWidth=pdf.getTextWidth(roomName);
-      if(roomNo){setFont(pdf,8,'normal');pdf.text(`（部屋No.${roomNo}）`,placeX+mainWidth+1.2,placeY);}
-    }else{
-      const fallback=roomNo||String(item.samplingPlace||'').trim();
-      setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(fallback?`部屋No.${fallback}`:'',placeX,placeY);
+    if(place.primary){
+      setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(place.primary,placeX,placeY);
+      if(place.supplement){
+        const mainWidth=pdf.getTextWidth(place.primary);
+        setFont(pdf,8,'normal');pdf.text(place.supplement,placeX+mainWidth+1.2,placeY);
+      }
     }
     setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(formatSamplingCode(item),rightEdge,metaY,{align:'right'});
     setFont(pdf,settings.samplingMetaSize,'bold');pdf.text('採取日：',138,metaY+lineH);const capturedDateX=138+pdf.getTextWidth('採取日：')+1.2;setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(String(item.capturedDate||''),capturedDateX,metaY+lineH);

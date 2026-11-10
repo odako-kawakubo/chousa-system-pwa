@@ -150,6 +150,7 @@ export function buildSamplingPhotoOutput(){
           return {
             samplingPlace:place.label==='部屋名'?text(place.value):numberText(place.value),
             samplingPlaceLabel:text(place.label),
+            samplingPlaceAreaCode:text(place.areaCode),
             samplingPlaceRoomNo:numberText(place.roomNo),
             samplingPlaceRoomName:text(place.roomName)
           };

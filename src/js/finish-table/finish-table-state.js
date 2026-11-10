@@ -7,82 +7,17 @@
  */
 
 import { getCurrentProject } from '../projects/project-store.js';
-import * as finishRecordStore from '../store/finish-record-store.js';
 
 let state = null;
 const listeners = [];
 let tabChangeBound = false;
-let roomIdentityBound = false;
 
 function notify() {
   listeners.forEach((callback) => callback());
 }
 
 function emptyRoomCopyState() {
-  return { sourceRoomKey: null, sourceStableKey: null, backups: {}, done: {} };
-}
-
-/** roomUidではなく、同期復元後も同じ論理部屋を指せる構造キー。 */
-function stableRoomKey(record) {
-  if (!record) return '';
-  const areaCode = String(record.areaCode || '');
-  const roomPosition = String(record.roomPosition || '');
-  return areaCode && roomPosition ? `${areaCode}|${roomPosition}` : '';
-}
-
-function recordForRoomUid(roomUid) {
-  return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && String(record.roomUid || '') === String(roomUid || '')
-  ) || null;
-}
-
-function roomUidForStableKey(key) {
-  if (!key) return '';
-  const record = finishRecordStore.getAll().find((item) =>
-    item.status === 'active' && stableRoomKey(item) === key
-  );
-  return String(record?.roomUid || '');
-}
-
-/**
- * Firestoreの疎finish復元でroomUidが再生成されても、コピー途中状態だけは
- * areaCode + roomPosition を使って現在のroomUidへ付け替える。
- * Store購読はUI再描画には使わず、状態の参照先補正だけを行う。
- */
-function reconcileRoomCopyIdentity() {
-  if (!state?.roomCopy) return;
-  const copy = state.roomCopy;
-
-  if (copy.sourceStableKey) {
-    const nextSourceUid = roomUidForStableKey(copy.sourceStableKey);
-    if (nextSourceUid) copy.sourceRoomKey = nextSourceUid;
-  }
-
-  const nextBackups = {};
-  const nextDone = {};
-  Object.entries(copy.backups || {}).forEach(([oldUid, records]) => {
-    const anchor = Array.isArray(records) ? records[0] : null;
-    const key = stableRoomKey(anchor) || stableRoomKey(recordForRoomUid(oldUid));
-    const nextUid = roomUidForStableKey(key) || oldUid;
-    nextBackups[nextUid] = records;
-    if (copy.done?.[oldUid]) nextDone[nextUid] = true;
-  });
-  Object.keys(copy.done || {}).forEach((oldUid) => {
-    if (nextDone[oldUid]) return;
-    const key = stableRoomKey(recordForRoomUid(oldUid));
-    const nextUid = roomUidForStableKey(key) || oldUid;
-    nextDone[nextUid] = true;
-  });
-  copy.backups = nextBackups;
-  copy.done = nextDone;
-}
-
-function bindRoomIdentityReconciliation() {
-  if (roomIdentityBound) return;
-  roomIdentityBound = true;
-  finishRecordStore.subscribe(() => {
-    reconcileRoomCopyIdentity();
-  });
+  return { sourceRoomKey: null, backups: {}, done: {} };
 }
 
 /**
@@ -147,7 +82,6 @@ export function initFinishTableState() {
     pendingCellNames: new Map()
   };
   bindTabChangeReset();
-  bindRoomIdentityReconciliation();
   notify();
 }
 
@@ -193,7 +127,6 @@ export function restoreFinishUiState(snapshot, { notifyNow = true } = {}) {
     : emptyRoomCopyState();
   state.collapsedFloors = new Set(snapshot.collapsedFloors || []);
   state.pendingCellNames = new Map(snapshot.pendingCellNames || []);
-  reconcileRoomCopyIdentity();
   if (notifyNow) notify();
 }
 
@@ -340,15 +273,12 @@ export function isFloorCollapsed(floorKeyValue) {
    ============================================================ */
 
 export function getRoomCopyState() {
-  reconcileRoomCopyIdentity();
   return state.roomCopy;
 }
 
-/** コピー元として選択する。同期復元に備え、構造キーも同時に保持する。 */
+/** コピー元は共通部屋IDで保持する。 */
 export function startRoomCopySource(roomKeyValue) {
-  const anchor = recordForRoomUid(roomKeyValue);
   state.roomCopy.sourceRoomKey = roomKeyValue;
-  state.roomCopy.sourceStableKey = stableRoomKey(anchor) || null;
   notify();
 }
 
@@ -370,7 +300,6 @@ export function clearRoomCopyBackup(roomKeyValue) {
 }
 
 export function getRoomCopyBackup(roomKeyValue) {
-  reconcileRoomCopyIdentity();
   return state.roomCopy.backups[roomKeyValue] || null;
 }
 

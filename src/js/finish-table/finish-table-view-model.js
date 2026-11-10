@@ -7,6 +7,7 @@
 
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import {
   computeCellPosition,
   computeFinishId as computeFinishIdFromParts,
@@ -68,7 +69,7 @@ function buildRoom(roomRecords, materialById) {
   sorted.forEach((record) => {
     const partIndex = partIndexFromPosition(record.position);
     const row = rowFromPosition(record.position);
-    const pendingKey = `${anchor.roomUid}|${partIndex}|${row}`;
+    const pendingKey = `${roomIdFor(anchor.areaCode, anchor.roomPosition)}|${partIndex}|${row}`;
     const materialName = record.materialId
       ? (materialById.get(record.materialId)?.name || '')
       : (String(record.materialName || '').trim() || getPendingCellName(pendingKey) || '');
@@ -82,7 +83,7 @@ function buildRoom(roomRecords, materialById) {
 
   const isFloorRoom = anchor.areaCode === 'I' || anchor.areaCode === 'B';
   return {
-    uid: anchor.roomUid,
+    uid: roomIdFor(anchor.areaCode, anchor.roomPosition),
     areaCode: anchor.areaCode,
     roomPosition: anchor.roomPosition,
     floor: anchor.floor,
@@ -103,8 +104,9 @@ export function buildFinishTableViewModel() {
 
   const recordsByRoom = new Map();
   finishRecords.forEach((record) => {
-    if (!recordsByRoom.has(record.roomUid)) recordsByRoom.set(record.roomUid, []);
-    recordsByRoom.get(record.roomUid).push(record);
+    const id = roomIdFor(record.areaCode, record.roomPosition);
+    if (!recordsByRoom.has(id)) recordsByRoom.set(id, []);
+    recordsByRoom.get(id).push(record);
   });
 
   const floorMap = new Map();

@@ -129,7 +129,7 @@ function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) 
       usageLocationDisplay: roomOptions.map((item) => item.display).join('、') || row.usageLocation,
       sampleLocationOptions: roomOptions.map((option) => ({
         ...option,
-        display: option.areaCode === 'E' ? (option.roomName || option.roomNo) : option.display
+        display: option.selectDisplay
       }))
     };
   });

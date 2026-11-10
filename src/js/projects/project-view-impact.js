@@ -28,13 +28,15 @@ const FINISH_MATERIAL_VIEW_FIELDS = new Set([
 const MATERIAL_IMPACT_FIELDS = [
   'status', 'inputId', 'materialNo', 'name', 'part', 'usageLocation', 'level', 'note',
   'analysisRequired', 'sampleCount', 'sampleLocation1', 'sampleLocation2', 'sampleLocation3',
+  'sampleRoomKey1', 'sampleRoomKey2', 'sampleRoomKey3',
   'samplePart', 'sampleDone', 'sampleDate', 'sampleName', 'analysisResult', 'remarks', 'color', 'photoCount'
 ];
 const MATERIAL_FINISH_VIEW_FIELDS = new Set(['status', 'inputId', 'name', 'note', 'color']);
 const MATERIAL_PHOTO_VISUAL_FIELDS = new Set(['status', 'inputId', 'name']);
 const MATERIAL_PHOTO_SAMPLING_FIELDS = new Set([
   'status', 'inputId', 'materialNo', 'name', 'part', 'analysisRequired', 'sampleCount',
-  'sampleLocation1', 'sampleLocation2', 'sampleLocation3', 'samplePart', 'color'
+  'sampleLocation1', 'sampleLocation2', 'sampleLocation3',
+  'sampleRoomKey1', 'sampleRoomKey2', 'sampleRoomKey3', 'samplePart', 'color'
 ]);
 
 export function createEmptyProjectViewImpact() {

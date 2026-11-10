@@ -16,13 +16,6 @@ function esc(value) {
     .replaceAll("'", '&#039;');
 }
 
-function roomTitle(room) {
-  const no = String(room?.roomNo || '-').trim();
-  const name = String(room?.roomName || '').trim();
-  if (room?.areaCode === 'E') return name || no;
-  return name && name !== no ? `${no}　${name}` : no;
-}
-
 function floorLabel(room) {
   if (!room) return 'その他';
   if (room.areaCode === 'B') return `地下${room.floor || ''}階`;
@@ -94,15 +87,15 @@ export function renderVisualTargetBlock(target, openKeys) {
   </article>`;
 }
 
-function renderRoomItems(rooms, activeRoomUid) {
+function renderRoomItems(rooms, activeRoomKey) {
   return rooms.map((room) => `
-    <button class="photo-target-item grouped ${activeRoomUid === room.roomUid ? 'active' : ''}" type="button" data-photo-room="${esc(room.roomUid)}">
-      <b>${esc(roomTitle(room))}</b>
+    <button class="photo-target-item grouped ${activeRoomKey === room.roomKey ? 'active' : ''}" type="button" data-photo-room="${esc(room.roomKey)}">
+      <b>${esc(room.display || room.roomNo || '-')}</b>
       <span class="meta">写真 ${room.photoCount}枚</span>
     </button>`).join('');
 }
 
-function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
+function renderVisualRoomList(rooms, activeRoomKey, collapsedGroups) {
   const external = rooms.filter((room) => room.areaCode === 'E');
   const internal = rooms.filter((room) => room.areaCode !== 'E');
   const sections = [];
@@ -115,7 +108,7 @@ function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
         <span><span class="mark">${collapsed ? '▶' : '▼'}</span> 外部</span>
         <span class="group-meta">${external.length}箇所</span>
       </button>
-      ${collapsed ? '' : renderRoomItems(external, activeRoomUid)}
+      ${collapsed ? '' : renderRoomItems(external, activeRoomKey)}
     </div>`);
   }
 
@@ -143,7 +136,7 @@ function renderVisualRoomList(rooms, activeRoomUid, collapsedGroups) {
             <span><span class="mark">${collapsed ? '▶' : '▼'}</span> ${esc(label)}</span>
             <span class="group-meta">${groupRooms.length}</span>
           </button>
-          ${collapsed ? '' : renderRoomItems(groupRooms, activeRoomUid)}
+          ${collapsed ? '' : renderRoomItems(groupRooms, activeRoomKey)}
         </div>`;
       }).join('')}
     </div>`);
@@ -205,11 +198,11 @@ export function renderVisualView(container, view, state) {
   container.innerHTML = `<div class="photo-target-layout">
     <aside class="photo-target-list">
       <div class="photo-target-list-head">調査場所</div>
-      ${renderVisualRoomList(view.rooms, room?.roomUid || '', state.collapsedLocationGroups)}
+      ${renderVisualRoomList(view.rooms, room?.roomKey || '', state.collapsedLocationGroups)}
     </aside>
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
-        <h4>${esc(roomTitle(room))}</h4>
+        <h4>${esc(room.display || room.roomNo || '-')}</h4>
         <span class="hint">${room.areaCode === 'E' ? '外部' : `部屋No. ${esc(room.roomNo || '-')}`}</span>
       </div>
       <div class="photo-detail-body">${cards || '<div class="photo-empty">表示できる調査部位がありません。</div>'}${renderUnorganizedBlock(view.unorganizedPhotos, 'visual')}</div>

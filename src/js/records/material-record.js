@@ -1,3 +1,4 @@
+import { normalizeRoomId } from './room-id.js';
 /**
  * src/js/records/material-record.js
  *
@@ -194,11 +195,11 @@ export function createMaterialRecord(fields) {
     analysisRequired,
     sampleCount,
     sampleLocation1: String(fields.sampleLocation1 ?? ''),
-    sampleRoomKey1: String(fields.sampleRoomKey1 ?? ''),
+    sampleRoomKey1: normalizeRoomId(fields.sampleRoomKey1),
     sampleLocation2: String(fields.sampleLocation2 ?? ''),
-    sampleRoomKey2: String(fields.sampleRoomKey2 ?? ''),
+    sampleRoomKey2: normalizeRoomId(fields.sampleRoomKey2),
     sampleLocation3: String(fields.sampleLocation3 ?? ''),
-    sampleRoomKey3: String(fields.sampleRoomKey3 ?? ''),
+    sampleRoomKey3: normalizeRoomId(fields.sampleRoomKey3),
     samplePart: normalizeSampleParts(fields.samplePart),
     sampleDone: Boolean(fields.sampleDone),
     sampleDate: String(fields.sampleDate ?? ''),

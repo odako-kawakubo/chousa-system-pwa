@@ -3,7 +3,9 @@
  * materialRecordを変更せず、プレビュー・検査・クリップボードを同一データから作る。
  */
 import { getMaterialDisplayNo, samplePartsToText } from '../records/material-record.js';
-import { getMaterialUsageRoomOptions, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
+import { formatSamplingPlace } from '../finish-table/room-location.js';
 
 export const EXCEL_COMPANIES = Object.freeze([
   '小田原鉱石株式会社',
@@ -62,29 +64,28 @@ export function formatExcelDate(raw) {
 }
 
 /**
- * 採取場所の表示は部屋表示モードと無関係に、部屋キーから取得する。
- * E=外部 部屋名、I=部屋No.、B/S/R=既存の部屋No.(B/S/R表記)。
+ * 採取場所を採取写真と同じ部屋名・部屋No.併記ルールで生成する。
+ * 外部の既存Excel専用表記、および部屋キーのない旧データへの対応は維持する。
  */
 export function formatExcelLocation(record, branch) {
   const key = value(record[`sampleRoomKey${branch}`]);
   const raw = value(record[`sampleLocation${branch}`]);
   if (!key && !raw) return '';
 
-  const options = getMaterialUsageRoomOptions(record.inputId, { preferRoomName:false });
-  const match = (key && options.find((item) => item.key === key))
-    || options.find((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
-  const fallback = getMaterialSampleLocationDisplay(record.inputId, raw, {
-    roomKey:key,
-    preferRoomName:false
+  const preferRoomName = getMaterialRoomNameMode();
+  const resolved = getMaterialSampleLocationDisplay(record.inputId, raw, {
+    roomKey:key, preferRoomName
   });
-  const area = match?.areaCode || fallback.areaCode || (key.includes('|') ? key.split('|')[0] : '');
-  const roomNo = value(match?.roomNo || fallback.roomNo || raw);
-  const roomName = value(match?.roomName || fallback.roomName || raw);
+  // When no room can be identified, preserve the entered place exactly as recorded.
+  if (!resolved.key) return raw;
 
-  if (area === 'E') return `外部　${roomName || roomNo}`;
-  if (area === 'I' || !area) return `部屋No.${roomNo}`;
-  if (['S', 'R', 'B'].includes(area)) return `部屋No.${roomNo.startsWith(area) ? roomNo : `${area}${roomNo}`}`;
-  return roomNo || raw;
+  const roomNo = value(resolved.roomNo);
+  const roomName = value(resolved.roomName);
+  // 外部は既存Excel仕様を維持（部屋名を優先し、部屋No.は付けない）。
+  if (resolved.areaCode === 'E') return `外部　${roomName || roomNo}`;
+
+  // roomNo is user-editable; do not synthesize S/R/B prefixes or positional numbers.
+  return formatSamplingPlace({ roomNo, roomName, fallback:raw }, { preferRoomName }).text;
 }
 
 function makeSampleName(record) {

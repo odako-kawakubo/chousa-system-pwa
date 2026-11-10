@@ -8,8 +8,7 @@
 import {
   createFinishRecord,
   computeCellPosition,
-  buildFloorRoomPosition,
-  nextRoomUid
+  buildFloorRoomPosition
 } from '../records/finish-record.js';
 import {
   INITIAL_ROW_COUNT,
@@ -41,7 +40,6 @@ function defaultPartName(areaCode, partIndex) {
 }
 
 function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName = '' }) {
-  const roomUid = nextRoomUid();
   const records = [];
 
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
@@ -53,8 +51,7 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName = '
         roomNo,
         roomName,
         position: computeCellPosition(partIndex, row),
-        part: defaultPartName(areaCode, partIndex),
-        roomUid
+        part: defaultPartName(areaCode, partIndex)
       }));
     }
   }

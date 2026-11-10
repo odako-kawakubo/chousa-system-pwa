@@ -1,3 +1,4 @@
+import { normalizeRoomId } from '../records/room-id.js';
 /**
  * Photo Board Editorのフォーム表示・候補解決・draft更新を担当する。
  * セッション遷移、履歴確定、Canvas描画、保存処理は持たない。
@@ -254,7 +255,7 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
     rerenderControls = true;
   } else if (target.matches('[data-editor-sampling-place]')) {
     entry.draft.samplingPlace = String(target.selectedOptions?.[0]?.dataset?.placeLabel || target.value || '');
-    entry.draft.samplingRoomKey = String(target.value || '').includes('|') ? String(target.value) : '';
+    entry.draft.samplingRoomKey = normalizeRoomId(target.value);
   } else if (target.matches('[data-editor-sampling-part]')) {
     entry.draft.part = String(target.value || '');
   } else if (target.matches('[data-editor-stage]')) {

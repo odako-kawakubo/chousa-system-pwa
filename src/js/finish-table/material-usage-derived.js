@@ -6,7 +6,8 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 import { persistMaterialForProject } from '../sync/project-record-persistence.js';
-import { roomLocationKey, roomLocationDisplay, resolveRoomLocation } from './room-location.js';
+import { roomLocationKey, roomLocationDisplay, roomLocationFieldLabel, resolveRoomLocation } from './room-location.js';
+import { normalizeRoomId } from '../records/room-id.js';
 
 export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
   const shouldPersist = options.persist !== false;
@@ -70,7 +71,7 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
   const byRoom = new Map();
   finishRecordStore.getAll().forEach((record) => {
     if (record.status !== 'active' || record.materialId !== material.materialId) return;
-    const key = record.roomUid || `${record.areaCode}|${record.roomPosition}`;
+    const key = roomLocationKey(record);
     if (!byRoom.has(key)) byRoom.set(key, record);
   });
 
@@ -79,13 +80,13 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
     .map((record) => {
       const roomNo = String(record.roomNo || '').trim();
       const roomName = String(record.roomName || '').trim();
-      const useRoomName = Boolean(preferRoomName && roomName);
       const value = record.areaCode === 'E' ? (roomName || roomNo) : (roomNo || roomName);
       if (!value) return null;
       return {
         value,
         display: roomLocationDisplay(record, { preferRoomName }),
-        label: useRoomName ? '部屋名' : '部屋No.',
+        selectDisplay: roomLocationDisplay(record, { preferRoomName, context:'photo' }),
+        label: roomLocationFieldLabel(record, { preferRoomName }),
         key: roomLocationKey(record),
         areaCode: record.areaCode,
         roomPosition: record.roomPosition,
@@ -101,15 +102,41 @@ export function getMaterialUsageRoomLabels(inputId, { preferRoomName = false } =
 }
 
 export function getMaterialSampleLocationDisplay(inputId, location, { preferRoomName = false, roomKey = '' } = {}) {
-  const resolved = roomKey ? resolveRoomLocation(roomKey, { preferRoomName, context: 'photo' }) : null;
-  if (resolved) return { value: resolved.display, label: preferRoomName ? '部屋名' : '部屋No.', roomNo: resolved.roomNo, roomName: resolved.roomName, areaCode: resolved.areaCode, key: resolved.key };
   const raw = String(location || '').trim();
-  if (!raw) return { value:'', label: preferRoomName ? '部屋名' : '部屋No.', roomNo:'', roomName:'' };
+  const normalizedKey = normalizeRoomId(roomKey) || normalizeRoomId(raw);
+  const resolved = normalizedKey
+    ? resolveRoomLocation(normalizedKey, { preferRoomName, context:'photo' })
+    : null;
+  if (resolved) {
+    return {
+      value: resolved.display,
+      label: roomLocationFieldLabel(resolved, { preferRoomName }),
+      roomNo: resolved.roomNo,
+      roomName: resolved.roomName,
+      areaCode: resolved.areaCode,
+      key: resolved.key
+    };
+  }
+
+  // The room identity is authoritative: never render a missing ID or
+  // guess a replacement from a possibly duplicate display label.
+  if (normalizedKey) {
+    const safeValue = normalizeRoomId(raw) ? '' : raw;
+    return { value:safeValue, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:normalizedKey };
+  }
+  if (!raw) return { value:'', label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
 
   const options = getMaterialUsageRoomOptions(inputId, { preferRoomName });
-  const matched = options.find((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
-  if (matched) return { value: matched.areaCode === 'E' ? (matched.roomName || matched.roomNo) : matched.display, label: matched.label, roomNo: matched.roomNo, roomName: matched.roomName, areaCode: matched.areaCode, key: matched.key };
-  return { value: raw, label:'部屋No.', roomNo:raw, roomName:'' };
+  const matches = options.filter((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
+  if (matches.length === 1) {
+    const matched = matches[0];
+    const display = matched.selectDisplay;
+    return {
+      value:display, label:roomLocationFieldLabel(matched, { preferRoomName }),
+      roomNo:matched.roomNo, roomName:matched.roomName, areaCode:matched.areaCode, key:matched.key
+    };
+  }
+  return { value:raw, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
 }
 
 export function getMaterialUsageRoomNos(inputId) {

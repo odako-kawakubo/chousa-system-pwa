@@ -81,7 +81,7 @@ export function createCaptureSnapshot(state) {
   const { room, target } = currentVisualTarget(state);
   return {
     ...common,
-    roomUid: room.roomUid || '',
+    roomKey: room.roomKey || '',
     roomPosition: room.roomPosition || '',
     roomNo: room.roomNo || '',
     roomName: room.roomName || '',

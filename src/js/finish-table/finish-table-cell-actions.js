@@ -13,6 +13,7 @@ import {
   nextMaterialId
 } from '../records/material-record.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { roomIdFor } from '../records/room-id.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -50,7 +51,7 @@ function partPatchForExistingMaterial(currentCell, partIndex, materialRecord) {
 
 function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
-  return finishRecordStore.getAll().find((record) => record.roomUid === roomKey && record.status === 'active') || null;
+  return finishRecordStore.getAll().find((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active') || null;
 }
 
 function cellFinishId(anchor, partIndex, row) {
