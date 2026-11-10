@@ -29,6 +29,7 @@ export function roomLocationDisplay(room = {}, { preferRoomName = false, context
     if (!location) return '';
     return preferRoomName && context === 'list' ? `外部 ${location}` : location;
   }
+  if (context === 'visual-photo') return no && name && no !== name ? `${no}　${name}` : (no || name);
   return preferRoomName && name ? name : (no || name);
 }
 
