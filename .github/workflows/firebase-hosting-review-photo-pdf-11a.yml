@@ -1,0 +1,91 @@
+name: Test and deploy v0.1.9.11A to review-photo-pdf
+
+on:
+  push:
+    branches:
+      - work/v0.1.9.11A-multi-building
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-review-photo-pdf-11a
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 11A
+        uses: actions/checkout@v5
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+          node --check tests/multi-building-11A.mjs
+
+      - name: Check module and offline app shell references
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = [];
+          for (const root of ['src/js', 'src/config']) {
+            function walk(dir) {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+              }
+            }
+            walk(root);
+          }
+          for (const file of files) {
+            const text = fs.readFileSync(file, 'utf8');
+            for (const match of text.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g)) {
+              const resolved = path.resolve(path.dirname(file), match[1]);
+              if (![resolved, resolved + '.js', path.join(resolved, 'index.js')].some(fs.existsSync)) {
+                throw new Error('Missing JS module: ' + file + ' -> ' + match[1]);
+              }
+            }
+          }
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          const shell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(m => m[1]);
+          for (const rel of shell) {
+            if (rel && !fs.existsSync(path.join('src', rel))) {
+              throw new Error('Missing app shell: ' + rel);
+            }
+          }
+          const shellSet = new Set(shell);
+          for (const file of files.filter(x => x.startsWith('src/js/'))) {
+            const rel = file.slice(4);
+            if (!shellSet.has(rel)) throw new Error('Uncached JS module: ' + rel);
+          }
+          NODE
+
+      - name: Run multi-building regression suite
+        run: node tests/multi-building-11A.mjs
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 11A
+        uses: actions/checkout@v5
+
+      - name: Deploy exclusively to existing review-photo-pdf preview channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+          projectId: odako-chousa-system-pwa
+          channelId: review-photo-pdf
+          expires: 30d
