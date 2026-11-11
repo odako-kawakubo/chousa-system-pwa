@@ -226,7 +226,7 @@ async function openFirestoreProjectSession(target) {
       }
       if (remoteProject) {
         const localProjectPatch = listUnsent({ projectId: project.projectId })
-          .find((item) => item.recordType === 'project' && item.meta?.partialProjectMetadata)?.record || {};
+          .find((item) => item.recordType === 'project')?.record || {};
         project = {
           ...project,
           ...remoteProject,
@@ -549,7 +549,7 @@ async function openFirestoreProjectSession(target) {
         const current = getCurrentProject();
         if (!current?.projectId || current.projectId !== project.projectId) return;
         const localProjectPatch = listUnsent({ projectId: project.projectId })
-          .find((item) => item.recordType === 'project' && item.meta?.partialProjectMetadata)?.record || {};
+          .find((item) => item.recordType === 'project')?.record || {};
         const nextProject = updateProjectFields(project.projectId, {
           ...remoteProject,
           ...localProjectPatch,
