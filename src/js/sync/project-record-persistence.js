@@ -33,7 +33,7 @@ import {
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
-import { listUnsent, putUnsent } from './unsent-queue.js';
+import { listUnsent, putUnsent, removeUnsent } from './unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 import { getProject } from '../projects/project-store.js';
@@ -300,10 +300,42 @@ export async function syncQueuedProjectMetadataOnRecovery(project) {
     return { ok: true, skipped: true, sent: 0, remaining: 0, completed: true };
   }
   const projectId = String(project.projectId);
-  const hasQueuedProject = listUnsent({ projectId })
-    .some((item) => item.recordType === 'project');
-  if (!hasQueuedProject) {
+  const queued = listUnsent({ projectId }).find((item) => item.recordType === 'project');
+  if (!queued) {
     return { ok: true, skipped: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true };
+  }
+
+  if (!queued.meta?.partialProjectMetadata) {
+    // 旧バージョンの全項目未送信や、作成時の全項目再送は、他端末の変更を消す危険がある。
+    // 先にFirestoreの存在と作成情報を照合する。
+    let remote;
+    try {
+      remote = await readProjectMetadataForProject(project);
+    } catch (error) {
+      return { ok: false, reason: 'project-metadata-read-failed', error, remaining: listUnsent({ projectId }).length, completed: false };
+    }
+    if (remote) {
+      const sameCreatedAt = Boolean(queued.record?.createdAt && remote.createdAt === queued.record.createdAt);
+      if (!queued.meta?.initializeChangeLog || !sameCreatedAt) {
+        return { ok: false, reason: 'project-metadata-full-write-conflict', remaining: listUnsent({ projectId }).length, completed: false };
+      }
+      // 自端末の新規作成がサーバーへ届いていた場合は、作成後の編集項目だけ再送。
+      const subsequentPatch = queued.meta?.subsequentPatch || {};
+      removeUnsent(projectId, 'project', projectId);
+      if (Object.keys(subsequentPatch).length) {
+        putUnsent({
+          projectId,
+          environment: queued.environment,
+          recordType: 'project',
+          recordId: projectId,
+          operation: 'set',
+          record: subsequentPatch,
+          meta: { partialProjectMetadata: true }
+        });
+      } else {
+        return { ok: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true, skipped: true };
+      }
+    }
   }
 
   const result = await retryUnsentForProject(project, { recordTypes: ['project'], batchSize: 1 });

@@ -65,6 +65,11 @@ export function putUnsent({
   if (isProjectUpdate && previous && (!previous.meta?.partialProjectMetadata || !meta?.partialProjectMetadata)) {
     mergedMeta.partialProjectMetadata = false;
   }
+  // 新規案件の全項目が未送信の間に編集した項目は別途保持する。
+  // 復帰時すでに案件Documentが存在する場合、初期全項目を再送せず、この差分だけ送る。
+  if (isProjectUpdate && previous?.meta?.initializeChangeLog && meta?.partialProjectMetadata) {
+    mergedMeta.subsequentPatch = mergeProjectPatch(previous.meta?.subsequentPatch, record);
+  }
   map.set(key, {
     key,
     projectId: String(projectId),
