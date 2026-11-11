@@ -35,8 +35,9 @@ test('B棟・C棟IDは地下階区分と衝突しない', () => {
 });
 
 test('棟名称変更と採番は固定IDを保つ', () => {
-  const buildings = normalizeProjectBuildings({ B: { name:'本館', order:2 }, C: { name:'別館', order:3 } });
-  assert.equal(buildings.B.name, '本館');
+  const buildings = normalizeProjectBuildings({ A: { name:'本館', order:1 }, B: { name:'別館', order:2 }, C: { name:'管理棟', order:3 } });
+  assert.equal(buildings.A.name, '本館');
+  assert.equal(buildings.B.name, '別館');
   assert.deepEqual(projectBuildingIds({ buildings }), ['', 'B', 'C']);
   assert.equal(nextBuildingId({ buildings }), 'D');
   assert.equal(makeBuildingDefinition('D', '管理棟').name, '管理棟');
