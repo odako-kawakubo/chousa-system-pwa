@@ -5,7 +5,7 @@
 import { createTemporaryProject, createFormalProjectFromOneDrive, temporaryDateCode } from './project-factory.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import { getProject, getProjectList, saveProjectSnapshot } from './project-store.js';
-import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
+import { getRemoteTemporaryProjectNos, persistProjectMetadataForProject, readProjectMetadataForProject } from '../sync/project-record-persistence.js';
 import { getDeviceCode } from '../device-code.js';
 
 export async function createTemporaryProjectSnapshot({ projectName, address }) {
@@ -41,9 +41,23 @@ export async function createFormalProjectFromOneDriveSnapshot({ projectNo, proje
   const existing = getProject(project.projectId);
 
   if (existing?.project) {
-    // 前回のFirestore作成だけ失敗して端末Snapshotが残った場合も、再選択で正式作成を再試行する。
-    await persistProjectMetadataForProject(existing.project, { initializeChangeLog: true });
+    // 端末内SnapshotがあるだけではFirestore未作成と断定できない。
+    // 既存のリモート案件へ古い全項目を送信すると棟情報を上書きしかねない。
+    const remote = await readProjectMetadataForProject(existing.project);
+    if (!remote) await persistProjectMetadataForProject(existing.project, { initializeChangeLog: true });
     return existing;
+  }
+
+  // OneDrive案件の選択から作成までに、他端末が同じ案件を作成した可能性がある。
+  const existingRemote = await readProjectMetadataForProject(project);
+  if (existingRemote) {
+    return saveProjectSnapshot({
+      project: { ...project, ...existingRemote },
+      finishRecords: createDefaultFinishRecords(),
+      materialRecords: [],
+      photoRecords: [],
+      source: 'onedrive-remote-project-already-exists'
+    });
   }
 
   const finishRecords = createDefaultFinishRecords();
