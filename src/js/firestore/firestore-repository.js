@@ -487,6 +487,12 @@ async function writeWithQueue({
     return { ok: false, queued: true, operation, offline: true, reason: 'network-offline' };
   }
 
+  // 案件情報は送信前に未送信パッチを統合し、失敗済みの別項目も失わない。
+  if (recordType === 'project') {
+    const pending = putUnsent(entry);
+    entry.record = pending.record;
+    entry.meta = pending.meta;
+  }
   beginFirestoreActivity();
   try {
     await commitRecordEntries([entry]);

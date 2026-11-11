@@ -53,6 +53,7 @@ import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
+import { listUnsent } from '../sync/unsent-queue.js';
 import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import {
   createFullTypeProjectViewImpact
@@ -223,9 +224,13 @@ async function openFirestoreProjectSession(target) {
         if (token !== activeProjectStreamToken) return target;
       }
       if (remoteProject) {
+        const localProjectPatch = listUnsent({ projectId: project.projectId })
+          .find((item) => item.recordType === 'project' && item.meta?.partialProjectMetadata)?.record || {};
         project = {
           ...project,
           ...remoteProject,
+          ...localProjectPatch,
+          ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
           projectId: project.projectId,
           environment: project.environment || remoteProject.environment || 'production'
         };
@@ -537,8 +542,12 @@ async function openFirestoreProjectSession(target) {
         if (token !== activeProjectStreamToken) return;
         const current = getCurrentProject();
         if (!current?.projectId || current.projectId !== project.projectId) return;
+        const localProjectPatch = listUnsent({ projectId: project.projectId })
+          .find((item) => item.recordType === 'project' && item.meta?.partialProjectMetadata)?.record || {};
         const nextProject = updateProjectFields(project.projectId, {
           ...remoteProject,
+          ...localProjectPatch,
+          ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
           projectId: project.projectId,
           environment: project.environment
         });

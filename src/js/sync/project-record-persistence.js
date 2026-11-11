@@ -35,6 +35,7 @@ import { createPhotoRecord } from '../records/photo-record.js';
 import { listUnsent, putUnsent } from './unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
+import { getProject } from '../projects/project-store.js';
 
 let writeChain = Promise.resolve();
 const knownFinishRecordsByProject = new Map();
@@ -759,7 +760,7 @@ export async function readProjectRecordsForProject(project, {
       }
     });
     finishRecords = hydrateFinishRecords(
-      restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values())),
+      restoreFinishRecordsFromSparse(Array.from(sparseFinishMap.values()), Object.keys(project?.buildings || {})),
       materialById
     );
   }
@@ -921,7 +922,7 @@ export function restoreKnownFinishRecords(projectId, currentMaterialRecords = []
     }
   });
 
-  return hydrateFinishRecords(restoreFinishRecordsFromSparse([...sparseMap.values()]), materialById);
+  return hydrateFinishRecords(restoreFinishRecordsFromSparse([...sparseMap.values()], Object.keys(getProject(projectId)?.project?.buildings || {})), materialById);
 }
 
 /** 受信したmaterialRecord 1件を現在Storeへ入れられる形へ正規化する。 */
