@@ -140,6 +140,7 @@ function projectMetadataPayload(project = {}, { initializeChangeLog = false } = 
     surveyDate: String(project.surveyDate || project.boardSettings?.surveyDate || ''),
     surveyor: String(project.surveyor || project.boardSettings?.surveyor || ''),
     boardSettings: normalizeBoardSettings(project.boardSettings || {}, project),
+    ...(project.buildings && typeof project.buildings === 'object' ? { buildings: project.buildings } : {}),
     projectType: String(project.projectType || ''),
     isTemporary: Boolean(project.isTemporary),
     createdAt: String(project.createdAt || ''),
@@ -182,9 +183,11 @@ function appendRecordOperationToBatch(batch, entry) {
     if (!record) throw new Error(`案件情報本体がありません: ${recordId}`);
     batch.set(
       projectDocRef(projectId, environment),
-      projectMetadataPayload(record, {
-        initializeChangeLog: Boolean(entry.meta?.initializeChangeLog)
-      }),
+      entry.meta?.partialProjectMetadata
+        ? { ...record, updatedAt: serverTimestamp() }
+        : projectMetadataPayload(record, {
+          initializeChangeLog: Boolean(entry.meta?.initializeChangeLog)
+        }),
       { merge: true }
     );
     return;
@@ -612,6 +615,7 @@ function normalizeProjectMetadataData(data = {}, projectId = '', environment = '
     surveyDate: String(data.surveyDate || boardSettings?.surveyDate || ''),
     surveyor: String(data.surveyor || boardSettings?.surveyor || ''),
     boardSettings,
+    buildings: data.buildings && typeof data.buildings === 'object' && !Array.isArray(data.buildings) ? { ...data.buildings } : {},
     projectType: String(data.projectType || ''),
     isTemporary: Boolean(data.isTemporary),
     isSample: false,
@@ -623,7 +627,7 @@ function normalizeProjectMetadataData(data = {}, projectId = '', environment = '
 /**
  * 案件メタデータをFirestore案件Documentへ保存する。3Record Storeとは別の案件情報用。
  */
-export async function saveProjectMetadata(project, { initializeChangeLog = false } = {}) {
+export async function saveProjectMetadata(project, { initializeChangeLog = false, patch = null } = {}) {
   syncDiagnosticLog('PROJECT_METADATA_WRITE_REQUEST', { projectId: project?.projectId || '', initializeChangeLog });
   if (!project?.projectId || project.isSample) return { ok: true, skipped: true };
   const environment = project.environment === 'test' ? 'test' : 'production';
@@ -633,9 +637,9 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
     recordType: 'project',
     recordId: project.projectId,
     operation: 'set',
-    localRecord: project,
+    localRecord: patch && typeof patch === 'object' ? patch : project,
     source: initializeChangeLog ? 'project-create' : 'project-metadata',
-    meta: { initializeChangeLog: Boolean(initializeChangeLog) }
+    meta: { initializeChangeLog: Boolean(initializeChangeLog), partialProjectMetadata: Boolean(patch && typeof patch === 'object') }
   });
   syncDiagnosticLog(
     result?.ok ? 'PROJECT_METADATA_WRITE_OK' : 'PROJECT_METADATA_WRITE_QUEUED',

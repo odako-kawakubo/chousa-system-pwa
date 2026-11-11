@@ -30,6 +30,17 @@ function makeKey(projectId, recordType, recordId) {
   return [projectId, recordType, recordId].map((value) => String(value || '')).join('|');
 }
 
+/** 同一案件の未送信項目パッチを失わないよう、ネストした項目も統合する。 */
+function mergeProjectPatch(previous = {}, next = {}) {
+  const result = { ...(previous || {}) };
+  for (const [key, value] of Object.entries(next || {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = mergeProjectPatch(result[key], value);
+    } else result[key] = value;
+  }
+  return result;
+}
+
 export function putUnsent({
   projectId,
   environment = 'production',
@@ -47,6 +58,13 @@ export function putUnsent({
   if (previous?.meta?.initializeChangeLog || meta?.initializeChangeLog) {
     mergedMeta.initializeChangeLog = true;
   }
+  const isProjectUpdate = String(recordType) === 'project' && operation === 'set';
+  const mergedRecord = isProjectUpdate && previous?.operation === 'set'
+    ? mergeProjectPatch(previous.record, record)
+    : record;
+  if (isProjectUpdate && previous && (!previous.meta?.partialProjectMetadata || !meta?.partialProjectMetadata)) {
+    mergedMeta.partialProjectMetadata = false;
+  }
   map.set(key, {
     key,
     projectId: String(projectId),
@@ -54,7 +72,7 @@ export function putUnsent({
     recordType: String(recordType),
     recordId: String(recordId),
     operation,
-    record,
+    record: mergedRecord,
     meta: mergedMeta,
     queuedAt: Date.now()
   });

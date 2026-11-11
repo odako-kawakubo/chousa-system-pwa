@@ -304,10 +304,10 @@ export async function syncQueuedProjectMetadataOnRecovery(project) {
     return { ok: true, skipped: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true };
   }
 
-  const result = await persistProjectMetadataForProject(project);
+  const result = await retryUnsentForProject(project, { recordTypes: ['project'], batchSize: 1 });
   return {
     ...result,
-    sent: result?.ok ? 1 + Number(result.retried || 0) : 0,
+    sent: Number(result?.sent || 0),
     remaining: listUnsent({ projectId }).length,
     completed: Boolean(result?.ok)
   };
