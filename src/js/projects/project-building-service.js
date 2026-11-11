@@ -14,6 +14,7 @@ export function ensureDeclaredBuildingFinishRecords(project) {
   let added = 0;
   finishRecordStore.batch(() => {
     for (const buildingId of Object.keys(buildings)) {
+      if (buildingId === 'A') continue;
       for (const record of createDefaultFinishRecords(buildingId)) {
         if (finishRecordStore.get(record.finishId)) continue;
         finishRecordStore.set(record);

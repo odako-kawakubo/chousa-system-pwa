@@ -676,7 +676,8 @@ export async function reserveNextBuilding({ projectId, environment = 'production
       const buildingId = nextBuildingId({ buildings });
       if (!buildingId) throw new Error('追加できる棟IDの上限に達しました。');
       const definition = makeBuildingDefinition(buildingId, name);
-      tx.set(ref, { buildings: { [buildingId]: definition }, updatedAt: serverTimestamp() }, { merge: true });
+      const initialA = buildings.A ? {} : { A: { name: 'A棟', order: 1 } };
+      tx.set(ref, { buildings: { ...initialA, [buildingId]: definition }, updatedAt: serverTimestamp() }, { merge: true });
       return { buildingId, definition };
     });
     return { ok: true, ...result };

@@ -8,7 +8,7 @@ const LAST_BUILDING_CODE = 'Z'.charCodeAt(0);
 
 export function normalizeBuildingId(value) {
   const id = String(value || '').trim().toUpperCase();
-  return id === '' || id === 'A' ? '' : /^[B-Z]$/.test(id) ? id : '';
+  return id === '' ? '' : /^[A-Z]$/.test(id) ? id : '';
 }
 
 export function normalizeProjectBuildings(value = {}) {
@@ -26,7 +26,7 @@ export function normalizeProjectBuildings(value = {}) {
 }
 
 export function projectBuildingIds(project = {}) {
-  return ['', ...Object.keys(normalizeProjectBuildings(project.buildings)).sort()];
+  return ['', ...Object.keys(normalizeProjectBuildings(project.buildings)).filter((id) => id !== 'A').sort()];
 }
 
 export function nextBuildingId(project = {}) {
@@ -40,6 +40,6 @@ export function nextBuildingId(project = {}) {
 
 export function makeBuildingDefinition(id, name = '') {
   const buildingId = normalizeBuildingId(id);
-  if (!buildingId) throw new Error('追加棟にはB以降の棟IDが必要です。');
+  if (!buildingId || buildingId === 'A') throw new Error('追加棟にはB以降の棟IDが必要です。');
   return { name: String(name || `${buildingId}棟`), order: buildingId.charCodeAt(0) - 64 };
 }
