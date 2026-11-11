@@ -13,10 +13,12 @@ import * as finishRecordStore from '../store/finish-record-store.js';
 import { roomIdFor } from '../records/room-id.js';
 import { INITIAL_ROW_COUNT, INTERNAL_PARTS, EXTERNAL_PARTS } from './finish-table-constants.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { getState } from './finish-table-state.js';
 import { persistFinishForProject } from '../sync/project-record-persistence.js';
 import { persistAddedStructureMarker } from './finish-table-persistence.js';
 
 const PART_COUNT = 6;
+function activeBuildingId() { return String(getState()?.activeBuildingId || ''); }
 
 function pad(value, length) { return String(value).padStart(length, '0'); }
 function partsForArea(areaCode) { return areaCode === 'E' ? EXTERNAL_PARTS : INTERNAL_PARTS; }
@@ -34,20 +36,20 @@ function parseFloorKey(floorKey) {
 function uniqueRoomAnchors(areaCode, floor = undefined) {
   const byRoom = new Map();
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || record.areaCode !== areaCode) return;
+    if (record.status !== 'active' || record.areaCode !== areaCode || String(record.buildingId || '') !== activeBuildingId()) return;
     if (floor !== undefined && Number(record.floor) !== Number(floor)) return;
-    const id = roomIdFor(record.areaCode, record.roomPosition);
+    const id = roomIdFor(record.areaCode, record.roomPosition, record.buildingId);
     if (!byRoom.has(id)) byRoom.set(id, record);
   });
   return Array.from(byRoom.values());
 }
 
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT }) {
+function createRoomRecords({ buildingId = '', areaCode, roomPosition, floor, roomNo, roomName, roomNote = '', rowCount = INITIAL_ROW_COUNT }) {
   const records = [];
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= rowCount; row += 1) {
       records.push(createFinishRecord({
-        areaCode, roomPosition, floor, roomNo, roomName, roomNote,
+        buildingId, areaCode, roomPosition, floor, roomNo, roomName, roomNote,
         position: computeCellPosition(partIndex, row),
         part: defaultPartName(areaCode, partIndex)
       }));
@@ -56,21 +58,21 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName, ro
   return records;
 }
 
-export function buildFloorRoomSeed(areaCode, floor, index) {
+export function buildFloorRoomSeed(areaCode, floor, index, buildingId = activeBuildingId()) {
   const roomPosition = buildFloorRoomPosition(floor, index);
   const prefix = areaCode === 'B' ? `B${floor}` : String(floor);
   const label = `${prefix}-${index}`;
-  return createRoomRecords({ areaCode, roomPosition, floor, roomNo: label, roomName: '', roomNote: '' });
+  return createRoomRecords({ buildingId, areaCode, roomPosition, floor, roomNo: label, roomName: '', roomNote: '' });
 }
 
-export function buildFlatRoomSeed(areaCode, index, customName = '') {
+export function buildFlatRoomSeed(areaCode, index, customName = '', buildingId = activeBuildingId()) {
   const roomPosition = pad(index, 3);
   let roomNo = customName;
   let roomName = customName;
   if (!customName && areaCode === 'S') { roomNo = `S-${index}`; roomName = `階段${index}`; }
   if (!customName && areaCode === 'R') { roomNo = `R-${index}`; roomName = index === 1 ? '屋上' : `屋上${index}`; }
   if (areaCode === 'E') { roomNo = `E-${index}`; roomName = customName || ''; }
-  return createRoomRecords({ areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
+  return createRoomRecords({ buildingId, areaCode, roomPosition, floor: null, roomNo, roomName, roomNote: '' });
 }
 
 function listFloorNumbers(areaCode) {
@@ -153,7 +155,7 @@ export function addRoomToFloor(floorKey) {
 
 export function addInputRow(roomKey) {
   const roomRecords = finishRecordStore.getAll()
-    .filter((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active')
+    .filter((record) => roomIdFor(record.areaCode, record.roomPosition, record.buildingId) === roomKey && record.status === 'active')
     .sort((a, b) => a.position - b.position);
   const anchor = roomRecords[0];
   if (!anchor) return;
@@ -162,7 +164,7 @@ export function addInputRow(roomKey) {
   const records = [];
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     records.push(createFinishRecord({
-      areaCode: anchor.areaCode, roomPosition: anchor.roomPosition, floor: anchor.floor,
+      buildingId: anchor.buildingId || '', areaCode: anchor.areaCode, roomPosition: anchor.roomPosition, floor: anchor.floor,
       roomNo: anchor.roomNo, roomName: anchor.roomName, roomNote: anchor.roomNote,
       position: computeCellPosition(partIndex, nextRow),
       part: defaultPartName(anchor.areaCode, partIndex),

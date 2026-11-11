@@ -51,11 +51,11 @@ function partPatchForExistingMaterial(currentCell, partIndex, materialRecord) {
 
 function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
-  return finishRecordStore.getAll().find((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active') || null;
+  return finishRecordStore.getAll().find((record) => roomIdFor(record.areaCode, record.roomPosition, record.buildingId) === roomKey && record.status === 'active') || null;
 }
 
 function cellFinishId(anchor, partIndex, row) {
-  return computeFinishId(anchor.areaCode, anchor.roomPosition, computeCellPosition(partIndex, row));
+  return computeFinishId(anchor.areaCode, anchor.roomPosition, computeCellPosition(partIndex, row), anchor.buildingId);
 }
 
 function writeCellPatch(anchor, partIndex, row, patch, options = {}) {

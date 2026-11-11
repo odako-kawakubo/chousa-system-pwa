@@ -98,6 +98,7 @@ export function executeRoomCopy(sourceRoomKey, targetRoomKey) {
       }
 
       finishRecordStore.set(createFinishRecord({
+        buildingId: target.buildingId || '',
         areaCode: target.areaCode,
         roomPosition: target.roomPosition,
         floor: target.floor,
