@@ -232,7 +232,7 @@ async function openFirestoreProjectSession(target) {
           ...remoteProject,
           ...localProjectPatch,
           ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
-          ...(localProjectPatch.buildings ? { buildings: { ...(remoteProject.buildings || {}), ...localProjectPatch.buildings } } : {}),
+          buildings: { ...(project.buildings || {}), ...(remoteProject.buildings || {}), ...(localProjectPatch.buildings || {}) },
           projectId: project.projectId,
           environment: project.environment || remoteProject.environment || 'production'
         };
@@ -554,7 +554,7 @@ async function openFirestoreProjectSession(target) {
           ...remoteProject,
           ...localProjectPatch,
           ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
-          ...(localProjectPatch.buildings ? { buildings: { ...(remoteProject.buildings || {}), ...localProjectPatch.buildings } } : {}),
+          buildings: { ...(current.buildings || {}), ...(remoteProject.buildings || {}), ...(localProjectPatch.buildings || {}) },
           projectId: project.projectId,
           environment: project.environment
         });
