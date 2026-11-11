@@ -39,12 +39,13 @@ function defaultPartName(areaCode, partIndex) {
   return partIndex >= 5 ? '' : name;
 }
 
-function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName = '' }) {
+function createRoomRecords({ buildingId = '', areaCode, roomPosition, floor, roomNo, roomName = '' }) {
   const records = [];
 
   for (let partIndex = 1; partIndex <= PART_COUNT; partIndex += 1) {
     for (let row = 1; row <= INITIAL_ROW_COUNT; row += 1) {
       records.push(createFinishRecord({
+        buildingId,
         areaCode,
         roomPosition,
         floor,
@@ -60,12 +61,13 @@ function createRoomRecords({ areaCode, roomPosition, floor, roomNo, roomName = '
 }
 
 /** 新規案件用の正式初期finishRecord一式を新しく生成する。 */
-export function createDefaultFinishRecords() {
+export function createDefaultFinishRecords(buildingId = '') {
   const records = [];
 
   DEFAULT_FINISH_STRUCTURE.floors.forEach(({ areaCode, floor, roomCount }) => {
     for (let index = 1; index <= roomCount; index += 1) {
       records.push(...createRoomRecords({
+        buildingId,
         areaCode,
         floor,
         roomPosition: buildFloorRoomPosition(floor, index),
@@ -76,6 +78,7 @@ export function createDefaultFinishRecords() {
 
   for (let index = 1; index <= DEFAULT_FINISH_STRUCTURE.stairsCount; index += 1) {
     records.push(...createRoomRecords({
+      buildingId,
       areaCode: 'S',
       floor: null,
       roomPosition: pad(index, 3),
@@ -85,6 +88,7 @@ export function createDefaultFinishRecords() {
 
   for (let index = 1; index <= DEFAULT_FINISH_STRUCTURE.roofCount; index += 1) {
     records.push(...createRoomRecords({
+      buildingId,
       areaCode: 'R',
       floor: null,
       roomPosition: pad(index, 3),
@@ -94,6 +98,7 @@ export function createDefaultFinishRecords() {
 
   DEFAULT_FINISH_STRUCTURE.externalRoomNos.forEach((roomName, index) => {
     records.push(...createRoomRecords({
+      buildingId,
       areaCode: 'E',
       floor: null,
       roomPosition: pad(index + 1, 3),

@@ -16,6 +16,7 @@ function stringArray(value) {
 export function serializeFinishRecord(record, { updatedAt }) {
   if (!record?.finishId) throw new Error('finishRecord.finishIdは必須です。');
   return {
+    ...(record.buildingId ? { buildingId: text(record.buildingId) } : {}),
     areaCode: text(record.areaCode),
     roomPosition: text(record.roomPosition),
     floor: record.floor ?? null,

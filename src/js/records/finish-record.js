@@ -51,8 +51,9 @@ function pad(value, length) {
   return String(value).padStart(length, '0');
 }
 
-export function computeFinishId(areaCode, roomPosition, position) {
-  return `${areaCode}-${roomPosition}-${position}`;
+export function computeFinishId(areaCode, roomPosition, position, buildingId = '') {
+  const building = String(buildingId || '').trim().toUpperCase();
+  return `${building && building !== 'A' ? `${building}-` : ''}${areaCode}-${roomPosition}-${position}`;
 }
 
 export function buildFloorRoomPosition(floor, indexInFloor) {
@@ -79,8 +80,10 @@ export function createFinishRecord(fields) {
   const areaCode = fields.areaCode;
   const roomPosition = String(fields.roomPosition);
   const position = Number(fields.position);
+  const buildingId = String(fields.buildingId || '').trim().toUpperCase();
   return {
-    finishId: fields.finishId || computeFinishId(areaCode, roomPosition, position),
+    finishId: fields.finishId || computeFinishId(areaCode, roomPosition, position, buildingId),
+    ...(buildingId && buildingId !== 'A' ? { buildingId } : {}),
     areaCode,
     roomPosition,
     floor: fields.floor ?? null,
