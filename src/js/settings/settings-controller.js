@@ -9,7 +9,7 @@ import { renderSettingsTab } from './settings-renderer.js';
 import * as boardSettingsStore from './board-settings-store.js';
 import { renderBoardSample } from '../camera/camera-board.js';
 import { getSyncStatus, subscribeSyncStatus } from '../sync/sync-status.js';
-import { listUnsent } from '../sync/unsent-queue.js';
+import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
 import { getAuthUiState, subscribeAuthUiState } from '../ui/auth-ui.js';
 import { getDeviceCode, getDeviceDisplayName, setDeviceName, subscribeDeviceName } from '../device-code.js';
 import { formatSyncDiagnosticLog, clearSyncDiagnosticLog, subscribeSyncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
@@ -192,6 +192,13 @@ function scheduleProjectMetadataPersist(project, patch) {
   const previous = projectMetadataSaveTimers.get(projectId);
   if (previous?.timer) window.clearTimeout(previous.timer);
   const combined = mergeProjectMetadataPatch(previous?.patch, patch);
+  // 編集確定時点で未送信差分を保持し、送信待ちの間の遠隔更新から守る。
+  putUnsent({
+    projectId,
+    environment: project.environment === 'test' ? 'test' : 'production',
+    recordType: 'project', recordId: projectId, operation: 'set',
+    record: combined, meta: { partialProjectMetadata: true }
+  });
   const timer = window.setTimeout(() => {
     projectMetadataSaveTimers.delete(projectId);
     void persistProjectMetadataForProject(project, { patch: combined }).catch((error) => {

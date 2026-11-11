@@ -1,8 +1,8 @@
 /*
- * v0.1.9.11 Service Worker
+ * v0.1.9.11A Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.11';
+const APP_CACHE = 'chousa-app-v0.1.9.11A';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0199';
 const APP_CACHE_PREFIX = 'chousa-app-';
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './assets/microsoft-symbol.svg','./assets/audio/camera1.mp3.gz','./assets/audio/camera2.mp3.gz','./assets/audio/click.mp3.gz','./assets/audio/chime.mp3.gz',
   './js/home/home-init.js','./js/home/home-controller.js','./js/home/home-return-control.js',
   './js/app-init.js','./js/app-update.js','./js/app-version.js','./js/device-code.js',
+  './js/projects/project-buildings.js','./js/projects/project-building-service.js',
   './js/pwa/pwa-controller.js',
   './js/auth/microsoft-auth.js','./js/auth/graph-session.js',
   './js/ui/auth-ui.js','./js/ui/header-edit-ui.js','./js/ui/header-visibility.js','./js/ui/sync-ui.js','./js/ui/loading-ui.js','./js/ui/modal.js','./js/ui/tabs.js','./js/ui/drawer.js','./js/ui/project-panel.js','./js/ui/theme.js','./js/ui/device-ui.js',
