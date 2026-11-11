@@ -41,7 +41,10 @@ export async function addBuildingForCurrentProject(name = '') {
     [reserved.buildingId]: reserved.definition
   };
   updateProjectFields(project.projectId, { buildings });
-  ensureDeclaredBuildingFinishRecords({ buildings });
+  // 棟採番の通信待ち中に別案件へ移動していたら、その案件のStoreを変更しない。
+  if (getCurrentProject()?.projectId === project.projectId) {
+    ensureDeclaredBuildingFinishRecords({ buildings });
+  }
 
   return { ok: true, buildingId: reserved.buildingId, definition: reserved.definition };
 }
