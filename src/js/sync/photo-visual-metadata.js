@@ -23,6 +23,7 @@ export function resolveVisualPhotoMetadata(photo, finishRecords = []) {
 
   const roomRecords = (finishRecords || []).filter((record) =>
     record?.status === 'active'
+    && String(record.buildingId || '') === String(photo.buildingId || '')
     && String(record.areaCode || '') === areaCode
     && String(record.roomPosition || '') === roomPosition
   );
