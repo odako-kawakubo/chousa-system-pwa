@@ -135,6 +135,7 @@ export function restoreFinishUiState(snapshot, { notifyNow = true } = {}) {
 
 export function resetFinishUiStateForTutorial({ notifyNow = true } = {}) {
   if (!state) return;
+  state.activeBuildingId = '';
   state.activeAreaMode = 'internal';
   state.colorMode = false;
   state.chipInputMode = false;
