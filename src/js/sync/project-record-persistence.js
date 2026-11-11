@@ -12,6 +12,7 @@ import {
   deleteMaterialRecord,
   savePhotoRecord,
   saveProjectMetadata,
+  reserveNextBuilding,
   readProjectMetadata,
   subscribeProjectMetadata,
   readTemporaryProjectNos,
@@ -376,6 +377,12 @@ export async function syncQueuedRecordsOnRecovery(project) {
 export function persistProjectMetadataForProject(project, options = {}) {
   if (!shouldSyncProject(project)) return Promise.resolve({ ok: true, skipped: true });
   return enqueue(() => saveProjectMetadata(project, options));
+}
+
+/** 棟追加時の採番をFirestoreのトランザクションで確定する同期adapter。 */
+export function reserveNextBuildingForProject(project, name = '') {
+  if (!shouldSyncProject(project)) return Promise.resolve({ ok: false, reason: 'project-not-syncable' });
+  return enqueue(() => reserveNextBuilding({ projectId: project.projectId, environment: projectEnvironment(project), name }));
 }
 
 /** 案件Documentの現在形を取得する同期adapter。 */
