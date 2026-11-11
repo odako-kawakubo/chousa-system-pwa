@@ -55,6 +55,7 @@ import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
 import { listUnsent } from '../sync/unsent-queue.js';
 import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
+import { ensureDeclaredBuildingFinishRecords } from './project-building-service.js';
 import {
   createFullTypeProjectViewImpact
 } from './project-view-impact.js';
@@ -558,6 +559,13 @@ async function openFirestoreProjectSession(target) {
           environment: project.environment
         });
         if (!nextProject) return;
+        // 他端末で追加された空欄の棟も、メタデータ受信時にローカル構造へ復元する。
+        const remoteAddedBuilding = Object.keys(nextProject.buildings || {})
+          .some((id) => !Object.prototype.hasOwnProperty.call(current.buildings || {}, id));
+        if (remoteAddedBuilding) {
+          ensureDeclaredBuildingFinishRecords(nextProject);
+          saveCurrentProjectSession();
+        }
         boardSettingsStore.applyProjectMetadata(nextProject);
         refreshSettingsTab();
         syncDiagnosticLog('PROJECT_METADATA_REALTIME_APPLY', {

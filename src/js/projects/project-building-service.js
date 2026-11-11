@@ -4,13 +4,12 @@
  * 仕上表UIやレビュー公開の責務は持たない。
  */
 import { getCurrentProject, getProject, updateProjectFields } from './project-store.js';
-import { saveCurrentProjectSession } from './project-session.js';
 import { normalizeProjectBuildings } from './project-buildings.js';
 import { reserveNextBuildingForProject } from '../sync/project-record-persistence.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 
-export function ensureDeclaredBuildingFinishRecords(project, { notify = false } = {}) {
+export function ensureDeclaredBuildingFinishRecords(project) {
   const buildings = normalizeProjectBuildings(project?.buildings);
   let added = 0;
   finishRecordStore.batch(() => {
@@ -39,7 +38,6 @@ export async function addBuildingForCurrentProject(name = '') {
   };
   updateProjectFields(project.projectId, { buildings });
   ensureDeclaredBuildingFinishRecords({ buildings });
-  saveCurrentProjectSession();
 
   return { ok: true, buildingId: reserved.buildingId, definition: reserved.definition };
 }
