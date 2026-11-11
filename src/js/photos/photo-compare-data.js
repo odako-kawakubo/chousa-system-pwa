@@ -36,7 +36,7 @@ function visualRoomInfo() {
   const rooms = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
+    if (record.status !== 'active' || record.buildingId || !record.areaCode || !record.roomPosition) return;
     const key = getVisualPhotoRoomKey(record);
     if (rooms.has(key)) return;
     rooms.set(key, {
@@ -62,7 +62,7 @@ function finishRecordsByVisualTarget() {
   const groups = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
+    if (record.status !== 'active' || record.buildingId || !record.areaCode || !record.roomPosition) return;
     const partSlot = finishPartSlot(record);
     if (!partSlot) return;
     const key = getVisualPhotoTargetKey({

@@ -59,14 +59,16 @@ function representativeFirst(photos) {
 }
 
 function getRoomRecords(roomKey) {
-  return finishRecordStore.getAll().filter((record) => record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition) === roomKey);
+  return finishRecordStore.getAll().filter((record) => record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition, record.buildingId) === roomKey);
 }
 
 function buildRoomList() {
   const byRoom = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    const id = roomIdFor(record.areaCode, record.roomPosition);
+    // 写真タブの棟選択UIを実装するまでは既存A棟だけを表示し、B棟の同じ部屋を混在させない。
+    if (record.buildingId) return;
+    const id = roomIdFor(record.areaCode, record.roomPosition, record.buildingId);
     if (record.status !== 'active' || !id || byRoom.has(id)) return;
     const sharedRoom = resolveRoomLocation(id) || record;
     byRoom.set(id, {
