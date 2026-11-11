@@ -7,6 +7,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject, saveProjectSnapshot, setCurrentProject } from './project-store.js';
 import { setProject } from '../finish-table/finish-table-state.js';
+import { ensureDeclaredBuildingFinishRecords } from './project-building-service.js';
 import { refreshFinishTableFromStores, resetFinishTableForProject } from '../finish-table/finish-table-controller.js';
 import {
   requestFinishTableExternalRefresh,
@@ -108,6 +109,8 @@ export function openProjectSession({ project, finishRecords = [], materialRecord
   resetFinishTableScrollState();
 
   finishRecordStore.replaceAll(finishRecords, { notify: false });
+  // 案件JSON・オフラインSnapshotに棟情報だけある場合も空欄構造を生成する。
+  ensureDeclaredBuildingFinishRecords(project, { notify: false });
   materialRecordStore.replaceAll(materialRecords, { notify: false });
   photoRecordStore.replaceAll(photoRecords, { notify: false });
 

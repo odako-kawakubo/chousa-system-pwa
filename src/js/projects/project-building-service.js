@@ -10,19 +10,19 @@ import { putUnsent } from '../sync/unsent-queue.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 
-export function ensureDeclaredBuildingFinishRecords(project) {
+export function ensureDeclaredBuildingFinishRecords(project, { notify = true } = {}) {
   const buildings = normalizeProjectBuildings(project?.buildings);
+  const records = new Map(finishRecordStore.getAll().map((record) => [record.finishId, record]));
   let added = 0;
-  finishRecordStore.batch(() => {
-    for (const buildingId of Object.keys(buildings)) {
-      if (buildingId === 'A') continue;
-      for (const record of createDefaultFinishRecords(buildingId)) {
-        if (finishRecordStore.get(record.finishId)) continue;
-        finishRecordStore.set(record);
-        added += 1;
-      }
+  for (const buildingId of Object.keys(buildings)) {
+    if (buildingId === 'A') continue;
+    for (const record of createDefaultFinishRecords(buildingId)) {
+      if (records.has(record.finishId)) continue;
+      records.set(record.finishId, record);
+      added += 1;
     }
-  });
+  }
+  if (added) finishRecordStore.replaceAll([...records.values()], { notify });
   return added;
 }
 
