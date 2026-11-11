@@ -163,19 +163,42 @@ function renderBoardPreview() {
   if (canvas) renderBoardSample(canvas, boardPreviewData());
 }
 
-function scheduleProjectMetadataPersist(project) {
-  if (!project?.projectId || project.isSample) return;
+function changedProjectMetadataFields(previous = {}, next = {}) {
+  const patch = {};
+  for (const field of ['projectNo', 'projectName', 'address', 'surveyDate', 'surveyor']) {
+    if (String(previous[field] ?? '') !== String(next[field] ?? '')) patch[field] = next[field];
+  }
+  const board = {};
+  for (const [field, value] of Object.entries(next.boardSettings || {})) {
+    if (String(previous.boardSettings?.[field] ?? '') !== String(value ?? '')) board[field] = value;
+  }
+  if (Object.keys(board).length) patch.boardSettings = board;
+  return patch;
+}
+
+function mergeProjectMetadataPatch(previous = {}, next = {}) {
+  return {
+    ...previous,
+    ...next,
+    ...(previous.boardSettings || next.boardSettings
+      ? { boardSettings: { ...(previous.boardSettings || {}), ...(next.boardSettings || {}) } }
+      : {})
+  };
+}
+
+function scheduleProjectMetadataPersist(project, patch) {
+  if (!project?.projectId || project.isSample || !Object.keys(patch || {}).length) return;
   const projectId = String(project.projectId);
-  const previousTimer = projectMetadataSaveTimers.get(projectId);
-  if (previousTimer) window.clearTimeout(previousTimer);
-  const snapshot = { ...project, boardSettings: { ...(project.boardSettings || {}) } };
+  const previous = projectMetadataSaveTimers.get(projectId);
+  if (previous?.timer) window.clearTimeout(previous.timer);
+  const combined = mergeProjectMetadataPatch(previous?.patch, patch);
   const timer = window.setTimeout(() => {
     projectMetadataSaveTimers.delete(projectId);
-    void persistProjectMetadataForProject(snapshot).catch((error) => {
-      console.error('[M-06] 案件情報をFirestoreへ保存できませんでした。', error);
+    void persistProjectMetadataForProject(project, { patch: combined }).catch((error) => {
+      console.error('[11A] 案件情報の差分をFirestoreへ保存できませんでした。', error);
     });
   }, 350);
-  projectMetadataSaveTimers.set(projectId, timer);
+  projectMetadataSaveTimers.set(projectId, { timer, patch: combined });
 }
 
 function currentBoardSettingsPayload(values = {}) {
@@ -242,7 +265,7 @@ function syncBoardFromInputs(changedElement = null) {
       surveyor,
       boardSettings
     };
-    scheduleProjectMetadataPersist(nextProject);
+    scheduleProjectMetadataPersist(nextProject, changedProjectMetadataFields(currentProject, nextProject));
   }
 
   renderBoardPreview();
@@ -301,7 +324,7 @@ async function handleClick(event) {
         surveyor: board.surveyor,
         boardSettings
       }) || { ...currentProject, boardSettings };
-      scheduleProjectMetadataPersist(nextProject);
+      scheduleProjectMetadataPersist(nextProject, changedProjectMetadataFields(currentProject, nextProject));
     }
     render();
     return;
