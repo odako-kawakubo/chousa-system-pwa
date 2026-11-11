@@ -231,6 +231,7 @@ async function openFirestoreProjectSession(target) {
           ...remoteProject,
           ...localProjectPatch,
           ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
+          ...(localProjectPatch.buildings ? { buildings: { ...(remoteProject.buildings || {}), ...localProjectPatch.buildings } } : {}),
           projectId: project.projectId,
           environment: project.environment || remoteProject.environment || 'production'
         };
@@ -418,7 +419,11 @@ async function openFirestoreProjectSession(target) {
       target.project = project;
       updateProjectFields(project.projectId, project);
       try {
-        const migrateResult = await persistProjectMetadataForProject(project);
+        const migrateResult = await persistProjectMetadataForProject(project, { patch: {
+          surveyDate: migratedBoard.surveyDate,
+          surveyor: migratedBoard.surveyor,
+          boardSettings: migratedBoard
+        } });
         if (migrateResult?.ok) {
           syncDiagnosticLog('PROJECT_METADATA_BOARD_MIGRATED', {
             projectId: project.projectId
@@ -548,6 +553,7 @@ async function openFirestoreProjectSession(target) {
           ...remoteProject,
           ...localProjectPatch,
           ...(localProjectPatch.boardSettings ? { boardSettings: { ...(remoteProject.boardSettings || {}), ...localProjectPatch.boardSettings } } : {}),
+          ...(localProjectPatch.buildings ? { buildings: { ...(remoteProject.buildings || {}), ...localProjectPatch.buildings } } : {}),
           projectId: project.projectId,
           environment: project.environment
         });
