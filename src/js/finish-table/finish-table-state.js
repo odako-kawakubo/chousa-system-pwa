@@ -68,6 +68,7 @@ export function initFinishTableState() {
   state = {
     project: getCurrentProject(),
     activeAreaMode: 'internal',
+    activeBuildingId: '',
     colorMode: false,
     chipInputMode: false,
     chipInputMaterialInputId: null,
@@ -93,6 +94,7 @@ export function captureFinishUiState() {
   if (!state) return null;
   return {
     activeAreaMode: state.activeAreaMode,
+    activeBuildingId: state.activeBuildingId || '',
     colorMode: Boolean(state.colorMode),
     chipInputMode: Boolean(state.chipInputMode),
     chipInputMaterialInputId: state.chipInputMaterialInputId,
@@ -112,6 +114,7 @@ export function captureFinishUiState() {
 export function restoreFinishUiState(snapshot, { notifyNow = true } = {}) {
   if (!state || !snapshot) return;
   state.activeAreaMode = snapshot.activeAreaMode === 'external' ? 'external' : 'internal';
+  state.activeBuildingId = String(snapshot.activeBuildingId || '');
   state.colorMode = Boolean(snapshot.colorMode);
   state.chipInputMode = Boolean(snapshot.chipInputMode);
   state.chipInputMaterialInputId = snapshot.chipInputMaterialInputId ?? null;
@@ -150,6 +153,7 @@ export function resetFinishUiStateForTutorial({ notifyNow = true } = {}) {
 export function setProject(project) {
   if (!state) return;
   state.project = project ? { ...project } : null;
+  state.activeBuildingId = '';
   state.activeAreaMode = 'internal';
   state.activeRoomKey = null;
   state.activeGroupKey = null;
@@ -166,6 +170,19 @@ export function setProject(project) {
 /* ============================================================
    表示モード
    ============================================================ */
+
+/** 表示棟だけを変更する。案件データの更新には使用しない。 */
+export function setActiveBuildingId(buildingId = '') {
+  if (!state) return;
+  const id = String(buildingId || '').trim().toUpperCase();
+  if (id && !/^[B-Z]$/.test(id)) return;
+  if (state.activeBuildingId === id) return;
+  state.activeBuildingId = id;
+  state.activeRoomKey = null;
+  state.activeGroupKey = null;
+  state.focusedInputKey = null;
+  notify();
+}
 
 export function setAreaMode(mode) {
   state.activeAreaMode = mode === 'external' ? 'external' : 'internal';

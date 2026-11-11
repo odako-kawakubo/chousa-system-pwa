@@ -15,13 +15,13 @@ import { refreshVisualPhotoBoardsForRoom } from '../photos/room-photo-regenerati
 export function findRepresentativeByRoomKey(roomKey) {
   if (!roomKey) return null;
   return finishRecordStore.getAll().find((record) =>
-    roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active'
+    roomIdFor(record.areaCode, record.roomPosition, record.buildingId) === roomKey && record.status === 'active'
   ) || null;
 }
 
 export function getRoomRecords(roomKey) {
   return finishRecordStore.getAll()
-    .filter((record) => roomIdFor(record.areaCode, record.roomPosition) === roomKey && record.status === 'active')
+    .filter((record) => roomIdFor(record.areaCode, record.roomPosition, record.buildingId) === roomKey && record.status === 'active')
     .sort((a, b) => a.position - b.position);
 }
 

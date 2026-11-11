@@ -7,7 +7,7 @@ import { roomIdFor, normalizeRoomId } from '../records/room-id.js';
 export { normalizeRoomId as normalizeRoomLocationKey };
 
 export function roomLocationKey(record = {}) {
-  return roomIdFor(record.areaCode, record.roomPosition);
+  return roomIdFor(record.areaCode, record.roomPosition, record.buildingId);
 }
 
 export function findRoomByLocationKey(key) {

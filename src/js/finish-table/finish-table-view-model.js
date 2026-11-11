@@ -35,7 +35,7 @@ const EMPTY_CELL = Object.freeze({ inputId: '', materialId: '', materialName: ''
 export function getCell(room, partIndex, row) { return room?.cells?.[`${partIndex}-${row}`] || EMPTY_CELL; }
 
 export function computeFinishId(room, partIndex, row) {
-  return computeFinishIdFromParts(room.areaCode, room.roomPosition, computeCellPosition(partIndex, row));
+  return computeFinishIdFromParts(room.areaCode, room.roomPosition, computeCellPosition(partIndex, row), room.buildingId);
 }
 
 export function getPartsForAreaCode(areaCode) { return areaCode === 'E' ? EXTERNAL_PARTS : INTERNAL_PARTS; }
@@ -69,7 +69,7 @@ function buildRoom(roomRecords, materialById) {
   sorted.forEach((record) => {
     const partIndex = partIndexFromPosition(record.position);
     const row = rowFromPosition(record.position);
-    const pendingKey = `${roomIdFor(anchor.areaCode, anchor.roomPosition)}|${partIndex}|${row}`;
+    const pendingKey = `${roomIdFor(anchor.areaCode, anchor.roomPosition, anchor.buildingId)}|${partIndex}|${row}`;
     const materialName = record.materialId
       ? (materialById.get(record.materialId)?.name || '')
       : (String(record.materialName || '').trim() || getPendingCellName(pendingKey) || '');
@@ -83,7 +83,8 @@ function buildRoom(roomRecords, materialById) {
 
   const isFloorRoom = anchor.areaCode === 'I' || anchor.areaCode === 'B';
   return {
-    uid: roomIdFor(anchor.areaCode, anchor.roomPosition),
+    uid: roomIdFor(anchor.areaCode, anchor.roomPosition, anchor.buildingId),
+    buildingId: anchor.buildingId || '',
     areaCode: anchor.areaCode,
     roomPosition: anchor.roomPosition,
     floor: anchor.floor,
@@ -98,13 +99,14 @@ function buildRoom(roomRecords, materialById) {
 }
 
 export function buildFinishTableViewModel() {
-  const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active');
+  const activeBuildingId = String(getState()?.activeBuildingId || '');
+  const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active' && String(record.buildingId || '') === activeBuildingId);
   const materials = materialRecordStore.getAll();
   const materialById = new Map(materials.map((material) => [material.materialId, material]));
 
   const recordsByRoom = new Map();
   finishRecords.forEach((record) => {
-    const id = roomIdFor(record.areaCode, record.roomPosition);
+    const id = roomIdFor(record.areaCode, record.roomPosition, record.buildingId);
     if (!recordsByRoom.has(id)) recordsByRoom.set(id, []);
     recordsByRoom.get(id).push(record);
   });

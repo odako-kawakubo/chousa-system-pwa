@@ -41,7 +41,7 @@ function shouldKeepSparseFinishRecord(record, allRecords = finishRecordStore.get
   if (!record?.finishId) return false;
   if (getRequiredStructureRecordIds(allRecords).has(record.finishId)) return true;
   if (!isFinishCellAtDefault(record)) return true;
-  const carrier = roomCarrierRecord(allRecords.filter((item) => roomIdFor(item.areaCode, item.roomPosition) === roomIdFor(record.areaCode, record.roomPosition) && item.status === 'active'));
+  const carrier = roomCarrierRecord(allRecords.filter((item) => roomIdFor(item.areaCode, item.roomPosition, item.buildingId) === roomIdFor(record.areaCode, record.roomPosition, record.buildingId) && item.status === 'active'));
   if (carrier?.finishId === record.finishId && hasRoomCommonDifference(record)) return true;
   if (String(record.systemMemo || '').trim()) return true;
   return false;
