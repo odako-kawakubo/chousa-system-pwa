@@ -19,6 +19,8 @@ import {
   getChipInputMaterialInputId,
   isFloorCollapsed
 } from './finish-table-state.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { projectBuildingIds, normalizeProjectBuildings } from '../projects/project-buildings.js';
 import {
   buildFinishTableViewModel,
   getPartsForAreaCode,
@@ -59,6 +61,9 @@ export function renderFinishTab(container) {
   container.innerHTML = `
     <div class="finish-tab-root">
       <div class="finish-toolbar" id="finishToolbar">
+        <div class="finish-toolbar-group" id="finishBuildingGroup" hidden>
+          <select id="finishBuildingSelect" class="finish-building-select" aria-label="表示する棟"></select>
+        </div>
         <div class="finish-toolbar-group" id="finishAreaToggle">
           <button type="button" class="btn small finish-area-btn" data-area-mode="internal">内部</button>
           <button type="button" class="btn small finish-area-btn" data-area-mode="external">外部</button>
@@ -76,6 +81,7 @@ export function renderFinishTab(container) {
         <div class="finish-toolbar-group">
           <button type="button" class="btn small" id="finishUndoBtn" disabled>戻る</button>
           <button type="button" class="btn small" id="finishRedoBtn" disabled>進む</button>
+          <button type="button" class="btn small" id="finishCopyCancelBtn" hidden>コピー解除</button>
         </div>
 
         <div class="finish-toolbar-spacer"></div>
@@ -103,6 +109,27 @@ export function renderFinishTab(container) {
 
 export function renderToolbarState() {
   const state = getState();
+  const project = getCurrentProject();
+  const ids = projectBuildingIds(project);
+  const buildings = normalizeProjectBuildings(project?.buildings);
+  const group = document.getElementById('finishBuildingGroup');
+  const selector = document.getElementById('finishBuildingSelect');
+  if (group && selector) {
+    group.hidden = ids.length <= 1;
+    const optionsKey = ids.map((id) => id + ':' + (buildings[id || 'A']?.name || (id || 'A') + '棟')).join('|');
+    if (selector.dataset.optionsKey !== optionsKey) {
+      selector.replaceChildren(...ids.map((id) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = buildings[id || 'A']?.name || (id || 'A') + '棟';
+        return option;
+      }));
+      selector.dataset.optionsKey = optionsKey;
+    }
+    selector.value = ids.includes(state.activeBuildingId || '') ? (state.activeBuildingId || '') : '';
+  }
+  const cancel = document.getElementById('finishCopyCancelBtn');
+  if (cancel) cancel.hidden = !state.roomCopy?.sourceRoomKey;
 
   document.querySelectorAll('.finish-area-btn').forEach((button) => {
     button.classList.toggle('active', button.dataset.areaMode === state.activeAreaMode);

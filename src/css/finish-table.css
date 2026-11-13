@@ -45,6 +45,24 @@
 
 .finish-toolbar-spacer { width: 8px; }
 .finish-toolbar-fill { flex: 1 1 auto; }
+.finish-building-select {
+  max-width: 140px;
+  min-width: 72px;
+  height: 30px;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--line-section);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+}
+.finish-building-tools { display: grid; gap: 6px; margin-bottom: 12px; }
+.finish-building-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.finish-building-rows { display: grid; gap: 4px; }
+.finish-building-row { display: flex; align-items: center; gap: 6px; }
+.finish-building-row button { text-align: left; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.finish-building-row .finish-building-rename { flex: 0 0 auto; }
+
 
 .finish-area-btn.active,
 .finish-mode-btn.active {

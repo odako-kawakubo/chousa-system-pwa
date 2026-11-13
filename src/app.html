@@ -197,6 +197,11 @@
 
     <div class="drawer-box" id="finishDrawerTools">
       <h4>仕上表操作</h4>
+      <div class="finish-building-tools">
+        <div class="finish-building-head"><b id="finishBuildingCount">現在1棟</b><button type="button" class="btn small" id="finishAddBuildingBtn">＋別棟追加</button></div>
+        <div class="finish-building-rows" id="finishBuildingRows"></div>
+        <div class="hint" id="finishBuildingMessage" role="status" aria-live="polite"></div>
+      </div>
       <div class="hint">階・階段・屋上を追加します。実行前に追加内容を確認します。</div>
 
       <details class="drawer-operation-accordion" data-finish-add-accordion="basement">

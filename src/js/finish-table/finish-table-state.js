@@ -305,6 +305,13 @@ export function cancelRoomCopySource() {
   notify();
 }
 
+/** 貼り付け済みの戻すバックアップを保ちながらコピー元選択だけ解除する。 */
+export function clearRoomCopySourceOnly() {
+  if (!state?.roomCopy?.sourceRoomKey) return;
+  state.roomCopy.sourceRoomKey = null;
+  notify();
+}
+
 export function recordRoomCopyBackup(roomKeyValue, records) {
   state.roomCopy.backups[roomKeyValue] = records;
   state.roomCopy.done[roomKeyValue] = true;
