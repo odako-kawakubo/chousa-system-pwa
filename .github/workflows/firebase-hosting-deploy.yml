@@ -632,13 +632,18 @@ jobs:
             exit 1
           fi
 
-          # OneDrive root責務を一元化
+          # OneDriveルートは固定IDを利用し、実体と案件一覧を確認する
           grep -q "export async function getSurveyRoot" src/js/onedrive/onedrive-root.js
-          grep -q "resolveSharedUrl" src/js/onedrive/onedrive-root.js
-          grep -q "searchDriveFolders" src/js/onedrive/onedrive-root.js
-          grep -q "rootSource: 'fixed-share'" src/js/onedrive/onedrive-root.js
-          grep -q "rootSource: 'legacy-search'" src/js/onedrive/onedrive-root.js
+          grep -q "surveyRootDriveId" src/config/microsoft-config.js
+          grep -q "surveyRootItemId" src/config/microsoft-config.js
+          grep -q "rootSource: 'configured-id'" src/js/onedrive/onedrive-root.js
+          if grep -Eq 'resolveSharedUrl|searchDriveFolders' src/js/onedrive/onedrive-root.js; then
+            echo "Legacy shared link or name search used for survey root"
+            exit 1
+          fi
           grep -q "getSurveyRoot" src/js/onedrive/onedrive-connection.js
+          grep -q "await getDriveItem(candidate)" src/js/onedrive/onedrive-connection.js
+          grep -q "await listDriveChildren(verified)" src/js/onedrive/onedrive-connection.js
           grep -q "getUsableSurveyRoot" src/js/onedrive/onedrive-project.js
           grep -q "getUsableSurveyRoot" src/js/projects/onedrive-project-browser.js
 
