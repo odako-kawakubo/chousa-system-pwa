@@ -24,6 +24,8 @@ import {
   initFinishTableState,
   getState,
   subscribe,
+  setActiveBuildingId,
+  clearRoomCopySourceOnly,
   getRoomCopyState,
   startRoomCopySource,
   cancelRoomCopySource,
@@ -31,6 +33,9 @@ import {
   clearRoomCopyBackup,
   getRoomCopyBackup
 } from './finish-table-state.js';
+import { getCurrentProject, subscribe as subscribeProjects } from '../projects/project-store.js';
+import { projectBuildingIds, normalizeProjectBuildings } from '../projects/project-buildings.js';
+import { addBuildingForCurrentProject, renameBuildingForCurrentProject } from '../projects/project-building-service.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { runRecordTransaction } from './finish-table-record-transaction.js';
@@ -100,6 +105,7 @@ export function initializeFinishTable() {
   });
   bindDrawerFinishTools();
   bindUndoRedoButtons();
+  bindBuildingSelector();
   updateUndoRedoButtons();
   setupStickyMetrics(finishSection);
 
@@ -108,6 +114,15 @@ export function initializeFinishTable() {
   // subscribe()ではなく、各業務操作の直後にrefreshFromStores()を明示的に
   // 呼ぶことで反映する（withHistory()／commitAndRefresh()を参照）。
   subscribe(() => {
+    refreshFromStores();
+  });
+  let lastBuildingSignature = '';
+  subscribeProjects(() => {
+    const project = getCurrentProject();
+    const signature = JSON.stringify([project?.projectId, project?.buildings]);
+    if (signature === lastBuildingSignature) return;
+    lastBuildingSignature = signature;
+    if (!projectBuildingIds(project).includes(getState()?.activeBuildingId || '')) setActiveBuildingId('');
     refreshFromStores();
   });
 }
@@ -120,6 +135,7 @@ export function initializeFinishTable() {
  * ここで個別に呼ぶ必要はない。
  */
 function refreshFromStores() {
+  renderBuildingDrawer();
   renderToolbarState();
   renderRooms();
   renderSimpleList();
@@ -216,10 +232,102 @@ async function confirmDrawerStructureAdd(kind, roomCount) {
  * 操作パネルの仕上表操作を配線する。
  * 追加数の入力と確認はUI側、Record生成・保存はstructure-actions側へ分離する。
  */
+function setBuildingMessage(message) {
+  const node = document.getElementById('finishBuildingMessage');
+  if (node) node.textContent = message || '';
+}
+
+function renderBuildingDrawer() {
+  const project = getCurrentProject();
+  const rows = document.getElementById('finishBuildingRows');
+  const count = document.getElementById('finishBuildingCount');
+  const add = document.getElementById('finishAddBuildingBtn');
+  if (!rows || !count || !add) return;
+  const ids = projectBuildingIds(project);
+  const buildings = normalizeProjectBuildings(project?.buildings);
+  count.textContent = '現在' + ids.length + '棟';
+  add.disabled = !project?.projectId || Boolean(project.isSample) || ids.length >= 26;
+  const key = JSON.stringify([project?.projectId, ids, buildings, getState()?.activeBuildingId]);
+  if (rows.dataset.renderKey === key) return;
+  rows.dataset.renderKey = key;
+  rows.replaceChildren(...ids.map((id) => {
+    const row = document.createElement('div');
+    row.className = 'finish-building-row';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.className = 'btn small';
+    choose.dataset.finishBuildingSelect = id || 'A';
+    choose.textContent = (id || 'A') + '｜' + (buildings[id || 'A']?.name || (id || 'A') + '棟')
+      + ((getState()?.activeBuildingId || '') === id ? '（表示中）' : '');
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'btn small finish-building-rename';
+    rename.dataset.finishBuildingRename = id || 'A';
+    rename.textContent = '名称変更';
+    row.append(choose, rename);
+    return row;
+  }));
+}
+
+function bindBuildingSelector() {
+  document.getElementById('finishBuildingSelect')?.addEventListener('change', (event) => {
+    const id = String(event.target.value || '');
+    if (projectBuildingIds(getCurrentProject()).includes(id)) setActiveBuildingId(id);
+  });
+  document.getElementById('finishCopyCancelBtn')?.addEventListener('click', clearRoomCopySourceOnly);
+}
+
 function bindDrawerFinishTools() {
   const root = document.getElementById('finishDrawerTools');
   if (!root || root.dataset.finishDrawerBound === '1') return;
   root.dataset.finishDrawerBound = '1';
+
+  root.addEventListener('click', async (event) => {
+    const add = event.target.closest('#finishAddBuildingBtn');
+    if (add) {
+      if (add.disabled) return;
+      add.disabled = true;
+      setBuildingMessage('別棟を追加しています…');
+      try {
+        const result = await addBuildingForCurrentProject();
+        if (!result.ok) {
+          setBuildingMessage('別棟を追加できませんでした。オンライン接続を確認してください。');
+        } else {
+          setActiveBuildingId(result.buildingId);
+          setBuildingMessage(result.definition.name + 'を追加しました。');
+        }
+      } catch (error) {
+        setBuildingMessage(error?.message || '別棟を追加できませんでした。');
+      } finally {
+        refreshFromStores();
+      }
+      return;
+    }
+    const choose = event.target.closest('[data-finish-building-select]');
+    if (choose) {
+      const id = choose.dataset.finishBuildingSelect === 'A' ? '' : choose.dataset.finishBuildingSelect;
+      if (projectBuildingIds(getCurrentProject()).includes(id)) setActiveBuildingId(id);
+      return;
+    }
+    const rename = event.target.closest('[data-finish-building-rename]');
+    if (!rename) return;
+    const id = rename.dataset.finishBuildingRename;
+    const project = getCurrentProject();
+    const currentName = normalizeProjectBuildings(project?.buildings)[id]?.name || id + '棟';
+    const name = window.prompt('棟名称を入力してください', currentName);
+    if (name === null || String(name).trim() === currentName) return;
+    if (!String(name).trim()) {
+      setBuildingMessage('棟名称を入力してください。');
+      return;
+    }
+    try {
+      const result = await renameBuildingForCurrentProject(id === 'A' ? '' : id, name);
+      setBuildingMessage(result.ok ? '棟名称を更新しました。' : '棟名称を端末に保存しました。同期状態を確認してください。');
+    } catch (error) {
+      setBuildingMessage(error?.message || '棟名称の変更に失敗しました。');
+    }
+    refreshFromStores();
+  });
 
   root.addEventListener('click', (event) => {
     const button = event.target.closest('[data-finish-add-kind]');
