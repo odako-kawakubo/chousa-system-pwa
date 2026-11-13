@@ -81,11 +81,19 @@ jobs:
       - name: Checkout 11A
         uses: actions/checkout@v5
 
-      - name: Deploy exclusively to existing review-photo-pdf preview channel
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
-          projectId: odako-chousa-system-pwa
-          channelId: review-photo-pdf
-          expires: 30d
+      - name: Deploy to existing review-photo-pdf with proven Firebase CLI
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT}" ]; then
+            echo "Firebase service account secret is missing"
+            exit 1
+          fi
+          credentials="${RUNNER_TEMP}/firebase-preview-service-account.json"
+          trap 'rm -f "${credentials}"' EXIT
+          printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
+          chmod 600 "${credentials}"
+          export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
