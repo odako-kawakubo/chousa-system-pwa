@@ -117,3 +117,6 @@ test('新規案件の未送信全項目とは後の差分を区別する', () =>
 });
 
 console.log(`v0.1.9.11A: ${passed} tests passed`);
+
+// 11C sample regression is run in the existing CI regression step.
+await import('./sample-11C.mjs');
