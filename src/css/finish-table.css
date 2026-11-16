@@ -45,6 +45,22 @@
 
 .finish-toolbar-spacer { width: 8px; }
 .finish-toolbar-fill { flex: 1 1 auto; }
+
+/* hidden属性を業務操作グループのdisplay指定より優先させる。 */
+.finish-toolbar-group[hidden],
+#finishCopyCancelBtn[hidden] { display: none; }
+
+/* 複数棟・コピー中の追加操作は縦に折り返さず横スクロールに収める。
+   単棟かつコピー待機中は11Aの操作列を維持する。 */
+.finish-toolbar.finish-toolbar-extended {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.finish-toolbar.finish-toolbar-extended .finish-toolbar-group,
+.finish-toolbar.finish-toolbar-extended .finish-toolbar-spacer { flex-shrink: 0; }
+.finish-toolbar.finish-toolbar-extended .finish-toolbar-fill { min-width: 0; }
 .finish-building-select {
   max-width: 140px;
   min-width: 72px;

@@ -129,7 +129,13 @@ export function renderToolbarState() {
     selector.value = ids.includes(state.activeBuildingId || '') ? (state.activeBuildingId || '') : '';
   }
   const cancel = document.getElementById('finishCopyCancelBtn');
-  if (cancel) cancel.hidden = !state.roomCopy?.sourceRoomKey;
+  const copyInProgress = Boolean(state.roomCopy?.sourceRoomKey);
+  if (cancel) cancel.hidden = !copyInProgress;
+
+  // 棟追加・部屋コピー中だけ横一列を維持し、既存の単棟表示を変更しない。
+  document.getElementById('finishToolbar')?.classList.toggle(
+    'finish-toolbar-extended', ids.length > 1 || copyInProgress
+  );
 
   document.querySelectorAll('.finish-area-btn').forEach((button) => {
     button.classList.toggle('active', button.dataset.areaMode === state.activeAreaMode);
