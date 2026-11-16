@@ -25,7 +25,6 @@ import {
   getState,
   subscribe,
   setActiveBuildingId,
-  clearRoomCopySourceOnly,
   getRoomCopyState,
   startRoomCopySource,
   cancelRoomCopySource,
@@ -274,7 +273,7 @@ function bindBuildingSelector() {
     const id = String(event.target.value || '');
     if (projectBuildingIds(getCurrentProject()).includes(id)) setActiveBuildingId(id);
   });
-  document.getElementById('finishCopyCancelBtn')?.addEventListener('click', clearRoomCopySourceOnly);
+  document.getElementById('finishCopyCancelBtn')?.addEventListener('click', cancelRoomCopySource);
 }
 
 function bindDrawerFinishTools() {
