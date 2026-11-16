@@ -26,7 +26,7 @@ export function normalizeProjectBuildings(value = {}) {
 }
 
 export function projectBuildingIds(project = {}) {
-  return ['', ...Object.keys(normalizeProjectBuildings(project.buildings)).filter((id) => id !== 'A').sort()];
+  return ['', ...Object.keys(normalizeProjectBuildings(project?.buildings)).filter((id) => id !== 'A').sort()];
 }
 
 export function nextBuildingId(project = {}) {
