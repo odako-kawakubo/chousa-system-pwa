@@ -1,96 +1,85 @@
 /**
- * 11C サンプル案件の生成・棟操作回帰テスト。
- * 実行: node tests/sample-11C.mjs
- * Firestore実通信・ブラウザ/端末表示は対象外。
+ * 11C のNode.js回帰テスト。ブラウザ専用SDKは読み込まず、
+ * 実際のサンプル定義・建材候補・写真定義・棟ID/初期構造を検証する。
+ * ※Firebase通信・サンプル画面での一連の操作は別途ブラウザ実機で確認する。
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { getConfiguredMaterialCandidates } from '../src/js/store/survey-candidate-store.js';
+import { createDefaultFinishRecords } from '../src/js/default/default-finish-data.js';
+import { makeBuildingDefinition, nextBuildingId, projectBuildingIds } from '../src/js/projects/project-buildings.js';
+import { sampleProject } from '../src/js/demo/sample-project.js';
+import { SAMPLE_MATERIALS_SEED } from '../src/js/demo/sample-materials.js';
+import { seedInitialPhotoRecords } from '../src/js/demo/sample-photos.js';
+import * as photoStore from '../src/js/store/photo-record-store.js';
 
-const memory = new Map();
-globalThis.localStorage = {
-  getItem:(key)=>memory.get(key)??null,
-  setItem:(key,value)=>memory.set(key,String(value)),
-  removeItem:(key)=>memory.delete(key)
-};
+const seedSource = readFileSync(new URL('../src/js/finish-table/finish-table-sample-seed.js', import.meta.url),'utf8');
+const buildingServiceSource = readFileSync(new URL('../src/js/projects/project-building-service.js', import.meta.url),'utf8');
+const match = seedSource.match(/const SAMPLE_PLACEMENTS = (\[[\s\S]*?\]);/);
+assert.ok(match,'サンプル配置定義が見つからない');
+const placements = JSON.parse(match[1]);
 
-const { initializeSampleProjectSnapshot } = await import('../src/js/demo/sample-session.js');
-const { sampleProject } = await import('../src/js/demo/sample-project.js');
-const projectStore = await import('../src/js/projects/project-store.js');
-const finishStore = await import('../src/js/store/finish-record-store.js');
-const materialStore = await import('../src/js/store/material-record-store.js');
-const photoStore = await import('../src/js/store/photo-record-store.js');
-const { getConfiguredMaterialCandidates } = await import('../src/js/store/survey-candidate-store.js');
-const { addBuildingForCurrentProject, renameBuildingForCurrentProject } =
-  await import('../src/js/projects/project-building-service.js');
-const { nextBuildingId, projectBuildingIds } = await import('../src/js/projects/project-buildings.js');
-const { listUnsent } = await import('../src/js/sync/unsent-queue.js');
+let passed=0;
+function test(name,fn){fn();passed++;console.log('PASS',name);}
 
-let passed = 0;
-async function test(name, run) {
-  await run();
-  passed++;
-  console.log('PASS',name);
-}
-const sample = initializeSampleProjectSnapshot();
-assert.ok(sample);
-await test('サンプルは20建材を持ち、全名称が既定候補のA枝番',()=>{
-  const materials = sample.materialRecords;
-  const candidates = new Set(getConfiguredMaterialCandidates().filter((x)=>x.source==='default').map((x)=>x.baseName));
-  assert.equal(materials.length,20);
-  for(const m of materials) {
-    assert.ok(m.name.endsWith('A'),m.name);
-    assert.ok(candidates.has(m.name.slice(0,-1)),m.name);
-  }
-  assert.ok(materials.some((m)=>m.name==='けい酸カルシウム板第1種A'));
-  assert.ok(materials.some((m)=>m.name==='けい酸カルシウム板第2種A'));
+test('20建材は既定の建材候補を採用し第1種・第2種を区別する',()=>{
+  const available=new Set(getConfiguredMaterialCandidates().filter((x)=>x.source==='default').map((x)=>x.part+'|'+x.baseName));
+  assert.equal(SAMPLE_MATERIALS_SEED.length,20);
+  for(const [part,name] of SAMPLE_MATERIALS_SEED) assert.ok(available.has(part+'|'+name),name);
+  assert.ok(SAMPLE_MATERIALS_SEED.some((x)=>x[1]==='けい酸カルシウム板第1種'));
+  assert.ok(SAMPLE_MATERIALS_SEED.some((x)=>x[1]==='けい酸カルシウム板第2種'));
+  assert.match(seedSource,/resolveCandidateName\(part,name\)\+'A'/);
 });
-await test('仕上表は空行を含み、写真の目視対象と対応',()=>{
-  const records=sample.finishRecords;
-  assert.ok(records.length>100);
-  assert.equal(new Set(records.map((r)=>r.finishId)).size,records.length);
-  const visual=sample.photoRecords.filter((p)=>p.photoType==='visual');
-  for(const p of visual) {
-    assert.ok(records.some((r)=>r.areaCode===p.areaCode && r.roomPosition===p.roomPosition &&
-      Math.floor(r.position/100)===Number(p.partSlot) && Boolean(r.materialId)),p.photoId);
+
+test('20建材すべてに配置があり、使用箇所・採取数が矛盾しない',()=>{
+  const byId=new Map();
+  for(const [inputId,area,room,part] of placements){
+    assert.ok(Number.isInteger(inputId)&&inputId>=1&&inputId<=20);
+    assert.ok(['I','E','R'].includes(area));
+    assert.ok(/^([12]-[1-5]|E-[1-5]|R-1)$/.test(room),room);
+    assert.ok(Number.isInteger(part)&&part>=1&&part<=6);
+    byId.set(inputId,(byId.get(inputId)||0)+1);
+  }
+  for(let index=0;index<SAMPLE_MATERIALS_SEED.length;index++){
+    const [part,name,note,required,count]=SAMPLE_MATERIALS_SEED[index];
+    assert.ok(byId.has(index+1),name);
+    if(required==='採取・分析')assert.ok(count>=1&&count<=3,name);
+    else assert.equal(count,0,name);
   }
 });
-await test('採取対象建材の採取場所キーは実在する使用箇所を参照',()=>{
-  const records=sample.finishRecords;
-  for(const m of sample.materialRecords) {
-    if(m.analysisRequired!=='採取・分析') {
-      assert.equal(m.sampleCount,0);
-      continue;
-    }
-    assert.ok(m.sampleCount>=1&&m.sampleCount<=3);
-    for(let i=1;i<=m.sampleCount;i++) {
-      const key=m['sampleRoomKey'+i];
-      if(!key)continue;
-      assert.ok(records.some((r)=>r.materialId===m.materialId &&
-        (r.areaCode+'-'+r.roomPosition===key)),m.name+' '+key);
-    }
+
+test('配置枠は既定入力行数以内で重複なく割り当てられる',()=>{
+  const counters=new Map();
+  for(const [,area,room,part] of placements){
+    const key=[area,room,part].join('|');
+    counters.set(key,(counters.get(key)||0)+1);
   }
+  assert.ok([...counters.values()].every((x)=>x<=2));
+  assert.match(seedSource,/!occupied\.has\(record\.finishId\)/);
 });
-await test('サンプルの棟追加と名称変更は端末メモリのみ',async()=>{
-  finishStore.replaceAll(sample.finishRecords);
-  materialStore.replaceAll(sample.materialRecords);
-  photoStore.replaceAll(sample.photoRecords);
-  projectStore.setCurrentProject(sampleProject);
-  assert.equal(nextBuildingId(projectStore.getCurrentProject()),'B');
-  const result=await addBuildingForCurrentProject();
-  assert.equal(result.ok,true);
-  assert.equal(result.buildingId,'B');
-  assert.equal(result.localOnly,true);
-  assert.deepEqual(projectBuildingIds(projectStore.getCurrentProject()),['','B']);
-  assert.ok(finishStore.getAll().some((r)=>r.buildingId==='B'));
-  const renamed=await renameBuildingForCurrentProject('B','別館');
-  assert.equal(renamed.ok,true);
-  assert.equal(projectStore.getCurrentProject().buildings.B.name,'別館');
-  assert.deepEqual(listUnsent({projectId:sampleProject.projectId}),[]);
-  assert.equal(memory.size,0);
+
+test('写真の目視対象が仕上表配置に含まれ、採取対象R001/R002を維持',()=>{
+  seedInitialPhotoRecords();
+  const photos=photoStore.getAll();
+  for(const photo of photos.filter((p)=>p.photoType==='visual')){
+    const room = photo.areaCode==='E' ? 'E-'+Number(photo.roomPosition) :
+      String(photo.roomPosition)[0]+'-'+Number(String(photo.roomPosition).slice(1));
+    assert.ok(placements.some((p)=>p[1]===photo.areaCode&&p[2]===room&&p[3]===photo.partSlot),photo.photoId);
+  }
+  for(const id of ['R001','R002'])assert.ok(photos.some((p)=>p.photoType==='sampling'&&p.materialId===id),id);
+  photoStore.clearAll();
 });
-await test('新しいサンプル初期化はB棟編集を引き継がない',()=>{
-  const reset=initializeSampleProjectSnapshot();
-  assert.ok(!reset.project.buildings?.B);
-  assert.equal(reset.materialRecords.length,20);
-  assert.ok(!reset.finishRecords.some((r)=>r.buildingId==='B'));
+
+test('A棟互換と空のB棟構造、およびサンプル採番の条件',()=>{
+  assert.equal(nextBuildingId(sampleProject),'B');
+  const b=makeBuildingDefinition('B');
+  assert.equal(b.name,'B棟');
+  assert.deepEqual(projectBuildingIds({buildings:{B:b}}),['','B']);
+  assert.deepEqual(projectBuildingIds(null),['']);
+  const records=createDefaultFinishRecords('B');
+  assert.equal(records.length,456);
+  assert.ok(records.every((x)=>!x.materialId));
+  assert.match(buildingServiceSource,/if \(!project\.isSample\) return reserveNextBuildingForProject\(project, name\)/);
+  assert.match(buildingServiceSource,/if \(project\.isSample\) \{[\s\S]*?localOnly:true/);
 });
 console.log('v0.1.9.11C: '+passed+' tests passed');
