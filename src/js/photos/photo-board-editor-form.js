@@ -65,9 +65,10 @@ export function boardEditorSamplingMaterials(optionsProvider) {
 
 function visualRoomLabel(room = {}) {
   const no = String(room.roomNo || room.roomPosition || '').trim();
+  const prefix = room.buildingId ? `${room.buildingId}：` : '';
   const name = String(room.roomName || '').trim();
-  if (room.areaCode === 'E') return roomLocationDisplay(room, { context:'photo' });
-  return name && name !== no ? `${no}　${name}` : no;
+  if (room.areaCode === 'E') return prefix + roomLocationDisplay(room, { context:'photo' });
+  return prefix + (name && name !== no ? `${no}　${name}` : no);
 }
 
 function visualPartValue(target = {}) {
@@ -222,6 +223,7 @@ export function updateBoardEditorDraftFromEvent(target, entry, optionsProvider) 
     const room = boardEditorVisualRooms(optionsProvider)
       .find((item) => getVisualPhotoRoomKey(item) === target.value);
     entry.draft.areaCode = room?.areaCode || '';
+    entry.draft.buildingId = room?.buildingId || '';
     entry.draft.roomPosition = room?.roomPosition || '';
     entry.draft.roomNo = room?.roomNo || '';
     entry.draft.partSlot = 0;
