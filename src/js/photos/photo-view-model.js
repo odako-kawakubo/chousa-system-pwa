@@ -19,6 +19,9 @@ import { getMaterialSampleLocationDisplay, getMaterialUsageRoomOptions } from '.
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { classifyOrphanPhotos } from './photo-orphan-classifier.js';
 import { roomIdFor } from '../records/room-id.js';
+import { projectBuildingIds } from '../projects/project-buildings.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { getVisualPhotoRoomKey } from '../records/photo-record.js';
 import { resolveRoomLocation, roomLocationDisplay } from '../finish-table/room-location.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
@@ -66,13 +69,12 @@ function buildRoomList() {
   const byRoom = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    // 写真タブの棟選択UIを実装するまでは既存A棟だけを表示し、B棟の同じ部屋を混在させない。
-    if (record.buildingId) return;
     const id = roomIdFor(record.areaCode, record.roomPosition, record.buildingId);
     if (record.status !== 'active' || !id || byRoom.has(id)) return;
     const sharedRoom = resolveRoomLocation(id) || record;
     byRoom.set(id, {
       roomKey: id,
+      buildingId: record.buildingId || '',
       areaCode: record.areaCode,
       roomPosition: record.roomPosition,
       floor: record.floor,
@@ -82,10 +84,15 @@ function buildRoomList() {
     });
   });
 
-  return [...byRoom.values()].sort(compareRoom).map((room) => {
+  const buildingIds = projectBuildingIds(getCurrentProject());
+  return [...byRoom.values()].sort((a,b) => {
+    const buildingDiff = buildingIds.indexOf(a.buildingId || '') - buildingIds.indexOf(b.buildingId || '');
+    return buildingDiff || compareRoom(a,b);
+  }).map((room) => {
     const count = photoRecordStore.getActive().filter((photo) => (
       photo.photoType === 'visual'
       && photo.areaCode === room.areaCode
+      && String(photo.buildingId || '') === String(room.buildingId || '')
       && photo.roomPosition === room.roomPosition
     )).length;
     return { ...room, photoCount: count };
@@ -173,11 +180,12 @@ function buildVisualTarget(room, partSlot, part, finishRecords) {
     materials.push(display);
   });
 
-  const targetIdentity = { areaCode: room.areaCode, roomPosition: room.roomPosition, partSlot, part };
+  const targetIdentity = { buildingId: room.buildingId, areaCode: room.areaCode, roomPosition: room.roomPosition, partSlot, part };
   const photos = representativeFirst(photoRecordStore.findVisual(targetIdentity));
 
   return {
     key: getVisualPhotoTargetKey(targetIdentity),
+    buildingId: room.buildingId || '',
     areaCode: room.areaCode,
     roomPosition: room.roomPosition,
     partSlot,
@@ -207,12 +215,14 @@ export function buildVisualPhotoView(selectedRoomKey = '') {
     ? representativeFirst(photoRecordStore.getActive().filter((photo) => (
         photo.photoType === 'visual'
         && photo.areaCode === activeRoom.areaCode
+        && String(photo.buildingId || '') === String(activeRoom.buildingId || '')
         && photo.roomPosition === activeRoom.roomPosition
         && !assignedPhotoIds.has(photo.photoId)
       )))
     : [];
   return {
     mode: 'visual',
+    buildings: projectBuildingIds(getCurrentProject()).map((id) => ({ id, label: id || 'A' })),
     rooms,
     activeRoom,
     targets,
@@ -243,7 +253,8 @@ function buildSamplePoint(material, branch, sampleNo) {
   const samplingPlaceDisplay = samplingPlaceAt(material, branch);
   const samplingPlace = samplingPlaceDisplay.value;
   const samplingPlaceOptions = getMaterialUsageRoomOptions(material.inputId, { preferRoomName })
-    .map((option) => ({ ...option, display:option.selectDisplay }));
+    .map((option) => ({ ...option, display:projectBuildingIds(getCurrentProject()).length > 1
+      ? `${option.buildingId || 'A'}：${option.selectDisplay}` : option.selectDisplay }));
   const stages = SAMPLE_STAGE_ORDER.map((shootingType) => {
     const photos = findSamplingStagePhotos(material.materialId, branch, shootingType);
     return {
