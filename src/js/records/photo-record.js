@@ -68,14 +68,15 @@ function normalizeVisualPartSlot(value) {
   return Number.isInteger(slot) && slot >= 1 && slot <= 6 ? slot : 0;
 }
 
-export function getVisualPhotoRoomKey({ areaCode, roomPosition } = {}) {
+export function getVisualPhotoRoomKey({ areaCode, roomPosition, buildingId } = {}) {
   const area = asText(areaCode);
   const room = asText(roomPosition);
-  return area && room ? `${area}|${room}` : '';
+  const building = asText(buildingId).toUpperCase();
+  return area && room ? `${building && building !== 'A' ? building + '|' : ''}${area}|${room}` : '';
 }
 
-export function getVisualPhotoTargetKey({ areaCode, roomPosition, partSlot, part } = {}) {
-  const roomKey = getVisualPhotoRoomKey({ areaCode, roomPosition });
+export function getVisualPhotoTargetKey({ areaCode, roomPosition, buildingId, partSlot, part } = {}) {
+  const roomKey = getVisualPhotoRoomKey({ areaCode, roomPosition, buildingId });
   const slot = normalizeVisualPartSlot(partSlot);
   if (!roomKey || !slot) return '';
   if (slot <= 4) return `visual|${roomKey}|${slot}`;
@@ -132,6 +133,7 @@ export function createPhotoRecord(fields) {
     return {
       ...common,
       areaCode: asText(fields.areaCode),
+      buildingId: asText(fields.buildingId).toUpperCase() === 'A' ? '' : asText(fields.buildingId).toUpperCase(),
       roomPosition: asText(fields.roomPosition),
       partSlot: normalizeVisualPartSlot(fields.partSlot),
       roomNo: asText(fields.roomNo),
