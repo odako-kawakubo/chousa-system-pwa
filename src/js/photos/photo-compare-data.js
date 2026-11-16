@@ -144,7 +144,6 @@ export function buildVisualCompareTargets() {
           photoType: PHOTO_TYPES.VISUAL,
           buildingId: photo.buildingId || '',
           areaCode: photo.areaCode,
-          buildingId: photo.buildingId || '',
           roomPosition: photo.roomPosition,
           partSlot: Number(photo.partSlot || 0),
           part: text(photo.part),
