@@ -125,7 +125,7 @@ export function renderMaterialListRow(row, selectedMaterialId, options = {}) {
       <td class="col-name material-color-cell material-edit-cell${missing('name')}">
         ${renderTextDisplay(row, 'name', row.name, '建材名称')}
       </td>
-      <td class="col-place"><div class="wrap2">${displayText(row.usageLocationDisplay ?? row.usageLocation)}</div></td>
+      <td class="col-place"><div class="material-usage-lines">${renderUsageLocation(row)}</div></td>
       <td class="col-level material-control-cell${missing('level')}">
         ${renderSelect(row, 'level', MATERIAL_LEVEL_OPTIONS, row.level)}
       </td>
@@ -337,6 +337,15 @@ function computePartColumnWidth(rows) {
     }
   });
   return Math.max(60, Math.min(100, 18 + maxChars * 9));
+}
+
+function renderUsageLocation(row) {
+  const lines = Array.isArray(row.usageLocationLines) && row.usageLocationLines.length
+    ? row.usageLocationLines
+    : [row.usageLocationDisplay ?? row.usageLocation];
+  const nonempty = lines.map((line) => String(line || '').trim()).filter(Boolean);
+  if (!nonempty.length) return '<span class="placeholder-value">－</span>';
+  return nonempty.map((line) => `<div class="material-usage-line">${escapeHtml(line)}</div>`).join('');
 }
 
 function displayText(value) {
