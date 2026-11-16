@@ -82,6 +82,7 @@ export function createCaptureSnapshot(state) {
   return {
     ...common,
     roomKey: room.roomKey || '',
+    buildingId: room.buildingId || '',
     roomPosition: room.roomPosition || '',
     roomNo: room.roomNo || '',
     roomName: room.roomName || '',
@@ -108,6 +109,7 @@ export function locateInitialCameraState(initialContext = {}, options = {}) {
     const roomIndex = next.visualRooms.findIndex((room) => (
       room.areaCode === initialContext.areaCode
       && room.roomPosition === initialContext.roomPosition
+      && String(room.buildingId || '') === String(initialContext.buildingId || '')
     ));
     next.visualRoomIndex = Math.max(0, roomIndex);
     const room = next.visualRooms[next.visualRoomIndex];
