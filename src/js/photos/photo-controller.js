@@ -213,6 +213,7 @@ function externalImportContext() {
   return {
     photoType: PHOTO_TYPES.VISUAL,
     areaCode: view.activeRoom.areaCode,
+    buildingId: view.activeRoom.buildingId || '',
     roomPosition: view.activeRoom.roomPosition,
     roomNo: view.activeRoom.roomNo || ''
   };
@@ -235,7 +236,7 @@ function visualContextFromKey(key) {
   const view = buildVisualPhotoView(state.selectedRoomKey);
   const target = view.targets.find((item) => item.key === key);
   if (!target) return null;
-  return { photoType: PHOTO_TYPES.VISUAL, areaCode: target.areaCode, roomPosition: target.roomPosition, partSlot: target.partSlot, roomNo: view.activeRoom?.roomNo || '', part: target.part };
+  return { photoType: PHOTO_TYPES.VISUAL, buildingId: target.buildingId || '', areaCode: target.areaCode, roomPosition: target.roomPosition, partSlot: target.partSlot, roomNo: view.activeRoom?.roomNo || '', part: target.part };
 }
 
 /**
@@ -277,6 +278,7 @@ function buildCameraOptions() {
     const roomView = buildVisualPhotoView(room.roomKey);
     return {
       roomKey: room.roomKey,
+      buildingId: room.buildingId || '',
       areaCode: room.areaCode,
       roomPosition: room.roomPosition,
       roomNo: room.roomNo,
@@ -348,7 +350,7 @@ function globalCameraContext() {
   const view = buildVisualPhotoView(state.selectedRoomKey);
   const target = view.targets?.[0];
   if (!view.activeRoom || !target) return null;
-  return { photoType: PHOTO_TYPES.VISUAL, areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
+  return { photoType: PHOTO_TYPES.VISUAL, buildingId: view.activeRoom.buildingId || '', areaCode: view.activeRoom.areaCode, roomPosition: view.activeRoom.roomPosition, partSlot: target.partSlot, part: target.part };
 }
 
 /**
@@ -369,7 +371,8 @@ function refreshCameraPhotoBlock(record) {
     const view = buildVisualPhotoView(state.selectedRoomKey);
     if (!view.activeRoom
       || view.activeRoom.areaCode !== record.areaCode
-      || view.activeRoom.roomPosition !== record.roomPosition) {
+      || view.activeRoom.roomPosition !== record.roomPosition
+      || String(view.activeRoom.buildingId || '') !== String(record.buildingId || '')) {
       return false;
     }
 
@@ -620,6 +623,18 @@ export function initializePhotoTab() {
 
   renderPhotoShell(root, state.mode);
   body = root.querySelector('#photoModeBody');
+  root.addEventListener('change', (event) => {
+    if (!event.target.matches('[data-photo-building-select]')) return;
+    const id = String(event.target.value || '');
+    const rooms = buildVisualPhotoView('').rooms;
+    const room = rooms.find((item) => (item.buildingId || '') === id);
+    if (!room) return;
+    state.selectedRoomKey = room.roomKey;
+    state.openVisualKeys.clear();
+    state.collapsedLocationGroups.clear();
+    render();
+  });
+
   bindPhotoInteractions({
     root,
     state,
