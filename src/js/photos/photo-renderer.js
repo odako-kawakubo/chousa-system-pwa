@@ -322,7 +322,7 @@ export function renderOrphanPhotoView(container, view) {
   const cards = view.items.map(({ photo, reason }) => {
     const type = photo.photoType === 'visual' ? '目視' : '採取';
     const source = photo.photoType === 'visual'
-      ? `${photo.roomNo || photo.roomPosition || '-'}／${photo.part || '部位未設定'}`
+      ? `${photo.buildingId ? photo.buildingId + '：' : ''}${photo.roomNo || photo.roomPosition || '-'}／${photo.part || '部位未設定'}`
       : `${photo.materialId || '建材未設定'}／箇所${photo.samplingBranch || '-'}`;
     return `<article class="photo-frame-card visual-compact">
       <div class="visual-info-line">
