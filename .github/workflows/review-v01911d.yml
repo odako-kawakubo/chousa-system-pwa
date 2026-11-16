@@ -72,11 +72,11 @@ jobs:
           set -euo pipefail
           node tests/multi-building-11A.mjs
 
-      - name: New 11E behavior and UI contract regressions
+      - name: Existing 11D behavior and UI contract regressions
         shell: bash
         run: |
           set -euo pipefail
-          node tests/multi-building-11E.mjs
+          node tests/multi-building-11D.mjs
 
       - name: New 11E candidate input, sample selection, copy and header regressions
         shell: bash
