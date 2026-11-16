@@ -89,6 +89,7 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
         label: roomLocationFieldLabel(record, { preferRoomName }),
         key: roomLocationKey(record),
         areaCode: record.areaCode,
+        buildingId: String(record.buildingId || '').trim().toUpperCase(),
         roomPosition: record.roomPosition,
         roomNo,
         roomName
