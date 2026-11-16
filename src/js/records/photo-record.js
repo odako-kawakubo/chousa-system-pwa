@@ -54,7 +54,7 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
  * @property {Record<string, number>} fieldEditedAt 項目ごとの編集確定時刻（競合判定用・内部情報）
  */
 
-/** @typedef {PhotoRecordCommon & {photoType:'visual',areaCode:string,roomPosition:string,partSlot:number,roomNo:string,part:string,materialId:'',samplingPlace:'',samplingBranch:0,sampleNo:'',shootingType:''}} VisualPhotoRecord */
+/** @typedef {PhotoRecordCommon & {photoType:'visual',buildingId:string,areaCode:string,roomPosition:string,partSlot:number,roomNo:string,part:string,materialId:'',samplingPlace:'',samplingBranch:0,sampleNo:'',shootingType:''}} VisualPhotoRecord */
 /** @typedef {PhotoRecordCommon & {photoType:'sampling',areaCode:'',roomPosition:'',partSlot:0,roomNo:'',materialId:string,samplingPlace:string,samplingBranch:number,sampleNo:string,sampleBaseNo:string,part:string,shootingType:'before'|'during'|'after'|'section'}} SamplingPhotoRecord */
 /** @typedef {VisualPhotoRecord|SamplingPhotoRecord} PhotoRecord */
 
