@@ -21,7 +21,7 @@ const PHOTO_COMMON_CREATE_EDIT_FIELDS = Object.freeze([
 
 function photoCreateEditFields(record) {
   return record?.photoType === PHOTO_TYPES.VISUAL
-    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
+    ? [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'buildingId', 'areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
     : [...PHOTO_COMMON_CREATE_EDIT_FIELDS, 'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'];
 }
 
@@ -63,6 +63,7 @@ export async function importPickedPhotoFiles(context, fileList) {
           ...common,
           photoType: PHOTO_TYPES.VISUAL,
           areaCode: context.areaCode,
+          buildingId: context.buildingId,
           roomPosition: context.roomPosition,
           partSlot: Number(context.partSlot || 0),
           roomNo: context.roomNo,
