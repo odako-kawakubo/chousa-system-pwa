@@ -169,6 +169,7 @@ function snapshotVisualFromRecord_(record) {
 
   return {
     areaCode: record.areaCode || room?.areaCode || '',
+    buildingId: record.buildingId || room?.buildingId || '',
     roomPosition: record.roomPosition || room?.roomPosition || '',
     partSlot: Number(record.partSlot || 0),
     roomNo: record.roomNo || room?.roomNo || '',
