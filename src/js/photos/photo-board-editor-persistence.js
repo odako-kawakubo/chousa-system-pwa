@@ -23,7 +23,7 @@ const MARKS = { 1: '①', 2: '②', 3: '③' };
 const PHOTO_SYNC_EDIT_FIELDS = new Set([
   'fileName', 'isRepresentative', 'isEdited', 'lastEditedDevice', 'lastEditedAt',
   'deleted', 'systemMemo', 'boardPosition', 'boardSize', 'boardDate', 'originalPath', 'completedPath',
-  'areaCode', 'roomPosition', 'partSlot', 'roomNo',
+  'buildingId', 'areaCode', 'roomPosition', 'partSlot', 'roomNo',
   'materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'
 ]);
 
@@ -67,7 +67,7 @@ function buildBoardEditMemo(entry) {
   const lines = [];
 
   if (entry.record.photoType === PHOTO_TYPES.VISUAL) {
-    const roomChanged = before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
+    const roomChanged = before.buildingId !== after.buildingId || before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
     if (roomChanged) lines.push(`部屋：${memoValue(before.roomNo || before.roomPosition)} → ${memoValue(after.roomNo || after.roomPosition)}`);
 
     const partChanged = Number(before.partSlot || 0) !== Number(after.partSlot || 0) || before.part !== after.part;
@@ -130,6 +130,7 @@ export async function persistBoardEditorEntry(entry, { getBoardData }) {
   const nextFields = entry.record.photoType === PHOTO_TYPES.VISUAL
     ? {
         areaCode: entry.draft.areaCode,
+        buildingId: entry.draft.buildingId || '',
         roomPosition: entry.draft.roomPosition,
         partSlot: entry.draft.partSlot,
         roomNo: entry.draft.roomNo,
