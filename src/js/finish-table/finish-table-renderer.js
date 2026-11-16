@@ -231,7 +231,7 @@ export function renderRooms() {
   const sheetStyle = `--finish-roomno-w:${roomNoWidth}px;--finish-fixed-w:${layout.fixedRegionWidth}px;--finish-material-w:${layout.materialRegionWidth}px;width:${totalTableWidth}px`;
 
   host.innerHTML = `
-    <div class="finish-table ${state.colorMode ? 'color-mode' : ''}" id="finishTable" style="${sheetStyle}">
+    <div class="finish-table ${state.colorMode ? 'color-mode' : ''}" id="finishTable" data-building-id="${escapeHtml(state.activeBuildingId || 'A')}" style="${sheetStyle}">
       ${renderTableHeader(layout)}
       <div class="finish-table-body">
         ${state.activeAreaMode === 'external' ? renderExternalRows(layout) : renderInternalRows(layout)}
