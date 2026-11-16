@@ -12,6 +12,7 @@
 
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { PHOTO_TYPES, SHOOTING_TYPES } from '../records/photo-record.js';
+import { normalizeRoomId } from '../records/room-id.js';
 import { buildVisualPhotoView, buildSamplingPhotoView, buildOrphanPhotoView } from './photo-view-model.js';
 import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { resolveSamplingBoardPlace } from '../finish-table/room-location.js';
@@ -431,7 +432,7 @@ async function confirmSamplingLocationEdit(key, nextLocation) {
       materialId:material.materialId,
       samplingBranch:point.branch,
       nextLocation:String(nextLocation || ''),
-      nextRoomKey: String(nextLocation || '').includes('|') ? String(nextLocation) : ''
+      nextRoomKey: normalizeRoomId(String(nextLocation || ''))
     });
     if (result?.changed || result?.decision === 'unchanged' || result?.decision === 'no-photo') {
       state.samplingLocationEditKey = '';
