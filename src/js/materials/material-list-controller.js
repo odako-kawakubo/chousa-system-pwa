@@ -161,7 +161,10 @@ function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) 
       usageLocationDisplay: usageLocationLines.join('、'),
       sampleLocationOptions: roomOptions.map((option) => ({
         ...option,
-        display: option.selectDisplay
+        // 複数棟のみ短い棟IDを選択ラベルへ付ける。保存キー・看板表示値は変えない。
+        display: projectBuildingIds(project).length > 1
+          ? `${option.buildingId || 'A'}：${option.selectDisplay}`
+          : option.selectDisplay
       }))
     };
   });
