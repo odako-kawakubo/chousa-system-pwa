@@ -246,7 +246,7 @@ function renderBuildingDrawer() {
   const ids = projectBuildingIds(project);
   const buildings = normalizeProjectBuildings(project?.buildings);
   count.textContent = '現在' + ids.length + '棟';
-  add.disabled = !project?.projectId || Boolean(project.isSample) || ids.length >= 26;
+  add.disabled = !project?.projectId || ids.length >= 26;
   const key = JSON.stringify([project?.projectId, ids, buildings, getState()?.activeBuildingId]);
   if (rows.dataset.renderKey === key) return;
   rows.dataset.renderKey = key;
@@ -291,7 +291,7 @@ function bindDrawerFinishTools() {
       try {
         const result = await addBuildingForCurrentProject();
         if (!result.ok) {
-          setBuildingMessage('別棟を追加できませんでした。オンライン接続を確認してください。');
+          setBuildingMessage(result.reason === 'building-limit-reached' ? 'これ以上棟を追加できません。' : '別棟を追加できませんでした。通常案件の場合はオンライン接続を確認してください。');
         } else {
           setActiveBuildingId(result.buildingId);
           setBuildingMessage(result.definition.name + 'を追加しました。');

@@ -1,10 +1,9 @@
 /**
- * 案件内の棟追加を確定する業務入口。
- * Firestoreで採番が成功した後、現在の端末の案件Snapshotと初期仕上表へ反映する。
- * 仕上表UIやレビュー公開の責務は持たない。
+ * 棟追加・名称変更の業務入口。入力検証とローカル反映は全案件共通。
+ * 採番と同期のみ案件種別で切り替え、サンプルは外部保存しない。
  */
 import { getCurrentProject, getProject, updateProjectFields } from './project-store.js';
-import { normalizeProjectBuildings, normalizeBuildingId } from './project-buildings.js';
+import { normalizeProjectBuildings, normalizeBuildingId, nextBuildingId, makeBuildingDefinition } from './project-buildings.js';
 import { reserveNextBuildingForProject, persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
 import { putUnsent } from '../sync/unsent-queue.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
@@ -26,52 +25,75 @@ export function ensureDeclaredBuildingFinishRecords(project, { notify = true } =
   return added;
 }
 
-export async function addBuildingForCurrentProject(name = '') {
+function currentProjectForMutation() {
   const project = getCurrentProject();
-  if (!project?.projectId || project.isSample) return { ok: false, reason: 'project-not-available' };
-  const reserved = await reserveNextBuildingForProject(project, name);
-  if (!reserved.ok) return reserved;
+  return project?.projectId ? project : null;
+}
 
-  // トランザクションが並行端末の変更を確定した場合も、既知の棟を消さない。
+function currentBuildingMetadata(project) {
   const latest = getProject(project.projectId)?.project || project;
-  const knownBuildings = normalizeProjectBuildings(latest.buildings);
+  return normalizeProjectBuildings(latest.buildings);
+}
+
+/** 通常案件の採番はFirestoreのトランザクション、サンプルはローカル採番。 */
+async function reserveBuilding(project, name) {
+  if (!project.isSample) return reserveNextBuildingForProject(project, name);
+  const buildingId = nextBuildingId(project);
+  if (!buildingId) return { ok:false, reason:'building-limit-reached' };
+  return { ok:true, buildingId, definition:makeBuildingDefinition(buildingId, name) };
+}
+
+/** 採番方式によらず棟定義を1経路で反映する。 */
+function commitBuildingDefinition(project, buildingId, definition) {
+  const known = currentBuildingMetadata(project);
   const buildings = {
-    A: knownBuildings.A || { name: 'A棟', order: 1 },
-    ...knownBuildings,
-    [reserved.buildingId]: reserved.definition
+    A:known.A || {name:'A棟',order:1},
+    ...known,
+    [buildingId]:definition
   };
   updateProjectFields(project.projectId, { buildings });
-  // 棟採番の通信待ち中に別案件へ移動していたら、その案件のStoreを変更しない。
+  // 非同期の採番待ちの間に別案件を開いた場合、その案件のRecord Storeには触れない。
   if (getCurrentProject()?.projectId === project.projectId) {
     ensureDeclaredBuildingFinishRecords({ buildings });
   }
-
-  return { ok: true, buildingId: reserved.buildingId, definition: reserved.definition };
+  return buildings;
 }
 
-/** 既存の棟名のみを更新する。棟IDと仕上IDは変更しない。 */
+export async function addBuildingForCurrentProject(name = '') {
+  const project = currentProjectForMutation();
+  if (!project) return { ok:false, reason:'project-not-available' };
+  const reserved = await reserveBuilding(project, name);
+  if (!reserved.ok) return reserved;
+  commitBuildingDefinition(project, reserved.buildingId, reserved.definition);
+  return { ok:true, buildingId:reserved.buildingId, definition:reserved.definition,
+    ...(project.isSample ? {localOnly:true} : {}) };
+}
+
+/** 棟名のみ変更し、既存の棟ID・仕上IDを保持する。 */
 export async function renameBuildingForCurrentProject(rawId, rawName) {
-  const project = getCurrentProject();
-  if (!project?.projectId || project.isSample) return { ok: false, reason: 'project-not-available' };
+  const project = currentProjectForMutation();
+  if (!project) return { ok:false, reason:'project-not-available' };
   const buildingId = normalizeBuildingId(rawId) || (String(rawId || '').trim() === '' ? 'A' : '');
   const name = String(rawName || '').trim();
-  if (!buildingId || !name) return { ok: false, reason: 'invalid-building-name' };
+  if (!buildingId || !name) return { ok:false, reason:'invalid-building-name' };
 
-  const latest = getProject(project.projectId)?.project || project;
-  const known = normalizeProjectBuildings(latest.buildings);
-  if (buildingId !== 'A' && !known[buildingId]) return { ok: false, reason: 'building-not-found' };
-  const definition = { ...(known[buildingId] || { name: 'A棟', order: 1 }), name };
-  const buildings = { ...known, [buildingId]: definition };
-  const patch = { buildings: { [buildingId]: { name } } };
-  // オフライン中・送信待ちもローカル編集を保護する。
+  const known = currentBuildingMetadata(project);
+  if (buildingId !== 'A' && !known[buildingId]) return { ok:false, reason:'building-not-found' };
+  const definition = { ...(known[buildingId] || {name:'A棟',order:1}), name };
+  const buildings = { ...known, [buildingId]:definition };
+  if (project.isSample) {
+    updateProjectFields(project.projectId, { buildings });
+    return { ok:true, buildingId, definition, localOnly:true };
+  }
+
+  const patch = { buildings:{ [buildingId]:{name} } };
+  // 通常案件はオフライン中も編集内容を保護する。
   putUnsent({
-    projectId: project.projectId,
-    environment: project.environment === 'test' ? 'test' : 'production',
-    recordType: 'project',
-    recordId: project.projectId,
-    operation: 'set',
-    record: patch,
-    meta: { partialProjectMetadata: true }
+    projectId:project.projectId,
+    environment:project.environment === 'test' ? 'test' : 'production',
+    recordType:'project', recordId:project.projectId,
+    operation:'set', record:patch,
+    meta:{partialProjectMetadata:true}
   });
   updateProjectFields(project.projectId, { buildings });
   const result = await persistProjectMetadataForProject(project, { patch });
