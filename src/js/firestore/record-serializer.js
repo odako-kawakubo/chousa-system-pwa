@@ -95,6 +95,7 @@ export function serializePhotoRecord(record, { updatedAt }) {
   if (record.photoType === 'visual') {
     return {
       ...common,
+      ...(record.buildingId ? { buildingId: text(record.buildingId) } : {}),
       areaCode: text(record.areaCode),
       roomPosition: text(record.roomPosition),
       partSlot: Number(record.partSlot) || 0,
