@@ -4,8 +4,9 @@
  * PhotoRecordの参照情報を書き換えず、現在の建材・仕上表の状態だけで判定する。
  */
 
-const value = (input) => String(input ?? '').trim();
 import { getVisualPhotoRoomKey } from '../records/photo-record.js';
+
+const value = (input) => String(input ?? '').trim();
 const roomKey = (record) => getVisualPhotoRoomKey(record);
 const visualPartSlot = (record) => Math.floor(Number(record.position || 0) / 100);
 
