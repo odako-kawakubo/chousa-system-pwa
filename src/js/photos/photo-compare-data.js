@@ -6,8 +6,8 @@
  *
  * 目視比較は「部位 -> 建材ベース名 -> 場所」で絞り込めるよう、
  * 各比較targetへ part / baseNames / room情報を付与する。
- * targetのidentityは基本4部位では areaCode + roomPosition + partSlot、
- * その他1/2では areaCode + roomPosition + partSlot + part を使う。
+ * targetのidentityは棟ID + areaCode + roomPosition + partSlotを基本とし、
+ * その他1/2では実部位partも含む。既存A棟は棟ID空欄で互換維持。
  * 比較上の部位分類も実際のpart名を使う。
  */
 
