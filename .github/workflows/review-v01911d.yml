@@ -5,7 +5,7 @@ on:
     branches:
       - work/v0.1.9.11A-multi-building
     paths:
-      - '.github/workflows/review-v01911e.yml'
+      - '.github/workflows/review-v01911d.yml'
       - 'src/**'
       - 'tests/**'
       - 'firebase.json'
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: review-v01911e-photo-pdf
+  group: review-v01911d-photo-pdf
   cancel-in-progress: false
 
 jobs:
