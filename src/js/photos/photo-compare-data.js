@@ -36,11 +36,12 @@ function visualRoomInfo() {
   const rooms = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || record.buildingId || !record.areaCode || !record.roomPosition) return;
+    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
     const key = getVisualPhotoRoomKey(record);
     if (rooms.has(key)) return;
     rooms.set(key, {
       areaCode: record.areaCode,
+      buildingId: record.buildingId || '',
       roomPosition: record.roomPosition,
       roomNo: text(record.roomNo),
       roomName: text(record.roomName)
@@ -62,11 +63,12 @@ function finishRecordsByVisualTarget() {
   const groups = new Map();
 
   finishRecordStore.getAll().forEach((record) => {
-    if (record.status !== 'active' || record.buildingId || !record.areaCode || !record.roomPosition) return;
+    if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
     const partSlot = finishPartSlot(record);
     if (!partSlot) return;
     const key = getVisualPhotoTargetKey({
       areaCode: record.areaCode,
+      buildingId: record.buildingId || '',
       roomPosition: record.roomPosition,
       partSlot,
       part: record.part
@@ -140,7 +142,9 @@ export function buildVisualCompareTargets() {
         photoGroups.set(key, {
           key,
           photoType: PHOTO_TYPES.VISUAL,
+          buildingId: photo.buildingId || '',
           areaCode: photo.areaCode,
+          buildingId: photo.buildingId || '',
           roomPosition: photo.roomPosition,
           partSlot: Number(photo.partSlot || 0),
           part: text(photo.part),
@@ -158,7 +162,7 @@ export function buildVisualCompareTargets() {
     const materials = targetMaterials(finishRecords, materialsById);
     const finishPart = text(finishRecords.find((record) => text(record.part))?.part);
     const part = group.part || finishPart || `部位${group.partSlot}`;
-    const label = roomLabel(room, group.roomPosition);
+    const label = `${group.buildingId ? group.buildingId + '：' : ''}${roomLabel(room, group.roomPosition)}`;
     const baseNames = uniqueOptions(materials.map((material) => material.baseName));
 
     return {
