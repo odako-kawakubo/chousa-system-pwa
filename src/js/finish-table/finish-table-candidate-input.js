@@ -11,7 +11,7 @@
  */
 
 import * as finishRecordStore from '../store/finish-record-store.js';
-import { roomIdFor } from '../records/room-id.js';
+import { findRoomByLocationKey, roomLocationKey } from './room-location.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialPartOptions } from './finish-table-cell-actions.js';
 import {
@@ -32,9 +32,16 @@ function normalizeCandidateFilter(value) {
 }
 
 function roomAnchorForInput(input) {
+  return findRoomByLocationKey(String(input?.dataset?.roomKey || ''));
+}
+
+function cellRecordForInput(input) {
   const roomKeyValue = String(input?.dataset?.roomKey || '');
+  const position = Number(input?.dataset?.partIndex) * 100 + Number(input?.dataset?.inputRow);
   return finishRecordStore.getAll().find((record) =>
-    record.status === 'active' && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
+    record.status === 'active'
+    && roomLocationKey(record) === roomKeyValue
+    && Number(record.position) === position
   ) || null;
 }
 
@@ -72,14 +79,7 @@ function getCandidateOptionsForInput(input) {
   const partIndex = Number(input.dataset.partIndex);
 
   if (kind === 'part') {
-    const roomKeyValue = String(input.dataset.roomKey || '');
-    const row = Number(input.dataset.inputRow);
-    const position = partIndex * 100 + row;
-    const finishRecord = finishRecordStore.getAll().find((record) =>
-      record.status === 'active'
-      && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
-      && Number(record.position) === position
-    ) || null;
+    const finishRecord = cellRecordForInput(input);
     const material = finishRecord?.materialId ? materialRecordStore.get(finishRecord.materialId) : null;
     const materialParts = getMaterialPartOptions(material);
     const values = materialParts.length > 1 ? materialParts : getOtherPartOptions();
@@ -181,15 +181,7 @@ export function syncDynamicRegisterButton(input) {
   const idCell = findGroupIdCell(input);
   if (!idCell) return;
 
-  const roomKeyValue = String(input.dataset.roomKey || '');
-  const partIndex = Number(input.dataset.partIndex);
-  const row = Number(input.dataset.inputRow);
-  const position = partIndex * 100 + row;
-  const finishRecord = finishRecordStore.getAll().find((record) =>
-    record.status === 'active'
-    && roomIdFor(record.areaCode, record.roomPosition) === roomKeyValue
-    && Number(record.position) === position
-  ) || null;
+  const finishRecord = cellRecordForInput(input);
 
   const raw = String(input.value || '').trim();
   const normalizedName = raw.replace(/^【\d+】\s*/, '').replace(/^.+?\//, '');
