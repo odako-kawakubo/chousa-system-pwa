@@ -1,11 +1,11 @@
-name: Review v0.1.9.11D (review-photo-pdf)
+name: Review v0.1.9.11E (review-photo-pdf)
 
 on:
   push:
     branches:
       - work/v0.1.9.11A-multi-building
     paths:
-      - '.github/workflows/review-v01911d.yml'
+      - '.github/workflows/review-v01911e.yml'
       - 'src/**'
       - 'tests/**'
       - 'firebase.json'
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: review-v01911d-photo-pdf
+  group: review-v01911e-photo-pdf
   cancel-in-progress: false
 
 jobs:
@@ -72,11 +72,17 @@ jobs:
           set -euo pipefail
           node tests/multi-building-11A.mjs
 
-      - name: New 11D behavior and UI contract regressions
+      - name: New 11E behavior and UI contract regressions
         shell: bash
         run: |
           set -euo pipefail
-          node tests/multi-building-11D.mjs
+          node tests/multi-building-11E.mjs
+
+      - name: New 11E candidate input, sample selection, copy and header regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/multi-building-11E.mjs
 
       - name: Review target and version consistency
         shell: bash
@@ -88,11 +94,11 @@ jobs:
           const config=fs.readFileSync('src/config/app-config.js','utf8');
           const worker=fs.readFileSync('src/service-worker.js','utf8');
           const hosting=JSON.parse(fs.readFileSync('firebase.json','utf8'));
-          if(version.version!=='0.1.9.11D') throw Error('version.json does not match 11D');
-          if(!config.includes("version: '0.1.9.11D'")) throw Error('app-config version mismatch');
-          if(!worker.includes('chousa-app-v0.1.9.11D')) throw Error('service-worker cache mismatch');
+          if(version.version!=='0.1.9.11E') throw Error('version.json does not match 11E');
+          if(!config.includes("version: '0.1.9.11E'")) throw Error('app-config version mismatch');
+          if(!worker.includes('chousa-app-v0.1.9.11E')) throw Error('service-worker cache mismatch');
           if(hosting.hosting?.public!=='src') throw Error('hosting public directory changed');
-          console.log('11D review version and existing hosting target verified');
+          console.log('11E review version and existing hosting target verified');
           NODE
 
   deploy:
