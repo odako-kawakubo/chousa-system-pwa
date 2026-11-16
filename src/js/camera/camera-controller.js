@@ -730,6 +730,7 @@ async function takePhoto() {
       capturedDevice: getDeviceCode(),
       capturedAt: snapshot.capturedAt,
       areaCode: snapshot.areaCode,
+      buildingId: snapshot.buildingId,
       roomPosition: snapshot.roomPosition,
       partSlot: snapshot.partSlot,
       roomNo: snapshot.roomNo,
@@ -747,7 +748,7 @@ async function takePhoto() {
       fieldEditedAt: touchFieldEditedAt({}, [
         'photoType', 'fileName', 'capturedDevice', 'capturedAt', 'boardPosition', 'boardSize',
         ...(snapshot.photoType === PHOTO_TYPES.VISUAL
-          ? ['areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
+          ? ['buildingId', 'areaCode', 'roomPosition', 'partSlot', 'roomNo', 'part']
           : ['materialId', 'samplingPlace', 'samplingBranch', 'sampleNo', 'part', 'shootingType'])
       ])
     });
