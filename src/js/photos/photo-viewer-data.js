@@ -22,11 +22,13 @@ export function photosForViewer(photoId) {
       ? photoRecordStore.getActive().filter((item) => (
           item.photoType === PHOTO_TYPES.VISUAL
           && item.areaCode === photo.areaCode
+          && String(item.buildingId || '') === String(photo.buildingId || '')
           && item.roomPosition === photo.roomPosition
           && isVisualPhotoUnorganized(item)
         ))
       : photoRecordStore.findVisual({
           areaCode: photo.areaCode,
+          buildingId: photo.buildingId,
           roomPosition: photo.roomPosition,
           partSlot: photo.partSlot,
           part: photo.part
