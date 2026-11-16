@@ -15,6 +15,7 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import { getMaterialUsageRoomOptions } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode, setMaterialRoomNameMode, toggleMaterialRoomNameMode } from './material-room-display-state.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { projectBuildingIds, normalizeProjectBuildings } from '../projects/project-buildings.js';
 import { refreshFinishTableFromStores } from '../finish-table/finish-table-controller.js';
 import { refreshRecordView } from '../record-view/record-view-controller.js';
 import { buildMaterialListRows } from './material-list-view-model.js';
@@ -121,12 +122,43 @@ export function initializeMaterialList() {
  * material Storeから最新ViewModelを作り一覧を再描画する。選択材・スクロール位置・カラー表示等のUI状態を維持する。
  */
 
+/**
+ * 使用箇所だけを棟単位で表示する。建材・採取候補・保存値は案件共通のまま。
+ * A棟は互換性のため buildingId が空欄になる。
+ */
+function buildUsageLocationLines(roomOptions, project, fallback = '') {
+  const buildingIds = projectBuildingIds(project);
+  if (buildingIds.length <= 1) {
+    const text = roomOptions.map((item) => item.display).filter(Boolean).join('、') || fallback;
+    return text ? [text] : [];
+  }
+  const buildings = normalizeProjectBuildings(project?.buildings);
+  const byBuilding = new Map(buildingIds.map((id) => [id, []]));
+  roomOptions.forEach((item) => {
+    const id = item.buildingId === 'A' ? '' : String(item.buildingId || '');
+    const label = String(item.display || '').trim();
+    const rooms = byBuilding.get(id);
+    if (rooms && label && !rooms.includes(label)) rooms.push(label);
+  });
+  const lines = buildingIds
+    .filter((id) => (byBuilding.get(id) || []).length > 0)
+    .map((id) => {
+      const name = id ? (buildings[id]?.name || id + '棟') : (buildings.A?.name || 'A棟');
+      return name + '：' + byBuilding.get(id).join('、');
+    });
+  // 部屋情報を復元できない旧レコードは、誤った棟名を推測して付けない。
+  return lines.length ? lines : (fallback ? [fallback] : []);
+}
+
 function buildMaterialListDisplayRows(roomNameMode = getMaterialRoomNameMode()) {
+  const project = getCurrentProject();
   return buildMaterialListRows(materialRecordStore.getAll()).map((row) => {
     const roomOptions = getMaterialUsageRoomOptions(row.inputId, { preferRoomName: roomNameMode });
+    const usageLocationLines = buildUsageLocationLines(roomOptions, project, row.usageLocation);
     return {
       ...row,
-      usageLocationDisplay: roomOptions.map((item) => item.display).join('、') || row.usageLocation,
+      usageLocationLines,
+      usageLocationDisplay: usageLocationLines.join('、'),
       sampleLocationOptions: roomOptions.map((option) => ({
         ...option,
         display: option.selectDisplay
