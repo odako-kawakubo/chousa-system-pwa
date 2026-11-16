@@ -197,8 +197,11 @@ export function renderVisualView(container, view, state) {
 
   container.innerHTML = `<div class="photo-target-layout">
     <aside class="photo-target-list">
-      <div class="photo-target-list-head">調査場所</div>
-      ${renderVisualRoomList(view.rooms, room?.roomKey || '', state.collapsedLocationGroups)}
+      <div class="photo-target-list-head">調査場所${view.buildings.length > 1
+        ? ` <select data-photo-building-select aria-label="表示する棟">${view.buildings.map((building) =>
+          `<option value="${esc(building.id)}" ${building.id === (room.buildingId || '') ? 'selected' : ''}>${esc(building.label)}棟</option>`
+        ).join('')}</select>` : ''}</div>
+      ${renderVisualRoomList(view.rooms.filter((item) => (item.buildingId || '') === (room.buildingId || '')), room?.roomKey || '', state.collapsedLocationGroups)}
     </aside>
     <section class="photo-review-panel">
       <div class="photo-review-panel-head">
