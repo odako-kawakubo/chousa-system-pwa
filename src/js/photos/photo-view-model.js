@@ -21,7 +21,6 @@ import { classifyOrphanPhotos } from './photo-orphan-classifier.js';
 import { roomIdFor } from '../records/room-id.js';
 import { projectBuildingIds } from '../projects/project-buildings.js';
 import { getCurrentProject } from '../projects/project-store.js';
-import { getVisualPhotoRoomKey } from '../records/photo-record.js';
 import { resolveRoomLocation, roomLocationDisplay } from '../finish-table/room-location.js';
 
 const AREA_ORDER = Object.freeze({ E: 0, B: 1, I: 2, S: 3, R: 4 });
