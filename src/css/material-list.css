@@ -188,6 +188,15 @@
   text-align: center;
 }
 
+.material-list-table .material-usage-lines {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.28;
+}
+.material-list-table .material-usage-line + .material-usage-line {
+  margin-top: 3px;
+}
+
 .material-list-table .wrap2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
