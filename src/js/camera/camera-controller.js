@@ -476,9 +476,10 @@ function escapeCameraHtml(value) {
 
 function visualLocationLabel(room = {}) {
   const roomNo = String(room.roomNo || room.roomPosition || '').trim();
+  const prefix = room.buildingId ? `${room.buildingId}：` : '';
   const roomName = String(room.roomName || '').trim();
-  if (roomNo && roomName && roomName !== roomNo) return `${roomNo} ${roomName}`;
-  return roomNo || roomName || '場所';
+  if (roomNo && roomName && roomName !== roomNo) return `${prefix}${roomNo} ${roomName}`;
+  return prefix + (roomNo || roomName || '場所');
 }
 
 function samplingLocationEntries() {
