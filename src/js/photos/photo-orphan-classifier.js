@@ -5,7 +5,8 @@
  */
 
 const value = (input) => String(input ?? '').trim();
-const roomKey = (record) => `${value(record.areaCode)}|${value(record.roomPosition)}`;
+import { getVisualPhotoRoomKey } from '../records/photo-record.js';
+const roomKey = (record) => getVisualPhotoRoomKey(record);
 const visualPartSlot = (record) => Math.floor(Number(record.position || 0) / 100);
 
 export function classifyOrphanPhoto(photo, { rooms = new Map(), materials = new Map() } = {}) {
