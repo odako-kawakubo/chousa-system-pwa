@@ -45,6 +45,8 @@ export function buildCameraBoardData(state, boardSettings = {}) {
     addressFontSize: boardSettings.addressFontSize,
     roomNo: room.roomNo || '',
     roomName: room.roomName || '',
+    buildingId: room.buildingId || '',
+    showBuildingName: state.visualRooms.some((item) => Boolean(item.buildingId)),
     areaCode: room.areaCode || '',
     part: target.part || '',
     statusCode: '5',
