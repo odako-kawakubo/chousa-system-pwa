@@ -203,10 +203,12 @@ async function recoverCommittedLocalPhotos(target) {
     .filter((record) => record?.photoId)
     .map((record) => [String(record.photoId), record]));
   let recovered = 0;
-  cached.forEach(({ localBlobRevision, ...local }) => {
+  cached.forEach(({ localBlobRevision, localBlobUploadStatus, ...local }) => {
     const id = String(local.photoId || '');
     if (!id) return;
     const previous = byId.get(id);
+    // 新規写真は画像未送信の場合だけ復元する。送信済みの古い端末写真を復活させない。
+    if (!previous && localBlobUploadStatus !== 'pending') return;
     const lastEdited = (record) => Math.max(
       Date.parse(record?.lastEditedAt || record?.capturedAt || '') || 0,
       ...Object.values(record?.fieldEditedAt || {}).map((value) => Number(value) || 0)
