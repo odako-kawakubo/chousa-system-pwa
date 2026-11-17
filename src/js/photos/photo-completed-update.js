@@ -102,11 +102,11 @@ export function persistCompletedPhotoUpdate(prepared, nextFields, source, option
     });
     const updated = photoRecordStore.get(photoId);
     setLocalPhotoPreview(photoId, prepared.completedBlob);
-    notifyEditedPhotoSaved();
     ordered.forEach((record) => {
       queueMetadata(project, photoRecordStore.get(record.photoId) || record,
         record.photoId === photoId ? source : `${source}-representative`);
     });
+    notifyEditedPhotoSaved();
     return updated;
   });
   running.set(key, task);
