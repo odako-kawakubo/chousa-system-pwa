@@ -7,7 +7,7 @@ import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
-import { saveEditedPhotoLocally } from './photo-local-store.js';
+import { saveEditedPhotoLocally, notifyEditedPhotoSaved } from './photo-local-store.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { setLocalPhotoPreview } from './photo-preview-manager.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -102,6 +102,7 @@ export function persistCompletedPhotoUpdate(prepared, nextFields, source, option
     });
     const updated = photoRecordStore.get(photoId);
     setLocalPhotoPreview(photoId, prepared.completedBlob);
+    notifyEditedPhotoSaved();
     ordered.forEach((record) => {
       queueMetadata(project, photoRecordStore.get(record.photoId) || record,
         record.photoId === photoId ? source : `${source}-representative`);
