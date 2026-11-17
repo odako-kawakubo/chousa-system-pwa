@@ -112,4 +112,24 @@ test('棟切替は共通イベント管理に統合し仕上表の配色を再�
   assert.match(photoCss,/var\(--finish-building-header-bg/);
   assert.match(renderer,/data-building-id="/);
 });
+test('目視の撮影対象と取込先がいずれも棟IDを引き継ぐ',()=>{
+  const controller=read('src/js/photos/photo-controller.js');
+  const camera=read('src/js/camera/camera-state.js');
+  const actions=read('src/js/photos/photo-record-actions.js');
+  assert.match(controller,/function externalImportContext\([\s\S]*?buildingId: view\.activeRoom\.buildingId/);
+  assert.match(controller,/function buildCameraOptions\([\s\S]*?buildingId: room\.buildingId/);
+  assert.match(camera,/function createCaptureSnapshot\([\s\S]*?buildingId: room\.buildingId/);
+  assert.match(actions,/buildingId: context\.buildingId/);
+});
+test('外部取込IDは同一ミリ秒でも重複せず従来のI-接頭辞を維持',()=>{
+  const actions=read('src/js/photos/photo-record-actions.js');
+  assert.match(actions,/lastImportPhotoTimestamp = Math\.max\(Date\.now\(\), lastImportPhotoTimestamp \+ 1\)/);
+  assert.match(actions,/return `I-\$\{getDeviceCode\(\)\}-\$\{lastImportPhotoTimestamp\}`/);
+});
+test('撮影・外部取込は同じ後追いメタデータ同期処理を使う',()=>{
+  const actions=read('src/js/photos/photo-record-actions.js');
+  assert.match(actions,/storedRecords\.push\(stored\);\s*queuePhotoMetadataPersistence\(stored, 'photo-import-save'\)/);
+  assert.match(actions,/queuePhotoMetadataPersistence\(stored, 'photo-camera-save'\)/);
+  assert.doesNotMatch(actions,/await persistPhoto\(stored, 'photo-import-save'\)/);
+});
 console.log('v0.1.9.11F: '+passed+' tests passed');
