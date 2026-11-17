@@ -451,7 +451,6 @@ export async function getSavedCameraPhotosForProject(projectId) {
     .filter((record) => byId.has(record.photoId))
     .map((record) => ({
       ...record,
-      localBlobRevision: byId.get(record.photoId).revision || '',
       localBlobUploadStatus: byId.get(record.photoId).uploadStatus || ''
     }));
 }
