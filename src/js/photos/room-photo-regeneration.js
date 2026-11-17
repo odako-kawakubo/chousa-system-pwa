@@ -4,7 +4,7 @@
  */
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
-import { resolveRoomLocation } from '../finish-table/room-location.js';
+import { resolveRoomLocation, roomLocationKey } from '../finish-table/room-location.js';
 import { prepareCompletedPhotoUpdate, persistCompletedPhotoUpdate } from './photo-completed-update.js';
 import { getDeviceCode } from '../device-code.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
@@ -46,8 +46,7 @@ export async function refreshVisualPhotoBoardsForRoom(roomKey) {
   const room = resolveRoomLocation(roomKey, { context:'photo' });
   if (!room) return { updated: 0, errors: [] };
   const photos = photoRecordStore.getActive().filter((photo) =>
-    photo.photoType === 'visual' && photo.areaCode === room.areaCode
-      && photo.roomPosition === room.roomPosition
+    photo.photoType === 'visual' && roomLocationKey(photo) === room.key
   );
   const settings = boardSettingsStore.get();
   const errors = [];
