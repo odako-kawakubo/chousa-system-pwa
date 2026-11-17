@@ -225,6 +225,10 @@ export async function saveEditedPhotoLocally({
     });
     records.forEach((record) => photoRecords.put({ ...record }));
   });
+}
+
+/** 原本とRecordの確定後に送信側へ通知する。 */
+export function notifyEditedPhotoSaved() {
   publish();
 }
 
