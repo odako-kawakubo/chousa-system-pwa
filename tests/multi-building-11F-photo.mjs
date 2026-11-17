@@ -9,6 +9,7 @@ import {
   getPhotoRepresentativeGroupKey
 } from '../src/js/records/photo-record.js';
 import { classifyOrphanPhotos } from '../src/js/photos/photo-orphan-classifier.js';
+import { getCollisionPhotoFileName, getPhotoFileBase } from '../src/js/photos/photo-filename.js';
 import * as photoRecordStore from '../src/js/store/photo-record-store.js';
 import { mergeRecordByFieldEditedAt, RECORD_MERGE_FIELDS } from '../src/js/sync/record-field-merge.js';
 
@@ -189,5 +190,39 @@ test('Firestore通信はローカル保存済み写真を巻き戻さない',()=
   const queued=shared.lastIndexOf('queueMetadata(project');
   assert.ok(locallySaved >= 0 && queued > locallySaved);
   assert.match(shared,/void persistPhotoForProject\(/);
+});
+test('同名写真だけにphotoIdを付け通常ファイル名を維持する',()=>{
+  const regular=getPhotoFileBase({photoType:'visual',buildingId:'B',roomNo:'1-1',part:'壁'})+'.jpg';
+  assert.equal(regular,'B棟_1-1-壁-5.jpg');
+  assert.equal(getCollisionPhotoFileName(regular,'I-DEVICE-123'),'B棟_1-1-壁-5_I-DEVICE-123.jpg');
+  assert.equal(getCollisionPhotoFileName(regular,'I-DEVICE-123',2),'B棟_1-1-壁-5_I-DEVICE-123_2.jpg');
+});
+test('OneDriveでの同名新規送信は失敗させ識別名で再試行する',()=>{
+  const sync=read('src/js/photos/photo-onedrive-sync.js');
+  const client=read('src/js/onedrive/onedrive-client.js');
+  assert.match(sync,/getCollisionPhotoFileName\(fileName, entry\.photoId/);
+  assert.match(sync,/conflictBehavior: 'fail'/);
+  assert.match(sync,/error\?\.status === 409/);
+  assert.match(client,/options\.conflictBehavior === 'fail'/);
+  assert.match(client,/options\.existingItemId/);
+});
+test('送信中に更新された画像は旧版で送信済みにしない',()=>{
+  const local=read('src/js/photos/photo-local-store.js');
+  const sync=read('src/js/photos/photo-onedrive-sync.js');
+  assert.match(local,/revision: preserveOriginalUpload/);
+  assert.match(local,/upload\.expectedRevision/);
+  assert.match(sync,/isCurrentUpload\(entry, record, fileName\)/);
+  assert.match(sync,/reason: 'changed-during-upload'/);
+  assert.match(sync,/reason: 'changed-before-settlement'/);
+});
+test('再起動時の写真復元は案件IDと写真の編集時刻で絞る',()=>{
+  const local=read('src/js/photos/photo-local-store.js');
+  const controller=read('src/js/projects/project-controller.js');
+  assert.match(local,/getSavedCameraPhotosForProject\(projectId\)/);
+  assert.match(local,/String\(entry\.projectId \|\| ''\) === id/);
+  assert.match(controller,/await recoverCommittedLocalPhotos\(target\)/);
+  assert.match(controller,/mergeRecordByFieldEditedAt\('photo', previous, local/);
+  assert.match(controller,/putUnsent\(\{/);
+  assert.match(controller,/if \(previous && localEditedAt <= previousEditedAt\) return/);
 });
 console.log('v0.1.9.11F: '+passed+' tests passed');
