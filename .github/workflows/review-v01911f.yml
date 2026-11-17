@@ -1,0 +1,134 @@
+name: Review v0.1.9.11F (review-photo-pdf)
+
+on:
+  push:
+    branches:
+      - feature/photo-building-11F
+    paths:
+      - '.github/workflows/review-v01911f.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'firebase.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-v01911d-photo-pdf
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout approved 11F feature branch
+        uses: actions/checkout@v5
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+          node --check src/service-worker.js
+
+      - name: Relative imports and offline app shell existence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const files = [];
+          for (const root of ['src/js','src/config']) {
+            const walk = dir => {
+              for (const entry of fs.readdirSync(dir,{withFileTypes:true})) {
+                const file=path.join(dir,entry.name);
+                if(entry.isDirectory()) walk(file);
+                else if(entry.isFile() && file.endsWith('.js')) files.push(file);
+              }
+            };
+            walk(root);
+          }
+          const missing=[];
+          for(const file of files) {
+            const text=fs.readFileSync(file,'utf8');
+            for(const match of text.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g)) {
+              const full=path.resolve(path.dirname(file),match[1]);
+              if(![full,full+'.js',path.join(full,'index.js')].some(fs.existsSync)) missing.push(file+' -> '+match[1]);
+            }
+          }
+          const sw=fs.readFileSync('src/service-worker.js','utf8');
+          const shell=[...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(match=>match[1]);
+          for(const rel of shell) if(!fs.existsSync(path.join('src',rel))) missing.push('APP_SHELL -> '+rel);
+          if(missing.length) { console.error(missing.join('\n')); process.exit(1); }
+          console.log('Module and app shell references passed');
+          NODE
+
+      - name: Existing multi-building and sample regressions (11A through 11C)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/multi-building-11A.mjs
+
+      - name: Existing 11D behavior and UI contract regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/multi-building-11D.mjs
+
+      - name: New 11E candidate input, sample selection, copy and header regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/multi-building-11E.mjs
+
+      - name: 11F photo building and persistence regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/multi-building-11F-photo.mjs
+
+      - name: Review target and version consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const version=JSON.parse(fs.readFileSync('src/version.json','utf8'));
+          const config=fs.readFileSync('src/config/app-config.js','utf8');
+          const worker=fs.readFileSync('src/service-worker.js','utf8');
+          const hosting=JSON.parse(fs.readFileSync('firebase.json','utf8'));
+          if(version.version!=='0.1.9.11F') throw Error('version.json does not match 11E');
+          if(!config.includes("version: '0.1.9.11F'")) throw Error('app-config version mismatch');
+          if(!worker.includes('chousa-app-v0.1.9.11F')) throw Error('service-worker cache mismatch');
+          if(hosting.hosting?.public!=='src') throw Error('hosting public directory changed');
+          console.log('11F review version and existing hosting target verified');
+          NODE
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/feature/photo-building-11F'
+    steps:
+      - name: Checkout approved 11F feature branch
+        uses: actions/checkout@v5
+
+      - name: Deploy to existing review-photo-pdf preview channel
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT}" ]; then
+            echo "Firebase service account secret is missing"
+            exit 1
+          fi
+          credentials="${RUNNER_TEMP}/firebase-preview-service-account.json"
+          trap 'rm -f "${credentials}"' EXIT
+          printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
+          chmod 600 "${credentials}"
+          export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
