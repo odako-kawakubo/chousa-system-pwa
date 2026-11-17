@@ -222,7 +222,7 @@ export async function uploadDriveFile(parentRef, fileName, content, contentType 
   // 新規はサーバー側で同名衝突を拒否し、別写真を絶対に上書きしない。
   const path = existingItemId
     ? `${itemBasePath({ driveId: ref.driveId, itemId: existingItemId })}/content`
-    : `${itemBasePath(ref)}:/${encodedName}:/content?@microsoft.graph.conflictBehavior=fail`;
+    : `${itemBasePath(ref)}:/${encodedName}:/content${options.conflictBehavior === 'fail' ? '?@microsoft.graph.conflictBehavior=fail' : ''}`;
   const item = await graphRequest(path, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
