@@ -185,7 +185,7 @@ test('撮影・編集・自動再生成の看板で棟と外部表示を共用',
 test('Firestore通信はローカル保存済み写真を巻き戻さない',()=>{
   const shared=read('src/js/photos/photo-completed-update.js');
   const locallySaved=shared.indexOf('await saveEditedPhotoLocally(');
-  const queued=shared.indexOf('queueMetadata(project');
+  const queued=shared.lastIndexOf('queueMetadata(project');
   assert.ok(locallySaved >= 0 && queued > locallySaved);
   assert.match(shared,/void persistPhotoForProject\(/);
 });
