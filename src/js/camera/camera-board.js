@@ -234,17 +234,20 @@ function paintBoardBase(ctx, data) {
   drawWrappedCenterText(ctx, data.projectName || '', tableX + leftW + 5, tableY, rightW - 10, rowSubject, Number(data.subjectFontSize) || 18, 2);
   drawWrappedCenterText(ctx, data.address || '', tableX + leftW + 5, tableY + rowSubject, rightW - 10, rowAddress, Number(data.addressFontSize) || 17, 2);
 
-  // 部屋No.はラベルと値を分けるが、v64同様ラベル/値間の縦罫線は描かない。
-  drawLeftMiddleText(ctx, data.areaCode === 'E' ? '　外部' : '　部屋No.', tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
-  const visualPlace = data.areaCode === 'E'
-    ? (data.roomName || data.roomNo || '-')
-    : (data.roomNo || '-');
+  // 複数棟の目視写真は左側ラベルへ棟名を加え、表示順を
+  // 「B棟 部屋No. 1-1」「B棟 外部 建物北側」に統一する。
   const buildingPrefix = data.photoType === 'visual' && (data.showBuildingName || (data.buildingId && data.buildingId !== 'A'))
     ? `${data.buildingId || 'A'}棟　`
     : '';
+  const locationLabel = data.areaCode === 'E' ? '外部' : '部屋No.';
+  const visualPlace = data.areaCode === 'E'
+    ? (data.roomName || data.roomNo || '-')
+    : (data.roomNo || '-');
+  drawLeftMiddleText(ctx, `　${buildingPrefix}${locationLabel}`,
+    tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
   drawLeftMiddleText(
     ctx,
-    data.photoType === 'sampling' ? (data.samplingPlace || '-') : `${buildingPrefix}${visualPlace}`,
+    data.photoType === 'sampling' ? (data.samplingPlace || '-') : visualPlace,
     tableX + leftW + innerLabelW,
     contentY,
     rightW - innerLabelW,
