@@ -196,9 +196,9 @@ export function renderVisualView(container, view, state) {
   const cards = view.targets.map((target) => renderVisualTargetBlock(target, state.openVisualKeys)).join('');
 
   container.innerHTML = `<div class="photo-target-layout">
-    <aside class="photo-target-list">
-      <div class="photo-target-list-head">調査場所${view.buildings.length > 1
-        ? ` <select data-photo-building-select aria-label="表示する棟">${view.buildings.map((building) =>
+    <aside class="photo-target-list" data-building-id="${esc(room.buildingId || 'A')}">
+      <div class="photo-target-list-head"><span>調査場所</span>${view.buildings.length > 1
+        ? `<select data-photo-building-select aria-label="表示する棟">${view.buildings.map((building) =>
           `<option value="${esc(building.id)}" ${building.id === (room.buildingId || '') ? 'selected' : ''}>${esc(building.label)}棟</option>`
         ).join('')}</select>` : ''}</div>
       ${renderVisualRoomList(view.rooms.filter((item) => (item.buildingId || '') === (room.buildingId || '')), room?.roomKey || '', state.collapsedLocationGroups)}
