@@ -59,6 +59,10 @@ export const SHOOTING_TYPE_LABELS = Object.freeze({
 /** @typedef {VisualPhotoRecord|SamplingPhotoRecord} PhotoRecord */
 
 function asText(value) { return String(value ?? '').trim(); }
+function normalizeVisualBuildingId(value) {
+  const building = asText(value).toUpperCase();
+  return building === 'A' ? '' : building;
+}
 function normalizeSamplingBranch(value) {
   const branch = Number(value);
   return Number.isInteger(branch) && branch >= 1 && branch <= 3 ? branch : 0;
@@ -71,7 +75,7 @@ function normalizeVisualPartSlot(value) {
 export function getVisualPhotoRoomKey({ areaCode, roomPosition, buildingId } = {}) {
   const area = asText(areaCode);
   const room = asText(roomPosition);
-  const building = asText(buildingId).toUpperCase();
+  const building = normalizeVisualBuildingId(buildingId);
   return area && room ? `${building && building !== 'A' ? building + '|' : ''}${area}|${room}` : '';
 }
 
@@ -133,7 +137,7 @@ export function createPhotoRecord(fields) {
     return {
       ...common,
       areaCode: asText(fields.areaCode),
-      buildingId: asText(fields.buildingId).toUpperCase() === 'A' ? '' : asText(fields.buildingId).toUpperCase(),
+      buildingId: normalizeVisualBuildingId(fields.buildingId),
       roomPosition: asText(fields.roomPosition),
       partSlot: normalizeVisualPartSlot(fields.partSlot),
       roomNo: asText(fields.roomNo),
