@@ -624,22 +624,18 @@ export function initializePhotoTab() {
 
   renderPhotoShell(root, state.mode);
   body = root.querySelector('#photoModeBody');
-  root.addEventListener('change', (event) => {
-    if (!event.target.matches('[data-photo-building-select]')) return;
-    const id = String(event.target.value || '');
-    const rooms = buildVisualPhotoView('').rooms;
-    const room = rooms.find((item) => (item.buildingId || '') === id);
-    if (!room) return;
-    state.selectedRoomKey = room.roomKey;
-    state.openVisualKeys.clear();
-    state.collapsedLocationGroups.clear();
-    render();
-  });
-
   bindPhotoInteractions({
     root,
     state,
     render,
+    selectBuilding: (buildingId) => {
+      const room = buildVisualPhotoView('').rooms.find((item) => (item.buildingId || '') === buildingId);
+      if (!room) return;
+      state.selectedRoomKey = room.roomKey;
+      state.openVisualKeys.clear();
+      state.collapsedLocationGroups.clear();
+      render();
+    },
     applySelectionUi,
     clearSelectionMode,
     togglePhotoSelection,
