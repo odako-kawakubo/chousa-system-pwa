@@ -445,13 +445,15 @@ export async function getSavedCameraPhotosForProject(projectId) {
   const records = await getCameraPhotoRecords();
   const entries = await readBlobEntriesForPhotoIds(records.map((record) => record.photoId));
   const byId = new Map(entries
-    .filter((entry) => entry.variant === 'completed'
-      && entry.uploadStatus === 'pending'
-      && String(entry.projectId || '') === id)
+    .filter((entry) => entry.variant === 'completed' && String(entry.projectId || '') === id)
     .map((entry) => [entry.photoId, entry]));
   return records
     .filter((record) => byId.has(record.photoId))
-    .map((record) => ({ ...record, localBlobRevision: byId.get(record.photoId).revision || '' }));
+    .map((record) => ({
+      ...record,
+      localBlobRevision: byId.get(record.photoId).revision || '',
+      localBlobUploadStatus: byId.get(record.photoId).uploadStatus || ''
+    }));
 }
 
 export async function getCameraPhotoRecords() {
