@@ -484,9 +484,13 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+  display: block;
+}
+.shared-project-list > .project-card {
+  display: block;
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 7px;
 }
 .shared-project-row {
   display: flex;
