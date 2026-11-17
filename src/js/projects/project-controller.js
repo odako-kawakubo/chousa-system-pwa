@@ -205,10 +205,14 @@ async function recoverCommittedLocalPhotos(target) {
   let recovered = 0;
   cached.forEach(({ localBlobRevision, ...local }) => {
     const id = String(local.photoId || '');
-    if (!id || local.deleted) return;
+    if (!id) return;
     const previous = byId.get(id);
-    const localEditedAt = Date.parse(local.lastEditedAt || local.capturedAt || '') || 0;
-    const previousEditedAt = Date.parse(previous?.lastEditedAt || previous?.capturedAt || '') || 0;
+    const lastEdited = (record) => Math.max(
+      Date.parse(record?.lastEditedAt || record?.capturedAt || '') || 0,
+      ...Object.values(record?.fieldEditedAt || {}).map((value) => Number(value) || 0)
+    );
+    const localEditedAt = lastEdited(local);
+    const previousEditedAt = lastEdited(previous);
     if (previous && localEditedAt <= previousEditedAt) return;
     const merged = previous
       ? mergeRecordByFieldEditedAt('photo', previous, local, { prefer: 'incoming' }).record
