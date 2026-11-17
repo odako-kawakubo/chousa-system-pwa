@@ -87,3 +87,12 @@ export function getAvailablePhotoFileName(fields, records = [], excludePhotoId =
   while (names.has(`${base}_${String(number).padStart(2, '0')}.jpg`)) number += 1;
   return `${base}_${String(number).padStart(2, '0')}.jpg`;
 }
+
+/** 同名時だけ写真ID由来の識別子を付与する（通常名と既存A棟名は変更しない）。 */
+export function getCollisionPhotoFileName(fileName, photoId, retry = 1) {
+  const index = fileName.lastIndexOf('.');
+  const base = index > 0 ? fileName.slice(0, index) : fileName;
+  const extension = index > 0 ? fileName.slice(index) : '';
+  const suffix = String(photoId || 'PHOTO').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `${base}_${suffix}${retry > 1 ? '_' + retry : ''}${extension}`;
+}
