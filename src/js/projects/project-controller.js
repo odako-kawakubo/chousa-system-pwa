@@ -235,12 +235,13 @@ async function recoverCommittedLocalPhotos(target) {
 }
 
 async function openFirestoreProjectSession(target) {
+  const token = ++activeProjectStreamToken;
   await recoverCommittedLocalPhotos(target);
+  if (token !== activeProjectStreamToken) return target;
   let project = target.project;
   // M-07: 案件metadata未確定時はRecord未送信の自動再送を止める。
   // 後段でも参照するため、Firestore可否ブロックの外でsession全体の状態として保持する。
   let projectQueueReady = true;
-  const token = ++activeProjectStreamToken;
   syncDiagnosticLog('SYNC_OPEN_START', {
     projectId: project?.projectId || '',
     projectName: project?.projectName || ''
