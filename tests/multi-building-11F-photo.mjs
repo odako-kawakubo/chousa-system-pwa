@@ -132,14 +132,17 @@ test('撮影・外部取込は同じ後追いメタデータ同期処理を使�
   assert.match(actions,/queuePhotoMetadataPersistence\(stored, 'photo-camera-save'\)/);
   assert.doesNotMatch(actions,/await persistPhoto\(stored, 'photo-import-save'\)/);
 });
-test('看板編集は画像保存後に所属レコードと代表変更を保存',()=>{
-  const source=read('src/js/photos/photo-board-editor-persistence.js');
-  const blobSave=source.indexOf("await savePhotoBlob(entry.record.photoId, 'completed'");
-  const recordSave=source.indexOf('let record = photoRecordStore.set({');
-  assert.ok(blobSave >= 0 && recordSave > blobSave);
-  assert.match(source,/changedRepresentatives = photoRecordStore\.getAll\(\)/);
-  assert.match(source,/persistPhotoForProject\(project, affected, 'photo-board-editor-representative'\)/);
-  assert.match(source,/before\.buildingId \|\| 'A'/);
+test('看板編集・再生成は同じローカル一括確定経路へ集約',()=>{
+  const editor=read('src/js/photos/photo-board-editor-persistence.js');
+  const shared=read('src/js/photos/photo-completed-update.js');
+  const local=read('src/js/photos/photo-local-store.js');
+  assert.match(editor,/await persistCompletedPhotoUpdate\(/);
+  assert.match(shared,/await saveEditedPhotoLocally\(/);
+  assert.match(local,/db\.transaction\(\[BLOB_STORE, RECORD_STORE\], 'readwrite'\)/);
+  assert.match(shared,/photoRecordStore\.planSet\(/);
+  assert.match(shared,/notifyEditedPhotoSaved\(\)/);
+  assert.doesNotMatch(editor,/await persistPhotoForProject\(/);
+  assert.match(editor,/before\.buildingId \|\| 'A'/);
 });
 test('看板編集は複数棟の場合だけA棟にも識別名を表示',()=>{
   const source=read('src/js/photos/photo-board-editor-form.js');
@@ -148,5 +151,42 @@ test('看板編集は複数棟の場合だけA棟にも識別名を表示',()=>{
 test('写真比較の部屋表示は仕上表の共通部屋情報を使用',()=>{
   const source=read('src/js/photos/photo-compare-data.js');
   assert.match(source,/findRoomByLocationKey\(key\) \|\| record/);
+});
+test('代表写真の移動予定をStoreへ適用せず安全に計算する',()=>{
+  const photos=[visual('old-A',''),visual('remain-A',''),visual('old-B','B')];
+  photoRecordStore.replaceAll(photos,{notify:false});
+  try {
+    const before=photoRecordStore.getAll().map((p)=>[p.photoId,p.isRepresentative]);
+    const planned=photoRecordStore.planSet({...photoRecordStore.get('old-A'),buildingId:'B'});
+    assert.deepEqual(photoRecordStore.getAll().map((p)=>[p.photoId,p.isRepresentative]),before);
+    assert.equal(planned.record.buildingId,'B');
+    assert.equal(planned.changed.find((p)=>p.photoId==='remain-A').isRepresentative,true);
+    assert.equal(planned.changed.find((p)=>p.photoId==='old-B').isRepresentative,false);
+  } finally { photoRecordStore.clearAll(); }
+});
+test('目視写真名はA棟互換・B棟識別・採取既存形式',()=>{
+  const filename=read('src/js/photos/photo-filename.js');
+  assert.match(filename,/buildingId && buildingId !== 'A'/);
+  assert.match(filename,/\$\{buildingId\}棟_/);
+  assert.match(filename,/fields\.photoType === PHOTO_TYPES\.SAMPLING/);
+});
+test('撮影・編集・自動再生成の看板で棟と外部表示を共用',()=>{
+  const board=read('src/js/camera/camera-board.js');
+  const capture=read('src/js/camera/camera-capture.js');
+  const editor=read('src/js/photos/photo-board-editor.js');
+  const regen=read('src/js/photos/room-photo-regeneration.js');
+  assert.match(board,/buildingPrefix/);
+  assert.match(board,/data\.areaCode === 'E'/);
+  assert.match(capture,/buildingId: room\.buildingId/);
+  assert.match(capture,/showBuildingName:/);
+  assert.match(editor,/buildingId: entry\.record\.photoType === PHOTO_TYPES\.VISUAL/);
+  assert.match(regen,/showBuildingName: projectBuildingIds\(getCurrentProject\(\)\)\.length > 1/);
+});
+test('Firestore通信はローカル保存済み写真を巻き戻さない',()=>{
+  const shared=read('src/js/photos/photo-completed-update.js');
+  const locallySaved=shared.indexOf('await saveEditedPhotoLocally(');
+  const queued=shared.indexOf('queueMetadata(project');
+  assert.ok(locallySaved >= 0 && queued > locallySaved);
+  assert.match(shared,/void persistPhotoForProject\(/);
 });
 console.log('v0.1.9.11F: '+passed+' tests passed');
