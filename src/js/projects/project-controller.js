@@ -186,10 +186,6 @@ async function resolveTemporaryProjectNoCollision(project) {
 }
 
 /**
- * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
- */
-
-/**
  * オフライン編集直後の端末終了でも、IndexedDBの保存済み写真を案件へ復元する。
  * 古い端末キャッシュは優先せず、既存のfieldEditedAt競合解決を使う。
  */
