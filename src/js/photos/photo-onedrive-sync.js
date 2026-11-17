@@ -14,6 +14,7 @@
 import * as photoRecordStore from '../store/photo-record-store.js';
 import {
   assignPhotoProject,
+  getPhotoBlobEntry,
   listPendingPhotoBlobEntries,
   markPhotoBlobUploaded,
   recordPhotoBlobUploadError,
@@ -151,6 +152,47 @@ async function persistUploadedReference(project, record, variant, verifiedItem) 
   return stored;
 }
 
+/** 保存済みBlobの版と写真の名称が送信開始時から変わっていないか確認する。 */
+async function isCurrentUpload(entry, record, name) {
+  const latest = await getPhotoBlobEntry(entry.photoId, entry.variant);
+  const current = photoRecordStore.get(entry.photoId);
+  return Boolean(latest && current && !current.deleted
+    && String(latest.projectId || '') === String(entry.projectId || '')
+    && String(latest.revision || '') === String(entry.revision || '')
+    && latest.uploadStatus === 'pending'
+    && getPhotoUploadFileName(current) === name
+    && String(latest.fileName || '') === String(entry.fileName || ''));
+}
+
+function collisionName(fileName, photoId, retry = 1) {
+  const index = fileName.lastIndexOf('.');
+  const base = index > 0 ? fileName.slice(0, index) : fileName;
+  const extension = index > 0 ? fileName.slice(index) : '';
+  const suffix = String(photoId || 'PHOTO').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `${base}_${suffix}${retry > 1 ? '_' + retry : ''}${extension}`;
+}
+
+async function uploadWithoutOverwriting(folderRef, fileName, entry) {
+  // 自写真の既存itemId・同じ名称に限りアップロード更新を許可する。
+  const existingItemId = entry.uploadedFileName === fileName && entry.uploadedDriveId === folderRef.driveId
+    ? String(entry.uploadedItemId || '')
+    : '';
+  if (existingItemId) {
+    return uploadDriveFile(folderRef, fileName, entry.blob,
+      entry.mimeType || 'image/jpeg', { existingItemId });
+  }
+  for (let attempt = 0; attempt <= 5; attempt += 1) {
+    const candidate = attempt ? collisionName(fileName, entry.photoId, attempt) : fileName;
+    try {
+      return await uploadDriveFile(folderRef, candidate, entry.blob, entry.mimeType || 'image/jpeg');
+    } catch (error) {
+      const conflict = error?.status === 409 || error?.graphCode === 'nameAlreadyExists';
+      if (!conflict || attempt === 5) throw error;
+    }
+  }
+  throw new Error('OneDriveで重複しない写真名を確保できませんでした。');
+}
+
 async function uploadOneVariant(project, binding, entry) {
   let record = photoRecordStore.get(entry.photoId);
   if (!record || record.deleted) {
@@ -186,6 +228,9 @@ async function uploadOneVariant(project, binding, entry) {
   }
 
   try {
+    if (!(await isCurrentUpload(entry, record, fileName))) {
+      return { ok: false, skipped: true, reason: 'changed-before-upload' };
+    }
     syncDiagnosticLog('PHOTO_UPLOAD_START', {
       projectId: project.projectId,
       photoId: entry.photoId,
@@ -193,12 +238,7 @@ async function uploadOneVariant(project, binding, entry) {
       fileName
     });
 
-    const uploaded = await uploadDriveFile(
-      folderRef,
-      fileName,
-      entry.blob,
-      entry.mimeType || 'image/jpeg'
-    );
+    const uploaded = await uploadWithoutOverwriting(folderRef, fileName, entry);
 
     const uploadedRef = {
       driveId: String(uploaded?.driveId || folderRef.driveId || ''),
@@ -227,16 +267,23 @@ async function uploadOneVariant(project, binding, entry) {
       itemId: verified.itemId
     });
 
+    // 送信中に別の画像・看板編集が確定した場合、古い画像を送信済みにしない。
+    if (!(await isCurrentUpload(entry, record, fileName))) {
+      return { ok: false, skipped: true, reason: 'changed-during-upload' };
+    }
+
     // Blobをuploadedへ進める前に、photoRecord側へOneDrive参照を確定する。
     // ここが失敗した場合はBlobをpendingのまま残し、次回再送で回復できるようにする。
     record = await persistUploadedReference(project, record, entry.variant, verified);
 
-    await markPhotoBlobUploaded(entry.photoId, entry.variant, {
+    const settled = await markPhotoBlobUploaded(entry.photoId, entry.variant, {
+      expectedRevision: entry.revision || '',
       driveId: verified.driveId || uploadedRef.driveId,
       itemId: verified.itemId,
       fileName: verified.name || fileName,
       uploadedAt: new Date().toISOString()
     });
+    if (!settled) return { ok: false, skipped: true, reason: 'changed-before-settlement' };
 
     syncDiagnosticLog('PHOTO_SYNC_VARIANT_SETTLED', {
       projectId: project.projectId,
