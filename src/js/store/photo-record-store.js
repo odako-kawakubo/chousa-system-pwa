@@ -65,7 +65,7 @@ function normalizeAllRepresentatives() {
       .filter(isActivePhotoRecord)
       .map(getPhotoRepresentativeGroupKey)
   );
-  groupKeys.forEach(normalizeRepresentativeForGroup);
+  groupKeys.forEach((groupKey) => normalizeRepresentativeForGroup(groupKey));
 }
 
 export function subscribe(callback) {
