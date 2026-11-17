@@ -68,7 +68,11 @@ function buildBoardEditMemo(entry) {
 
   if (entry.record.photoType === PHOTO_TYPES.VISUAL) {
     const roomChanged = before.buildingId !== after.buildingId || before.areaCode !== after.areaCode || before.roomPosition !== after.roomPosition || before.roomNo !== after.roomNo;
-    if (roomChanged) lines.push(`部屋：${memoValue(before.roomNo || before.roomPosition)} → ${memoValue(after.roomNo || after.roomPosition)}`);
+    if (roomChanged) {
+      const beforeLocation = `${before.buildingId || 'A'}：${memoValue(before.roomNo || before.roomPosition)}`;
+      const afterLocation = `${after.buildingId || 'A'}：${memoValue(after.roomNo || after.roomPosition)}`;
+      lines.push(`部屋：${beforeLocation} → ${afterLocation}`);
+    }
 
     const partChanged = Number(before.partSlot || 0) !== Number(after.partSlot || 0) || before.part !== after.part;
     if (partChanged) lines.push(`部位：${before.part ? memoValue(before.part) : '未整理'} → ${after.part ? memoValue(after.part) : '未整理'}`);
@@ -170,7 +174,28 @@ export async function persistBoardEditorEntry(entry, { getBoardData }) {
     && String(entry.record?.[field] ?? '') !== String(nextRecordFields[field] ?? '')
   );
 
-  const record = photoRecordStore.set({
+  // 画像本体を先に確定し、保存失敗時に未保存の所属変更をStoreへ反映しない。
+  const project = getCurrentProject();
+  const representativesBefore = new Map(photoRecordStore.getAll().map((photo) =>
+    [photo.photoId, Boolean(photo.isRepresentative)]
+  ));
+  await savePhotoBlob(entry.record.photoId, 'original', originalBlob, {
+    projectId: project?.projectId,
+    createdAt: entry.record.capturedAt,
+    fileName,
+    uploadStatus: 'pending'
+  });
+  await savePhotoBlob(entry.record.photoId, 'completed', completedBlob, {
+    projectId: project?.projectId,
+    createdAt: now,
+    fileName,
+    uploadStatus: 'pending'
+  });
+  if (getCurrentProject()?.projectId !== project?.projectId) {
+    throw new Error('写真保存中に案件が切り替わりました。');
+  }
+
+  let record = photoRecordStore.set({
     ...entry.record,
     ...nextRecordFields,
     fieldEditedAt: touchFieldEditedAt(entry.record.fieldEditedAt, editedFields),
@@ -179,18 +204,30 @@ export async function persistBoardEditorEntry(entry, { getBoardData }) {
     localCompletedStatus: 'saved'
   });
 
-  await savePhotoBlob(record.photoId, 'original', originalBlob, {
-    createdAt: record.capturedAt,
-    fileName,
-    uploadStatus: 'pending'
-  });
-  await savePhotoBlob(record.photoId, 'completed', completedBlob, {
-    createdAt: now,
-    fileName,
-    uploadStatus: 'pending'
-  });
+  // 所属先を変更すると、移動前・移動先の代表写真も変わることがある。
+  // Storeの正規化結果を取得し、変更された代表フラグを端末内とFirestoreへ保存する。
+  const changedRepresentatives = photoRecordStore.getAll()
+    .filter((photo) => photo.photoId !== record.photoId
+      && representativesBefore.get(photo.photoId) !== Boolean(photo.isRepresentative));
+  const currentRepresentativeChanged = representativesBefore.get(record.photoId) !== Boolean(record.isRepresentative);
+  if (currentRepresentativeChanged) {
+    record = photoRecordStore.set({
+      ...record,
+      fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative')
+    });
+  }
+  const representativeUpdates = changedRepresentatives.map((photo) => photoRecordStore.set({
+    ...photo,
+    fieldEditedAt: touchFieldEditedAt(photo.fieldEditedAt, 'isRepresentative'),
+    syncStatus: 'pending'
+  }));
+
   await updateCameraPhotoRecord(record);
-  await persistPhotoForProject(getCurrentProject(), record, 'photo-board-editor-save');
+  await persistPhotoForProject(project, record, 'photo-board-editor-save');
+  for (const affected of representativeUpdates) {
+    await updateCameraPhotoRecord(affected);
+    await persistPhotoForProject(project, affected, 'photo-board-editor-representative');
+  }
 
   settleBoardEditorEntry(entry, record);
   return { record, completedBlob };
