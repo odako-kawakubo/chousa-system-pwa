@@ -174,7 +174,10 @@ function collisionName(fileName, photoId, retry = 1) {
 
 async function uploadWithoutOverwriting(folderRef, fileName, entry) {
   // 自写真の既存itemId・同じ名称に限りアップロード更新を許可する。
-  const existingItemId = entry.uploadedFileName === fileName && entry.uploadedDriveId === folderRef.driveId
+  const ownNames = new Set([fileName, ...Array.from({ length: 5 }, (_, i) =>
+    collisionName(fileName, entry.photoId, i + 1))]);
+  const existingItemId = ownNames.has(String(entry.uploadedFileName || ''))
+    && entry.uploadedDriveId === folderRef.driveId
     ? String(entry.uploadedItemId || '')
     : '';
   if (existingItemId) {
