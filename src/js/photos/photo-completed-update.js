@@ -1,15 +1,16 @@
 /**
- * 既存の完成画像を安全に更新する共通経路。
- * 生成→保存→写真レコード反映。書き込み途中で失敗した場合は
- * ローカル完成画像とレコードを可能な範囲で元に戻す。
+ * 完成画像の再生成・電子看板編集で共用する保存経路。
+ * IndexedDBへ完成画像と影響する写真Recordを一括確定してからStoreへ反映し、
+ * Firestoreは未送信キュー対応の後追い処理とする。
  */
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
-import { getPhotoBlobEntry, savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+import { saveEditedPhotoLocally } from './photo-local-store.js';
 import { persistPhotoForProject } from '../sync/project-record-persistence.js';
 import { setLocalPhotoPreview } from './photo-preview-manager.js';
+import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
 
 const running = new Map();
 
@@ -17,6 +18,7 @@ function projectId() {
   return String(getCurrentProject()?.projectId || '');
 }
 
+/** 部屋の変更に合わせて元画像から新しい完成画像を生成する。 */
 export async function prepareCompletedPhotoUpdate(photo, boardData) {
   const preparedProjectId = projectId();
   const originalBlob = await resolveEditorOriginalPhoto(photo);
@@ -30,63 +32,81 @@ export async function prepareCompletedPhotoUpdate(photo, boardData) {
     boardData
   });
   if (projectId() !== preparedProjectId) throw new Error('画像の再生成中に案件が切り替わりました。');
-  return { photo, completedBlob, projectId:preparedProjectId };
+  return { photo, completedBlob, projectId: preparedProjectId };
 }
 
-/** 同じ写真への連続更新は直列化する。案件切替後の誤保存も防ぐ。 */
-export function persistCompletedPhotoUpdate(prepared, nextFields, source) {
-  const photoId = String(prepared.photo.photoId);
-  const startedProjectId = String(prepared.projectId || '');
-  if (!startedProjectId || projectId() !== startedProjectId) {
-    return Promise.reject(new Error('画像の再生成後に案件が切り替わりました。'));
+function queueMetadata(project, record, source) {
+  void persistPhotoForProject(project, record, source).catch((error) => {
+    console.warn('写真編集のメタデータ同期は未完了です', record.photoId, error);
+  });
+}
+
+/**
+ * 同一写真への更新を直列化し、画像本体とRecord群を一つのローカル確定単位にする。
+ * originalBlobは手動看板編集で指定し、自動看板再生成では従来のoriginalを維持する。
+ */
+export function persistCompletedPhotoUpdate(prepared, nextFields, source, options = {}) {
+  const photoId = String(prepared?.photo?.photoId || '');
+  const startedProjectId = String(prepared?.projectId || '');
+  if (!photoId || !startedProjectId || projectId() !== startedProjectId) {
+    return Promise.reject(new Error('写真編集の開始後に案件が切り替わりました。'));
   }
   const key = `${startedProjectId}|${photoId}`;
   const previousTask = running.get(key) || Promise.resolve();
   const task = previousTask.catch(() => {}).then(async () => {
-    if (projectId() !== startedProjectId) throw new Error('案件が切り替わりました。');
+    if (projectId() !== startedProjectId) throw new Error('写真保存中に案件が切り替わりました。');
+    const project = getCurrentProject();
     const current = photoRecordStore.get(photoId);
     if (!current || current.deleted) throw new Error('写真レコードが見つかりません。');
-    const previousBlob = await getPhotoBlobEntry(photoId, 'completed');
-    const now = new Date().toISOString();
-    let blobWritten = false;
-    let recordWritten = false;
-    try {
-      await savePhotoBlob(photoId, 'completed', prepared.completedBlob, {
-        projectId: startedProjectId, createdAt: now,
-        fileName: current.fileName, uploadStatus: 'pending'
-      });
-      blobWritten = true;
-      if (projectId() !== startedProjectId) throw new Error('画像保存中に案件が切り替わりました。');
-      const next = photoRecordStore.set({
-        ...current, ...nextFields, syncStatus: 'pending', localCompletedStatus: 'saved'
-      });
-      recordWritten = true;
-      await updateCameraPhotoRecord(next);
-      await persistPhotoForProject(getCurrentProject(), next, source);
-      // Only replace the visible preview once the regenerated image and record are persisted.
-      setLocalPhotoPreview(photoId, prepared.completedBlob);
-      return next;
-    } catch (error) {
-      if (recordWritten && projectId() === startedProjectId) {
-        photoRecordStore.set(current);
-        try { await updateCameraPhotoRecord(current); } catch (rollbackError) {
-          console.error('写真レコードの復元に失敗', rollbackError);
-        }
+
+    const planned = photoRecordStore.planSet({
+      ...current,
+      ...nextFields,
+      syncStatus: 'pending',
+      localOriginalStatus: options.originalBlob instanceof Blob ? 'saved' : current.localOriginalStatus,
+      localCompletedStatus: 'saved'
+    });
+    const changes = planned.changed.map((candidate) => {
+      const before = photoRecordStore.get(candidate.photoId);
+      if (before && Boolean(before.isRepresentative) !== Boolean(candidate.isRepresentative)) {
+        return {
+          ...candidate,
+          syncStatus: 'pending',
+          fieldEditedAt: touchFieldEditedAt(candidate.fieldEditedAt, 'isRepresentative')
+        };
       }
-      if (blobWritten && previousBlob?.blob instanceof Blob) {
-        try {
-          await savePhotoBlob(photoId, 'completed', previousBlob.blob, {
-            projectId: startedProjectId,
-            createdAt: previousBlob.createdAt,
-            fileName: previousBlob.fileName,
-            uploadStatus: previousBlob.uploadStatus
-          });
-        } catch (rollbackError) {
-          console.error('完成画像の復元に失敗', rollbackError);
-        }
-      }
-      throw error;
+      return candidate;
+    });
+    const ordered = [
+      ...changes.filter((item) => item.photoId === photoId),
+      ...changes.filter((item) => item.photoId !== photoId)
+    ];
+
+    if (projectId() !== startedProjectId) throw new Error('写真保存中に案件が切り替わりました。');
+    await saveEditedPhotoLocally({
+      photoId,
+      projectId: startedProjectId,
+      originalBlob: options.originalBlob,
+      completedBlob: prepared.completedBlob,
+      fileName: planned.record.fileName,
+      capturedAt: current.capturedAt,
+      editedAt: options.editedAt || new Date().toISOString(),
+      records: ordered
+    });
+    if (projectId() !== startedProjectId) {
+      throw new Error('写真保存中に案件が切り替わりました。');
     }
+
+    photoRecordStore.batch(() => {
+      ordered.forEach((record) => photoRecordStore.set(record));
+    });
+    const updated = photoRecordStore.get(photoId);
+    setLocalPhotoPreview(photoId, prepared.completedBlob);
+    ordered.forEach((record) => {
+      queueMetadata(project, photoRecordStore.get(record.photoId) || record,
+        record.photoId === photoId ? source : `${source}-representative`);
+    });
+    return updated;
   });
   running.set(key, task);
   void task.finally(() => {
