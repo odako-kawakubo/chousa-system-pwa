@@ -244,27 +244,27 @@
    左固定4列と建材ヘッダーを同じ幅定義で2ペインに分ける。
    ヘッダー全体は同じ2Dスクロール領域の中でtop:0にsticky。
    ============================================================ */
-/* 棟別ヘッダー色。A棟は既存の共通ヘッダー配色をそのまま使う。 */
-.finish-table[data-building-id="B"] { --finish-building-header-bg: #E5F2E9; --finish-building-header-text: #286044; }
-.finish-table[data-building-id="C"] { --finish-building-header-bg: #FFF0DF; --finish-building-header-text: #92551D; }
-.finish-table[data-building-id="D"] { --finish-building-header-bg: #F0E9F8; --finish-building-header-text: #68468E; }
-.finish-table[data-building-id="E"] { --finish-building-header-bg: #F9E8EC; --finish-building-header-text: #924A60; }
-.finish-table[data-building-id="F"] { --finish-building-header-bg: #F8F2D9; --finish-building-header-text: #80671C; }
-.finish-table[data-building-id="G"] { --finish-building-header-bg: #DDF3ED; --finish-building-header-text: #216C5D; }
-.finish-table[data-building-id="H"] { --finish-building-header-bg: #FBE7DF; --finish-building-header-text: #98513C; }
-.finish-table[data-building-id="I"] { --finish-building-header-bg: #E8E5F5; --finish-building-header-text: #56508A; }
-.finish-table[data-building-id="J"] { --finish-building-header-bg: #EEF0DB; --finish-building-header-text: #626B2F; }
+/* 仕上表と写真タブの目視調査場所で棟別ヘッダー色を共用。A棟は既存色を維持。 */
+:is(.finish-table, .photo-target-list)[data-building-id="B"] { --finish-building-header-bg: #E5F2E9; --finish-building-header-text: #286044; }
+:is(.finish-table, .photo-target-list)[data-building-id="C"] { --finish-building-header-bg: #FFF0DF; --finish-building-header-text: #92551D; }
+:is(.finish-table, .photo-target-list)[data-building-id="D"] { --finish-building-header-bg: #F0E9F8; --finish-building-header-text: #68468E; }
+:is(.finish-table, .photo-target-list)[data-building-id="E"] { --finish-building-header-bg: #F9E8EC; --finish-building-header-text: #924A60; }
+:is(.finish-table, .photo-target-list)[data-building-id="F"] { --finish-building-header-bg: #F8F2D9; --finish-building-header-text: #80671C; }
+:is(.finish-table, .photo-target-list)[data-building-id="G"] { --finish-building-header-bg: #DDF3ED; --finish-building-header-text: #216C5D; }
+:is(.finish-table, .photo-target-list)[data-building-id="H"] { --finish-building-header-bg: #FBE7DF; --finish-building-header-text: #98513C; }
+:is(.finish-table, .photo-target-list)[data-building-id="I"] { --finish-building-header-bg: #E8E5F5; --finish-building-header-text: #56508A; }
+:is(.finish-table, .photo-target-list)[data-building-id="J"] { --finish-building-header-bg: #EEF0DB; --finish-building-header-text: #626B2F; }
 
 /* ダークモードでも表文字とのコントラストを確保する。 */
-[data-theme="dark"] .finish-table[data-building-id="B"] { --finish-building-header-bg: #1B392D; --finish-building-header-text: #BDE8CF; }
-[data-theme="dark"] .finish-table[data-building-id="C"] { --finish-building-header-bg: #3F2C1D; --finish-building-header-text: #F7D2AA; }
-[data-theme="dark"] .finish-table[data-building-id="D"] { --finish-building-header-bg: #322544; --finish-building-header-text: #DFC8F3; }
-[data-theme="dark"] .finish-table[data-building-id="E"] { --finish-building-header-bg: #432530; --finish-building-header-text: #F5C6D4; }
-[data-theme="dark"] .finish-table[data-building-id="F"] { --finish-building-header-bg: #3D351D; --finish-building-header-text: #F1DF9E; }
-[data-theme="dark"] .finish-table[data-building-id="G"] { --finish-building-header-bg: #183E35; --finish-building-header-text: #BAE9DD; }
-[data-theme="dark"] .finish-table[data-building-id="H"] { --finish-building-header-bg: #422820; --finish-building-header-text: #F3CBBD; }
-[data-theme="dark"] .finish-table[data-building-id="I"] { --finish-building-header-bg: #2D2B44; --finish-building-header-text: #CEC8F1; }
-[data-theme="dark"] .finish-table[data-building-id="J"] { --finish-building-header-bg: #30391F; --finish-building-header-text: #D9E6AB; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="B"] { --finish-building-header-bg: #1B392D; --finish-building-header-text: #BDE8CF; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="C"] { --finish-building-header-bg: #3F2C1D; --finish-building-header-text: #F7D2AA; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="D"] { --finish-building-header-bg: #322544; --finish-building-header-text: #DFC8F3; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="E"] { --finish-building-header-bg: #432530; --finish-building-header-text: #F5C6D4; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="F"] { --finish-building-header-bg: #3D351D; --finish-building-header-text: #F1DF9E; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="G"] { --finish-building-header-bg: #183E35; --finish-building-header-text: #BAE9DD; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="H"] { --finish-building-header-bg: #422820; --finish-building-header-text: #F3CBBD; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="I"] { --finish-building-header-bg: #2D2B44; --finish-building-header-text: #CEC8F1; }
+[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="J"] { --finish-building-header-bg: #30391F; --finish-building-header-text: #D9E6AB; }
 
 .finish-sheet-header {
   position: sticky;
