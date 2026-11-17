@@ -1,5 +1,5 @@
 /**
- * v0.1.9.12A: 写真の複数棟ID互換・所属・表示導線の回帰検証。
+ * v0.1.9.11F: 写真の複数棟ID互換・所属・表示導線の回帰検証。
  * iPad実機とFirebase / OneDriveの実接続確認は別段階。
  */
 import assert from 'node:assert/strict';
@@ -73,4 +73,4 @@ test('ビューワ・比較画面で棟IDを参照する',()=>{
   assert.match(compare,/buildingId: record\.buildingId \|\| ''/);
   assert.match(compare,/buildingId: photo\.buildingId \|\| ''/);
 });
-console.log('v0.1.9.12A: '+passed+' tests passed');
+console.log('v0.1.9.11F: '+passed+' tests passed');
