@@ -8,6 +8,8 @@ import { resolveRoomLocation, roomLocationKey } from '../finish-table/room-locat
 import { prepareCompletedPhotoUpdate, persistCompletedPhotoUpdate } from './photo-completed-update.js';
 import { getDeviceCode } from '../device-code.js';
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import { projectBuildingIds } from '../projects/project-buildings.js';
 
 function formatBoardDate(photo) {
   const raw = String(photo.boardDate || photo.capturedAt || '');
@@ -26,6 +28,8 @@ async function updateVisualCompletedPhoto(photo, room, settings) {
     areaCode: room.areaCode,
     roomNo: room.roomNo,
     roomName: room.roomName,
+    buildingId: photo.buildingId || '',
+    showBuildingName: projectBuildingIds(getCurrentProject()).length > 1,
     part: photo.part,
     statusCode: '5',
     date: formatBoardDate(photo)
