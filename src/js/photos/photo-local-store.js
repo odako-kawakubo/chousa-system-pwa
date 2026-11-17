@@ -144,44 +144,88 @@ export function blobKey(photoId, variant) {
  * 看板編集で元画像の内容と保存名が変わらない場合、originalのuploaded状態は維持する。
  * 未整理→正式整理など保存名が変わる時はoriginalもpendingへ戻し、完成画像と同じ正式名へ揃える。
  */
+function makePhotoBlobEntry(existing, photoId, variant, blob, metadata = {}) {
+  const requestedStatus = metadata.uploadStatus || 'pending';
+  const nextFileName = metadata.fileName || existing?.fileName || '';
+  const preserveOriginalUpload = variant === 'original'
+    && requestedStatus === 'pending'
+    && existing?.uploadStatus === 'uploaded'
+    && String(existing?.uploadedFileName || '') === String(nextFileName || '');
+  return {
+    ...(existing || {}),
+    key: blobKey(photoId, variant),
+    photoId,
+    variant,
+    blob,
+    mimeType: blob?.type || existing?.mimeType || 'image/jpeg',
+    size: Number(blob?.size || 0),
+    projectId: String(metadata.projectId || existing?.projectId || ''),
+    createdAt: metadata.createdAt || existing?.createdAt || new Date().toISOString(),
+    fileName: nextFileName,
+    uploadStatus: preserveOriginalUpload ? 'uploaded' : requestedStatus,
+    uploadedItemId: existing?.uploadedItemId || '',
+    uploadedDriveId: existing?.uploadedDriveId || '',
+    uploadedFileName: existing?.uploadedFileName || '',
+    uploadedAt: existing?.uploadedAt || '',
+    supersededUploads: Array.isArray(existing?.supersededUploads) ? existing.supersededUploads : [],
+    lastUploadError: preserveOriginalUpload ? '' : (requestedStatus === 'pending' ? '' : existing?.lastUploadError || '')
+  };
+}
+
+/** 単独Blob保存も複数Blob保存も同じメタデータ構築規則を使用する。 */
 export async function savePhotoBlob(photoId, variant, blob, metadata = {}) {
   const key = blobKey(photoId, variant);
-  const requestedStatus = metadata.uploadStatus || 'pending';
-  const requestedProjectId = resolveProjectId(metadata.projectId);
   const storedBlob = variant === 'completed'
     ? await normalizeCompletedPhotoBlob(blob)
     : blob;
-
-  await replaceBlobEntry(key, (existing) => {
-    const nextFileName = metadata.fileName || existing?.fileName || '';
-    const preserveOriginalUpload = variant === 'original'
-      && requestedStatus === 'pending'
-      && existing?.uploadStatus === 'uploaded'
-      && String(existing?.uploadedFileName || '') === String(nextFileName || '');
-
-    return {
-      ...(existing || {}),
-      key,
-      photoId,
-      variant,
-      blob: storedBlob,
-      mimeType: storedBlob?.type || existing?.mimeType || 'image/jpeg',
-      size: Number(storedBlob?.size || 0),
-      projectId: String(requestedProjectId || existing?.projectId || ''),
-      createdAt: metadata.createdAt || existing?.createdAt || new Date().toISOString(),
-      fileName: nextFileName,
-      uploadStatus: preserveOriginalUpload ? 'uploaded' : requestedStatus,
-      uploadedItemId: existing?.uploadedItemId || '',
-      uploadedDriveId: existing?.uploadedDriveId || '',
-      uploadedFileName: existing?.uploadedFileName || '',
-      uploadedAt: existing?.uploadedAt || '',
-      supersededUploads: Array.isArray(existing?.supersededUploads) ? existing.supersededUploads : [],
-      lastUploadError: preserveOriginalUpload ? '' : (requestedStatus === 'pending' ? '' : existing?.lastUploadError || '')
-    };
-  });
-
+  const resolved = { ...metadata, projectId: resolveProjectId(metadata.projectId) };
+  await replaceBlobEntry(key, (existing) =>
+    makePhotoBlobEntry(existing, photoId, variant, storedBlob, resolved)
+  );
   publish();
   return key;
+}
+
+/**
+ * 電子看板編集・部屋情報更新で共用するローカル確定処理。
+ * original/completedおよび影響を受ける全cameraPhotoRecordsを
+ * 単一IndexedDBトランザクションで保存し、途中失敗時は一括中止する。
+ */
+export async function saveEditedPhotoLocally({
+  photoId, projectId, originalBlob = null, completedBlob,
+  fileName, capturedAt, editedAt, records = []
+}) {
+  const id = String(photoId || '');
+  const resolvedProjectId = resolveProjectId(projectId);
+  if (!id || !resolvedProjectId || !(completedBlob instanceof Blob)) {
+    throw new Error('写真編集の保存内容または案件を確認できませんでした。');
+  }
+  const completed = await normalizeCompletedPhotoBlob(completedBlob);
+  const variants = originalBlob instanceof Blob
+    ? [['original', originalBlob, capturedAt], ['completed', completed, editedAt]]
+    : [['completed', completed, editedAt]];
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction([BLOB_STORE, RECORD_STORE], 'readwrite');
+    const blobs = tx.objectStore(BLOB_STORE);
+    const photoRecords = tx.objectStore(RECORD_STORE);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('写真編集のローカル保存に失敗しました。'));
+    tx.onabort = () => reject(tx.error || new Error('写真編集のローカル保存が中止されました。'));
+
+    variants.forEach(([variant, blob, createdAt]) => {
+      const key = blobKey(id, variant);
+      const request = blobs.get(key);
+      request.onsuccess = () => {
+        const entry = makePhotoBlobEntry(request.result || null, id, variant, blob, {
+          projectId: resolvedProjectId, fileName, createdAt, uploadStatus: 'pending'
+        });
+        blobs.put(entry);
+      };
+    });
+    records.forEach((record) => photoRecords.put({ ...record }));
+  });
+  publish();
 }
 
 export async function getPhotoBlobEntry(photoId, variant = 'completed') {
