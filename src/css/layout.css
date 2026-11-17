@@ -443,7 +443,9 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
 }
 .shared-project-card {
   width: min(720px, 100%);
-  max-height: 86vh;
+  max-height: min(86dvh, calc(100dvh - 48px));
+  min-height: 0;
+  overflow: hidden;
   background: var(--panel);
   border-radius: 14px;
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.3);
@@ -451,6 +453,12 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   flex-direction: column;
   padding: 14px;
   gap: 10px;
+}
+.shared-project-card > [data-project-source-panel]:not([hidden]) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 .shared-project-head {
   display: flex;
@@ -469,7 +477,13 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   padding: 6px 10px;
 }
 .shared-project-list {
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   gap: 7px;
