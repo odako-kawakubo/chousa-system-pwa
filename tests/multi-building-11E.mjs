@@ -70,8 +70,9 @@ test('棟Aは既存色、BからJはライト・ダーク別のヘッダー配�
   assert.match(finishCss,/background: var\(--finish-building-header-bg, var\(--surface-table-head\)\)/);
   assert.doesNotMatch(finishCss,/\.finish-table\[data-building-id="A"\]/);
   for(const id of 'BCDEFGHIJ') {
-    assert.ok(finishCss.includes('.finish-table[data-building-id="'+id+'"]'));
-    assert.ok(finishCss.includes('[data-theme="dark"] .finish-table[data-building-id="'+id+'"]'));
+    // 11Fでは仕上表と写真タブが同じ棟別CSS変数を共有する。
+    assert.ok(finishCss.includes(':is(.finish-table, .photo-target-list)[data-building-id="'+id+'"]'));
+    assert.ok(finishCss.includes('[data-theme="dark"] :is(.finish-table, .photo-target-list)[data-building-id="'+id+'"]'));
   }
 });
 
