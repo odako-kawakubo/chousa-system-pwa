@@ -64,7 +64,9 @@ test('写真タブの棟切替と採取場所選択は共通部屋IDを使う',(
   const renderer=read('src/js/photos/photo-renderer.js');
   const model=read('src/js/photos/photo-view-model.js');
   assert.match(renderer,/data-photo-building-select/);
-  assert.match(controller,/\[data-photo-building-select\]/);
+  const interactions=read('src/js/photos/photo-interactions.js');
+  assert.match(interactions,/event\.target\.matches\('\[data-photo-building-select\]'\)/);
+  assert.doesNotMatch(controller,/root\.addEventListener\('change'/);
   assert.match(controller,/nextRoomKey: normalizeRoomId/);
   assert.match(model,/\$\{option\.buildingId \|\| 'A'\}：\$\{option\.selectDisplay\}/);
 });
@@ -98,5 +100,16 @@ test('同期マージは棟変更を編集確定時刻に基づき判定',()=>{
 test('部屋情報の写真看板再生成は棟別共通部屋IDで対象を限定',()=>{
   const regen=read('src/js/photos/room-photo-regeneration.js');
   assert.match(regen,/roomLocationKey\(photo\) === room\.key/);
+});
+test('棟切替は共通イベント管理に統合し仕上表の配色を再利用',()=>{
+  const css=read('src/css/finish-table.css');
+  const photoCss=read('src/css/photos.css');
+  const renderer=read('src/js/photos/photo-renderer.js');
+  for(const id of ['B','C','D','E','F','G','H','I','J']){
+    assert.ok(css.includes(`:is(.finish-table, .photo-target-list)[data-building-id="${id}"]`));
+  }
+  assert.match(photoCss,/justify-content:space-between/);
+  assert.match(photoCss,/var\(--finish-building-header-bg/);
+  assert.match(renderer,/data-building-id="/);
 });
 console.log('v0.1.9.11F: '+passed+' tests passed');
