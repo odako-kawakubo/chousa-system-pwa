@@ -36,8 +36,37 @@ function persistPhoto(record, reason = 'photo-actions-save') {
   return persistPhotoForProject(getCurrentProject(), record, reason);
 }
 
+let lastImportPhotoTimestamp = 0;
+
+/**
+ * 外部取込のphotoIdは従来のI-接頭辞を維持する。
+ * 連続選択でも同一ミリ秒・時計の巻き戻りでIDが重複しないようにする。
+ */
 function nextPhotoId() {
-  return `I-${getDeviceCode()}-${Date.now()}`;
+  lastImportPhotoTimestamp = Math.max(Date.now(), lastImportPhotoTimestamp + 1);
+  return `I-${getDeviceCode()}-${lastImportPhotoTimestamp}`;
+}
+
+/**
+ * ローカル保存確定後のFirestoreメタデータ同期。
+ * 撮影・ファイル取込のどちらも通信を待たず、失敗時は既存の未送信キューに委ねる。
+ */
+function queuePhotoMetadataPersistence(record, reason) {
+  void persistPhoto(record, reason)
+    .then((result) => {
+      syncDiagnosticLog(result?.ok ? 'PHOTO_FIRESTORE_SAVE_OK' : 'PHOTO_FIRESTORE_SAVE_QUEUED', {
+        photoId: record.photoId,
+        queued: Boolean(result?.queued),
+        reason: result?.reason || ''
+      });
+    })
+    .catch((error) => {
+      console.warn('Photo Firestore persistence failed after local save:', error);
+      syncDiagnosticLog('PHOTO_FIRESTORE_SAVE_ERROR', {
+        photoId: record.photoId,
+        message: error?.message || String(error)
+      });
+    });
 }
 
 export async function importPickedPhotoFiles(context, fileList) {
@@ -86,8 +115,8 @@ export async function importPickedPhotoFiles(context, fileList) {
 
     const stored = photoRecordStore.set(record);
     await updateCameraPhotoRecord(stored);
-    await persistPhoto(stored, 'photo-import-save');
     storedRecords.push(stored);
+    queuePhotoMetadataPersistence(stored, 'photo-import-save');
   }
 
   return storedRecords;
@@ -119,21 +148,7 @@ export async function registerCapturedPhoto({ record, originalBlob, completedBlo
 
   // Firestoreメタデータ保存は未送信キュー付きの後追い処理。
   // 失敗・遅延してもローカル保存済み写真の撮影完了を巻き戻さない。
-  void persistPhoto(stored, 'photo-camera-save')
-    .then((result) => {
-      syncDiagnosticLog(result?.ok ? 'PHOTO_FIRESTORE_SAVE_OK' : 'PHOTO_FIRESTORE_SAVE_QUEUED', {
-        photoId: stored.photoId,
-        queued: Boolean(result?.queued),
-        reason: result?.reason || ''
-      });
-    })
-    .catch((error) => {
-      console.warn('Photo Firestore persistence failed after local save:', error);
-      syncDiagnosticLog('PHOTO_FIRESTORE_SAVE_ERROR', {
-        photoId: stored.photoId,
-        message: error?.message || String(error)
-      });
-    });
+  queuePhotoMetadataPersistence(stored, 'photo-camera-save');
 
   return stored;
 }
