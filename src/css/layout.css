@@ -442,7 +442,7 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
   display: flex;
 }
 .shared-project-card {
-  width: min(720px, 100%);
+  width: min(520px, 100%);
   max-height: min(86dvh, calc(100dvh - 48px));
   min-height: 0;
   overflow: hidden;
@@ -488,9 +488,17 @@ body.project-panel-open .app{overflow:hidden;touch-action:none;pointer-events:no
 }
 .shared-project-list > .project-card {
   display: block;
+  box-sizing: border-box;
   width: 100%;
+  min-height: 56px;
   margin-top: 0;
   margin-bottom: 7px;
+  padding: 9px 12px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
 }
 .shared-project-row {
   display: flex;
