@@ -21,7 +21,7 @@ import {
   subscribePhotoLocalStore,
   updateCameraPhotoRecord
 } from './photo-local-store.js';
-import { getPhotoUploadFileName } from './photo-filename.js';
+import { getPhotoUploadFileName, getCollisionPhotoFileName } from './photo-filename.js';
 import { PHOTO_TYPES } from '../records/photo-record.js';
 import {
   getCurrentProject,
@@ -164,18 +164,10 @@ async function isCurrentUpload(entry, record, name) {
     && String(latest.fileName || '') === String(entry.fileName || ''));
 }
 
-function collisionName(fileName, photoId, retry = 1) {
-  const index = fileName.lastIndexOf('.');
-  const base = index > 0 ? fileName.slice(0, index) : fileName;
-  const extension = index > 0 ? fileName.slice(index) : '';
-  const suffix = String(photoId || 'PHOTO').replace(/[^a-zA-Z0-9_-]/g, '_');
-  return `${base}_${suffix}${retry > 1 ? '_' + retry : ''}${extension}`;
-}
-
 async function uploadWithoutOverwriting(folderRef, fileName, entry) {
   // 自写真の既存itemId・同じ名称に限りアップロード更新を許可する。
   const ownNames = new Set([fileName, ...Array.from({ length: 5 }, (_, i) =>
-    collisionName(fileName, entry.photoId, i + 1))]);
+    getCollisionPhotoFileName(fileName, entry.photoId, i + 1))]);
   const sharedItemId = photoRecordStore.getAll().some((other) =>
     other.photoId !== entry.photoId
       && (other.originalItemId === entry.uploadedItemId || other.completedItemId === entry.uploadedItemId));
@@ -188,7 +180,7 @@ async function uploadWithoutOverwriting(folderRef, fileName, entry) {
       entry.mimeType || 'image/jpeg', { existingItemId });
   }
   for (let attempt = 0; attempt <= 5; attempt += 1) {
-    const candidate = attempt ? collisionName(fileName, entry.photoId, attempt) : fileName;
+    const candidate = attempt ? getCollisionPhotoFileName(fileName, entry.photoId, attempt) : fileName;
     try {
       return await uploadDriveFile(folderRef, candidate, entry.blob, entry.mimeType || 'image/jpeg');
     } catch (error) {
