@@ -63,9 +63,9 @@ export function boardEditorSamplingMaterials(optionsProvider) {
   return [...map.values()];
 }
 
-function visualRoomLabel(room = {}) {
+function visualRoomLabel(room = {}, multipleBuildings = false) {
   const no = String(room.roomNo || room.roomPosition || '').trim();
-  const prefix = room.buildingId ? `${room.buildingId}：` : '';
+  const prefix = multipleBuildings ? `${room.buildingId || 'A'}：` : '';
   const name = String(room.roomName || '').trim();
   if (room.areaCode === 'E') return prefix + roomLocationDisplay(room, { context:'photo' });
   return prefix + (name && name !== no ? `${no}　${name}` : no);
@@ -96,7 +96,7 @@ function visualFields(entry, optionsProvider) {
       ${hasActiveRoom ? '' : '<option value="" selected>選択してください</option>'}
       ${rooms.map((roomItem) => {
         const key = getVisualPhotoRoomKey(roomItem);
-        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(visualRoomLabel(roomItem))}</option>`;
+        return `<option value="${esc(key)}" ${key === activeRoomKey ? 'selected' : ''}>${esc(visualRoomLabel(roomItem, new Set(rooms.map((item) => item.buildingId || 'A')).size > 1))}</option>`;
       }).join('')}
     </select></label>
     <label>部位<select data-editor-part>
