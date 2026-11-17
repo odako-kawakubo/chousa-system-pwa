@@ -92,6 +92,7 @@ export function bindPhotoInteractions({
   root,
   state,
   render,
+  selectBuilding,
   applySelectionUi,
   clearSelectionMode,
   togglePhotoSelection,
@@ -113,6 +114,12 @@ export function bindPhotoInteractions({
   boundRoot = root;
 
   bindPhotoTabExitReset(state, clearSelectionMode);
+
+  root.addEventListener('change', (event) => {
+    if (event.target.matches('[data-photo-building-select]')) {
+      selectBuilding(String(event.target.value || ''));
+    }
+  });
 
   root.addEventListener('click', (event) => {
     if (!tutorialAllows(event.target)) {
