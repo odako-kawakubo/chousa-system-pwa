@@ -132,4 +132,21 @@ test('撮影・外部取込は同じ後追いメタデータ同期処理を使�
   assert.match(actions,/queuePhotoMetadataPersistence\(stored, 'photo-camera-save'\)/);
   assert.doesNotMatch(actions,/await persistPhoto\(stored, 'photo-import-save'\)/);
 });
+test('看板編集は画像保存後に所属レコードと代表変更を保存',()=>{
+  const source=read('src/js/photos/photo-board-editor-persistence.js');
+  const blobSave=source.indexOf("await savePhotoBlob(entry.record.photoId, 'completed'");
+  const recordSave=source.indexOf('let record = photoRecordStore.set({');
+  assert.ok(blobSave >= 0 && recordSave > blobSave);
+  assert.match(source,/changedRepresentatives = photoRecordStore\.getAll\(\)/);
+  assert.match(source,/persistPhotoForProject\(project, affected, 'photo-board-editor-representative'\)/);
+  assert.match(source,/before\.buildingId \|\| 'A'/);
+});
+test('看板編集は複数棟の場合だけA棟にも識別名を表示',()=>{
+  const source=read('src/js/photos/photo-board-editor-form.js');
+  assert.match(source,/multipleBuildings \? `\$\{room\.buildingId \|\| 'A'\}：` : ''/);
+});
+test('写真比較の部屋表示は仕上表の共通部屋情報を使用',()=>{
+  const source=read('src/js/photos/photo-compare-data.js');
+  assert.match(source,/findRoomByLocationKey\(key\) \|\| record/);
+});
 console.log('v0.1.9.11F: '+passed+' tests passed');
