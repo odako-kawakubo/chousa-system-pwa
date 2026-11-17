@@ -177,6 +177,7 @@ test('撮影・編集・自動再生成の看板で棟と外部表示を共用',
   const regen=read('src/js/photos/room-photo-regeneration.js');
   assert.match(board,/buildingPrefix/);
   assert.match(board,/data\.areaCode === 'E'/);
+  assert.match(board,/\`　\\$\\{buildingPrefix\\}\\$\\{locationLabel\\}\`/);
   assert.match(capture,/buildingId: room\.buildingId/);
   assert.match(capture,/showBuildingName:/);
   assert.match(editor,/buildingId: entry\.record\.photoType === PHOTO_TYPES\.VISUAL/);
