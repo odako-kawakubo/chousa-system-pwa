@@ -13,6 +13,7 @@
 
 import * as photoRecordStore from '../store/photo-record-store.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { findRoomByLocationKey } from '../finish-table/room-location.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import {
   PHOTO_TYPES,
@@ -39,12 +40,13 @@ function visualRoomInfo() {
     if (record.status !== 'active' || !record.areaCode || !record.roomPosition) return;
     const key = getVisualPhotoRoomKey(record);
     if (rooms.has(key)) return;
+    const shared = findRoomByLocationKey(key) || record;
     rooms.set(key, {
       areaCode: record.areaCode,
       buildingId: record.buildingId || '',
       roomPosition: record.roomPosition,
-      roomNo: text(record.roomNo),
-      roomName: text(record.roomName)
+      roomNo: text(shared.roomNo),
+      roomName: text(shared.roomName)
     });
   });
 
