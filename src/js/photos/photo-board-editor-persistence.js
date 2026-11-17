@@ -2,20 +2,23 @@
  * Photo Board Editorの完成画像生成と永続保存を担当する。
  * DOMイベント・編集セッション遷移・画面描画は持たない。
  */
-import * as photoRecordStore from '../store/photo-record-store.js';
+
 import { PHOTO_TYPES, getShootingTypeLabel } from '../records/photo-record.js';
-import { savePhotoBlob, updateCameraPhotoRecord } from './photo-local-store.js';
+
 import { resolveEditorOriginalPhoto } from './photo-original-source.js';
 import { getAvailablePhotoFileName } from './photo-filename.js';
+import { getCurrentProject } from '../projects/project-store.js';
+import * as photoRecordStore from '../store/photo-record-store.js';
+import { persistCompletedPhotoUpdate } from './photo-completed-update.js';
 import {
   BOARD_POSITION_LABELS,
   BOARD_SIZE_LABELS
 } from '../camera/camera-board.js';
 import { composeCompletedPhotoBlob } from './photo-completed-composer.js';
 import { getDeviceCode } from '../device-code.js';
-import { getCurrentProject } from '../projects/project-store.js';
+
 import { touchFieldEditedAt } from '../sync/field-edit-meta.js';
-import { persistPhotoForProject } from '../sync/project-record-persistence.js';
+
 import { settleBoardEditorEntry } from './photo-board-editor-session.js';
 
 const MARKS = { 1: '①', 2: '②', 3: '③' };
@@ -174,60 +177,19 @@ export async function persistBoardEditorEntry(entry, { getBoardData }) {
     && String(entry.record?.[field] ?? '') !== String(nextRecordFields[field] ?? '')
   );
 
-  // 画像本体を先に確定し、保存失敗時に未保存の所属変更をStoreへ反映しない。
-  const project = getCurrentProject();
-  const representativesBefore = new Map(photoRecordStore.getAll().map((photo) =>
-    [photo.photoId, Boolean(photo.isRepresentative)]
-  ));
-  await savePhotoBlob(entry.record.photoId, 'original', originalBlob, {
-    projectId: project?.projectId,
-    createdAt: entry.record.capturedAt,
-    fileName,
-    uploadStatus: 'pending'
-  });
-  await savePhotoBlob(entry.record.photoId, 'completed', completedBlob, {
-    projectId: project?.projectId,
-    createdAt: now,
-    fileName,
-    uploadStatus: 'pending'
-  });
-  if (getCurrentProject()?.projectId !== project?.projectId) {
-    throw new Error('写真保存中に案件が切り替わりました。');
-  }
-
-  let record = photoRecordStore.set({
-    ...entry.record,
+  const projectId = String(getCurrentProject()?.projectId || '');
+  if (!projectId) throw new Error('写真の保存先案件がありません。');
+  const record = await persistCompletedPhotoUpdate({
+    photo: entry.record,
+    projectId,
+    completedBlob
+  }, {
     ...nextRecordFields,
-    fieldEditedAt: touchFieldEditedAt(entry.record.fieldEditedAt, editedFields),
-    syncStatus: 'pending',
-    localOriginalStatus: 'saved',
-    localCompletedStatus: 'saved'
+    fieldEditedAt: touchFieldEditedAt(entry.record.fieldEditedAt, editedFields)
+  }, 'photo-board-editor-save', {
+    originalBlob,
+    editedAt: now
   });
-
-  // 所属先を変更すると、移動前・移動先の代表写真も変わることがある。
-  // Storeの正規化結果を取得し、変更された代表フラグを端末内とFirestoreへ保存する。
-  const changedRepresentatives = photoRecordStore.getAll()
-    .filter((photo) => photo.photoId !== record.photoId
-      && representativesBefore.get(photo.photoId) !== Boolean(photo.isRepresentative));
-  const currentRepresentativeChanged = representativesBefore.get(record.photoId) !== Boolean(record.isRepresentative);
-  if (currentRepresentativeChanged) {
-    record = photoRecordStore.set({
-      ...record,
-      fieldEditedAt: touchFieldEditedAt(record.fieldEditedAt, 'isRepresentative')
-    });
-  }
-  const representativeUpdates = changedRepresentatives.map((photo) => photoRecordStore.set({
-    ...photo,
-    fieldEditedAt: touchFieldEditedAt(photo.fieldEditedAt, 'isRepresentative'),
-    syncStatus: 'pending'
-  }));
-
-  await updateCameraPhotoRecord(record);
-  await persistPhotoForProject(project, record, 'photo-board-editor-save');
-  for (const affected of representativeUpdates) {
-    await updateCameraPhotoRecord(affected);
-    await persistPhotoForProject(project, affected, 'photo-board-editor-representative');
-  }
 
   settleBoardEditorEntry(entry, record);
   return { record, completedBlob };
