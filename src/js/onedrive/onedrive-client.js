@@ -213,11 +213,17 @@ export async function downloadDriveThumbnail(itemRef, { size = 'medium' } = {}) 
   return graphRequest(`${itemBasePath(ref)}/thumbnails/0/${safeSize}/content`, { responseType: 'blob' });
 }
 
-export async function uploadDriveFile(parentRef, fileName, content, contentType = 'application/octet-stream') {
+export async function uploadDriveFile(parentRef, fileName, content, contentType = 'application/octet-stream', options = {}) {
   const encodedName = encodeURIComponent(String(fileName || ''));
   if (!encodedName) throw new Error('保存するファイル名が空です。');
   const ref = normalizeRef(parentRef);
-  const item = await graphRequest(`${itemBasePath(ref)}:/${encodedName}:/content`, {
+  const existingItemId = String(options.existingItemId || '');
+  // 既存の自写真を更新するときのみitemIdで上書きする。
+  // 新規はサーバー側で同名衝突を拒否し、別写真を絶対に上書きしない。
+  const path = existingItemId
+    ? `${itemBasePath({ driveId: ref.driveId, itemId: existingItemId })}/content`
+    : `${itemBasePath(ref)}:/${encodedName}:/content?@microsoft.graph.conflictBehavior=fail`;
+  const item = await graphRequest(path, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: content
