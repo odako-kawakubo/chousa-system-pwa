@@ -53,7 +53,9 @@ import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
 import { applyProjectRecordChanges } from './project-record-apply.js';
 import * as boardSettingsStore from '../settings/board-settings-store.js';
 import { refreshSettingsTab } from '../settings/settings-controller.js';
-import { listUnsent } from '../sync/unsent-queue.js';
+import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
+import { getSavedCameraPhotosForProject } from '../photos/photo-local-store.js';
+import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from '../sync/record-field-merge.js';
 import { resolveVisualPhotoMetadata } from '../sync/photo-visual-metadata.js';
 import { ensureDeclaredBuildingFinishRecords } from './project-building-service.js';
 import {
@@ -186,7 +188,52 @@ async function resolveTemporaryProjectNoCollision(project) {
 /**
  * 選択案件をFirestore正本として開く中核処理。初回Record読込→Store反映→cursor保存→Realtime購読開始→端末接触/履歴整理まで一連で行う。
  */
+
+/**
+ * オフライン編集直後の端末終了でも、IndexedDBの保存済み写真を案件へ復元する。
+ * 古い端末キャッシュは優先せず、既存のfieldEditedAt競合解決を使う。
+ */
+async function recoverCommittedLocalPhotos(target) {
+  const projectId = String(target?.project?.projectId || '');
+  if (!projectId) return;
+  let cached;
+  try {
+    cached = await getSavedCameraPhotosForProject(projectId);
+  } catch (error) {
+    console.warn('写真の端末内復元候補を読み込めませんでした', error);
+    return;
+  }
+  const byId = new Map((target.photoRecords || [])
+    .filter((record) => record?.photoId)
+    .map((record) => [String(record.photoId), record]));
+  let recovered = 0;
+  cached.forEach(({ localBlobRevision, ...local }) => {
+    const id = String(local.photoId || '');
+    if (!id || local.deleted) return;
+    const previous = byId.get(id);
+    const localEditedAt = Date.parse(local.lastEditedAt || local.capturedAt || '') || 0;
+    const previousEditedAt = Date.parse(previous?.lastEditedAt || previous?.capturedAt || '') || 0;
+    if (previous && localEditedAt <= previousEditedAt) return;
+    const merged = previous
+      ? mergeRecordByFieldEditedAt('photo', previous, local, { prefer: 'incoming' }).record
+      : local;
+    if (previous && sameMergedBusinessRecord('photo', previous, merged)) return;
+    byId.set(id, merged);
+    putUnsent({
+      projectId,
+      environment: target.project?.environment === 'test' ? 'test' : 'production',
+      recordType: 'photo', recordId: id, operation: 'set', record: merged
+    });
+    recovered += 1;
+  });
+  if (recovered) {
+    target.photoRecords = [...byId.values()];
+    syncDiagnosticLog('PHOTO_LOCAL_RESTART_RECOVERY', { projectId, recovered });
+  }
+}
+
 async function openFirestoreProjectSession(target) {
+  await recoverCommittedLocalPhotos(target);
   let project = target.project;
   // M-07: 案件metadata未確定時はRecord未送信の自動再送を止める。
   // 後段でも参照するため、Firestore可否ブロックの外でsession全体の状態として保持する。
