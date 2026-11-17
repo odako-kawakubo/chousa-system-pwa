@@ -41,7 +41,9 @@ export function getPhotoFileBase(fields) {
     return `${sampleBaseNo}-${branch}-${code}`;
   }
 
-  return `${text(fields.roomNo) || '未整理'}-${text(fields.part) || '未整理'}-5`;
+  const buildingId = text(fields.buildingId).toUpperCase();
+  const prefix = buildingId && buildingId !== 'A' ? `${buildingId}棟_` : '';
+  return `${prefix}${text(fields.roomNo) || '未整理'}-${text(fields.part) || '未整理'}-5`;
 }
 
 export function isPhotoUnorganized(fields = {}) {
