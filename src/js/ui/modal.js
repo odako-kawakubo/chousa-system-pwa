@@ -31,8 +31,47 @@
  *
  * @param {string} modalId 開きたいモーダル要素のid
  */
+const PROJECT_MODAL_ID = 'sharedProjectModal';
+let projectModalScrollState = null;
+
+function lockProjectModalBackground() {
+  if (projectModalScrollState) return;
+  const body = document.body;
+  const root = document.documentElement;
+  const scrollY = window.scrollY;
+  projectModalScrollState = {
+    scrollY,
+    position: body.style.position,
+    top: body.style.top,
+    width: body.style.width,
+    overflow: body.style.overflow,
+    rootOverflow: root.style.overflow
+  };
+  body.style.position = 'fixed';
+  body.style.top = `-${scrollY}px`;
+  body.style.width = '100%';
+  body.style.overflow = 'hidden';
+  root.style.overflow = 'hidden';
+}
+
+function unlockProjectModalBackground() {
+  const previous = projectModalScrollState;
+  if (!previous) return;
+  projectModalScrollState = null;
+  const body = document.body;
+  body.style.position = previous.position;
+  body.style.top = previous.top;
+  body.style.width = previous.width;
+  body.style.overflow = previous.overflow;
+  document.documentElement.style.overflow = previous.rootOverflow;
+  window.scrollTo(0, previous.scrollY);
+}
+
 export function openModal(modalId) {
-  document.getElementById(modalId)?.classList.add('open');
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  if (modalId === PROJECT_MODAL_ID) lockProjectModalBackground();
+  modal.classList.add('open');
 }
 
 /**
@@ -41,7 +80,10 @@ export function openModal(modalId) {
  * @param {string} modalId 閉じたいモーダル要素のid
  */
 export function closeModal(modalId) {
-  document.getElementById(modalId)?.classList.remove('open');
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  modal.classList.remove('open');
+  if (modalId === PROJECT_MODAL_ID) unlockProjectModalBackground();
 }
 
 /**
