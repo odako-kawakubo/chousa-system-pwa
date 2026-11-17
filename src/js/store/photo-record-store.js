@@ -37,16 +37,16 @@ function clone(record) {
   return { ...record };
 }
 
-function getGroupRecords(groupKey, { includeDeleted = false } = {}) {
-  return Array.from(records.values()).filter((record) => {
+function getGroupRecords(groupKey, { includeDeleted = false } = {}, target = records) {
+  return Array.from(target.values()).filter((record) => {
     if (!includeDeleted && !isActivePhotoRecord(record)) return false;
     return getPhotoRepresentativeGroupKey(record) === groupKey;
   });
 }
 
 /** 同一グループの代表写真を必ず0件または1件に正規化する。 */
-function normalizeRepresentativeForGroup(groupKey) {
-  const active = getGroupRecords(groupKey);
+function normalizeRepresentativeForGroup(groupKey, target = records) {
+  const active = getGroupRecords(groupKey, {}, target);
   if (!active.length) return;
 
   const representatives = active.filter((record) => record.isRepresentative);
@@ -55,7 +55,7 @@ function normalizeRepresentativeForGroup(groupKey) {
   active.forEach((record) => {
     const nextRepresentative = record.photoId === representativeId;
     if (record.isRepresentative === nextRepresentative) return;
-    records.set(record.photoId, { ...record, isRepresentative: nextRepresentative });
+    target.set(record.photoId, { ...record, isRepresentative: nextRepresentative });
   });
 }
 
@@ -97,27 +97,45 @@ export function get(photoId) {
  * isRepresentative=trueを渡した場合は同一グループの代表をその写真へ切り替える。
  * @param {Partial<import('../records/photo-record.js').PhotoRecord> & {photoId:string, photoType:'visual'|'sampling'}} fields
  */
-export function set(fields) {
-  const previous = records.get(fields.photoId);
+function setInRecordMap(target, fields) {
+  const previous = target.get(fields.photoId);
   const record = createPhotoRecord({ ...(previous || {}), ...fields });
   const previousGroupKey = previous ? getPhotoRepresentativeGroupKey(previous) : '';
   const nextGroupKey = getPhotoRepresentativeGroupKey(record);
 
   if (record.isRepresentative && !record.deleted) {
-    getGroupRecords(nextGroupKey).forEach((candidate) => {
+    getGroupRecords(nextGroupKey, {}, target).forEach((candidate) => {
       if (candidate.photoId === record.photoId || !candidate.isRepresentative) return;
-      records.set(candidate.photoId, { ...candidate, isRepresentative: false });
+      target.set(candidate.photoId, { ...candidate, isRepresentative: false });
     });
   }
 
-  records.set(record.photoId, record);
-
+  target.set(record.photoId, record);
   if (previousGroupKey && previousGroupKey !== nextGroupKey) {
-    normalizeRepresentativeForGroup(previousGroupKey);
+    normalizeRepresentativeForGroup(previousGroupKey, target);
   }
-  normalizeRepresentativeForGroup(nextGroupKey);
+  normalizeRepresentativeForGroup(nextGroupKey, target);
+  return target.get(record.photoId);
+}
+
+export function set(fields) {
+  const updated = setInRecordMap(records, fields);
   notify();
-  return records.get(record.photoId);
+  return updated;
+}
+
+/**
+ * 変更結果を既存Storeに反映せずに計算する。
+ * 画像・Recordの永続化を成功させるまで、代表写真も画面上で変更しない。
+ */
+export function planSet(fields) {
+  const projected = new Map(records);
+  const record = setInRecordMap(projected, fields);
+  const changed = [...projected.values()].filter((candidate) => {
+    const previous = records.get(candidate.photoId);
+    return !previous || Object.keys(candidate).some((key) => candidate[key] !== previous[key]);
+  });
+  return { record, changed };
 }
 
 /** @param {string} photoId */
