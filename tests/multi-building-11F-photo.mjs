@@ -9,6 +9,8 @@ import {
   getPhotoRepresentativeGroupKey
 } from '../src/js/records/photo-record.js';
 import { classifyOrphanPhotos } from '../src/js/photos/photo-orphan-classifier.js';
+import * as photoRecordStore from '../src/js/store/photo-record-store.js';
+import { mergeRecordByFieldEditedAt, RECORD_MERGE_FIELDS } from '../src/js/sync/record-field-merge.js';
 
 const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 let passed=0;
@@ -72,5 +74,29 @@ test('ビューワ・比較画面で棟IDを参照する',()=>{
   assert.match(viewer,/String\(item\.buildingId \|\| ''\) === String\(photo\.buildingId \|\| ''\)/);
   assert.match(compare,/buildingId: record\.buildingId \|\| ''/);
   assert.match(compare,/buildingId: photo\.buildingId \|\| ''/);
+});
+test('棟IDの表記ゆれは写真レコードと検索キーで同一視',()=>{
+  assert.equal(visual('test-a','a').buildingId,'');
+  assert.equal(visual('test-b','b').buildingId,'B');
+  assert.equal(getVisualPhotoTargetKey({ ...b, buildingId:'b' }),getVisualPhotoTargetKey(b));
+});
+test('同じ部屋・部位でもA棟とB棟の写真検索結果を分離',()=>{
+  photoRecordStore.replaceAll([a,b],{notify:false});
+  try {
+    const criteria={areaCode:'I',roomPosition:'101',partSlot:3};
+    assert.deepEqual(photoRecordStore.findVisual(criteria).map(p=>p.photoId),['A']);
+    assert.deepEqual(photoRecordStore.findVisual({...criteria,buildingId:'B'}).map(p=>p.photoId),['B']);
+  } finally { photoRecordStore.clearAll(); }
+});
+test('同期マージは棟変更を編集確定時刻に基づき判定',()=>{
+  assert.ok(RECORD_MERGE_FIELDS.photo.includes('buildingId'));
+  const local={...a,buildingId:'',fieldEditedAt:{buildingId:100}};
+  const incoming={...a,buildingId:'B',fieldEditedAt:{buildingId:200}};
+  assert.equal(mergeRecordByFieldEditedAt('photo',local,incoming).record.buildingId,'B');
+  assert.equal(mergeRecordByFieldEditedAt('photo',incoming,local).record.buildingId,'B');
+});
+test('部屋情報の写真看板再生成は棟別共通部屋IDで対象を限定',()=>{
+  const regen=read('src/js/photos/room-photo-regeneration.js');
+  assert.match(regen,/roomLocationKey\(photo\) === room\.key/);
 });
 console.log('v0.1.9.11F: '+passed+' tests passed');
