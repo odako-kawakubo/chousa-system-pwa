@@ -31,6 +31,12 @@ const RECORD_STORE = 'cameraPhotoRecords';
 let dbPromise = null;
 const listeners = [];
 let projectIdProvider = () => '';
+let nextBlobRevision = 0;
+
+function newBlobRevision() {
+  nextBlobRevision += 1;
+  return `${Date.now()}-${nextBlobRevision}-${Math.random().toString(36).slice(2)}`;
+}
 
 function publish() {
   listeners.slice().forEach((callback) => callback());
@@ -154,6 +160,7 @@ function makePhotoBlobEntry(existing, photoId, variant, blob, metadata = {}) {
   return {
     ...(existing || {}),
     key: blobKey(photoId, variant),
+    revision: preserveOriginalUpload ? (existing?.revision || '') : newBlobRevision(),
     photoId,
     variant,
     blob,
@@ -340,6 +347,8 @@ export async function markPhotoBlobUploaded(photoId, variant, upload = {}) {
   const key = blobKey(photoId, variant);
   const next = await replaceBlobEntry(key, (existing) => {
     if (!existing) return null;
+    if (upload.expectedRevision !== undefined && String(existing.revision || '') !== String(upload.expectedRevision || '')) return null;
+    if (existing.uploadStatus === 'uploaded') return null;
 
     const nextItemId = String(upload.itemId || upload.id || '');
     const nextDriveId = String(upload.driveId || '');
@@ -424,6 +433,23 @@ export async function saveCameraPhotoRecord(record) {
   await withStore(RECORD_STORE, 'readwrite', (store) => {
     store.put({ ...record });
   });
+}
+
+/**
+ * 案件に紐づいた端末保存済み写真を抽出する。
+ * cameraPhotoRecordsには案件IDがないため、完成画像のprojectIdを必ず照合する。
+ */
+export async function getSavedCameraPhotosForProject(projectId) {
+  const id = String(projectId || '');
+  if (!id) return [];
+  const records = await getCameraPhotoRecords();
+  const entries = await readBlobEntriesForPhotoIds(records.map((record) => record.photoId));
+  const byId = new Map(entries
+    .filter((entry) => entry.variant === 'completed' && String(entry.projectId || '') === id)
+    .map((entry) => [entry.photoId, entry]));
+  return records
+    .filter((record) => byId.has(record.photoId))
+    .map((record) => ({ ...record, localBlobRevision: byId.get(record.photoId).revision || '' }));
 }
 
 export async function getCameraPhotoRecords() {
