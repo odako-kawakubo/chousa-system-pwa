@@ -23,8 +23,8 @@
 /* v0.15.10基準: 左300px + 右残り、左右を個別スクロール */
 .photo-target-layout{display:grid;grid-template-columns:300px minmax(0,1fr);align-items:stretch;height:calc(100dvh - 300px);min-height:430px;max-height:calc(100dvh - 300px);overflow:hidden;gap:0;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
 .photo-target-list{height:100%;max-height:none;min-height:0;overflow-y:auto;overflow-x:hidden;border:0;border-right:1px solid var(--line);border-radius:0;background:var(--panel);scrollbar-gutter:stable}
-.photo-target-list-head{position:sticky;top:0;z-index:8;background:var(--surface-soft);border-bottom:1px solid var(--line);padding:8px 10px;font-weight:800;font-size:12px}
-.photo-target-list-head select[data-photo-building-select]{max-width:100%;margin-left:6px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font:inherit;font-weight:600}
+.photo-target-list-head{position:sticky;top:0;z-index:8;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--finish-building-header-bg,var(--surface-soft));color:var(--finish-building-header-text,var(--text));border-bottom:1px solid var(--line);padding:8px 10px;font-weight:800;font-size:12px}
+.photo-target-list-head select[data-photo-building-select]{min-width:0;max-width:60%;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font:inherit;font-weight:600}
 .photo-review-panel{height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;border:0;border-radius:0;background:var(--panel);scrollbar-gutter:stable}
 .photo-review-panel-head{position:sticky;top:0;z-index:7;background:var(--surface-soft);border-bottom:1px solid var(--line);padding:9px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .photo-review-panel-head h4{margin:0;font-size:13px}
