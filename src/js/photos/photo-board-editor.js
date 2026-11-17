@@ -122,6 +122,8 @@ function boardData(entry = active) {
     addressFontSize: settings.addressFontSize,
     roomNo: entry.draft.roomNo,
     roomName: entry.record.photoType === PHOTO_TYPES.VISUAL ? (visualRoomByIdentity(entry.draft)?.roomName || '') : '',
+    buildingId: entry.record.photoType === PHOTO_TYPES.VISUAL ? entry.draft.buildingId || '' : '',
+    showBuildingName: entry.record.photoType === PHOTO_TYPES.VISUAL && visualRooms().some((room) => Boolean(room.buildingId)),
     areaCode: entry.record.photoType === PHOTO_TYPES.VISUAL ? entry.draft.areaCode : (resolveRoomLocation(entry.draft.samplingRoomKey)?.areaCode || samplingMaterialTargets(entry.draft.materialId || entry.record.materialId).find((item) => Number(item.branch) === Number(entry.draft.samplingBranch))?.areaCode || ''),
     part: entry.draft.part,
     samplingPlace: entry.record.photoType === PHOTO_TYPES.SAMPLING
