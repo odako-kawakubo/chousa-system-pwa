@@ -236,9 +236,15 @@ function paintBoardBase(ctx, data) {
 
   // 部屋No.はラベルと値を分けるが、v64同様ラベル/値間の縦罫線は描かない。
   drawLeftMiddleText(ctx, data.areaCode === 'E' ? '　外部' : '　部屋No.', tableX + leftW + 8, contentY, innerLabelW - 8, rowRoom, 17);
+  const visualPlace = data.areaCode === 'E'
+    ? (data.roomName || data.roomNo || '-')
+    : (data.roomNo || '-');
+  const buildingPrefix = data.photoType === 'visual' && (data.showBuildingName || (data.buildingId && data.buildingId !== 'A'))
+    ? `${data.buildingId || 'A'}棟　`
+    : '';
   drawLeftMiddleText(
     ctx,
-    data.photoType === 'sampling' ? (data.samplingPlace || '-') : (data.areaCode === 'E' ? (data.roomName || data.roomNo || '-') : (data.roomNo || '-')),
+    data.photoType === 'sampling' ? (data.samplingPlace || '-') : `${buildingPrefix}${visualPlace}`,
     tableX + leftW + innerLabelW,
     contentY,
     rightW - innerLabelW,
