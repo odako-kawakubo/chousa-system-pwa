@@ -182,7 +182,7 @@ async function uploadWithoutOverwriting(folderRef, fileName, entry) {
   for (let attempt = 0; attempt <= 5; attempt += 1) {
     const candidate = attempt ? getCollisionPhotoFileName(fileName, entry.photoId, attempt) : fileName;
     try {
-      return await uploadDriveFile(folderRef, candidate, entry.blob, entry.mimeType || 'image/jpeg');
+      return await uploadDriveFile(folderRef, candidate, entry.blob, entry.mimeType || 'image/jpeg', { conflictBehavior: 'fail' });
     } catch (error) {
       const conflict = error?.status === 409 || error?.graphCode === 'nameAlreadyExists';
       if (!conflict || attempt === 5) throw error;
