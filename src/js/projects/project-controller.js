@@ -203,7 +203,7 @@ async function recoverCommittedLocalPhotos(target) {
     .filter((record) => record?.photoId)
     .map((record) => [String(record.photoId), record]));
   let recovered = 0;
-  cached.forEach(({ localBlobRevision, localBlobUploadStatus, ...local }) => {
+  cached.forEach(({ localBlobUploadStatus, ...local }) => {
     const id = String(local.photoId || '');
     if (!id) return;
     const previous = byId.get(id);
