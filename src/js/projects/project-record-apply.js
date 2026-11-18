@@ -19,6 +19,7 @@ import {
 import { listUnsent, putUnsent } from '../sync/unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from '../sync/record-field-merge.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
+import { refreshMaterialUsageDerivedFields } from '../finish-table/material-usage-derived.js';
 import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
@@ -363,6 +364,12 @@ export function applyProjectRecordChanges(project, changes = []) {
         });
       }
     });
+
+  // 仕上表の差分受信後も使用箇所・部位を再計算する。
+  // 派生値の再送と更新日時の改変を避け、受信処理ではローカル表示だけ更新する。
+  if (finishChanged || materialChanges.length) {
+    refreshMaterialUsageDerivedFields('remote-record-recalc', { persist: false });
+  }
 
   syncDiagnosticLog('SYNC_STORE_AFTER', {
     projectId: project.projectId,
