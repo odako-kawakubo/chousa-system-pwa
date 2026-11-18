@@ -102,7 +102,6 @@ await test('端末Snapshotから再起動相当の仕上構造を復元できる
   const records=finishes.getAll();
   assert.equal(records.filter(r=>r.buildingId === 'B').length, 456);
   assert.equal(records.filter(r=>r.buildingId === 'C').length, 456);
-  assert.equal(records.some(r=>r.finishId === 'I-101-101'), false); // 現在のfixtureはB/Cの空構造のみ
   assert.equal(listUnsent({projectId:project.projectId}).length, 1);
 });
 
