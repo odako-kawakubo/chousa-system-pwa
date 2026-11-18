@@ -14,7 +14,6 @@
 
 import {
   getFirestore,
-  runTransaction,
   collection,
   deleteDoc,
   doc,
@@ -48,7 +47,7 @@ import {
   markError
 } from '../sync/sync-status.js';
 import { syncDiagnosticLog } from '../debug/sync-diagnostic-log.js';
-import { makeBuildingDefinition, nextBuildingId, normalizeProjectBuildings } from '../projects/project-buildings.js';
+import { normalizeProjectBuildings } from '../projects/project-buildings.js';
 import {
   buildChangeLogRetentionState,
   canDeleteChangeLogCursor
@@ -654,36 +653,6 @@ export async function saveProjectMetadata(project, { initializeChangeLog = false
     { projectId: project.projectId, initializeChangeLog, reason: result?.reason || '' }
   );
   return result;
-}
-
-/**
- * 同時に別棟を追加しても同じIDが払い出されないよう、案件Documentを
- * トランザクション内で読み、次の棟IDを確定する。
- * Firestoreに接続できないときは未確定のIDを採番しない（オフライン追加は後段のUIで制御）。
- */
-export async function reserveNextBuilding({ projectId, environment = 'production', name = '' } = {}) {
-  const id = String(projectId || '').trim();
-  if (!id) throw new Error('案件IDがありません。');
-  if (!canUseFirestore() || isManualOffline() || !isNetworkOnline()) {
-    return { ok: false, offline: true, reason: 'building-reservation-requires-connection' };
-  }
-  const ref = projectDocRef(id, environment);
-  try {
-    const result = await runTransaction(db, async (tx) => {
-      const snapshot = await tx.get(ref);
-      if (!snapshot.exists()) throw new Error('案件情報を確認できません。');
-      const buildings = normalizeProjectBuildings(snapshot.data()?.buildings);
-      const buildingId = nextBuildingId({ buildings });
-      if (!buildingId) throw new Error('追加できる棟IDの上限に達しました。');
-      const definition = makeBuildingDefinition(buildingId, name);
-      const initialA = buildings.A ? {} : { A: { name: 'A棟', order: 1 } };
-      tx.set(ref, { buildings: { ...initialA, [buildingId]: definition }, updatedAt: serverTimestamp() }, { merge: true });
-      return { buildingId, definition };
-    });
-    return { ok: true, ...result };
-  } catch (error) {
-    return { ok: false, error, reason: 'building-reservation-failed' };
-  }
 }
 
 /** Firestore案件Documentの現在形を1回取得する。 */
