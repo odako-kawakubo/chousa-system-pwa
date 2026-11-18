@@ -239,6 +239,18 @@ async function openFirestoreProjectSession(target) {
   await recoverCommittedLocalPhotos(target);
   if (token !== activeProjectStreamToken) return target;
   let project = target.project;
+  // オフライン再起動ではFirestoreに問い合わせられないため、端末に残った
+  // 未送信の棟定義を案件Snapshotへ先に重ね、空欄仕上表を復元可能にする。
+  // 全量の案件作成キューは上書きせず、確定済みローカル情報を優先する。
+  const pendingProject = listUnsent({ projectId: project?.projectId })
+    .find((item) => item.recordType === 'project' && item.operation === 'set');
+  const pendingBuildings = pendingProject?.meta?.partialProjectMetadata
+    ? pendingProject.record?.buildings
+    : pendingProject?.meta?.subsequentPatch?.buildings;
+  if (pendingBuildings && typeof pendingBuildings === 'object' && !Array.isArray(pendingBuildings)) {
+    project = { ...project, buildings: { ...(project.buildings || {}), ...pendingBuildings } };
+    target.project = project;
+  }
   // M-07: 案件metadata未確定時はRecord未送信の自動再送を止める。
   // 後段でも参照するため、Firestore可否ブロックの外でsession全体の状態として保持する。
   let projectQueueReady = true;
