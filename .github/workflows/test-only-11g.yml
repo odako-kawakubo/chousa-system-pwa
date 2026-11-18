@@ -30,6 +30,7 @@ jobs:
           node --check src/service-worker.js
           node --check tests/multi-building-11A.mjs
           node --check tests/multi-building-11G.mjs
+          node --check tests/multi-building-11G-service.mjs
 
       - name: Check module and offline app shell references
         shell: bash
@@ -77,4 +78,7 @@ jobs:
 
       - name: Run 11G offline building and report regression suite
         run: node tests/multi-building-11G.mjs
+
+      - name: Run actual 11G building service offline integration tests
+        run: node tests/multi-building-11G-service.mjs
 
