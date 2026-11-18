@@ -420,11 +420,11 @@ function addContainedImage(pdf,dataUrl,x,y,width,height) {
 function renderVisualCaption(pdf,item,x,y,width,height,settings) {
   if(settings.visualCaptionLayout==='two-line'){
     const lineH=height/2;
-    drawSingleLineFit(pdf,`建材No. ${item.materialNo}　部位 ${item.part||''}`,x,y,width,lineH,{size:settings.visualCaptionSize,minSize:6.5,style:'bold'});
+    drawSingleLineFit(pdf,`建材No. ${item.materialNo}　${item.buildingLabel ? item.buildingLabel+'　' : ''}部位 ${item.part||''}`,x,y,width,lineH,{size:settings.visualCaptionSize,minSize:6.5,style:'bold'});
     drawSingleLineFit(pdf,`建材名称　${item.name||''}`,x,y+lineH,width,lineH,{size:settings.visualCaptionSize,minSize:6.5,style:'bold'});
     return;
   }
-  const caption=[`建材No.${item.materialNo}`,item.part,item.name].filter((value)=>String(value??'').trim()).join('　');
+  const caption=[`建材No.${item.materialNo}`,item.buildingLabel,item.part,item.name].filter((value)=>String(value??'').trim()).join('　');
   drawSingleLineFit(pdf,caption,x,y,width,height,{size:settings.visualCaptionSize,minSize:6.5,style:'bold'});
 }
 function renderVisualPhotoPages(pdf,vm,photoSources,state,settings) {
@@ -457,6 +457,7 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
       roomName:item.samplingPlaceRoomName,
       fallback:item.samplingPlace
     },{preferRoomName:item.samplingPlaceLabel==='部屋名'});
+    if(item.samplingPlaceBuildingLabel&&place.primary){place.primary=`${item.samplingPlaceBuildingLabel}　${place.primary}`;}
     const placeX=leftX+labelW;const placeY=metaY+2*lineH;
     if(place.primary){
       setFont(pdf,settings.samplingMetaSize,'normal');pdf.text(place.primary,placeX,placeY);
