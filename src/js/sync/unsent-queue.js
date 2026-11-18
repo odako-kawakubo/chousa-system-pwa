@@ -85,6 +85,21 @@ export function putUnsent({
   return map.get(key);
 }
 
+/** 送信中に同じキーへ後続編集が入った場合、成功した古い送信では削除しない。 */
+export function removeUnsentIfMatching(sentEntry) {
+  if (!sentEntry?.projectId || !sentEntry?.recordType || !sentEntry?.recordId) return false;
+  const map = loadMap();
+  const key = makeKey(sentEntry.projectId, sentEntry.recordType, sentEntry.recordId);
+  const current = map.get(key);
+  if (!current) return false;
+  if (current.operation !== sentEntry.operation
+    || JSON.stringify(current.record) !== JSON.stringify(sentEntry.record)
+    || JSON.stringify(current.meta) !== JSON.stringify(sentEntry.meta)) return false;
+  map.delete(key);
+  persist(map);
+  return true;
+}
+
 export function removeUnsent(projectId, recordType, recordId) {
   const map = loadMap();
   const deleted = map.delete(makeKey(projectId, recordType, recordId));
