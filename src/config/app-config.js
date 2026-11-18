@@ -2,11 +2,11 @@
  * アプリ全体で共有する基本設定。
  * version は利用者へ表示する版、revision は同一version内の更新判定に使う。
  * HTMLへ番号を直書きしない。
- * v0.1.9.11F 写真タブ・撮影・看板編集の棟別ID対応（レビュー候補）。
+ * v0.1.9.11G 複数棟の保存同期と11.3案件選択UIの統合（開発版）。
  */
 export const appConfig = {
   appName: '調査システムPWA',
-  version: '0.1.9.11F',
+  version: '0.1.9.11G',
   revision: '',
   mode: 'stable'
 };
