@@ -29,6 +29,16 @@
 - `output-pdf-renderer.js` / `output-export-controller.js`: PDF/印刷/Excelに同じ棟名称を表示。帳票の列構成や内部参照IDは変更しない。
 - 静的差分検査は実施。**構文テスト、画面描画、PDF/Excelの実ファイル生成、実機検証は未実施**。
 
+## 2026-11-18 保存・同期と使用箇所の追加修正（未テスト）
+
+- `src/js/projects/project-record-apply.js`: 他端末からfinish/materialの差分を受信した後、建材部位・使用箇所の派生値をローカル再計算。全件復元時だけ再計算されていた差を解消。
+- `src/js/finish-table/material-usage-derived.js`: B棟以降の使用箇所を `B-1-1` のように区別。帳票用には接頭辞のない `rawDisplay` を提供し、棟名称と二重表示しない。受信時の派生値再計算では`fieldEditedAt`を更新・再送しない。
+- `src/js/output/output-view-model.js`: 帳票の表示に `rawDisplay` と棟名称を組み合わせる。
+- `src/js/projects/project-building-service.js`: 棟追加・棟名変更の前に、未送信キューの端末永続化結果を再読込して確認する。保存できなかったときに成功扱いで続行しない。
+- `tests/multi-building-11G.mjs`: 棟名の優先/既定表示、オフライン採番・ID互換、連続棟追加の未送信パッチ統合、空欄仕上表復元の回帰テストを追加。
+- 静的なコード内容・import経路・ブランチ差分を照合。**Nodeテスト未実行**（プライベートGitHubから実行環境へコードを取得できず）。GitHub commit status APIはstatus 0件で、自動CI成功を示す情報なし。Firestore実通信・オフライン実機・2端末受信は未確認。
+- 残る要確認: オフラインで同一案件を複数端末から同時追加したときのID衝突検出はまだ専用実装なし（運用で回避する方針）。PDF/Excelの実ファイル描画と、単棟・複数棟の画面回帰確認。
+
 ## 11Gで守る仕様
 
 - 1案件内に複数棟。仕上表と写真タブの棟選択は独立。
