@@ -43,3 +43,10 @@ export function makeBuildingDefinition(id, name = '') {
   if (!buildingId || buildingId === 'A') throw new Error('追加棟にはB以降の棟IDが必要です。');
   return { name: String(name || `${buildingId}棟`), order: buildingId.charCodeAt(0) - 64 };
 }
+
+/** 帳票に記載する棟名。保存用IDと区別し、名称未設定ならA棟/B棟に戻す。 */
+export function reportBuildingName(project = {}, buildingId = '') {
+  const id = normalizeBuildingId(buildingId) || 'A';
+  const name = String(normalizeProjectBuildings(project?.buildings)[id]?.name || '').trim();
+  return name || `${id}棟`;
+}
