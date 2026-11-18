@@ -20,6 +20,15 @@
 4. `src/css/layout.css` — 11.3の案件選択UI（最大幅520px、案件行最小56px、検索38px、リスト内スクロール）を11Gへ統合。
 5. `src/config/app-config.js` / `src/version.json` / `src/service-worker.js` — 開発版番号を11Gに統一。
 
+## 2026-11-18 帳票棟名称の開発反映（未テスト）
+
+- `project-buildings.js`: 帳票用の棟名称取得（設定済み名称優先、未設定はA棟/B棟）を追加。棟IDは維持。
+- `output-view-model.js`: 複数棟の建材リスト使用箇所、部屋別リスト階、目視写真候補、採取写真帳の場所に帳票用棟名称を受け渡す。単棟の従来出力は変更しない。
+- `output-view-model.js`: `findVisual` の検索条件に `buildingId` を追加し、同じ部屋位置を持つ異なる棟の目視写真混同を防ぐ。
+- `room-location.js` / `material-usage-derived.js`: 採取場所の部屋参照に `buildingId` を保持。
+- `output-pdf-renderer.js` / `output-export-controller.js`: PDF/印刷/Excelに同じ棟名称を表示。帳票の列構成や内部参照IDは変更しない。
+- 静的差分検査は実施。**構文テスト、画面描画、PDF/Excelの実ファイル生成、実機検証は未実施**。
+
 ## 11Gで守る仕様
 
 - 1案件内に複数棟。仕上表と写真タブの棟選択は独立。
