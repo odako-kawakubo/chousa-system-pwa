@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { nextBuildingId, makeBuildingDefinition, reportBuildingName } from '../src/js/projects/project-buildings.js';
 import { computeFinishId } from '../src/js/records/finish-record.js';
 import { restoreFinishRecordsFromSparse } from '../src/js/sync/finish-sparse-structure.js';
-import { putUnsent, listUnsent, removeUnsent } from '../src/js/sync/unsent-queue.js';
+import { putUnsent, listUnsent, removeUnsent, removeUnsentIfMatching } from '../src/js/sync/unsent-queue.js';
 
 let passed = 0;
 function test(title, callback) {
@@ -60,6 +60,17 @@ test('棟の空仕上表はFirestoreの仕上レコードが無くても復元',
   assert.ok(records.some((record)=>record.finishId==='B-I-101-101'));
   assert.ok(records.some((record)=>record.finishId==='C-I-101-101'));
   assert.ok(records.some((record)=>record.finishId==='I-101-101'));
+});
+
+test('送信中に棟名を再変更しても古い送信成功で未送信を消さない', () => {
+  const base={projectId:'11G-send-race',environment:'test',recordType:'project',recordId:'11G-send-race',operation:'set',meta:{partialProjectMetadata:true}};
+  const first=putUnsent({...base,record:{buildings:{B:{name:'別館'}}}});
+  putUnsent({...base,record:{buildings:{B:{name:'新別館'}}}});
+  assert.equal(removeUnsentIfMatching(first),false);
+  assert.equal(listUnsent({projectId:base.projectId})[0].record.buildings.B.name,'新別館');
+  const latest=listUnsent({projectId:base.projectId})[0];
+  assert.equal(removeUnsentIfMatching(latest),true);
+  assert.equal(listUnsent({projectId:base.projectId}).length,0);
 });
 
 console.log(`v0.1.9.11G: ${passed} tests passed`);
