@@ -48,6 +48,7 @@ export function resolveRoomLocation(key, options = {}) {
   return {
     key: roomLocationKey(record),
     areaCode: record.areaCode,
+    buildingId: String(record.buildingId || ''),
     roomPosition: record.roomPosition,
     roomNo: String(record.roomNo || ''),
     roomName: String(record.roomName || ''),
