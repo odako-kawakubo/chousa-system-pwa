@@ -290,10 +290,10 @@ function bindDrawerFinishTools() {
       try {
         const result = await addBuildingForCurrentProject();
         if (!result.ok) {
-          setBuildingMessage(result.reason === 'building-limit-reached' ? 'これ以上棟を追加できません。' : '別棟を追加できませんでした。通常案件の場合はオンライン接続を確認してください。');
+          setBuildingMessage(result.reason === 'building-limit-reached' ? 'これ以上棟を追加できません。' : '別棟を追加できませんでした。');
         } else {
           setActiveBuildingId(result.buildingId);
-          setBuildingMessage(result.definition.name + 'を追加しました。');
+          setBuildingMessage(result.definition.name + (result.queued ? 'を端末に追加しました。同期は通信復帰後に行います。' : 'を追加しました。'));
         }
       } catch (error) {
         setBuildingMessage(error?.message || '別棟を追加できませんでした。');
