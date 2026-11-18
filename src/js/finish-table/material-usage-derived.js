@@ -9,6 +9,12 @@ import { persistMaterialForProject } from '../sync/project-record-persistence.js
 import { roomLocationKey, roomLocationDisplay, roomLocationFieldLabel, resolveRoomLocation } from './room-location.js';
 import { normalizeRoomId } from '../records/room-id.js';
 
+function materialUsageDisplay(record, options = {}) {
+  const place = roomLocationDisplay(record, options);
+  const buildingId = String(record?.buildingId || '').trim().toUpperCase();
+  return buildingId && buildingId !== 'A' && place ? `${buildingId}-${place}` : place;
+}
+
 export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc', options = {}) {
   const shouldPersist = options.persist !== false;
   const finishRecords = finishRecordStore.getAll().filter((record) => record.status === 'active' && record.materialId);
@@ -18,7 +24,7 @@ export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc
     if (!byMaterial.has(record.materialId)) byMaterial.set(record.materialId, { parts: [], places: [] });
     const item = byMaterial.get(record.materialId);
     const part = String(record.part || '').trim();
-    const place = roomLocationDisplay(record, { context: 'stored' });
+    const place = materialUsageDisplay(record, { context: 'stored' });
     if (part && !item.parts.includes(part)) item.parts.push(part);
     if (place && !item.places.includes(place)) item.places.push(place);
   });
@@ -33,7 +39,9 @@ export function refreshMaterialUsageDerivedFields(source = 'usageLocation-recalc
         ...material,
         part,
         usageLocation,
-        fieldEditedAt: touchFieldEditedAt(material.fieldEditedAt, ['part', 'usageLocation'])
+        fieldEditedAt: shouldPersist
+          ? touchFieldEditedAt(material.fieldEditedAt, ['part', 'usageLocation'])
+          : { ...(material.fieldEditedAt || {}) }
       };
       materialRecordStore.set(next);
       if (shouldPersist) persistMaterialForProject(getCurrentProject(), next, source);
@@ -84,8 +92,9 @@ export function getMaterialUsageRoomOptions(inputId, { preferRoomName = false } 
       if (!value) return null;
       return {
         value,
-        display: roomLocationDisplay(record, { preferRoomName }),
-        selectDisplay: roomLocationDisplay(record, { preferRoomName, context:'photo' }),
+        display: materialUsageDisplay(record, { preferRoomName }),
+        rawDisplay: roomLocationDisplay(record, { preferRoomName }),
+        selectDisplay: materialUsageDisplay(record, { preferRoomName, context:'photo' }),
         label: roomLocationFieldLabel(record, { preferRoomName }),
         key: roomLocationKey(record),
         areaCode: record.areaCode,
