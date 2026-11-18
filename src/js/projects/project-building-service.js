@@ -5,7 +5,7 @@
 import { getCurrentProject, getProject, updateProjectFields } from './project-store.js';
 import { normalizeProjectBuildings, normalizeBuildingId, nextBuildingId, makeBuildingDefinition } from './project-buildings.js';
 import { persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
-import { putUnsent } from '../sync/unsent-queue.js';
+import { putUnsent, listUnsent } from '../sync/unsent-queue.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
 
@@ -28,6 +28,22 @@ export function ensureDeclaredBuildingFinishRecords(project, { notify = true } =
 function currentProjectForMutation() {
   const project = getCurrentProject();
   return project?.projectId ? project : null;
+}
+
+/** 未送信キューが端末へ永続化されたことを再読込で確認する。 */
+function queueBuildingMetadata(project, buildingId, patch) {
+  const projectId = String(project.projectId);
+  putUnsent({
+    projectId,
+    environment:project.environment === 'test' ? 'test' : 'production',
+    recordType:'project', recordId:projectId,
+    operation:'set', record:patch,
+    meta:{partialProjectMetadata:true}
+  });
+  const saved = listUnsent({ projectId }).find((item) => item.recordType === 'project');
+  if (saved?.record?.buildings?.[buildingId]?.name !== patch.buildings?.[buildingId]?.name) {
+    throw new Error('棟情報の端末保存に失敗しました。端末の空き容量を確認してください。');
+  }
 }
 
 function currentBuildingMetadata(project) {
@@ -64,13 +80,7 @@ export async function addBuildingForCurrentProject(name = '') {
   // 同期前にキューを確保し、直後に画面／案件Snapshotへ反映する。
   // 既存の建材・仕上・写真IDは再採番しない。
   if (!project.isSample) {
-    putUnsent({
-      projectId:project.projectId,
-      environment:project.environment === 'test' ? 'test' : 'production',
-      recordType:'project', recordId:project.projectId,
-      operation:'set', record:patch,
-      meta:{partialProjectMetadata:true}
-    });
+    queueBuildingMetadata(project, buildingId, patch);
   }
   commitBuildingDefinition(project, buildingId, definition);
 
@@ -100,13 +110,7 @@ export async function renameBuildingForCurrentProject(rawId, rawName) {
 
   const patch = { buildings:{ [buildingId]:{name} } };
   // 通常案件はオフライン中も編集内容を保護する。
-  putUnsent({
-    projectId:project.projectId,
-    environment:project.environment === 'test' ? 'test' : 'production',
-    recordType:'project', recordId:project.projectId,
-    operation:'set', record:patch,
-    meta:{partialProjectMetadata:true}
-  });
+  queueBuildingMetadata(project, buildingId, patch);
   updateProjectFields(project.projectId, { buildings });
   const result = await persistProjectMetadataForProject(project, { patch });
   return { ...result, buildingId, definition };
