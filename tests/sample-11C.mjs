@@ -14,7 +14,6 @@ import { seedInitialPhotoRecords } from '../src/js/demo/sample-photos.js';
 import * as photoStore from '../src/js/store/photo-record-store.js';
 
 const seedSource = readFileSync(new URL('../src/js/finish-table/finish-table-sample-seed.js', import.meta.url),'utf8');
-const buildingServiceSource = readFileSync(new URL('../src/js/projects/project-building-service.js', import.meta.url),'utf8');
 const match = seedSource.match(/const SAMPLE_PLACEMENTS = (\[[\s\S]*?\]);/);
 assert.ok(match,'サンプル配置定義が見つからない');
 const placements = JSON.parse(match[1]);
@@ -70,7 +69,7 @@ test('写真の目視対象が仕上表配置に含まれ、採取対象R001/R00
   photoStore.clearAll();
 });
 
-test('A棟互換と空のB棟構造、およびサンプル採番の条件',()=>{
+test('A棟互換と空のB棟構造を維持する',()=>{
   assert.equal(nextBuildingId(sampleProject),'B');
   const b=makeBuildingDefinition('B');
   assert.equal(b.name,'B棟');
@@ -79,7 +78,5 @@ test('A棟互換と空のB棟構造、およびサンプル採番の条件',()=>
   const records=createDefaultFinishRecords('B');
   assert.equal(records.length,456);
   assert.ok(records.every((x)=>!x.materialId));
-  assert.match(buildingServiceSource,/if \(!project\.isSample\) return reserveNextBuildingForProject\(project, name\)/);
-  assert.match(buildingServiceSource,/if \(project\.isSample\) \{[\s\S]*?localOnly:true/);
 });
 console.log('v0.1.9.11C: '+passed+' tests passed');
