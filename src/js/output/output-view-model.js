@@ -29,7 +29,13 @@ function numberText(value){return normalizeOutputDigits(value).trim();}
 function natural(a,b){return String(a??'').localeCompare(String(b??''),'ja',{numeric:true,sensitivity:'base'});}
 function photoSort(a,b){const time=natural(a.capturedAt,b.capturedAt);return time||natural(a.photoId,b.photoId);}
 function multiBuilding(){return projectBuildingIds(getCurrentProject()).length>1;}
-function outputBuildingLabel(id){return multiBuilding()?reportBuildingName(getCurrentProject(),id):'';}
+function outputBuildingLabel(id){
+  const project=getCurrentProject();
+  const label=reportBuildingName(project,id);
+  // 既存のA棟単棟帳票は保持する。名称を明示変更した場合のみ単棟でも表示する。
+  const customizedA=String(project?.buildings?.A?.name||'').trim();
+  return multiBuilding() || (customizedA && customizedA!=='A棟') ? label : '';
+}
 function prefixBuilding(label,value){return label && value ? `${label}　${value}` : (value || label);}
 function compareRoomRecord(a,b){
   const buildingDiff=natural(a.buildingId||'',b.buildingId||'');if(buildingDiff)return buildingDiff;
