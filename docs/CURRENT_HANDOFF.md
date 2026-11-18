@@ -48,6 +48,14 @@
 - **実機検証必須**: オフライン棟追加→アプリ再起動→棟/仕上表復元→通信復帰→別端末同期、および送信中の連続棟名変更。
 - 同一棟IDの多端末同時追加による競合は運用回避方針。検知・停止の実装完了を意味しない。
 
+## 2026-11-18 11Gテストの旧条件整理とService実動作テスト
+
+- Actions失敗 [run 44274756897](https://github.com/odako-kawakubo/chousa-system-pwa/actions/runs/44274756897) は、11Aから連鎖実行される `tests/sample-11C.mjs` が削除済みのオンライン専用採番関数 `reserveNextBuildingForProject` のソース文字列を期待したことが原因。JavaScript構文と参照検査は成功、11Gテストは前段失敗で未実行だった。
+- `tests/sample-11C.mjs`: 廃止された実装文字列への依存だけ削除し、サンプル20建材/写真、棟IDと空仕上表の既存振る舞い検証を維持。
+- `tests/multi-building-11G-service.mjs`: Nodeのモジュール解決フックでFirebase永続化adapterのみ隔離し、実際の `project-building-service` / `project-store` / `finish-record-store` / `unsent-queue` を操作。オフライン棟追加・連続追加/棟名変更・端末Snapshot再読込からの空構造復元・端末キュー保存失敗・サンプル外部送信抑止を検証する。
+- `.github/workflows/test-only-11g.yml`: 従来の11A・11C検証と11G純粋ロジック検証に上記Serviceテストを追加。**deployジョブなし、Hosting/IAM/Secrets変更なし**。
+- **実行結果は未確認**。push後のGitHub Actions Runの結果/ログを確認すること。Nodeの擬似adapterテストは実Firestore送信・別端末同期の完了を意味しない。
+
 ## 11Gで守る仕様
 
 - 1案件内に複数棟。仕上表と写真タブの棟選択は独立。
