@@ -37,7 +37,7 @@ import {
   serializeMaterialRecord,
   serializePhotoRecord
 } from './record-serializer.js';
-import { putUnsent, removeUnsent, listUnsent } from '../sync/unsent-queue.js';
+import { putUnsent, removeUnsent, removeUnsentIfMatching, listUnsent } from '../sync/unsent-queue.js';
 import {
   isManualOffline,
   isNetworkOnline,
@@ -240,7 +240,10 @@ async function commitRecordEntries(entries = []) {
   const batch = writeBatch(db);
   entries.forEach((entry) => appendRecordOperationToBatch(batch, entry));
   await batch.commit();
-  entries.forEach((entry) => removeUnsent(entry.projectId, entry.recordType, entry.recordId));
+  entries.forEach((entry) => {
+    if (entry.recordType === 'project') removeUnsentIfMatching(entry);
+    else removeUnsent(entry.projectId, entry.recordType, entry.recordId);
+  });
   return {
     ok: true,
     sent: entries.length,
@@ -511,7 +514,8 @@ async function writeWithQueue({
       retryError: retryResult.ok === false && !retryResult.skipped ? retryResult.error || null : null
     };
   } catch (error) {
-    putUnsent(entry);
+    // projectは送信前に未送信キューへ保存済み。再登録すると送信中の後続編集を逆順で上書きし得る。
+    if (recordType !== 'project') putUnsent(entry);
     syncDiagnosticLog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
     markError(error);
     return { ok: false, queued: true, operation, error };
