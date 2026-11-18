@@ -115,6 +115,7 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
       roomNo: resolved.roomNo,
       roomName: resolved.roomName,
       areaCode: resolved.areaCode,
+      buildingId: resolved.buildingId,
       key: resolved.key
     };
   }
@@ -123,9 +124,9 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
   // guess a replacement from a possibly duplicate display label.
   if (normalizedKey) {
     const safeValue = normalizeRoomId(raw) ? '' : raw;
-    return { value:safeValue, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:normalizedKey };
+    return { value:safeValue, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', buildingId:'', key:normalizedKey };
   }
-  if (!raw) return { value:'', label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
+  if (!raw) return { value:'', label:'部屋No.', roomNo:'', roomName:'', areaCode:'', buildingId:'', key:'' };
 
   const options = getMaterialUsageRoomOptions(inputId, { preferRoomName });
   const matches = options.filter((item) => item.roomNo === raw || item.roomName === raw || item.value === raw);
@@ -134,10 +135,10 @@ export function getMaterialSampleLocationDisplay(inputId, location, { preferRoom
     const display = matched.selectDisplay;
     return {
       value:display, label:roomLocationFieldLabel(matched, { preferRoomName }),
-      roomNo:matched.roomNo, roomName:matched.roomName, areaCode:matched.areaCode, key:matched.key
+      roomNo:matched.roomNo, roomName:matched.roomName, areaCode:matched.areaCode, buildingId:matched.buildingId, key:matched.key
     };
   }
-  return { value:raw, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', key:'' };
+  return { value:raw, label:'部屋No.', roomNo:'', roomName:'', areaCode:'', buildingId:'', key:'' };
 }
 
 export function getMaterialUsageRoomNos(inputId) {
