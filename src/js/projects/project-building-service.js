@@ -4,7 +4,7 @@
  */
 import { getCurrentProject, getProject, updateProjectFields } from './project-store.js';
 import { normalizeProjectBuildings, normalizeBuildingId, nextBuildingId, makeBuildingDefinition } from './project-buildings.js';
-import { reserveNextBuildingForProject, persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
+import { persistProjectMetadataForProject } from '../sync/project-record-persistence.js';
 import { putUnsent } from '../sync/unsent-queue.js';
 import { createDefaultFinishRecords } from '../default/default-finish-data.js';
 import * as finishRecordStore from '../store/finish-record-store.js';
@@ -35,15 +35,7 @@ function currentBuildingMetadata(project) {
   return normalizeProjectBuildings(latest.buildings);
 }
 
-/** 通常案件の採番はFirestoreのトランザクション、サンプルはローカル採番。 */
-async function reserveBuilding(project, name) {
-  if (!project.isSample) return reserveNextBuildingForProject(project, name);
-  const buildingId = nextBuildingId(project);
-  if (!buildingId) return { ok:false, reason:'building-limit-reached' };
-  return { ok:true, buildingId, definition:makeBuildingDefinition(buildingId, name) };
-}
-
-/** 採番方式によらず棟定義を1経路で反映する。 */
+/** ローカル採番済みの棟定義を案件情報と仕上表へ反映する。 */
 function commitBuildingDefinition(project, buildingId, definition) {
   const known = currentBuildingMetadata(project);
   const buildings = {
@@ -62,11 +54,31 @@ function commitBuildingDefinition(project, buildingId, definition) {
 export async function addBuildingForCurrentProject(name = '') {
   const project = currentProjectForMutation();
   if (!project) return { ok:false, reason:'project-not-available' };
-  const reserved = await reserveBuilding(project, name);
-  if (!reserved.ok) return reserved;
-  commitBuildingDefinition(project, reserved.buildingId, reserved.definition);
-  return { ok:true, buildingId:reserved.buildingId, definition:reserved.definition,
-    ...(project.isSample ? {localOnly:true} : {}) };
+
+  // 部屋・階と同様に端末内の最新状態で採番する。複数端末の同時追加は運用で回避する。
+  const buildingId = nextBuildingId({ buildings:currentBuildingMetadata(project) });
+  if (!buildingId) return { ok:false, reason:'building-limit-reached' };
+  const definition = makeBuildingDefinition(buildingId, name);
+  const patch = { buildings:{ [buildingId]:definition } };
+
+  // 同期前にキューを確保し、直後に画面／案件Snapshotへ反映する。
+  // 既存の建材・仕上・写真IDは再採番しない。
+  if (!project.isSample) {
+    putUnsent({
+      projectId:project.projectId,
+      environment:project.environment === 'test' ? 'test' : 'production',
+      recordType:'project', recordId:project.projectId,
+      operation:'set', record:patch,
+      meta:{partialProjectMetadata:true}
+    });
+  }
+  commitBuildingDefinition(project, buildingId, definition);
+
+  if (project.isSample) return { ok:true, buildingId, definition, localOnly:true };
+  const result = await persistProjectMetadataForProject(project, { patch });
+  // 未送信がある場合もローカル作成は成功している。
+  return { ok:true, buildingId, definition, synced:Boolean(result?.ok),
+    queued:!result?.ok, syncReason:result?.reason || '' };
 }
 
 /** 棟名のみ変更し、既存の棟ID・仕上IDを保持する。 */
