@@ -73,7 +73,7 @@ function reportAnalysisFields(record){
 export function buildMaterialListOutput(){
   const preferRoomName=getMaterialRoomNameMode();
   return activeMaterials().map((record)=>{
-    const labels=getMaterialUsageRoomOptions(record.inputId,{preferRoomName}).map((room)=>prefixBuilding(outputBuildingLabel(room.buildingId),room.display));
+    const labels=getMaterialUsageRoomOptions(record.inputId,{preferRoomName}).map((room)=>prefixBuilding(outputBuildingLabel(room.buildingId),room.rawDisplay));
     const reportAnalysis=reportAnalysisFields(record);
     return {
       materialNo:getMaterialDisplayNo(record),
