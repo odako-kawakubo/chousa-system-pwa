@@ -7,10 +7,11 @@ import * as materialRecordStore from '../store/material-record-store.js';
 import * as photoRecordStore from '../store/photo-record-store.js';
 import { partIndexFromPosition } from '../records/finish-record.js';
 import { getCurrentProject } from '../projects/project-store.js';
+import { projectBuildingIds, reportBuildingName } from '../projects/project-buildings.js';
 import { getMaterialDisplayNo, samplePartsToText } from '../records/material-record.js';
 import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
-import { getMaterialUsageRoomLabels, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
+import { getMaterialUsageRoomOptions, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
 import { roomLocationDisplay } from '../finish-table/room-location.js';
 import {
@@ -27,7 +28,11 @@ function text(value){return String(value??'').trim();}
 function numberText(value){return normalizeOutputDigits(value).trim();}
 function natural(a,b){return String(a??'').localeCompare(String(b??''),'ja',{numeric:true,sensitivity:'base'});}
 function photoSort(a,b){const time=natural(a.capturedAt,b.capturedAt);return time||natural(a.photoId,b.photoId);}
+function multiBuilding(){return projectBuildingIds(getCurrentProject()).length>1;}
+function outputBuildingLabel(id){return multiBuilding()?reportBuildingName(getCurrentProject(),id):'';}
+function prefixBuilding(label,value){return label && value ? `${label}　${value}` : (value || label);}
 function compareRoomRecord(a,b){
+  const buildingDiff=natural(a.buildingId||'',b.buildingId||'');if(buildingDiff)return buildingDiff;
   const areaDiff=(AREA_ORDER[a.areaCode]??99)-(AREA_ORDER[b.areaCode]??99);if(areaDiff)return areaDiff;
   if(a.areaCode==='B'){const floorDiff=Number(b.floor||0)-Number(a.floor||0);if(floorDiff)return floorDiff;}
   else if(a.areaCode==='I'){const floorDiff=Number(a.floor||0)-Number(b.floor||0);if(floorDiff)return floorDiff;}
@@ -62,7 +67,7 @@ function reportAnalysisFields(record){
 export function buildMaterialListOutput(){
   const preferRoomName=getMaterialRoomNameMode();
   return activeMaterials().map((record)=>{
-    const labels=getMaterialUsageRoomLabels(record.inputId,{preferRoomName});
+    const labels=getMaterialUsageRoomOptions(record.inputId,{preferRoomName}).map((room)=>prefixBuilding(outputBuildingLabel(room.buildingId),room.display));
     const reportAnalysis=reportAnalysisFields(record);
     return {
       materialNo:getMaterialDisplayNo(record),
@@ -89,7 +94,7 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
       const partIndex=partIndexFromPosition(record.position);
       const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外', positive:false };
       return {
-        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
+        floor:prefixBuilding(outputBuildingLabel(record.buildingId),floorLabel(record)),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?getMaterialDisplayNo(material):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
@@ -107,14 +112,14 @@ export function buildVisualPhotoOutput(){
     const candidates=[];const seen=new Set();
     usages.forEach((usage)=>{
       const partSlot=partIndexFromPosition(usage.position);
-      photoRecordStore.findVisual({areaCode:usage.areaCode,roomPosition:usage.roomPosition,partSlot,part:usage.part}).slice().sort(photoSort).forEach((photo)=>{
+      photoRecordStore.findVisual({buildingId:usage.buildingId||'',areaCode:usage.areaCode,roomPosition:usage.roomPosition,partSlot,part:usage.part}).slice().sort(photoSort).forEach((photo)=>{
         if(seen.has(photo.photoId))return;seen.add(photo.photoId);
-        candidates.push({photo,photoId:photo.photoId,roomNo:usage.areaCode === 'E' ? roomLocationDisplay(usage, { context:'photo' }) : numberText(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
+        candidates.push({photo,photoId:photo.photoId,buildingLabel:outputBuildingLabel(usage.buildingId),roomNo:usage.areaCode === 'E' ? roomLocationDisplay(usage, { context:'photo' }) : numberText(usage.roomNo),roomName:text(usage.roomName),part:text(usage.part||photo.part)});
       });
     });
     const storedId=getVisualOutputPhotoId(material.materialId);
     const selected=candidates.find((candidate)=>candidate.photoId===storedId)||candidates[0]||null;
-    return {materialNo:getMaterialDisplayNo(material),materialId:material.materialId,name:text(material.name),part:text(material.part),photoId:text(selected?.photoId),fileName:text(selected?.photo?.fileName),roomNo:text(selected?.roomNo),candidates};
+    return {materialNo:getMaterialDisplayNo(material),materialId:material.materialId,name:text(material.name),part:text(material.part),photoId:text(selected?.photoId),fileName:text(selected?.photo?.fileName),buildingLabel:text(selected?.buildingLabel),roomNo:text(selected?.roomNo),candidates};
   });
 }
 
@@ -152,7 +157,8 @@ export function buildSamplingPhotoOutput(){
             samplingPlaceLabel:text(place.label),
             samplingPlaceAreaCode:text(place.areaCode),
             samplingPlaceRoomNo:numberText(place.roomNo),
-            samplingPlaceRoomName:text(place.roomName)
+            samplingPlaceRoomName:text(place.roomName),
+            samplingPlaceBuildingLabel:place.key?outputBuildingLabel(place.buildingId):''
           };
         })(),
         capturedDate:formatCapturedDate(firstPhoto),stages
