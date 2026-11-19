@@ -9,6 +9,7 @@ import { buildOutputViewModel } from './output-view-model.js';
 import { setSamplingOutputMemo } from './output-state.js';
 import { DEFAULT_OUTPUT_SETTINGS,getOutputSettings,saveOutputSettings,normalizeOutputSettings } from './output-settings-store.js';
 import { collectOutputSettings } from './output-settings-ui.js';
+import { OUTPUT_TABLE_MAX_WIDTH, tableWidthTotal } from './output-table-layout.js';
 import { initializeOutputPhotoSelectionBridge,openVisualOutputPhotoViewer,openSamplingOutputPhotoViewer } from './output-photo-selection.js';
 import { initializeOutputExportController } from './output-export-controller.js';
 import { renderOutputSidePanels, hasOutputSidePanel } from './output-side-panels.js';
@@ -77,6 +78,48 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
   }));}
 
 /**
+ * 編集中の表幅は1列だけを更新する。隣列に影響を与えず190mm以内を保証。
+ * DOMはドラッグ中だけ局所更新し、PDFは確定時のみ再生成する。
+ */
+function changeColumnWidth(kind,key,requested,{refresh=true}={}){
+  if(!settingsOpen)return false;
+  const panel=outputRoot()?.querySelector('[data-output-settings-panel]');
+  if(!panel)return false;
+  const current=settingsDraft||getOutputSettings();
+  const widths=current.tableWidths?.[kind];
+  if(!widths||!(key in widths))return false;
+  const other=tableWidthTotal(kind,widths)-widths[key];
+  const value=Math.round(Math.max(5,Math.min(100,Number(requested)||5,OUTPUT_TABLE_MAX_WIDTH-other))*10)/10;
+  if(!Number.isFinite(value)||value<5)return false;
+  settingsDraft={...collectOutputSettings(panel,current),tableWidths:{
+    ...current.tableWidths,[kind]:{...widths,[key]:value}
+  }};
+  const editor=panel.querySelector(`[data-output-column-editor="${kind}"]`);
+  const target=`${kind}:${key}`;
+  const cell=[...editor?.querySelectorAll('[data-output-column-cell]')||[]].find(node=>node.dataset.outputColumnCell===target);
+  if(cell)cell.style.width=`${value*3}px`;
+  const input=[...editor?.querySelectorAll('[data-output-column-input]')||[]].find(node=>node.dataset.outputColumnInput===target);
+  if(input)input.value=String(value);
+  const total=editor?.querySelector('[data-output-column-total]');
+  if(total)total.textContent=`合計 ${tableWidthTotal(kind,settingsDraft.tableWidths[kind]).toFixed(1)} / 190mm`;
+  if(refresh)updateDraftFromPanel();
+  return true;
+}
+/** 一度の描画更新で写真帳や設定欄のスクロール位置を失わない。 */
+function captureOutputPanelScroll(root){
+  return [...root.querySelectorAll('.output-editor-panel,.output-settings-panel')].map(node=>({
+    selector:node.classList.contains('output-editor-panel')?'.output-editor-panel':'.output-settings-panel',
+    top:node.scrollTop,left:node.scrollLeft
+  }));
+}
+function restoreOutputPanelScroll(root,positions){
+  positions.forEach(({selector,top,left})=>{
+    const node=root.querySelector(selector);
+    if(node){node.scrollTop=top;node.scrollLeft=left;}
+  });
+}
+
+/**
  * 建材リスト出力時の使用箇所表示を部屋No./部屋名で切り替えるtoolbar HTMLを返す。
  */
 function outputClickAllowed(target){
@@ -102,7 +145,7 @@ function renderRoomUnregisteredSwitch(){if(activeView!=='rooms')return '';return
 /**
  * 現在の出力種別・設定・ViewModelから出力タブ全体を再描画し、PDF Preview生成を開始する。Previewの内部状態は専用controllerへ委譲する。
  */
-export function renderOutputTab(){const root=outputRoot();if(!root)return;const serial=beginOutputPdfPreviewRender();currentVm=buildCurrentVm();const previewState=getOutputPdfPreviewState();root.innerHTML=`<div class="output-root"><div class="output-toolbar">
+export function renderOutputTab(){const root=outputRoot();if(!root)return;const panelScroll=captureOutputPanelScroll(root);const serial=beginOutputPdfPreviewRender();currentVm=buildCurrentVm();const previewState=getOutputPdfPreviewState();root.innerHTML=`<div class="output-root"><div class="output-toolbar">
   <button type="button" class="btn small output-view-btn ${activeView==='materials'?'active':''}" data-output-view="materials">建材リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='rooms'?'active':''}" data-output-view="rooms">部屋別リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='parts'?'active':''}" data-output-view="parts">部位別リスト</button>
@@ -115,7 +158,7 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   <span class="output-toolbar-separator"></span>
   <button type="button" class="btn small" data-output-zoom-out>−</button><button type="button" class="btn small output-zoom-label" data-output-zoom-reset data-output-zoom-label>${previewState.zoom}%</button><button type="button" class="btn small" data-output-zoom-in>＋</button>
   <span class="output-toolbar-fill"></span><button type="button" class="btn small ${settingsOpen?'active':''}" data-output-settings-open>出力設定</button><button type="button" class="btn small" data-output-export="pdf">PDF</button><button type="button" class="btn small" data-output-export="print">印刷</button><button type="button" class="btn small" data-output-export="excel">Excel</button>
-  </div><div class="output-review-layout ${hasOutputSidePanel({activeView,settingsOpen})?'has-editor':''}"><section class="output-pdf-review"><div class="output-preview-status" data-output-preview-status>実PDFを生成しています…</div><div class="output-pdf-host" data-output-pdf-host><div class="output-preview-loading">実PDFを生成しています…</div></div></section>${renderOutputSidePanels({vm:currentVm,activeView,settingsOpen,settingsDraft,savedSettings:getOutputSettings()})}</div></div>`;void renderOutputPdfPreview({
+  </div><div class="output-review-layout ${hasOutputSidePanel({activeView,settingsOpen})?'has-editor':''}"><section class="output-pdf-review"><div class="output-preview-status" data-output-preview-status>実PDFを生成しています…</div><div class="output-pdf-host" data-output-pdf-host><div class="output-preview-loading">実PDFを生成しています…</div></div></section>${renderOutputSidePanels({vm:currentVm,activeView,settingsOpen,settingsDraft,savedSettings:getOutputSettings()})}</div></div>`;restoreOutputPanelScroll(root,panelScroll);void renderOutputPdfPreview({
   serial,
   root,
   activeView,
@@ -183,6 +226,28 @@ export function initializeOutputTab(){
     const visual=event.target.closest('[data-output-visual-expand]');if(visual){openVisualSelection(visual.dataset.outputVisualExpand);return;}
     const sampling=event.target.closest('[data-output-sampling-expand]');if(sampling){openSamplingSelection(sampling.dataset.outputSamplingExpand,Number(sampling.dataset.outputBranch),sampling.dataset.outputStage);}
   });
+  let columnDrag=null;
+  root.addEventListener('pointerdown',(event)=>{
+    const handle=event.target.closest?.('[data-output-column-handle]');
+    if(!handle||!settingsOpen||event.button!==0)return;
+    const [kind,key]=handle.dataset.outputColumnHandle.split(':');
+    const width=settingsDraft?.tableWidths?.[kind]?.[key];
+    if(!width)return;
+    event.preventDefault();
+    columnDrag={pointerId:event.pointerId,kind,key,startX:event.clientX,startWidth:width};
+    handle.setPointerCapture?.(event.pointerId);
+  });
+  root.addEventListener('pointermove',(event)=>{
+    if(!columnDrag||columnDrag.pointerId!==event.pointerId)return;
+    changeColumnWidth(columnDrag.kind,columnDrag.key,columnDrag.startWidth+(event.clientX-columnDrag.startX)/3,{refresh:false});
+  });
+  const finishColumnDrag=(event)=>{
+    if(!columnDrag||columnDrag.pointerId!==event.pointerId)return;
+    columnDrag=null;
+    updateDraftFromPanel();
+  };
+  root.addEventListener('pointerup',finishColumnDrag);
+  root.addEventListener('pointercancel',finishColumnDrag);
   root.addEventListener('wheel',(event)=>{
     const host=event.target.closest?.('[data-output-pdf-host]');
     const state=getOutputPdfPreviewState();
@@ -209,7 +274,15 @@ export function initializeOutputTab(){
     vm: buildCurrentVm(),
     settings: effectiveSettings()
   }));}return;}if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
-  root.addEventListener('change',(event)=>{if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
+  root.addEventListener('change',(event)=>{
+    const input=event.target.closest?.('[data-output-column-input]');
+    if(input){
+      const [kind,key]=input.dataset.outputColumnInput.split(':');
+      changeColumnWidth(kind,key,input.value);
+      return;
+    }
+    if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();
+  });
   window.addEventListener('resize',()=>{rerenderOutputPdfPreview();});
   window.addEventListener('chousa:tab-change',(event)=>{
     if(event.detail?.currentTab!=='sync')return;
