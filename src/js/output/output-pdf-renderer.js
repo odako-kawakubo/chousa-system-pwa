@@ -6,6 +6,7 @@
 import { getOutputSettings, normalizeOutputSettings } from './output-settings-store.js';
 import { formatSamplingCode, formatPartDisplay } from './output-format.js';
 import { formatSamplingPlace } from '../finish-table/room-location.js';
+import { groupRoomRowsByBuilding } from './output-building-groups.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
 const FONT_CACHE = 'chousa-pdf-fonts-bizud-v2';
@@ -42,6 +43,7 @@ const FOOTNOTE_GAP = 3;
 const FOOTNOTE_BOTTOM = 8;
 const MATERIAL_WIDTHS = Object.freeze([6,33,12,42,6,19,19,53]);
 const ROOM_WIDTHS = Object.freeze([10,12,22,12,6,38,35,6,19,30]);
+const PART_WIDTHS = Object.freeze([18,12,62,48,12,48]);
 
 const fontBase64Promises = new Map();
 
@@ -392,15 +394,81 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
 }
 function renderRoomPages(pdf,vm,state,settings) {
   const widths=[...ROOM_WIDTHS];
-  const rows=vm.roomRows||[];
-  const heights=calculateRoomHeights(pdf,rows,widths,settings);
-  const pages=paginateRoomGroups(rows,heights,listTableBottom(pdf,settings)-(LIST_START_Y+settings.roomHeaderHeight));
-  pages.forEach((page)=>{
-    addPage(pdf,state);
-    drawTitle(pdf,titleText('部屋別調査対象建材リスト',settings.roomTitleSuffix),settings);
-    drawRoomHeader(pdf,MARGIN_X,LIST_START_Y,widths,settings.roomHeaderHeight,settings);
-    const endY=renderRoomPageBody(pdf,page.rows,page.heights,widths,settings);
-    drawListFootnote(pdf,settings,endY);
+  const groups=groupRoomRowsByBuilding(vm.roomRows||[],id=>(vm.roomRows||[]).find(row=>(row.buildingId||'')===id)?.buildingLabel||'');
+  // 棟を跨いで同じPDFページに配置しない。
+  (groups.length ? groups : [{label:'',rows:[]}]).forEach(group=>{
+    const heights=calculateRoomHeights(pdf,group.rows,widths,settings);
+    const pages=paginateRoomGroups(group.rows,heights,listTableBottom(pdf,settings)-(LIST_START_Y+settings.roomHeaderHeight));
+    pages.forEach(page=>{
+      addPage(pdf,state);
+      const title=titleText('部屋別調査対象建材リスト',settings.roomTitleSuffix);
+      drawTitle(pdf,group.label ? `${title}　${group.label}` : title,settings);
+      drawRoomHeader(pdf,MARGIN_X,LIST_START_Y,widths,settings.roomHeaderHeight,settings);
+      const endY=renderRoomPageBody(pdf,page.rows,page.heights,widths,settings);
+      drawListFootnote(pdf,settings,endY);
+    });
+  });
+}
+
+function drawPartHeader(pdf,widths,settings){
+  const labels=['部位','建材No.','建材名称','使用箇所','建材Lv.','分析結果'];
+  let x=MARGIN_X;
+  widths.forEach((width,index)=>{
+    drawRect(pdf,x,LIST_START_Y,width,settings.roomHeaderHeight,{fill:HEADER_FILL});
+    drawCellText(pdf,labels[index],x,LIST_START_Y,width,settings.roomHeaderHeight,{
+      size:settings.roomHeaderSize,style:'bold',align:'center',paddingX:.25
+    });
+    x+=width;
+  });
+}
+function partRowHeight(pdf,row,widths,settings){
+  return Math.max(ROOM_BASE_ROW_H,...[row.materialNo,row.materialName,row.location,row.level,row.analysisResult]
+    .map((value,index)=>requiredTextHeight(pdf,value,widths[index+1],{
+      size:settings.roomBodySize,paddingX:.8,paddingY:.9,roomTokens:index===2
+    })));
+}
+function renderPartPageBody(pdf,rows,heights,widths,settings){
+  const xs=[MARGIN_X];widths.forEach(width=>xs.push(xs[xs.length-1]+width));
+  let y=LIST_START_Y+settings.roomHeaderHeight;
+  rows.forEach((row,index)=>{
+    const h=heights[index],color=(row.positive??isPositive(row.analysisResult))?RED:BLACK;
+    [row.materialNo,row.materialName,row.location,row.level,row.analysisResult].forEach((value,j)=>{
+      const col=j+1;
+      drawRect(pdf,xs[col],y,widths[col],h);
+      if(col===5)drawSingleLineFit(pdf,value,xs[col],y,widths[col],h,{
+        align:'center',size:settings.roomBodySize,minSize:5.8,color,paddingX:.8
+      });
+      else drawCellText(pdf,value,xs[col],y,widths[col],h,{
+        align:[1,4].includes(col)?'center':'left',size:settings.roomBodySize,
+        color,paddingX:.8,roomTokens:col===3
+      });
+    });
+    const key=item=>item.part;
+    if(!precedingSame(rows,index,key)){
+      const span=pageSpan(rows,index,key),height=spanHeight(heights,index,span);
+      drawRect(pdf,xs[0],y,widths[0],height);
+      drawCellText(pdf,row.part,xs[0],y,widths[0],height,{
+        align:'center',size:settings.roomBodySize,paddingX:.8
+      });
+    }
+    y+=h;
+  });
+  return y;
+}
+function renderPartPages(pdf,vm,state,settings){
+  const widths=[...PART_WIDTHS];
+  const groups=vm.partGroups||[];
+  (groups.length?groups:[{buildingId:'',buildingLabel:'',floor:'',rows:[]}]).forEach(group=>{
+    const heights=group.rows.map(row=>partRowHeight(pdf,row,widths,settings));
+    const pages=paginateRows(group.rows,heights,listTableBottom(pdf,settings)-(LIST_START_Y+settings.roomHeaderHeight));
+    pages.forEach(page=>{
+      addPage(pdf,state);
+      const label=[group.buildingLabel||((group.buildingId||'A')+'棟'),group.floor].filter(Boolean).join(' ');
+      drawTitle(pdf,`部位別調査対象建材リスト　${label}`,settings);
+      drawPartHeader(pdf,widths,settings);
+      const endY=renderPartPageBody(pdf,page.rows,page.heights,widths,settings);
+      drawListFootnote(pdf,settings,endY);
+    });
   });
 }
 
@@ -482,6 +550,7 @@ function renderSamplingPages(pdf,vm,photoSources,state,settings) {
 function renderTarget(pdf,target,vm,photoSources,state,settings) {
   if(target==='materials')renderMaterialPages(pdf,vm,state,settings);
   else if(target==='rooms')renderRoomPages(pdf,vm,state,settings);
+  else if(target==='parts')renderPartPages(pdf,vm,state,settings);
   else if(target==='visual-photos')renderVisualPhotoPages(pdf,vm,photoSources,state,settings);
   else if(target==='sampling-photos')renderSamplingPages(pdf,vm,photoSources,state,settings);
 }
