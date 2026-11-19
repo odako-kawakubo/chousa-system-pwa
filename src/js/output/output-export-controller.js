@@ -37,7 +37,7 @@ function addExcelImage(workbook,sheet,dataUrl,range){if(!dataUrl)return;const im
 function styleHeader(row){row.font={bold:true};row.alignment={vertical:'middle',horizontal:'center',wrapText:true};}
 function addMaterialSheet(workbook,rows,locationLabel='部屋No.'){const sheet=workbook.addWorksheet('建材リスト');sheet.addRow(['建材No.','建材名','部位',`施工範囲 / ${locationLabel}`,'建材Lv.','分析の要否','石綿含有の有無','調査備考']);styleHeader(sheet.getRow(1));rows.forEach((r)=>{const row=sheet.addRow([r.materialNo,r.name,r.part,r.usageLocation,r.level,r.analysisRequired,r.analysisResult,r.note]);if(r.positive)row.font={color:{argb:'FFC00000'}};});sheet.columns=[{width:10},{width:24},{width:14},{width:28},{width:10},{width:16},{width:18},{width:32}];}
 function uniqueSheetName(workbook,name){
-  const cleaned=String(name||'帳票').replace(/[\\[\\]\\:*?/\\\\]/g,' ').trim().slice(0,31)||'帳票';
+  const cleaned=[...String(name||'帳票')].map(char=>'[]:*?/\\'.includes(char)?' ':char).join('').trim().slice(0,31)||'帳票';
   let result=cleaned,number=2;
   while(workbook.getWorksheet(result)){
     const suffix='_'+number++;
