@@ -4,6 +4,7 @@
  * 共通設定は端末全体、タイトル追記は案件単位で保持する。
  */
 import { getCurrentProject } from '../projects/project-store.js';
+import { OUTPUT_TABLE_COLUMNS, defaultTableWidths, normalizeTableWidths } from './output-table-layout.js';
 
 const STORAGE_KEY = 'chousa-output-settings-v0176';
 
@@ -16,6 +17,11 @@ export const DEFAULT_OUTPUT_SETTINGS = Object.freeze({
   roomBodySize: 7.5,
   roomHeaderSize: 7.5,
   roomHeaderHeight: 6.5,
+  partBodySize: 7.5,
+  partHeaderSize: 7.5,
+  partHeaderHeight: 6.5,
+  partListMode: 'floor',
+  tableWidths: Object.freeze({ materials:defaultTableWidths('materials'), rooms:defaultTableWidths('rooms'), parts:defaultTableWidths('parts') }),
   noteSize: 6.4,
   noteText: '※ケイ酸カルシウム板第１種は、飛散性の高いレベル３建材として、環境省、厚生労働省の告示で定められました。\nこれを切断等の方法で除去する場合、作業場をビニールシート等で隔離し、常時湿潤な状態を保ちながら作業することが必要になります。\nまた、建築用仕上塗材を電動工具を使用して除去を行う場合においても、大気汚染防止法施行令及び石綿障害予防規則にて作業場の隔離、常時湿潤な状態での作業が必要です。',
   visualCaptionSize: 9,
@@ -61,6 +67,13 @@ export function normalizeOutputSettings(value = {}) {
     roomBodySize: clamp(base.roomBodySize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.roomBodySize),
     roomHeaderSize: clamp(base.roomHeaderSize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.roomHeaderSize),
     roomHeaderHeight: clamp(base.roomHeaderHeight, 5.5, 10, DEFAULT_OUTPUT_SETTINGS.roomHeaderHeight),
+    partBodySize: clamp(base.partBodySize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.partBodySize),
+    partHeaderSize: clamp(base.partHeaderSize, 6.5, 10, DEFAULT_OUTPUT_SETTINGS.partHeaderSize),
+    partHeaderHeight: clamp(base.partHeaderHeight, 5.5, 10, DEFAULT_OUTPUT_SETTINGS.partHeaderHeight),
+    partListMode: base.partListMode === 'building' ? 'building' : 'floor',
+    tableWidths: Object.fromEntries(Object.keys(OUTPUT_TABLE_COLUMNS).map(kind=>[
+      kind,normalizeTableWidths(kind,base.tableWidths?.[kind])
+    ])),
     noteSize: clamp(base.noteSize, 5.5, 9, DEFAULT_OUTPUT_SETTINGS.noteSize),
     noteText: String(base.noteText ?? DEFAULT_OUTPUT_SETTINGS.noteText),
     visualCaptionSize: clamp(base.visualCaptionSize, 7, 12, DEFAULT_OUTPUT_SETTINGS.visualCaptionSize),
@@ -94,6 +107,11 @@ export function saveOutputSettings(settings) {
     roomBodySize: next.roomBodySize,
     roomHeaderSize: next.roomHeaderSize,
     roomHeaderHeight: next.roomHeaderHeight,
+    partBodySize: next.partBodySize,
+    partHeaderSize: next.partHeaderSize,
+    partHeaderHeight: next.partHeaderHeight,
+    partListMode: next.partListMode,
+    tableWidths: next.tableWidths,
     noteSize: next.noteSize,
     noteText: next.noteText,
     visualCaptionSize: next.visualCaptionSize,
