@@ -39,4 +39,11 @@ assert.deepEqual(buildings[0].rows.map(row=>[row.part,row.floor,row.materialNo])
 ]);
 assert.equal(buildings[1].rows.length,1);
 assert.equal(buildings[1].rows[0].note,'別館備考');
+const crossArea=groupPartRowsByFloor([
+  {...rows[0],roomNo:'1-3',roomName:'本館室',areaCode:'I'},
+  {...rows[0],roomNo:'1-4',roomName:'外側室',areaCode:'E'}
+],label,{preferRoomName:true});
+const dedup=groupPartRowsByBuilding(crossArea);
+assert.equal(dedup[0].rows.length,1);
+assert.equal(dedup[0].rows[0].location,'本館室、外側室');
 console.log('11I table widths and two-level part grouping: PASS');
