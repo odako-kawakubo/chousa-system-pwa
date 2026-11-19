@@ -33,7 +33,7 @@ export function groupRoomRowsByBuilding(rows, buildingLabel) {
   return [...groups.values()];
 }
 
-export function groupPartRowsByFloor(rows, buildingLabel) {
+export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}={}) {
   const groups = new Map();
   for (const row of rows || []) {
     const buildingId = buildingKey(row.buildingId);
@@ -54,12 +54,12 @@ export function groupPartRowsByFloor(rows, buildingLabel) {
       entry = {
         part, materialNo:row.materialNo, materialName:row.materialName,
         level:row.level, analysisResult:row.analysisResult,
-        positive:row.positive, locations:[], location:''
+        positive:row.positive, note:row.note, locations:[], location:''
       };
       group.byMaterial.set(key, entry);
       group.rows.push(entry);
     }
-    const location = text(row.roomNo);
+    const location = text(preferRoomName ? (row.roomName||row.roomNo) : row.roomNo);
     if (location && !entry.locations.includes(location)) entry.locations.push(location);
   }
   return [...groups.values()].map(group => {
@@ -70,6 +70,26 @@ export function groupPartRowsByFloor(rows, buildingLabel) {
       delete row.locations;
     });
     delete group.byMaterial;
+    return group;
+  });
+}
+
+/** 棟単位に階ごとの集計を再配列し、部位→階→建材の順にする。 */
+export function groupPartRowsByBuilding(floorGroups) {
+  const buildings=new Map();
+  for(const group of floorGroups||[]){
+    const id=buildingKey(group.buildingId);
+    if(!buildings.has(id))buildings.set(id,{buildingId:id,buildingLabel:group.buildingLabel,rows:[]});
+    for(const row of group.rows||[]){
+      buildings.get(id).rows.push({...row,floor:group.floor});
+    }
+  }
+  return [...buildings.values()].map(group=>{
+    const floorOrder=new Map();
+    group.rows.forEach(row=>{if(!floorOrder.has(row.floor))floorOrder.set(row.floor,floorOrder.size);});
+    group.rows.sort((a,b)=>PART_ORDER.indexOf(a.part)-PART_ORDER.indexOf(b.part)
+      || floorOrder.get(a.floor)-floorOrder.get(b.floor)
+      || String(a.materialNo??'').localeCompare(String(b.materialNo??''),'ja',{numeric:true}));
     return group;
   });
 }
