@@ -5,6 +5,7 @@
 export const OUTPUT_TARGETS = Object.freeze({
   materials: { key:'materials', label:'建材リスト', header:'調査対象建材リスト' },
   rooms: { key:'rooms', label:'部屋別リスト', header:'部屋別調査対象建材リスト' },
+  parts: { key:'parts', label:'部位別リスト', header:'部位別調査対象建材リスト' },
   'visual-photos': { key:'visual-photos', label:'建材写真帳', header:'調査対象建材写真帳' },
   'sampling-photos': { key:'sampling-photos', label:'採取写真帳', header:'試料採取写真' }
 });
@@ -12,6 +13,7 @@ export const OUTPUT_TARGETS = Object.freeze({
 export const OUTPUT_TARGET_ORDER = Object.freeze([
   'materials',
   'rooms',
+  'parts',
   'visual-photos',
   'sampling-photos'
 ]);
