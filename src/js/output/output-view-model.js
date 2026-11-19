@@ -21,6 +21,7 @@ import {
   clearInvalidOutputSelections
 } from './output-state.js';
 import { normalizeOutputDigits } from './output-format.js';
+import { groupMaterialUsageLocations, groupPartRowsByFloor } from './output-building-groups.js';
 
 const AREA_ORDER = Object.freeze({ E:0, B:1, I:2, S:3, R:4 });
 
@@ -73,15 +74,15 @@ function reportAnalysisFields(record){
 export function buildMaterialListOutput(){
   const preferRoomName=getMaterialRoomNameMode();
   return activeMaterials().map((record)=>{
-    const labels=getMaterialUsageRoomOptions(record.inputId,{preferRoomName}).map((room)=>prefixBuilding(outputBuildingLabel(room.buildingId),room.rawDisplay));
+    const location=groupMaterialUsageLocations(getMaterialUsageRoomOptions(record.inputId,{preferRoomName}),outputBuildingLabel);
     const reportAnalysis=reportAnalysisFields(record);
     return {
       materialNo:getMaterialDisplayNo(record),
       name:text(record.name),
       part:text(record.part),
       usageLocation:preferRoomName
-        ? text(labels.join('、')||record.usageLocation)
-        : numberText(labels.join('、')||record.usageLocation),
+        ? text(location||record.usageLocation)
+        : numberText(location||record.usageLocation),
       level:numberText(record.level)||'-',
       analysisRequired:reportAnalysis.analysisRequired,
       analysisResult:reportAnalysis.analysisResult,
@@ -100,7 +101,11 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
       const partIndex=partIndexFromPosition(record.position);
       const reportAnalysis=material?reportAnalysisFields(material):{ analysisRequired:'目視', analysisResult:'調査対象外', positive:false };
       return {
-        floor:prefixBuilding(outputBuildingLabel(record.buildingId),floorLabel(record)),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
+        buildingId:String(record.buildingId||'')==='A'?'':String(record.buildingId||''),
+        buildingLabel:outputBuildingLabel(record.buildingId),
+        areaCode:record.areaCode, floorLabel:floorLabel(record),
+        materialId:material?String(material.materialId):'', partIndex,
+        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?getMaterialDisplayNo(material):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
@@ -181,6 +186,7 @@ export function buildOutputViewModel(options={}){
     materialLocationLabel:getMaterialRoomNameMode()?'部屋名':'部屋No.',
     materialRows:buildMaterialListOutput(),
     roomRows:buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false}),
+    partGroups:groupPartRowsByFloor(buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false}),outputBuildingLabel),
     visualPhotoItems:buildVisualPhotoOutput(),
     samplingPhotoPages:buildSamplingPhotoOutput()
   };
