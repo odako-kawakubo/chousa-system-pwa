@@ -7,7 +7,7 @@ import { getOutputSettings, normalizeOutputSettings } from './output-settings-st
 import { formatSamplingCode, formatPartDisplay } from './output-format.js';
 import { formatSamplingPlace } from '../finish-table/room-location.js';
 import { groupRoomRowsByBuilding } from './output-building-groups.js';
-import { tableWidthValues } from './output-table-layout.js';
+import { OUTPUT_TABLE_COLUMNS, tableWidthValues } from './output-table-layout.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
 const FONT_CACHE = 'chousa-pdf-fonts-bizud-v2';
@@ -417,11 +417,9 @@ function renderRoomPages(pdf,vm,state,settings) {
  * ヘッダー/本文/行高/結合は列キーから解決して重複を作らない。
  */
 function partColumns(settings,buildingMode){
-  const keys=buildingMode
-    ? ['part','floor','no','name','location','level','result','note']
-    : ['part','no','name','location','level','result','note'];
+  const columns=OUTPUT_TABLE_COLUMNS.parts.filter(([key])=>buildingMode||key!=='floor');
   const widths=tableWidthValues('parts',settings,{includeFloor:buildingMode});
-  return keys.map((key,i)=>({key,width:widths[i]}));
+  return columns.map(([key,label],i)=>({key,label,width:widths[i]}));
 }
 function drawPartHeader(pdf,columns,settings,locationLabel){
   let x=MARGIN_X;
@@ -435,8 +433,7 @@ function drawPartHeader(pdf,columns,settings,locationLabel){
       drawCellText(pdf,'施工範囲',x,LIST_START_Y,width,topH,{align:'center',size:settings.partHeaderSize,style:'bold',paddingX:.2,lineHeight:1});
       drawCellText(pdf,locationLabel,x,LIST_START_Y+topH,width,height-topH,{align:'center',size:settings.partHeaderSize,style:'bold',paddingX:.2,lineHeight:1});
     }else{
-      const label={part:'部位',floor:'階',no:'建材No.',name:'建材名称',level:'建材Lv.',result:'分析結果',note:'調査備考'}[col.key];
-      drawCellText(pdf,label,x,LIST_START_Y,width,height,{align:'center',size:settings.partHeaderSize,style:'bold',paddingX:.2,lineHeight:1});
+      drawCellText(pdf,col.label,x,LIST_START_Y,width,height,{align:'center',size:settings.partHeaderSize,style:'bold',paddingX:.2,lineHeight:1});
     }
     x+=width;
   }
