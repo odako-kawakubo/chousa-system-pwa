@@ -105,6 +105,7 @@ function renderRoomUnregisteredSwitch(){if(activeView!=='rooms')return '';return
 export function renderOutputTab(){const root=outputRoot();if(!root)return;const serial=beginOutputPdfPreviewRender();currentVm=buildCurrentVm();const previewState=getOutputPdfPreviewState();root.innerHTML=`<div class="output-root"><div class="output-toolbar">
   <button type="button" class="btn small output-view-btn ${activeView==='materials'?'active':''}" data-output-view="materials">建材リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='rooms'?'active':''}" data-output-view="rooms">部屋別リスト</button>
+  <button type="button" class="btn small output-view-btn ${activeView==='parts'?'active':''}" data-output-view="parts">部位別リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='visual-photos'?'active':''}" data-output-view="visual-photos">建材写真帳</button>
   <button type="button" class="btn small output-view-btn ${activeView==='sampling-photos'?'active':''}" data-output-view="sampling-photos">採取写真帳</button>
   <span class="output-toolbar-separator"></span>${renderRoomUnregisteredSwitch()}
@@ -136,7 +137,7 @@ export function captureOutputUiState() {
 
 export function restoreOutputUiState(snapshot, { renderNow = true } = {}) {
   if (!snapshot) return;
-  activeView = ['materials','rooms','visual-photos','sampling-photos'].includes(snapshot.activeView)
+  activeView = ['materials','rooms','parts','visual-photos','sampling-photos'].includes(snapshot.activeView)
     ? snapshot.activeView
     : 'materials';
   settingsOpen = Boolean(snapshot.settingsOpen);
