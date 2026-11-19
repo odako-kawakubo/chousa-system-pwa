@@ -33,7 +33,7 @@ function renderColumnEditor(kind,settings) {
       </div>`).join('')}
     </div></div>
     <div class="output-column-editor-fields">
-      ${columns.map(([key,label])=>`<label><span>${esc(label)}</span><input type="number" min="5" max="100" step=".5" value="${widths[key]}" data-output-column-input="${kind}:${key}"><em>mm</em></label>`).join('')}
+      ${columns.map(([key,label])=>`<label><span>${esc(label)}</span><input type="number" min="5" max="100" step=".1" value="${widths[key]}" data-output-column-input="${kind}:${key}"><em>mm</em></label>`).join('')}
     </div>
     <div class="output-column-editor-total" data-output-column-total="${kind}">合計 ${total.toFixed(1)} / 190mm</div>
   </div>`;
