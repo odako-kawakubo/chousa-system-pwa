@@ -182,11 +182,12 @@ export function buildSamplingPhotoOutput(){
 export function buildOutputViewModel(options={}){
   const validPhotoIds=new Set(photoRecordStore.getActive().map((photo)=>String(photo.photoId)));
   clearInvalidOutputSelections(validPhotoIds);
+  const roomRows=buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false});
   return {
     materialLocationLabel:getMaterialRoomNameMode()?'部屋名':'部屋No.',
     materialRows:buildMaterialListOutput(),
-    roomRows:buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false}),
-    partGroups:groupPartRowsByFloor(buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false}),outputBuildingLabel),
+    roomRows,
+    partGroups:groupPartRowsByFloor(roomRows,outputBuildingLabel),
     visualPhotoItems:buildVisualPhotoOutput(),
     samplingPhotoPages:buildSamplingPhotoOutput()
   };
