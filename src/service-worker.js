@@ -1,8 +1,8 @@
 /*
- * v0.1.9.11H Service Worker
+ * v0.1.9.11I Service Worker
  * 最新版優先 + 圏外時は直近キャッシュから起動する。
  */
-const APP_CACHE = 'chousa-app-v0.1.9.11H';
+const APP_CACHE = 'chousa-app-v0.1.9.11I';
 const FIREBASE_SDK_CACHE = 'chousa-firebase-v12.1.0';
 const OUTPUT_LIB_CACHE = 'chousa-output-libs-v0199';
 const APP_CACHE_PREFIX = 'chousa-app-';
@@ -33,7 +33,7 @@ const APP_SHELL = [
   './js/record-view/record-view-controller.js','./js/record-view/record-view-renderer.js','./js/record-view/record-view-view-model.js',
   './js/materials/material-list-controller.js','./js/materials/material-room-display-state.js','./js/materials/material-list-edit-actions.js','./js/materials/material-list-interactions.js','./js/materials/material-list-persistence.js','./js/materials/material-list-renderer.js','./js/materials/material-list-view-model.js','./js/materials/material-operations-controller.js','./js/materials/material-operations-renderer.js','./js/materials/material-operations.js','./js/materials/material-sample-name.js','./js/materials/material-sampling-autofill.js','./js/materials/simple-list.js',
   './js/photos/photo-local-store.js','./js/photos/photo-completed-image.js','./js/photos/photo-completed-composer.js','./js/photos/sampling-location-change.js','./js/photos/room-photo-regeneration.js','./js/photos/photo-completed-update.js','./js/photos/photo-filename.js','./js/photos/photo-onedrive-sync.js','./js/photos/photo-remote-reader.js','./js/photos/photo-original-source.js','./js/photos/photo-board-editor.js','./js/photos/photo-board-editor-form.js','./js/photos/photo-board-editor-interactions.js','./js/photos/photo-board-editor-persistence.js','./js/photos/photo-board-editor-session.js','./js/photos/photo-compare-data.js','./js/photos/photo-controller.js','./js/photos/photo-interactions.js','./js/photos/photo-record-actions.js','./js/photos/photo-preview-manager.js','./js/photos/photo-refresh-policy.js','./js/photos/photo-renderer.js','./js/photos/photo-view-model.js','./js/photos/photo-orphan-classifier.js','./js/photos/photo-viewer-data.js','./js/photos/photo-viewer-gesture.js','./js/photos/photo-viewer-source.js','./js/photos/photo-viewer.js',
-  './js/output/output-controller.js','./js/output/output-view-model.js','./js/output/output-building-groups.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-pdf-preview-controller.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
+  './js/output/output-controller.js','./js/output/output-table-layout.js','./js/output/output-column-editor.js','./js/output/output-view-model.js','./js/output/output-building-groups.js','./js/output/output-state.js','./js/output/output-settings-store.js','./js/output/output-settings-ui.js','./js/output/output-side-panels.js','./js/output/output-photo-selection.js','./js/output/output-photo-source.js','./js/output/output-pdf-renderer.js','./js/output/output-pdf-preview.js','./js/output/output-pdf-preview-controller.js','./js/output/output-export-controller.js','./js/output/output-targets.js','./js/output/output-format.js',
   './js/settings/settings-controller.js','./js/settings/settings-renderer.js','./js/settings/board-settings-store.js','./js/settings/output-settings-section.js',
   './js/analysis/analysis-import-controller.js',
   './js/excel/excel-integration-controller.js','./js/excel/excel-transfer-controller.js','./js/excel/excel-transfer-data.js','./js/excel/excel-transfer-shared.js','./js/excel/material-excel-transfer-controller.js','./js/excel/material-excel-transfer-data.js',
