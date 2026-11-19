@@ -21,7 +21,7 @@ import {
   clearInvalidOutputSelections
 } from './output-state.js';
 import { normalizeOutputDigits } from './output-format.js';
-import { groupMaterialUsageLocations, groupPartRowsByFloor } from './output-building-groups.js';
+import { groupMaterialUsageLocations, groupPartRowsByFloor, groupPartRowsByBuilding } from './output-building-groups.js';
 
 const AREA_ORDER = Object.freeze({ E:0, B:1, I:2, S:3, R:4 });
 
@@ -183,11 +183,13 @@ export function buildOutputViewModel(options={}){
   const validPhotoIds=new Set(photoRecordStore.getActive().map((photo)=>String(photo.photoId)));
   clearInvalidOutputSelections(validPhotoIds);
   const roomRows=buildRoomMaterialOutput({includeUnregisteredExcluded:options.includeUnregisteredExcluded!==false});
+  const partFloorGroups=groupPartRowsByFloor(roomRows,outputBuildingLabel,{preferRoomName:getMaterialRoomNameMode()});
   return {
     materialLocationLabel:getMaterialRoomNameMode()?'部屋名':'部屋No.',
     materialRows:buildMaterialListOutput(),
     roomRows,
-    partGroups:groupPartRowsByFloor(roomRows,outputBuildingLabel),
+    partGroups:partFloorGroups,
+    partBuildingGroups:groupPartRowsByBuilding(partFloorGroups),
     visualPhotoItems:buildVisualPhotoOutput(),
     samplingPhotoPages:buildSamplingPhotoOutput()
   };
