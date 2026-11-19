@@ -52,7 +52,7 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
     let entry = group.byMaterial.get(key);
     if (!entry) {
       entry = {
-        part, materialNo:row.materialNo, materialName:row.materialName,
+        part, materialId:row.materialId||'', materialNo:row.materialNo, materialName:row.materialName,
         level:row.level, analysisResult:row.analysisResult,
         positive:row.positive, note:row.note, locations:[], location:''
       };
@@ -74,14 +74,29 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
   });
 }
 
-/** 棟単位に階ごとの集計を再配列し、部位→階→建材の順にする。 */
+/**
+ * 棟単位に階ごとの集計を再配列。複数エリアにまたがる同一建材は
+ * 棟・階・部位・建材IDで一行に統合し、使用箇所だけをまとめる。
+ */
 export function groupPartRowsByBuilding(floorGroups) {
   const buildings=new Map();
   for(const group of floorGroups||[]){
     const id=buildingKey(group.buildingId);
-    if(!buildings.has(id))buildings.set(id,{buildingId:id,buildingLabel:group.buildingLabel,rows:[]});
+    if(!buildings.has(id))buildings.set(id,{buildingId:id,buildingLabel:group.buildingLabel,rows:[],byKey:new Map()});
+    const building=buildings.get(id);
     for(const row of group.rows||[]){
-      buildings.get(id).rows.push({...row,floor:group.floor});
+      const identity=row.materialId?('id:'+row.materialId):('name:'+text(row.materialName));
+      const key=JSON.stringify([row.part,group.floor,identity]);
+      let item=building.byKey.get(key);
+      if(!item){
+        item={...row,floor:group.floor,location:''};
+        item.locationTokens=[];
+        building.byKey.set(key,item);
+        building.rows.push(item);
+      }
+      for(const location of text(row.location).split('、').filter(Boolean)){
+        if(!item.locationTokens.includes(location))item.locationTokens.push(location);
+      }
     }
   }
   return [...buildings.values()].map(group=>{
@@ -90,6 +105,8 @@ export function groupPartRowsByBuilding(floorGroups) {
     group.rows.sort((a,b)=>PART_ORDER.indexOf(a.part)-PART_ORDER.indexOf(b.part)
       || floorOrder.get(a.floor)-floorOrder.get(b.floor)
       || String(a.materialNo??'').localeCompare(String(b.materialNo??''),'ja',{numeric:true}));
+    group.rows.forEach(row=>{row.location=row.locationTokens.join('、');delete row.locationTokens;});
+    delete group.byKey;
     return group;
   });
 }
