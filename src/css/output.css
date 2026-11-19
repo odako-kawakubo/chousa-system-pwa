@@ -49,6 +49,23 @@
 .output-setting-wide{grid-column:1/-1}
 .output-setting-number{display:grid;grid-template-columns:minmax(0,1fr) 28px;align-items:center;gap:4px}
 .output-setting-number em{font-style:normal;text-align:center;font-size:10px;color:var(--text-subtle)}
+/* 帳票列幅編集。表はmmに比例するため、ドラッグ距離を印刷幅へ換算できる。 */
+.output-column-editor{min-width:0;display:flex;flex-direction:column;gap:8px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.output-column-editor-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px}
+.output-column-editor-heading small{color:var(--text-subtle);font-size:10px}
+.output-column-editor-scroll{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:7px 0 10px}
+.output-column-editor-table{display:flex;align-items:stretch;min-width:max-content;height:52px;border-left:1px solid var(--line-strong);border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}
+.output-column-editor-cell{box-sizing:border-box;position:relative;flex:0 0 auto;display:flex;justify-content:center;align-items:center;min-width:0;padding:3px 7px 3px 2px;border-right:1px solid var(--line-strong);font-size:10px;overflow:visible;text-align:center}
+.output-column-editor-cell>span:first-child{overflow:hidden;overflow-wrap:anywhere;line-height:1.3;max-height:100%}
+.output-column-editor-handle{position:absolute;top:0;bottom:0;right:-7px;width:14px;z-index:1;cursor:col-resize;touch-action:none;background:transparent}
+.output-column-editor-handle:active,.output-column-editor-handle:hover{background:rgba(30,120,180,.2)}
+.output-column-editor-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.output-column-editor-fields label{display:grid;grid-template-columns:minmax(0,1fr) 66px 20px;gap:4px;align-items:center;font-size:10px}
+.output-column-editor-fields label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.output-column-editor-fields input{box-sizing:border-box;width:100%;min-width:0;padding:5px 3px;border:1px solid var(--line-strong);border-radius:5px;background:var(--panel);color:var(--text)}
+.output-column-editor-fields em{font-style:normal;color:var(--text-subtle)}
+.output-column-editor-total{text-align:right;font-size:11px;font-weight:700}
+
 .settings-output-card{grid-column:1/-1}
 .settings-output-actions{justify-content:flex-end}
 .settings-output-card .output-settings-controls{margin-top:8px}
