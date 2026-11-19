@@ -8,6 +8,7 @@ import { exportVectorPdf,createVectorPdfBlob } from './output-pdf-renderer.js';
 import { prepareOutputPhotoSources } from './output-photo-source.js';
 import { OUTPUT_TARGETS,OUTPUT_TARGET_ORDER } from './output-targets.js';
 import { formatSamplingCode } from './output-format.js';
+import { groupRoomRowsByBuilding } from './output-building-groups.js';
 import { getOutputSettings } from './output-settings-store.js';
 import { getCurrentProject } from '../projects/project-store.js';
 import { isTutorialActionAllowed } from '../guide/tutorial-state.js';
@@ -35,10 +36,47 @@ function imageExtension(dataUrl){return /^data:image\/png/i.test(dataUrl)?'png':
 function addExcelImage(workbook,sheet,dataUrl,range){if(!dataUrl)return;const imageId=workbook.addImage({base64:dataUrl,extension:imageExtension(dataUrl)});sheet.addImage(imageId,range);}
 function styleHeader(row){row.font={bold:true};row.alignment={vertical:'middle',horizontal:'center',wrapText:true};}
 function addMaterialSheet(workbook,rows,locationLabel='部屋No.'){const sheet=workbook.addWorksheet('建材リスト');sheet.addRow(['建材No.','建材名','部位',`施工範囲 / ${locationLabel}`,'建材Lv.','分析の要否','石綿含有の有無','調査備考']);styleHeader(sheet.getRow(1));rows.forEach((r)=>{const row=sheet.addRow([r.materialNo,r.name,r.part,r.usageLocation,r.level,r.analysisRequired,r.analysisResult,r.note]);if(r.positive)row.font={color:{argb:'FFC00000'}};});sheet.columns=[{width:10},{width:24},{width:14},{width:28},{width:10},{width:16},{width:18},{width:32}];}
-function addRoomSheet(workbook,rows){const sheet=workbook.addWorksheet('部屋別リスト');sheet.addRow(['階','部屋No.','部屋名','部位','建材No.','建材名称','調査備考','建材Lv.','分析結果','部屋備考']);styleHeader(sheet.getRow(1));rows.forEach((r)=>sheet.addRow([r.floor,r.roomNo,r.roomName,r.part,r.materialNo,r.materialName,r.note,r.level,r.analysisResult,r.roomNote]));sheet.columns=[{width:8},{width:10},{width:18},{width:14},{width:8},{width:28},{width:25},{width:10},{width:16},{width:24}];}
+function uniqueSheetName(workbook,name){
+  const cleaned=String(name||'帳票').replace(/[\\[\\]\\:*?/\\\\]/g,' ').trim().slice(0,31)||'帳票';
+  let result=cleaned,number=2;
+  while(workbook.getWorksheet(result)){
+    const suffix='_'+number++;
+    result=cleaned.slice(0,31-suffix.length)+suffix;
+  }
+  return result;
+}
+function addRoomSheet(workbook,rows){
+  const groups=groupRoomRowsByBuilding(rows,id=>rows.find(row=>(row.buildingId||'')===id)?.buildingLabel||'');
+  (groups.length?groups:[{label:'',rows:[]}]).forEach(group=>{
+    const name=groups.length>1?`部屋別_${group.label}`:'部屋別リスト';
+    const sheet=workbook.addWorksheet(uniqueSheetName(workbook,name));
+    sheet.addRow(['階','部屋No.','部屋名','部位','建材No.','建材名称','調査備考','建材Lv.','分析結果','部屋備考']);
+    styleHeader(sheet.getRow(1));
+    group.rows.forEach(r=>sheet.addRow([r.floor,r.roomNo,r.roomName,r.part,r.materialNo,r.materialName,r.note,r.level,r.analysisResult,r.roomNote]));
+    sheet.columns=[{width:8},{width:10},{width:18},{width:14},{width:8},{width:28},{width:25},{width:10},{width:16},{width:24}];
+  });
+}
+function addPartSheets(workbook,groups){
+  (groups.length?groups:[{buildingLabel:'',floor:'',rows:[]}]).forEach(group=>{
+    const label=[group.buildingLabel||((group.buildingId||'A')+'棟'),group.floor].filter(Boolean).join('_');
+    const sheet=workbook.addWorksheet(uniqueSheetName(workbook,`部位別_${label}`));
+    sheet.addRow(['部位','建材No.','建材名称','使用箇所','建材Lv.','分析結果']);
+    styleHeader(sheet.getRow(1));
+    group.rows.forEach(r=>sheet.addRow([r.part,r.materialNo,r.materialName,r.location,r.level,r.analysisResult]));
+    sheet.columns=[{width:14},{width:12},{width:34},{width:32},{width:12},{width:20}];
+    let first=2;
+    while(first<=group.rows.length+1){
+      let last=first;
+      const part=group.rows[first-2]?.part;
+      while(last<group.rows.length+1&&group.rows[last-1]?.part===part)last++;
+      if(last>first)sheet.mergeCells(first,1,last,1);
+      first=last+1;
+    }
+  });
+}
 function addVisualPhotoSheet(workbook,items,photoSources){const sheet=workbook.addWorksheet('建材写真帳');sheet.columns=[{width:4},{width:34},{width:4},{width:34}];items.forEach((item,index)=>{const col=index%2===0?1:3;const row=Math.floor(index/2)*16+1;sheet.getCell(row,col).value=`建材No.${item.materialNo}　${item.buildingLabel ? item.buildingLabel+'　' : ''}${item.part}　${item.name}`;sheet.getCell(row,col).font={bold:true};for(let r=row+1;r<=row+14;r+=1)sheet.getRow(r).height=18;const dataUrl=photoSources.get(String(item.photoId||''));addExcelImage(workbook,sheet,dataUrl,{tl:{col:col-1,row},br:{col:col+1,row:row+14}});});}
 function addSamplingPhotoSheet(workbook,pages,photoSources){const sheet=workbook.addWorksheet('採取写真帳');sheet.columns=[{width:16},{width:58}];let row=1;pages.forEach((page)=>{sheet.getCell(row,1).value='件名';sheet.getCell(row,2).value=page.projectName;row+=1;sheet.getCell(row,1).value='試料';sheet.getCell(row,2).value=page.sampleName;row+=1;sheet.getCell(row,1).value='試料No.';sheet.getCell(row,2).value=formatSamplingCode(page);row+=1;sheet.getCell(row,1).value='採取日';sheet.getCell(row,2).value=page.capturedDate;row+=1;sheet.getCell(row,1).value='場所';sheet.getCell(row,2).value=page.samplingPlace?`${page.samplingPlaceBuildingLabel ? page.samplingPlaceBuildingLabel+'　' : ''}${page.samplingPlaceLabel === '部屋名' ? page.samplingPlace : `部屋No.${page.samplingPlace}`}`:'';row+=2;(page.stages||[]).forEach((stage)=>{sheet.getCell(row,1).value=`撮影状況：${stage.label}`;const start=row;for(let r=start;r<start+14;r+=1)sheet.getRow(r).height=18;const dataUrl=photoSources.get(String(stage.photoId||''));addExcelImage(workbook,sheet,dataUrl,{tl:{col:1,row:start-1},br:{col:2,row:start+12}});row+=14;});row+=2;});}
-async function exportExcel(targets,vm,photoSources){await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js','ExcelJS');const workbook=new window.ExcelJS.Workbook();if(targets.includes('materials'))addMaterialSheet(workbook,vm.materialRows||[],vm.materialLocationLabel||'部屋No.');if(targets.includes('rooms'))addRoomSheet(workbook,vm.roomRows||[]);if(targets.includes('visual-photos'))addVisualPhotoSheet(workbook,vm.visualPhotoItems||[],photoSources);if(targets.includes('sampling-photos'))addSamplingPhotoSheet(workbook,vm.samplingPhotoPages||[],photoSources);const buffer=await workbook.xlsx.writeBuffer();const header=targets.length===1?OUTPUT_TARGETS[targets[0]].header:'調査資料';downloadBlob(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),projectFileName(header,'xlsx'));}
+async function exportExcel(targets,vm,photoSources){await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js','ExcelJS');const workbook=new window.ExcelJS.Workbook();if(targets.includes('materials'))addMaterialSheet(workbook,vm.materialRows||[],vm.materialLocationLabel||'部屋No.');if(targets.includes('rooms'))addRoomSheet(workbook,vm.roomRows||[]);if(targets.includes('parts'))addPartSheets(workbook,vm.partGroups||[]);if(targets.includes('visual-photos'))addVisualPhotoSheet(workbook,vm.visualPhotoItems||[],photoSources);if(targets.includes('sampling-photos'))addSamplingPhotoSheet(workbook,vm.samplingPhotoPages||[],photoSources);const buffer=await workbook.xlsx.writeBuffer();const header=targets.length===1?OUTPUT_TARGETS[targets[0]].header:'調査資料';downloadBlob(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),projectFileName(header,'xlsx'));}
 
 async function runExport(){
   if(running)return;
