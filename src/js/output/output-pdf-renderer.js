@@ -136,6 +136,10 @@ function roomNoTokens(value) {
   return String(value??'').split(/[、，,]+/).map((token)=>token.trim()).filter(Boolean);
 }
 function wrapRoomNoLines(pdf,value,width,size) {
+  // 棟ごとの行区切りは幅による折返しとは別に保持する。
+  if (String(value??'').includes('\n')) {
+    return String(value).split(/\r?\n/).flatMap(line=>wrapRoomNoLines(pdf,line,width,size));
+  }
   const tokens=roomNoTokens(value);
   if(!tokens.length)return [];
   pdf.setFont(activeFontFamily(pdf),'normal');
