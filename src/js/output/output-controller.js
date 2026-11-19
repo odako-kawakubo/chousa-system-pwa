@@ -9,7 +9,7 @@ import { buildOutputViewModel } from './output-view-model.js';
 import { setSamplingOutputMemo } from './output-state.js';
 import { DEFAULT_OUTPUT_SETTINGS,getOutputSettings,saveOutputSettings,normalizeOutputSettings } from './output-settings-store.js';
 import { collectOutputSettings } from './output-settings-ui.js';
-import { OUTPUT_TABLE_MAX_WIDTH, tableWidthTotal } from './output-table-layout.js';
+import { bindOutputColumnEditor } from './output-column-editor.js';
 import { initializeOutputPhotoSelectionBridge,openVisualOutputPhotoViewer,openSamplingOutputPhotoViewer } from './output-photo-selection.js';
 import { initializeOutputExportController } from './output-export-controller.js';
 import { renderOutputSidePanels, hasOutputSidePanel } from './output-side-panels.js';
@@ -77,34 +77,6 @@ function updateDraftFromPanel(){const panel=outputRoot()?.querySelector('[data-o
     settings: effectiveSettings()
   }));}
 
-/**
- * 編集中の表幅は1列だけを更新する。隣列に影響を与えず190mm以内を保証。
- * DOMはドラッグ中だけ局所更新し、PDFは確定時のみ再生成する。
- */
-function changeColumnWidth(kind,key,requested,{refresh=true}={}){
-  if(!settingsOpen)return false;
-  const panel=outputRoot()?.querySelector('[data-output-settings-panel]');
-  if(!panel)return false;
-  const current=settingsDraft||getOutputSettings();
-  const widths=current.tableWidths?.[kind];
-  if(!widths||!(key in widths))return false;
-  const other=tableWidthTotal(kind,widths)-widths[key];
-  const value=Math.round(Math.max(5,Math.min(100,Number(requested)||5,OUTPUT_TABLE_MAX_WIDTH-other))*10)/10;
-  if(!Number.isFinite(value)||value<5)return false;
-  settingsDraft={...collectOutputSettings(panel,current),tableWidths:{
-    ...current.tableWidths,[kind]:{...widths,[key]:value}
-  }};
-  const editor=panel.querySelector(`[data-output-column-editor="${kind}"]`);
-  const target=`${kind}:${key}`;
-  const cell=[...editor?.querySelectorAll('[data-output-column-cell]')||[]].find(node=>node.dataset.outputColumnCell===target);
-  if(cell)cell.style.width=`${value*3}px`;
-  const input=[...editor?.querySelectorAll('[data-output-column-input]')||[]].find(node=>node.dataset.outputColumnInput===target);
-  if(input)input.value=String(value);
-  const total=editor?.querySelector('[data-output-column-total]');
-  if(total)total.textContent=`合計 ${tableWidthTotal(kind,settingsDraft.tableWidths[kind]).toFixed(1)} / 190mm`;
-  if(refresh)updateDraftFromPanel();
-  return true;
-}
 /** 一度の描画更新で写真帳や設定欄のスクロール位置を失わない。 */
 function captureOutputPanelScroll(root){
   return [...root.querySelectorAll('.output-editor-panel,.output-settings-panel')].map(node=>({
@@ -226,28 +198,12 @@ export function initializeOutputTab(){
     const visual=event.target.closest('[data-output-visual-expand]');if(visual){openVisualSelection(visual.dataset.outputVisualExpand);return;}
     const sampling=event.target.closest('[data-output-sampling-expand]');if(sampling){openSamplingSelection(sampling.dataset.outputSamplingExpand,Number(sampling.dataset.outputBranch),sampling.dataset.outputStage);}
   });
-  let columnDrag=null;
-  root.addEventListener('pointerdown',(event)=>{
-    const handle=event.target.closest?.('[data-output-column-handle]');
-    if(!handle||!settingsOpen||event.button!==0)return;
-    const [kind,key]=handle.dataset.outputColumnHandle.split(':');
-    const width=settingsDraft?.tableWidths?.[kind]?.[key];
-    if(!width)return;
-    event.preventDefault();
-    columnDrag={pointerId:event.pointerId,kind,key,startX:event.clientX,startWidth:width};
-    handle.setPointerCapture?.(event.pointerId);
+  bindOutputColumnEditor(root,{
+    getPanel:()=>outputRoot()?.querySelector('[data-output-settings-panel]'),
+    getDraft:()=>settingsDraft,
+    setDraft:next=>{settingsDraft=next;},
+    onCommit:updateDraftFromPanel
   });
-  root.addEventListener('pointermove',(event)=>{
-    if(!columnDrag||columnDrag.pointerId!==event.pointerId)return;
-    changeColumnWidth(columnDrag.kind,columnDrag.key,columnDrag.startWidth+(event.clientX-columnDrag.startX)/3,{refresh:false});
-  });
-  const finishColumnDrag=(event)=>{
-    if(!columnDrag||columnDrag.pointerId!==event.pointerId)return;
-    columnDrag=null;
-    updateDraftFromPanel();
-  };
-  root.addEventListener('pointerup',finishColumnDrag);
-  root.addEventListener('pointercancel',finishColumnDrag);
   root.addEventListener('wheel',(event)=>{
     const host=event.target.closest?.('[data-output-pdf-host]');
     const state=getOutputPdfPreviewState();
@@ -274,15 +230,7 @@ export function initializeOutputTab(){
     vm: buildCurrentVm(),
     settings: effectiveSettings()
   }));}return;}if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
-  root.addEventListener('change',(event)=>{
-    const input=event.target.closest?.('[data-output-column-input]');
-    if(input){
-      const [kind,key]=input.dataset.outputColumnInput.split(':');
-      changeColumnWidth(kind,key,input.value);
-      return;
-    }
-    if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();
-  });
+  root.addEventListener('change',(event)=>{if(event.target.closest?.('[data-output-setting]'))updateDraftFromPanel();});
   window.addEventListener('resize',()=>{rerenderOutputPdfPreview();});
   window.addEventListener('chousa:tab-change',(event)=>{
     if(event.detail?.currentTab!=='sync')return;
