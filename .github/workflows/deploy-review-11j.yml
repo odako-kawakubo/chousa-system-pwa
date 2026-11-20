@@ -1,0 +1,132 @@
+name: Review deploy - v0.1.9.11J (review-photo-pdf)
+
+# The push trigger is limited to this workflow file, so later code pushes
+# require an explicit manual review deployment rather than publishing silently.
+on:
+  push:
+    branches:
+      - work/v0.1.9.11J-output-final
+    paths:
+      - .github/workflows/deploy-review-11j.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-review-photo-pdf-11j
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/work/v0.1.9.11J-output-final'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 11J
+        uses: actions/checkout@v5
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+          node --check tests/multi-building-11A.mjs
+          node --check tests/multi-building-11G.mjs
+          node --check tests/multi-building-11G-service.mjs
+          node --check tests/output-11H.mjs
+          node --check tests/output-11I.mjs
+          node --check tests/output-11J.mjs
+
+      - name: Check module and offline app shell references
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = [];
+          for (const root of ['src/js', 'src/config']) {
+            function walk(dir) {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+              }
+            }
+            walk(root);
+          }
+          for (const file of files) {
+            const text = fs.readFileSync(file, 'utf8');
+            for (const match of text.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g)) {
+              const resolved = path.resolve(path.dirname(file), match[1]);
+              if (![resolved, resolved + '.js', path.join(resolved, 'index.js')].some(fs.existsSync)) {
+                throw new Error('Missing JS module: ' + file + ' -> ' + match[1]);
+              }
+            }
+          }
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          const shell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(m => m[1]);
+          for (const rel of shell) {
+            if (rel && !fs.existsSync(path.join('src', rel))) {
+              throw new Error('Missing app shell: ' + rel);
+            }
+          }
+          const shellSet = new Set(shell);
+          for (const file of files.filter(x => x.startsWith('src/js/'))) {
+            const rel = file.slice(4);
+            if (!shellSet.has(rel)) throw new Error('Uncached JS module: ' + rel);
+          }
+          NODE
+
+      - name: Run multi-building regression suite
+        run: node tests/multi-building-11A.mjs
+
+      - name: Run 11G offline building and report regression suite
+        run: node tests/multi-building-11G.mjs
+
+      - name: Run actual 11G building service offline integration tests
+        run: node tests/multi-building-11G-service.mjs
+
+      - name: Run 11H output grouping regression suite
+        run: node tests/output-11H.mjs
+
+      - name: Run 11I output layout regression suite
+        run: node tests/output-11I.mjs
+
+      - name: Run 11J output finishing regression suite
+        run: node tests/output-11J.mjs
+
+  deploy:
+    if: github.ref == 'refs/heads/work/v0.1.9.11J-output-final'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 11J
+        uses: actions/checkout@v5
+
+      - name: Verify 11J review version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const v=require('./src/version.json');if(v.version!=='0.1.9.11J')process.exit(1)"
+
+      - name: Deploy to existing review-photo-pdf with proven Firebase CLI
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ODAKO_CHOUSA_SYSTEM_PWA }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT}" ]; then
+            echo "Firebase service account secret is missing"
+            exit 1
+          fi
+          credentials="${RUNNER_TEMP}/firebase-preview-service-account.json"
+          trap 'rm -f "${credentials}"' EXIT
+          printf '%s' "${FIREBASE_SERVICE_ACCOUNT}" > "${credentials}"
+          chmod 600 "${credentials}"
+          export GOOGLE_APPLICATION_CREDENTIALS="${credentials}"
+          npx --yes firebase-tools@15.34.0 hosting:channel:deploy review-photo-pdf --expires 30d --project odako-chousa-system-pwa
+
