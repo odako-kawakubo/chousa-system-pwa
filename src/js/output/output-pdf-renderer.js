@@ -421,8 +421,8 @@ function partColumns(settings,buildingMode){
   const widths=tableWidthValues('parts',settings,{includeFloor:buildingMode});
   return columns.map(([key,label],i)=>({key,label,width:widths[i]}));
 }
-function drawPartHeader(pdf,columns,settings,locationLabel){
-  let x=MARGIN_X;
+function drawPartHeader(pdf,columns,settings,locationLabel,tableX){
+  let x=tableX;
   for(const col of columns){
     const width=col.width,height=settings.partHeaderHeight;
     drawRect(pdf,x,LIST_START_Y,width,height,{fill:HEADER_FILL});
@@ -452,8 +452,8 @@ function partRowHeight(pdf,row,columns,settings){
   }
   return height;
 }
-function renderPartPageBody(pdf,rows,heights,columns,settings,buildingMode){
-  const xs=[MARGIN_X];columns.forEach(col=>xs.push(xs[xs.length-1]+col.width));
+function renderPartPageBody(pdf,rows,heights,columns,settings,buildingMode,tableX){
+  const xs=[tableX];columns.forEach(col=>xs.push(xs[xs.length-1]+col.width));
   let y=LIST_START_Y+settings.partHeaderHeight;
   rows.forEach((row,index)=>{
     const h=heights[index],color=(row.positive??isPositive(row.analysisResult))?RED:BLACK;
@@ -485,6 +485,8 @@ function renderPartPageBody(pdf,rows,heights,columns,settings,buildingMode){
 function renderPartPages(pdf,vm,state,settings){
   const buildingMode=settings.partListMode==='building';
   const columns=partColumns(settings,buildingMode);
+  const tableWidth=columns.reduce((sum,column)=>sum+column.width,0);
+  const tableX=(PAGE_W-tableWidth)/2;
   const groups=buildingMode ? vm.partBuildingGroups||[] : vm.partGroups||[];
   (groups.length?groups:[{buildingId:'',buildingLabel:'',floor:'',rows:[]}]).forEach(group=>{
     const heights=group.rows.map(row=>partRowHeight(pdf,row,columns,settings));
@@ -493,8 +495,8 @@ function renderPartPages(pdf,vm,state,settings){
       addPage(pdf,state);
       const label=[group.buildingLabel||((group.buildingId||'A')+'棟'),buildingMode?'':group.floor].filter(Boolean).join(' ');
       drawTitle(pdf,`部位別調査対象建材リスト　${label}`,settings);
-      drawPartHeader(pdf,columns,settings,vm.materialLocationLabel||'部屋No.');
-      const endY=renderPartPageBody(pdf,page.rows,page.heights,columns,settings,buildingMode);
+      drawPartHeader(pdf,columns,settings,vm.materialLocationLabel||'部屋No.',tableX);
+      const endY=renderPartPageBody(pdf,page.rows,page.heights,columns,settings,buildingMode,tableX);
       drawListFootnote(pdf,settings,endY);
     });
   });
