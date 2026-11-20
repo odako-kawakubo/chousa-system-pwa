@@ -59,7 +59,7 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
       group.byMaterial.set(key, entry);
       group.rows.push(entry);
     }
-    const location = text(preferRoomName ? (row.roomName||row.roomNo) : row.roomNo);
+    const location = text(row.areaCode==='E' ? (row.roomName||row.roomNo) : (preferRoomName ? (row.roomName||row.roomNo) : row.roomNo));
     if (location && !entry.locations.includes(location)) entry.locations.push(location);
   }
   return [...groups.values()].map(group => {
