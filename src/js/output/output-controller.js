@@ -98,6 +98,7 @@ function outputClickAllowed(target){
   const view=target?.closest?.('[data-output-view]');
   if(view)return isTutorialActionAllowed('output.view.change',{view:String(view.dataset.outputView||'')});
   if(target?.closest?.('[data-output-unregistered-excluded]'))return isTutorialActionAllowed('output.view.change',{view:'rooms'});
+  if(target?.closest?.('[data-output-part-mode]'))return isTutorialActionAllowed('output.settings.change',{});
   if(target?.closest?.('[data-output-page-prev],[data-output-page-next]'))return isTutorialActionAllowed('output.page.change',{});
   if(target?.closest?.('[data-output-zoom-reset],[data-output-zoom-out],[data-output-zoom-in]'))return isTutorialActionAllowed('output.zoom.change',{});
   if(target?.closest?.('[data-output-settings-open],[data-output-settings-close],[data-output-settings-undo],[data-output-settings-default],[data-output-settings-save]'))return isTutorialActionAllowed('output.settings.change',{});
@@ -113,6 +114,25 @@ function outputClickAllowed(target){
 }
 
 function renderRoomUnregisteredSwitch(){if(activeView!=='rooms')return '';return `<span class="output-toolbar-label">未登録の対象外</span><button type="button" class="btn small ${includeUnregisteredExcluded?'active':''}" data-output-unregistered-excluded>表示 ${includeUnregisteredExcluded?'ON':'OFF'}</button><span class="output-toolbar-separator"></span>`;}
+/** 部位別の出力形式は既存の出力設定 partListMode をそのまま利用する。 */
+function renderPartModeSwitch(){
+  if(activeView!=='parts')return '';
+  const mode=effectiveSettings().partListMode;
+  return `<span class="output-toolbar-label">表示形式</span><button type="button" class="btn small ${mode==='floor'?'active':''}" data-output-part-mode="floor" aria-pressed="${mode==='floor'}">階ごと</button><button type="button" class="btn small ${mode==='building'?'active':''}" data-output-part-mode="building" aria-pressed="${mode==='building'}">全階まとめ</button><span class="output-toolbar-separator"></span>`;
+}
+function changePartMode(nextMode){
+  if(!['floor','building'].includes(nextMode))return;
+  if(effectiveSettings().partListMode===nextMode)return;
+  if(settingsOpen){
+    const panel=outputRoot()?.querySelector('[data-output-settings-panel]');
+    settingsDraft={...(panel?collectOutputSettings(panel,settingsDraft||getOutputSettings()):settingsDraft||getOutputSettings()),partListMode:nextMode};
+  }else{
+    saveOutputSettings({...getOutputSettings(),partListMode:nextMode});
+  }
+  resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});
+  renderOutputTab();
+}
+
 
 /**
  * 現在の出力種別・設定・ViewModelから出力タブ全体を再描画し、PDF Preview生成を開始する。Previewの内部状態は専用controllerへ委譲する。
@@ -123,7 +143,7 @@ export function renderOutputTab(){const root=outputRoot();if(!root)return;const 
   <button type="button" class="btn small output-view-btn ${activeView==='parts'?'active':''}" data-output-view="parts">部位別リスト</button>
   <button type="button" class="btn small output-view-btn ${activeView==='visual-photos'?'active':''}" data-output-view="visual-photos">建材写真帳</button>
   <button type="button" class="btn small output-view-btn ${activeView==='sampling-photos'?'active':''}" data-output-view="sampling-photos">採取写真帳</button>
-  <span class="output-toolbar-separator"></span>${renderRoomUnregisteredSwitch()}
+  <span class="output-toolbar-separator"></span>${renderRoomUnregisteredSwitch()}${renderPartModeSwitch()}
   <button type="button" class="btn small" data-output-page-prev aria-label="前のページ">‹</button>
   <span class="output-page-counter" data-output-page-counter>${previewState.page} / ${previewState.pageCount}</span>
   <button type="button" class="btn small" data-output-page-next aria-label="次のページ">›</button>
@@ -185,6 +205,7 @@ export function initializeOutputTab(){
     if(!outputClickAllowed(event.target)){event.preventDefault();return;}
     const viewButton=event.target.closest('[data-output-view]');if(viewButton){activeView=viewButton.dataset.outputView||'materials';resetOutputPdfPreviewView({page:1,zoom:100});renderOutputTab();notifyTutorialAction('output.view.change',{view:activeView});return;}
     const unregisteredButton=event.target.closest('[data-output-unregistered-excluded]');if(unregisteredButton){includeUnregisteredExcluded=!includeUnregisteredExcluded;resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});renderOutputTab();return;}
+    const partModeButton=event.target.closest('[data-output-part-mode]');if(partModeButton){changePartMode(partModeButton.dataset.outputPartMode);return;}
     if(event.target.closest('[data-output-page-prev]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page-1,{edge:'bottom'});return;}
     if(event.target.closest('[data-output-page-next]')){const state=getOutputPdfPreviewState();void setOutputPdfPreviewPage(root,state.page+1,{edge:'top'});return;}
     if(event.target.closest('[data-output-zoom-reset]')){void setOutputPdfPreviewZoom(root,100);return;}
