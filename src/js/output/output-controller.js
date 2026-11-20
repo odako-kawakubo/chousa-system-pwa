@@ -123,14 +123,15 @@ function renderPartModeSwitch(){
 function changePartMode(nextMode){
   if(!['floor','building'].includes(nextMode))return;
   if(effectiveSettings().partListMode===nextMode)return;
+  resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});
   if(settingsOpen){
     const panel=outputRoot()?.querySelector('[data-output-settings-panel]');
     settingsDraft={...(panel?collectOutputSettings(panel,settingsDraft||getOutputSettings()):settingsDraft||getOutputSettings()),partListMode:nextMode};
+    renderOutputTab();
   }else{
+    // 保存変更イベントが再描画するため二重更新しない。
     saveOutputSettings({...getOutputSettings(),partListMode:nextMode});
   }
-  resetOutputPdfPreviewView({page:1,zoom:getOutputPdfPreviewState().zoom});
-  renderOutputTab();
 }
 
 
