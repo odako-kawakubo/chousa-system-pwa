@@ -105,7 +105,7 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
         buildingLabel:outputBuildingLabel(record.buildingId),
         areaCode:record.areaCode, floorLabel:floorLabel(record),
         materialId:material?String(material.materialId):'', partIndex,
-        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { preferRoomName:true }) : text(record.roomName),roomNote:text(record.roomNote),
+        floor:floorLabel(record),roomNo:record.areaCode === 'E' ? '-' : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
         materialNo:material?getMaterialDisplayNo(material):'',
         materialName:material?text(material.name):text(record.materialName),note:material?text(material.note):'',
