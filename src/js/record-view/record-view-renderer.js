@@ -46,6 +46,7 @@ const PHOTO_COLUMNS = [
   ['lastEditedDevice', '最終編集端末'],
   ['lastEditedAt', '最終編集日時'],
   ['deleted', '削除状態'],
+  ['buildingId', '棟ID'],
   ['areaCode', '区分コード'],
   ['roomPosition', '部屋位置'],
   ['partSlot', '部位枠'],
@@ -61,7 +62,8 @@ const PHOTO_COLUMNS = [
 
 const FINISH_COLUMNS = [
   ['finishId', '仕上表ID'],
-  ['roomUid', '内部部屋ID'],
+  ['buildingId', '棟ID'],
+  ['roomId', '部屋ID'],
   ['areaCode', '区分'],
   ['floor', '階'],
   ['roomNo', '部屋No.'],
@@ -236,7 +238,7 @@ function renderTable(columns, records, emptyMessage, options = {}) {
         }
         if (index === 0) td.classList.add('record-view-sticky-first');
         if (key === 'note' || key === 'remarks' || key === 'usageLocation' || key === 'roomNote') td.classList.add('record-view-wrap');
-        if (key === 'finishId' || key === 'roomUid' || key === 'roomPosition' || key === 'position' || key === 'materialId') td.classList.add('record-view-code');
+        if (key === 'finishId' || key === 'roomId' || key === 'buildingId' || key === 'roomPosition' || key === 'position' || key === 'materialId') td.classList.add('record-view-code');
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -246,7 +248,38 @@ function renderTable(columns, records, emptyMessage, options = {}) {
   table.appendChild(tbody);
 }
 
+function renderBuildingSelector(viewModel) {
+  const toolbar = document.querySelector('.record-view-toolbar');
+  if (!toolbar) return;
+  let label = toolbar.querySelector('[data-record-finish-building-wrap]');
+  if (!label) {
+    label = document.createElement('label');
+    label.className = 'record-view-building-picker';
+    label.dataset.recordFinishBuildingWrap = '';
+    label.textContent = '棟';
+    const select = document.createElement('select');
+    select.dataset.recordFinishBuilding = '';
+    select.setAttribute('aria-label', '仕上表レコードの表示棟');
+    label.appendChild(select);
+    const refresh = document.getElementById('recordViewRefreshButton');
+    toolbar.insertBefore(label, refresh || null);
+  }
+  const visible = viewModel.type === RECORD_VIEW_TABS.FINISH;
+  label.hidden = !visible;
+  if (!visible) return;
+  const select = label.querySelector('select');
+  select.replaceChildren();
+  for (const building of viewModel.buildings || []) {
+    const option = document.createElement('option');
+    option.value = building.id;
+    option.textContent = building.label;
+    select.appendChild(option);
+  }
+  select.value = viewModel.selectedBuilding || 'A';
+}
+
 export function renderRecordView(viewModel) {
+  renderBuildingSelector(viewModel);
   document.querySelectorAll('[data-record-view-tab]').forEach((button) => {
     button.classList.toggle('active', button.dataset.recordViewTab === viewModel.type);
   });
