@@ -13,10 +13,13 @@ import { buildRecordView, RECORD_VIEW_TABS } from './record-view-view-model.js';
 import { renderRecordView } from './record-view-renderer.js';
 
 let activeRecordViewTab = RECORD_VIEW_TABS.MATERIAL;
+let selectedFinishBuilding = 'A';
 
 /** 現在選択中のサブタブをStoreから読み直して再描画する。 */
 export function refreshRecordView() {
-  renderRecordView(buildRecordView(activeRecordViewTab));
+  const view = buildRecordView(activeRecordViewTab, { selectedBuilding: selectedFinishBuilding });
+  if (view.type === RECORD_VIEW_TABS.FINISH) selectedFinishBuilding = view.selectedBuilding;
+  renderRecordView(view);
 }
 
 function selectRecordViewTab(tabId) {
@@ -30,6 +33,13 @@ function selectRecordViewTab(tabId) {
 export function initializeRecordView() {
   document.querySelectorAll('[data-record-view-tab]').forEach((button) => {
     button.addEventListener('click', () => selectRecordViewTab(button.dataset.recordViewTab));
+  });
+
+  document.querySelector('.record-view-toolbar')?.addEventListener('change', (event) => {
+    const select = event.target.closest?.('[data-record-finish-building]');
+    if (!select || activeRecordViewTab !== RECORD_VIEW_TABS.FINISH) return;
+    selectedFinishBuilding = select.value || 'A';
+    refreshRecordView();
   });
 
   document.getElementById('recordViewRefreshButton')?.addEventListener('click', refreshRecordView);
