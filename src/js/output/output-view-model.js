@@ -13,7 +13,7 @@ import { SHOOTING_TYPES } from '../records/photo-record.js';
 import { buildMaterialSampleName } from '../materials/material-sample-name.js';
 import { getMaterialUsageRoomOptions, getMaterialSampleLocationDisplay } from '../finish-table/material-usage-derived.js';
 import { getMaterialRoomNameMode } from '../materials/material-room-display-state.js';
-import { roomLocationDisplay } from '../finish-table/room-location.js';
+import { roomLocationDisplay, roomLocationKey } from '../finish-table/room-location.js';
 import {
   getVisualOutputPhotoId,
   getSamplingOutputPhotoId,
@@ -103,7 +103,7 @@ export function buildRoomMaterialOutput({includeUnregisteredExcluded=true}={}){
       return {
         buildingId:String(record.buildingId||'')==='A'?'':String(record.buildingId||''),
         buildingLabel:outputBuildingLabel(record.buildingId),
-        areaCode:record.areaCode, floorLabel:floorLabel(record),
+        areaCode:record.areaCode, roomId:roomLocationKey(record), floorLabel:floorLabel(record),
         materialId:material?String(material.materialId):'', partIndex,
         floor:floorLabel(record),roomNo:record.areaCode === 'E' ? '-' : numberText(record.roomNo),roomName:record.areaCode === 'E' ? roomLocationDisplay(record, { context:'photo' }) : text(record.roomName),roomNote:text(record.roomNote),
         part:partIndex>=5?(text(record.part)||'その他'):text(record.part),
