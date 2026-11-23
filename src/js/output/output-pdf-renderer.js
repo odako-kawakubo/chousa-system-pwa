@@ -339,10 +339,14 @@ function ensureGroupedCellHeight(pdf,heights,range,value,width,options={}) {
   const current=heights.slice(range.start,range.end).reduce((sum,h)=>sum+h,0);
   if(needed>current)heights[range.end-1]+=needed-current;
 }
+/** 部屋の識別は表示用の部屋No.と独立させる。 */
+function roomGroupKey(row) {
+  return String(row.roomId || `${row.floor}\u0000${row.roomNo}`);
+}
 function calculateRoomHeights(pdf,rows,widths,settings) {
   const heights=rows.map((row)=>roomRowBaseHeight(pdf,row,widths,settings));
   groupRanges(rows,(row)=>String(row.floor??'')).forEach((range)=>ensureGroupedCellHeight(pdf,heights,range,rows[range.start]?.floor,widths[0],{size:settings.roomBodySize,paddingX:.4,paddingY:.9}));
-  groupRanges(rows,(row)=>`${row.floor}\u0000${row.roomNo}`).forEach((range)=>{
+  groupRanges(rows,roomGroupKey).forEach((range)=>{
     const first=rows[range.start]||{};
     ensureGroupedCellHeight(pdf,heights,range,first.roomNo,widths[1],{size:settings.roomBodySize,paddingX:.6,paddingY:.9,roomTokens:true});
     ensureGroupedCellHeight(pdf,heights,range,first.roomName,widths[2],{size:settings.roomBodySize,paddingX:.8,paddingY:.9});
@@ -351,7 +355,7 @@ function calculateRoomHeights(pdf,rows,widths,settings) {
   return heights;
 }
 function paginateRoomGroups(rows,heights,availableHeight) {
-  const groups=groupRanges(rows,(row)=>`${row.floor}\u0000${row.roomNo}`);
+  const groups=groupRanges(rows,roomGroupKey);
   const pages=[];let pageRows=[];let pageHeights=[];let used=0;
   groups.forEach((group)=>{
     const groupRows=rows.slice(group.start,group.end);
@@ -384,7 +388,7 @@ function renderRoomPageBody(pdf,rows,heights,widths,settings) {
     });
     const floorKey=(item)=>String(item.floor??'');
     if(!precedingSame(rows,index,floorKey)){const span=pageSpan(rows,index,floorKey);const h=spanHeight(heights,index,span);drawRect(pdf,xs[0],y,widths[0],h);drawCellText(pdf,row.floor,xs[0],y,widths[0],h,{align:'center',size:settings.roomBodySize,color:BLACK,paddingX:.4});}
-    const roomKey=(item)=>`${item.floor}\u0000${item.roomNo}`;
+    const roomKey=roomGroupKey;
     if(!precedingSame(rows,index,roomKey)){
       const span=pageSpan(rows,index,roomKey);const h=spanHeight(heights,index,span);
       const roomRows=rows.slice(index,index+span);const roomColor=roomRows.some((item)=>(item.positive??isPositive(item.analysisResult)))?RED:BLACK;
