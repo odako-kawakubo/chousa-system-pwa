@@ -30,6 +30,28 @@
   color: var(--text-on-accent);
 }
 
+.record-view-building-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.record-view-building-picker[hidden] {
+  display: none;
+}
+
+.record-view-building-picker select {
+  max-width: 170px;
+  min-width: 82px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 7px;
+}
+
 .record-view-toolbar .record-view-hint {
   flex: 1 1 280px;
   min-width: 180px;
