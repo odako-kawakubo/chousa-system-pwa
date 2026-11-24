@@ -5,7 +5,7 @@ name: Review deploy - v0.1.9.11K (review-photo-pdf)
 on:
   push:
     branches:
-      - work/v0.1.9.11K-output-final
+      - work/v0.1.9.11K-room-records
     paths:
       - .github/workflows/deploy-review-11k.yml
   workflow_dispatch:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    if: github.ref == 'refs/heads/work/v0.1.9.11K-output-final'
+    if: github.ref == 'refs/heads/work/v0.1.9.11K-room-records'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 11K
@@ -104,7 +104,7 @@ jobs:
         run: node tests/multi-building-11K.mjs
 
   deploy:
-    if: github.ref == 'refs/heads/work/v0.1.9.11K-output-final'
+    if: github.ref == 'refs/heads/work/v0.1.9.11K-room-records'
     needs: test
     runs-on: ubuntu-latest
     steps:
