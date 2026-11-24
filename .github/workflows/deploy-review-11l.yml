@@ -21,9 +21,18 @@ jobs:
   test:
     if: github.ref == 'refs/heads/work/v0.1.9.11L-custom-parts'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
     steps:
       - name: Checkout 11L
         uses: actions/checkout@v5
+
+      - name: Use fixed Node version for regression tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
       - name: Check JavaScript syntax
         shell: bash
