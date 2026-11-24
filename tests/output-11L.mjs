@@ -87,8 +87,8 @@ check('部位名が同じでも建材ID・棟・階は混同しない',()=>{
 check('全階まとめでも部位名を維持し、同一階・建材・部位のみ集約',()=>{
   const grouped=groupPartRowsByBuilding(groupPartRowsByFloor([
     makeRow({areaCode:'I',roomNo:'1-1',roomName:'室A'}),
-    makeRow({areaCode:'E',roomNo:'-',roomName:'北面'}),
     makeRow({areaCode:'I',roomNo:'1-2',roomName:'室B'}),
+    makeRow({areaCode:'E',roomNo:'-',roomName:'北面'}),
     makeRow({areaCode:'I',part:'梁',roomNo:'1-3'}),
     makeRow({areaCode:'I',part:'配管',floor:'2階',roomNo:'2-1'})
   ],label,{preferRoomName:true}));
