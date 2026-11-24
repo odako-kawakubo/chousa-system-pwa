@@ -44,7 +44,9 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
     });
     const group = groups.get(id);
     const index = Number(row.partIndex);
-    const part = PART_ORDER[index-1] || 'その他';
+    // The fifth (custom) slot retains its actual name; blank custom names remain 'その他'.
+    const partOrder = index >= 1 && index <= 4 ? index - 1 : 4;
+    const part = partOrder === 4 ? (text(row.part) || 'その他') : PART_ORDER[partOrder];
     const materialIdentity = row.materialId
       ? `id:${row.materialId}`
       : `name:${text(row.materialName)}`;
@@ -52,7 +54,7 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
     let entry = group.byMaterial.get(key);
     if (!entry) {
       entry = {
-        part, materialId:row.materialId||'', materialNo:row.materialNo, materialName:row.materialName,
+        part, partOrder, materialId:row.materialId||'', materialNo:row.materialNo, materialName:row.materialName,
         level:row.level, analysisResult:row.analysisResult,
         positive:row.positive, note:row.note, locations:[], location:''
       };
@@ -63,7 +65,8 @@ export function groupPartRowsByFloor(rows, buildingLabel, {preferRoomName=false}
     if (location && !entry.locations.includes(location)) entry.locations.push(location);
   }
   return [...groups.values()].map(group => {
-    group.rows.sort((a,b) => PART_ORDER.indexOf(a.part)-PART_ORDER.indexOf(b.part)
+    group.rows.sort((a,b) => a.partOrder-b.partOrder
+      || (a.partOrder===4 ? a.part.localeCompare(b.part,'ja',{numeric:true}) : 0)
       || String(a.materialNo ?? '').localeCompare(String(b.materialNo ?? ''),'ja',{numeric:true}));
     group.rows.forEach(row => {
       row.location = row.locations.join('、');
@@ -102,7 +105,8 @@ export function groupPartRowsByBuilding(floorGroups) {
   return [...buildings.values()].map(group=>{
     const floorOrder=new Map();
     group.rows.forEach(row=>{if(!floorOrder.has(row.floor))floorOrder.set(row.floor,floorOrder.size);});
-    group.rows.sort((a,b)=>PART_ORDER.indexOf(a.part)-PART_ORDER.indexOf(b.part)
+    group.rows.sort((a,b)=>a.partOrder-b.partOrder
+      || (a.partOrder===4 ? a.part.localeCompare(b.part,'ja',{numeric:true}) : 0)
       || floorOrder.get(a.floor)-floorOrder.get(b.floor)
       || String(a.materialNo??'').localeCompare(String(b.materialNo??''),'ja',{numeric:true}));
     group.rows.forEach(row=>{row.location=row.locationTokens.join('、');delete row.locationTokens;});
