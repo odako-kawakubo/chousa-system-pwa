@@ -50,7 +50,7 @@ test('部位別は棟・階・部位・建材IDで重複を集約する',()=>{
   assert.equal(first[0].location,'1-1、1-2');
   assert.equal(first[0].materialNo,3);
   assert.equal(first[1].positive,true);
-  assert.deepEqual(groups[2].rows.map(r=>r.part),['その他','配管']);
+  assert.deepEqual(groups[2].rows.map(r=>r.part),['床','その他','配管']);
   assert.equal(groups[2].rows.find(r=>r.part==='配管').location,'1-2');
   assert.equal(groups[2].rows.find(r=>r.part==='その他').location,'1-3');
   assert.equal(groups[3].rows[0].part,'天井');
