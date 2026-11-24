@@ -50,8 +50,23 @@ test('部位別は棟・階・部位・建材IDで重複を集約する',()=>{
   assert.equal(first[0].location,'1-1、1-2');
   assert.equal(first[0].materialNo,3);
   assert.equal(first[1].positive,true);
-  assert.equal(groups[2].rows.find(r=>r.part==='その他').location,'1-2、1-3');
+  assert.deepEqual(groups[2].rows.map(r=>r.part),['その他','配管']);
+  assert.equal(groups[2].rows.find(r=>r.part==='配管').location,'1-2');
+  assert.equal(groups[2].rows.find(r=>r.part==='その他').location,'1-3');
   assert.equal(groups[3].rows[0].part,'天井');
+});
+
+test('同じ棟・階・建材ID・部位名だけ集約し、異なる名称は分離する',()=>{
+  const samePipe={...fixture[5],roomNo:'1-4'};
+  const sameOther={...fixture[6],roomNo:'1-5'};
+  const groups=groupPartRowsByFloor([...fixture,samePipe,sameOther],label);
+  const rows=groups.find(g=>g.buildingLabel==='別館'&&g.floor==='1階').rows;
+  assert.equal(rows.length,3);
+  assert.equal(rows.find(r=>r.part==='配管').location,'1-2、1-4');
+  assert.equal(rows.find(r=>r.part==='その他').location,'1-3、1-5');
+  assert.equal(rows.find(r=>r.part==='床').location,'1-1');
+  assert.equal(rows.find(r=>r.part==='配管').materialId,'R007');
+  assert.equal(rows.find(r=>r.part==='その他').materialId,'R007');
 });
 
 test('同じ部位でも建材IDが異なれば別の行に残す',()=>{
