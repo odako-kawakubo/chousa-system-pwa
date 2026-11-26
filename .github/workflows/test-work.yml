@@ -1,0 +1,120 @@
+name: Develop - shared regression tests
+
+# Pushes to develop run tests only. No Firebase deploy in this workflow.
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: develop-shared-tests
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+
+      - name: Use fixed Node version for regression tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/js src/config -type f -name '*.js' -print0)
+          node --check src/service-worker.js
+          node --check tests/multi-building-11A.mjs
+          node --check tests/multi-building-11G.mjs
+          node --check tests/multi-building-11G-service.mjs
+          node --check tests/output-11H.mjs
+          node --check tests/output-11I.mjs
+          node --check tests/output-11J.mjs
+          node --check tests/multi-building-11K.mjs
+          node --check tests/output-11L.mjs
+          node --check tests/integration-shared.mjs
+
+      - name: Check module and offline app shell references
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = [];
+          for (const root of ['src/js', 'src/config']) {
+            function walk(dir) {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.isFile() && entry.name.endsWith('.js')) files.push(full);
+              }
+            }
+            walk(root);
+          }
+          for (const file of files) {
+            const text = fs.readFileSync(file, 'utf8');
+            for (const match of text.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g)) {
+              const resolved = path.resolve(path.dirname(file), match[1]);
+              if (![resolved, resolved + '.js', path.join(resolved, 'index.js')].some(fs.existsSync)) {
+                throw new Error('Missing JS module: ' + file + ' -> ' + match[1]);
+              }
+            }
+          }
+          const sw = fs.readFileSync('src/service-worker.js', 'utf8');
+          const shell = [...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(m => m[1]);
+          for (const rel of shell) {
+            if (rel && !fs.existsSync(path.join('src', rel))) {
+              throw new Error('Missing app shell: ' + rel);
+            }
+          }
+          const shellSet = new Set(shell);
+          for (const file of files.filter(x => x.startsWith('src/js/'))) {
+            const rel = file.slice(4);
+            if (!shellSet.has(rel)) throw new Error('Uncached JS module: ' + rel);
+          }
+          NODE
+
+      - name: Run multi-building regression suite
+        run: node tests/multi-building-11A.mjs
+
+      - name: Run 11G offline building and report regression suite
+        run: node tests/multi-building-11G.mjs
+
+      - name: Run actual 11G building service offline integration tests
+        run: node tests/multi-building-11G-service.mjs
+
+      - name: Run 11H output grouping regression suite
+        run: node tests/output-11H.mjs
+
+      - name: Run 11I output layout regression suite
+        run: node tests/output-11I.mjs
+
+      - name: Run 11J output finishing regression suite
+        run: node tests/output-11J.mjs
+
+      - name: Run 11K building-aware room and record regression suite
+        run: node tests/multi-building-11K.mjs
+
+      - name: Run named custom parts regression suite
+        run: node tests/output-11L.mjs
+
+      - name: Verify shared integration contract
+        run: node tests/integration-shared.mjs
+
+
