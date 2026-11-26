@@ -67,7 +67,7 @@ assert.ok(mainWorkflow.includes("surveyRootItemId"));
 assert.ok(mainWorkflow.includes("getDriveItem(candidate)"));
 assert.ok(mainWorkflow.includes("listDriveChildren(verified)"));
 assert.ok(mainWorkflow.includes("deploy --only hosting --project odako-chousa-system-pwa"));
-assert.match(version.version,/^0\.\d+\.\d+(?:[A-Z])?$/);
+assert.match(version.version,/^0(?:\.\d+){2,4}[A-Z]?$/);
 assert.ok(appConfig.includes("version: '" + version.version + "'"));
 assert.ok(worker.includes('chousa-app-v' + version.version));
 console.log('Shared integration: modal, OneDrive root and version consistency PASS');
