@@ -71,3 +71,60 @@ assert.match(version.version,/^0(?:\.\d+){2,4}[A-Z]?$/);
 assert.ok(appConfig.includes("version: '" + version.version + "'"));
 assert.ok(worker.includes('chousa-app-v' + version.version));
 console.log('Shared integration: modal, OneDrive root and version consistency PASS');
+
+// Actual queue module regression tests, with injected storage failures.
+{
+  let raw = null, failRead = false, failWrite = false;
+  const storage = {
+    getItem() { if (failRead) throw Error('read'); return raw; },
+    setItem(_key, value) { if (failWrite) throw Error('quota'); raw = value; }
+  };
+  const source = read('../src/js/sync/unsent-queue.js');
+  const q = new Function('localStorage', source.replace(/^export /gm, '') +
+    ';return {putUnsent,listUnsent,removeUnsentIfMatching,acknowledgeUnsentEntries,replaceUnsentIfMatching,clearUnsentForProject};')(storage);
+  const base = {projectId:'P',recordType:'material',recordId:'M'};
+  assert.equal(q.listUnsent().length,0);
+  const a = q.putUnsent({...base,record:{sampleCount:1}});
+  const b = q.putUnsent({...base,record:{sampleCount:3}});
+  assert.equal(q.listUnsent().length,1);
+  assert.equal(q.removeUnsentIfMatching(a),false);
+  assert.equal(q.listUnsent()[0].record.sampleCount,3);
+  failWrite = true;
+  assert.throws(()=>q.putUnsent({...base,record:{sampleCount:4}}),{name:'UnsentStorageError'});
+  assert.throws(()=>q.removeUnsentIfMatching(b),{name:'UnsentStorageError'});
+  assert.throws(()=>q.clearUnsentForProject('P'),{name:'UnsentStorageError'});
+  assert.equal(q.listUnsent()[0].record.sampleCount,3);
+  failWrite = false;
+  assert.equal(q.removeUnsentIfMatching(b),true);
+  const deleted=q.putUnsent({...base,operation:'delete'});
+  const recreated=q.putUnsent({...base,record:{sampleCount:5}});
+  assert.equal(q.removeUnsentIfMatching(deleted),false);
+  assert.equal(q.removeUnsentIfMatching(recreated),true);
+  const project={projectId:'P',recordType:'project',recordId:'P'};
+  const initial=q.putUnsent({...project,record:{createdAt:'t',boardSettings:{a:1}},meta:{initializeChangeLog:true}});
+  const changed=q.putUnsent({...project,record:{boardSettings:{b:2}},meta:{partialProjectMetadata:true}});
+  assert.deepEqual(changed.record.boardSettings,{a:1,b:2});
+  assert.equal(q.replaceUnsentIfMatching(initial,null),false);
+  failWrite=true;
+  assert.throws(()=>q.replaceUnsentIfMatching(changed,{record:changed.meta.subsequentPatch,meta:{partialProjectMetadata:true}}));
+  assert.deepEqual(q.listUnsent()[0],changed);
+  failWrite=false;
+  assert.equal(q.replaceUnsentIfMatching(changed,{record:changed.meta.subsequentPatch,meta:{partialProjectMetadata:true}}),true);
+  assert.deepEqual(q.listUnsent()[0].record,{boardSettings:{b:2}});
+  const saved=raw;
+  failRead=true;
+  assert.throws(()=>q.listUnsent(),{name:'UnsentStorageError'});
+  assert.throws(()=>q.putUnsent({...base,record:{}}),{name:'UnsentStorageError'});
+  assert.equal(raw,saved);
+  failRead=false;
+  raw='{broken';
+  assert.throws(()=>q.putUnsent({...base,record:{}}),{name:'UnsentStorageError'});
+  assert.equal(raw,'{broken');
+  raw='{}';
+  assert.throws(()=>q.listUnsent(),{name:'UnsentStorageError'});
+  raw=saved;
+  const item=q.listUnsent()[0];
+  assert.equal(q.acknowledgeUnsentEntries([{...item,environment:'test'}]),0);
+  assert.equal(q.acknowledgeUnsentEntries([item]),1);
+  console.log('Unsent queue regression: persistence, acknowledgement, replacement PASS');
+}

@@ -32,7 +32,7 @@ import {
 import { createMaterialRecord, colorForInputId } from '../records/material-record.js';
 import { createFinishRecord } from '../records/finish-record.js';
 import { createPhotoRecord } from '../records/photo-record.js';
-import { listUnsent, putUnsent, removeUnsent } from './unsent-queue.js';
+import { listUnsent, putUnsent, replaceUnsentIfMatching } from './unsent-queue.js';
 import { mergeRecordByFieldEditedAt, sameMergedBusinessRecord } from './record-field-merge.js';
 import { restoreFinishRecordsFromSparse } from './finish-sparse-structure.js';
 import { getProject } from '../projects/project-store.js';
@@ -320,18 +320,18 @@ export async function syncQueuedProjectMetadataOnRecovery(project) {
       }
       // 自端末の新規作成がサーバーへ届いていた場合は、作成後の編集項目だけ再送。
       const subsequentPatch = queued.meta?.subsequentPatch || {};
-      removeUnsent(projectId, 'project', projectId);
-      if (Object.keys(subsequentPatch).length) {
-        putUnsent({
-          projectId,
-          environment: queued.environment,
-          recordType: 'project',
-          recordId: projectId,
-          operation: 'set',
-          record: subsequentPatch,
+      const hasPatch = Object.keys(subsequentPatch).length > 0;
+      try {
+        if (!replaceUnsentIfMatching(queued, hasPatch ? {
+          operation: 'set', record: subsequentPatch,
           meta: { partialProjectMetadata: true }
-        });
-      } else {
+        } : null)) {
+          return { ok: false, reason: 'project-queue-changed', completed: false };
+        }
+      } catch (error) {
+        return { ok: false, reason: 'project-queue-save-failed', error, completed: false };
+      }
+      if (!hasPatch) {
         return { ok: true, sent: 0, remaining: listUnsent({ projectId }).length, completed: true, skipped: true };
       }
     }

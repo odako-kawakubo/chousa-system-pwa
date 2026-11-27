@@ -8,21 +8,38 @@
 
 const STORAGE_KEY = 'chousa-firestore-unsent-v0161c';
 
+export class UnsentStorageError extends Error {
+  constructor(action, cause) {
+    super(`未送信データの端末${action === 'read' ? '読み込み' : '保存'}に失敗しました。`, { cause });
+    this.name = 'UnsentStorageError';
+    this.action = action;
+  }
+}
+
 function loadMap() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    if (!Array.isArray(raw)) return new Map();
-    return new Map(raw.filter((item) => item?.key).map((item) => [item.key, item]));
-  } catch {
-    return new Map();
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const raw = stored === null ? [] : JSON.parse(stored);
+    if (!Array.isArray(raw)) throw new Error('Invalid queue format');
+    const map = new Map();
+    for (const item of raw) {
+      if (!item?.projectId || !item.recordType || !item.recordId
+        || item.key !== makeKey(item.projectId, item.recordType, item.recordId)
+        || !['set', 'delete'].includes(item.operation)
+        || map.has(item.key)) throw new Error('Invalid queue entry');
+      map.set(item.key, item);
+    }
+    return map;
+  } catch (cause) {
+    throw new UnsentStorageError('read', cause);
   }
 }
 
 function persist(map) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(map.values())));
-  } catch {
-    // localStorage容量等で失敗しても、呼び出し側の業務操作自体は止めない。
+  } catch (cause) {
+    throw new UnsentStorageError('write', cause);
   }
 }
 
@@ -54,6 +71,9 @@ export function putUnsent({
   const map = loadMap();
   const key = makeKey(projectId, recordType, recordId);
   const previous = map.get(key);
+  if (previous && (previous.environment || 'production') !== environment) {
+    throw new Error('未送信データの環境区分が一致しません。');
+  }
   const mergedMeta = { ...(previous?.meta || {}), ...(meta || {}) };
   if (previous?.meta?.initializeChangeLog || meta?.initializeChangeLog) {
     mergedMeta.initializeChangeLog = true;
@@ -85,17 +105,47 @@ export function putUnsent({
   return map.get(key);
 }
 
-/** 送信中に同じキーへ後続編集が入った場合、成功した古い送信では削除しない。 */
+/** Compare the actual queued payload, including its environment. */
+function matches(current, expected) {
+  return Boolean(current && expected
+    && (current.environment || 'production') === (expected.environment || 'production')
+    && current.operation === expected.operation
+    && JSON.stringify(current.record) === JSON.stringify(expected.record)
+    && JSON.stringify(current.meta || {}) === JSON.stringify(expected.meta || {}));
+}
+
+/** Commit acknowledgement: remove only the exact entries sent, in one storage write. */
+export function acknowledgeUnsentEntries(entries = []) {
+  const map = loadMap();
+  let removed = 0;
+  for (const entry of entries) {
+    const key = makeKey(entry.projectId, entry.recordType, entry.recordId);
+    if (!matches(map.get(key), entry)) continue;
+    map.delete(key);
+    removed += 1;
+  }
+  if (removed) persist(map);
+  return removed;
+}
+
 export function removeUnsentIfMatching(sentEntry) {
   if (!sentEntry?.projectId || !sentEntry?.recordType || !sentEntry?.recordId) return false;
+  return acknowledgeUnsentEntries([sentEntry]) === 1;
+}
+
+/** Replace an already-committed project creation entry with only its later patch. */
+export function replaceUnsentIfMatching(expected, replacement = null) {
   const map = loadMap();
-  const key = makeKey(sentEntry.projectId, sentEntry.recordType, sentEntry.recordId);
-  const current = map.get(key);
-  if (!current) return false;
-  if (current.operation !== sentEntry.operation
-    || JSON.stringify(current.record) !== JSON.stringify(sentEntry.record)
-    || JSON.stringify(current.meta) !== JSON.stringify(sentEntry.meta)) return false;
-  map.delete(key);
+  const key = makeKey(expected.projectId, expected.recordType, expected.recordId);
+  if (!matches(map.get(key), expected)) return false;
+  if (replacement) {
+    map.set(key, {
+      ...expected, ...replacement, key,
+      projectId: expected.projectId, recordType: expected.recordType,
+      recordId: expected.recordId, environment: expected.environment,
+      queuedAt: Date.now()
+    });
+  } else map.delete(key);
   persist(map);
   return true;
 }

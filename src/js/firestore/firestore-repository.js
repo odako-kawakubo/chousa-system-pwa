@@ -37,7 +37,7 @@ import {
   serializeMaterialRecord,
   serializePhotoRecord
 } from './record-serializer.js';
-import { putUnsent, removeUnsent, removeUnsentIfMatching, listUnsent } from '../sync/unsent-queue.js';
+import { putUnsent, acknowledgeUnsentEntries, listUnsent } from '../sync/unsent-queue.js';
 import {
   isManualOffline,
   isNetworkOnline,
@@ -240,12 +240,18 @@ async function commitRecordEntries(entries = []) {
   const batch = writeBatch(db);
   entries.forEach((entry) => appendRecordOperationToBatch(batch, entry));
   await batch.commit();
-  entries.forEach((entry) => {
-    if (entry.recordType === 'project') removeUnsentIfMatching(entry);
-    else removeUnsent(entry.projectId, entry.recordType, entry.recordId);
-  });
+  // A remote commit is already durable; a local acknowledgement error must
+  // not be mistaken for a failed remote write or trigger immediate replay.
+  let queueCleanupError = null;
+  try {
+    acknowledgeUnsentEntries(entries);
+  } catch (error) {
+    queueCleanupError = error;
+    markError(error);
+  }
   return {
     ok: true,
+    queueCleanupError,
     sent: entries.length,
     committedEntries: entries.map((entry) => ({
       projectId: entry.projectId,
@@ -265,7 +271,7 @@ async function commitRecordEntries(entries = []) {
 async function retryPastUnsent(projectId, limitCount = PASSIVE_RETRY_LIMIT) {
   if (!canUseFirestore()) return { ok: false, sent: 0, skipped: true, reason: 'offline' };
 
-  const allEntries = listUnsent({ projectId });
+  const allEntries = listUnsent({ projectId }).filter((entry) => entry.recordType !== 'project');
   if (!allEntries.length) return { ok: true, sent: 0 };
 
   // 自動再送は「数件の一時失敗」だけ。大量未送信は明示のまとめて同期へ任せる。
@@ -309,7 +315,12 @@ async function retryUnsentBatchNow({
 }) {
   const id = String(projectId || '');
   if (!id) return { ok: false, sent: 0, remaining: 0, reason: 'project-missing' };
-  const allBefore = listUnsent({ projectId: id });
+  let allBefore;
+  try { allBefore = listUnsent({ projectId: id }); }
+  catch (error) {
+    markError(error);
+    return { ok: false, sent: 0, completed: false, reason: 'queue-read-failed', error };
+  }
   const include = Array.isArray(recordTypes) && recordTypes.length ? new Set(recordTypes.map(String)) : null;
   const exclude = Array.isArray(excludeRecordTypes) && excludeRecordTypes.length ? new Set(excludeRecordTypes.map(String)) : null;
   const selectEntries = (items) => items.filter((item) =>
@@ -339,6 +350,10 @@ async function retryUnsentBatchNow({
   beginFirestoreActivity();
   try {
     const result = await commitRecordEntries(entries);
+    if (result.queueCleanupError) return {
+      ...result, ok: false, completed: false, reason: 'queue-cleanup-failed',
+      remoteCommitted: true, remaining: remainingBefore
+    };
     const allAfter = listUnsent({ projectId: id });
     const remaining = selectEntries(allAfter).length;
     syncDiagnosticLog('UNSENT_BULK_BATCH_OK', {
@@ -367,7 +382,6 @@ async function retryUnsentBatchNow({
       ok: false,
       sent: 0,
       remaining: remainingBefore,
-      totalRemaining: listUnsent({ projectId: id }).length,
       error,
       reason: 'write-failed'
     };
@@ -479,43 +493,38 @@ async function writeWithQueue({
     networkOnline: isNetworkOnline()
   });
 
-  if (isManualOffline()) {
-    putUnsent(entry);
-    syncDiagnosticLog('WRITE_QUEUED_MANUAL_OFFLINE', { projectId, recordType, recordId, operation, source });
-    return { ok: false, queued: true, operation, offline: true, reason: 'manual-offline' };
+  let pending;
+  try {
+    pending = putUnsent(entry);
+  } catch (error) {
+    markError(error);
+    syncDiagnosticLog('WRITE_QUEUE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
+    return { ok: false, queued: false, operation, reason: 'queue-save-failed', error };
   }
-
-  if (!isNetworkOnline()) {
-    putUnsent(entry);
-    syncDiagnosticLog('WRITE_QUEUED_NETWORK_OFFLINE', { projectId, recordType, recordId, operation, source });
-    return { ok: false, queued: true, operation, offline: true, reason: 'network-offline' };
-  }
-
-  // 案件情報は送信前に未送信パッチを統合し、失敗済みの別項目も失わない。
-  if (recordType === 'project') {
-    const pending = putUnsent(entry);
-    entry.record = pending.record;
-    entry.meta = pending.meta;
+  if (isManualOffline() || !isNetworkOnline()) {
+    return { ok: false, queued: true, operation, offline: true,
+      reason: isManualOffline() ? 'manual-offline' : 'network-offline' };
   }
   beginFirestoreActivity();
   try {
-    await commitRecordEntries([entry]);
+    const committed = await commitRecordEntries([pending]);
     syncDiagnosticLog('WRITE_OK', { projectId, recordType, recordId, operation, source });
-
-    const retryResult = recordType === 'project'
-      ? { ok: true, sent: 0, skipped: true, reason: 'project-write-does-not-passive-retry-records' }
-      : await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT);
+    let retryResult = { ok: true, sent: 0 };
+    if (!committed.queueCleanupError && recordType !== 'project') {
+      try { retryResult = await retryPastUnsent(projectId, PASSIVE_RETRY_LIMIT); }
+      catch (error) { markError(error); retryResult = { ok: false, error }; }
+    }
     return {
-      ok: true,
-      queued: false,
-      operation,
+      ok: true, queued: false, operation,
+      queueCleanupError: committed.queueCleanupError,
+      committedEntries: committed.committedEntries,
       retried: Number(retryResult.sent || 0),
       retriedEntries: retryResult.committedEntries || [],
-      retryError: retryResult.ok === false && !retryResult.skipped ? retryResult.error || null : null
+      retryError: retryResult.queueCleanupError || (retryResult.ok === false && !retryResult.skipped ? retryResult.error || null : null)
     };
   } catch (error) {
-    // projectは送信前に未送信キューへ保存済み。再登録すると送信中の後続編集を逆順で上書きし得る。
-    if (recordType !== 'project') putUnsent(entry);
+    // The original entry was persisted before sending. Never reinsert an old
+    // payload here: a newer edit may already have replaced it.
     syncDiagnosticLog('WRITE_ERROR', { projectId, recordType, recordId, operation, source, message: error?.message || String(error) });
     markError(error);
     return { ok: false, queued: true, operation, error };
